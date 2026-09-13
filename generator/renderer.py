@@ -111,6 +111,11 @@ LANDSCAPE_ORDER = [
     "dirt",
     "playground",
     "track",
+    # Water under the ways that cross it: a river polygon painted last erased
+    # every bridge, leaving no way over. Above land use, which it still wins.
+    "water",
+    "pool",
+    "railway",        # gravel track bed; roads cross it at level crossings
     "dirt_path",      # thin dirt line
     "paved_path",     # footway, pavement, cycleway
     "pier",           # jetties and breakwaters, over the water
@@ -120,13 +125,15 @@ LANDSCAPE_ORDER = [
     "road_minor",
     "road_medium",
     "road_major",     # widest, so it wins at junctions
-    "water",          # water overrides almost everything
-    "pool",
     # Building footprints are not painted at all. They used to be dirt, which
     # showed as a brown fringe wherever the placed building and the painted
     # footprint disagreed by a tile - and the building's own floor covers the
     # ground under it anyway.
 ]
+
+# Waterways drawn from a centre line, when no area is mapped around them.
+# A river is usually mapped with its banks too, which paints over this.
+WATERWAY_WIDTH_M = {"river": 12.0, "canal": 8.0, "stream": 2.0}
 
 # Road widths in meters. Converted to pixels by dividing by meters_per_tile.
 #
@@ -142,6 +149,7 @@ ROAD_WIDTHS_M = {
     "dirt_path": 2.5,
     "paved_path": 2.5,
     "pier": 3.0,
+    "railway": 4.0,
 }
 
 # Metres of kerb either side. Town streets in the vanilla game sit in a band of
@@ -160,6 +168,7 @@ LANDSCAPE_FILL = {
     "dirt_path": C.DIRT,
     "paved_path": C.PALE_CONCRETE,
     "pier": C.PALE_CONCRETE,
+    "railway": C.LIGHT_ASPHALT,
     "grass": C.MEDIUM_GRASS,
     "park": C.MEDIUM_GRASS,
     "farmland": C.LIGHT_GRASS,
@@ -386,8 +395,9 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             elif _is_polygon(feat):
                 _draw_polygon(l_draw, rings, fill)
             else:
-                # Unexpected: linear water like a stream. Draw it narrow.
-                _draw_line(l_draw, rings, fill, max(1, int(3 / meters_per_tile)))
+                # A river or canal mapped only as its centre line.
+                metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
+                _draw_line(l_draw, rings, fill, max(1, int(metres / meters_per_tile)))
 
     _pave_dense_ground(landscape, building_feats, buckets, proj)
     _weather_roads(landscape, proj)

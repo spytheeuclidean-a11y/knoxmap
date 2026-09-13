@@ -53,6 +53,7 @@ HIGHWAY_VALUE = {
     "road_minor": "tertiary", "road_service": "tertiary",
     "dirt_path": "trail", "paved_path": "trail",
 }
+RAIL_WIDTH_M = 4.0
 AREA_VALUE = {"water": ("water", "river"), "pool": ("water", "river"),
               "forest": ("natural", "forest")}
 # Streets worth a name on the map. Footpaths carry names too, but labelling
@@ -123,6 +124,13 @@ def write(out_dir: str, map_name: str, proj, info: dict,
             name = (feat.tags.get("name") or "").strip()
             if name and cat in NAMED_CLASSES:
                 streets.setdefault(name, []).append((line, width_tiles))
+        elif cat == "railway" and not _is_polygon(feat):
+            line = _line(feat, proj)
+            if line is not None:
+                poly = _clean(line.buffer(RAIL_WIDTH_M / metres_per_tile / 2,
+                                          cap_style=2, join_style=2))
+                if poly is not None:
+                    features.append((poly, "railway", "rail"))
         elif cat in AREA_VALUE and _is_polygon(feat):
             key, value = AREA_VALUE[cat]
             for ring in _outer_rings(feat, proj):

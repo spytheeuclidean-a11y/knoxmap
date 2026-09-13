@@ -40,6 +40,9 @@ OVERPASS_FILTERS: Sequence[str] = (
     # Piers and breakwaters stand on the water; without them a marina's
     # jetties vanish and anything built on one floats.
     'way["man_made"~"^(pier|breakwater|groyne)$"]',
+    # Railways: the lines a town grew along, and on the paper map. Trams run
+    # in the street and are left to the road under them.
+    'way["railway"~"^(rail|light_rail|narrow_gauge|disused|preserved)$"]',
     'way["natural"="water"]',
     'way["waterway"]',
     'relation["natural"="water"]',
@@ -99,7 +102,7 @@ OVERPASS_FILTERS: Sequence[str] = (
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 6
+FILTERS_VERSION = 7
 
 
 @dataclass
@@ -464,10 +467,18 @@ UNPAVED_SURFACES = {"unpaved", "dirt", "earth", "ground", "grass", "gravel",
                     "woodchips", "grass_paver"}
 
 
+# Underground things. A road in a tunnel painted on the surface cut a street
+# through whole blocks; a car park under a square covered the square in tarmac.
+TUNNEL_VALUES = {"yes", "building_passage", "culvert", "avalanche_protector", "flooded"}
+
+
 def classify(tags: dict) -> str | None:
     """Map OSM tags to a PZ feature category string. None = ignore."""
     if "building" in tags:
         return "building"
+    if (tags.get("tunnel") in TUNNEL_VALUES or tags.get("location") == "underground"
+            or tags.get("parking") == "underground"):
+        return None
 
     amenity = tags.get("amenity")
     landuse = tags.get("landuse")
@@ -518,6 +529,8 @@ def classify(tags: dict) -> str | None:
         return "coastline"
     if tags.get("man_made") in {"pier", "breakwater", "groyne"}:
         return "pier"
+    if tags.get("railway") in {"rail", "light_rail", "narrow_gauge", "disused", "preserved"}:
+        return "railway"
     if tags.get("natural") == "water" or tags.get("waterway") in {
             "river", "riverbank", "canal", "stream"}:
         return "water"
