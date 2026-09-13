@@ -168,7 +168,40 @@ def _parse(payload: dict, limit: int) -> list[dict]:
             "value": value,
             "lat": float(lat),
             "lon": float(lon),
+            "_rank": _notability(kind, value, tags),
         })
 
-    out.sort(key=lambda d: (d["value"], d["name"].lower()))
-    return out[:limit]
+    # Most notable first, then cut. Sorting by name of category before the
+    # cut meant a busy street's alcohol shops, bakeries and bars filled the
+    # list and every museum, church and school - later in the alphabet - was
+    # silently dropped.
+    out.sort(key=lambda d: (-d["_rank"], d["value"], d["name"].lower()))
+    kept = out[:limit]
+    for d in kept:
+        del d["_rank"]
+    kept.sort(key=lambda d: (d["value"], d["name"].lower()))
+    return kept
+
+
+# What a player would navigate by. Weighted by key, raised for the values that
+# are landmarks in any town, and again when the place has its own Wikipedia or
+# Wikidata entry - a fair sign that people outside the street have heard of it.
+KEY_WEIGHT = {"historic": 6, "tourism": 5, "leisure": 3, "amenity": 3,
+              "healthcare": 2, "building": 2, "office": 1, "shop": 1}
+NOTABLE_VALUES = {
+    "place_of_worship": 4, "church": 4, "mosque": 4, "cathedral": 5,
+    "synagogue": 4, "temple": 4, "school": 3, "university": 4, "college": 3,
+    "hospital": 4, "townhall": 4, "police": 3, "fire_station": 3,
+    "library": 3, "museum": 5, "attraction": 4, "castle": 5, "monument": 4,
+    "park": 3, "stadium": 4, "marketplace": 3, "theatre": 3, "cinema": 2,
+    "train_station": 4, "bus_station": 2, "supermarket": 2, "mall": 3,
+    "department_store": 2, "fuel": 2, "pharmacy": 1, "post_office": 2,
+    "prison": 4, "courthouse": 3, "hotel": 2,
+}
+
+
+def _notability(kind: str, value: str, tags: dict) -> int:
+    score = KEY_WEIGHT.get(kind, 0) + NOTABLE_VALUES.get(value, 0)
+    if "wikidata" in tags or "wikipedia" in tags:
+        score += 4
+    return score

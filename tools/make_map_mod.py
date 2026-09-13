@@ -202,6 +202,12 @@ def package(project_dir: str, name: str, mod_id: str,
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Place names can be in any script, and a Windows console using a legacy
+    # code page cannot print most of them - "OSM says Kadıköy" crashed a build
+    # on cp1252. Print what it can and mark the rest, rather than dying.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="replace")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("project_dir", help="the Knoxify output/<mapname> folder")
     ap.add_argument("--name", required=True,

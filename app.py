@@ -14,6 +14,7 @@ import io
 import json
 import os
 import re
+import sys
 import threading
 import time
 import zipfile
@@ -24,6 +25,12 @@ from flask import (Flask, jsonify, render_template, request, send_file,
 
 from generator import osm, places, renderer
 from knoxbuild.settings import PRESETS, Settings
+
+# Builds print place names in any script; a console on a legacy code page
+# would raise mid-request on the first one it cannot show.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(errors="replace")
 
 BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "output"
