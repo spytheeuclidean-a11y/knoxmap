@@ -33,6 +33,10 @@ HEADERS = {"User-Agent": "KnoxMap/1.0 (+https://github.com/spytheeuclidean-a11y/
 # Order doesn't matter here; the rasterizer picks priority at paint time.
 OVERPASS_FILTERS: Sequence[str] = (
     # water
+    # The sea has no polygon in OSM, only the line of the shore, drawn with the
+    # land on its left. Without it every coastal town was a meadow to the
+    # horizon - see renderer.sea_polygons.
+    'way["natural"="coastline"]',
     'way["natural"="water"]',
     'way["waterway"]',
     'relation["natural"="water"]',
@@ -92,7 +96,7 @@ OVERPASS_FILTERS: Sequence[str] = (
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 3
+FILTERS_VERSION = 5
 
 
 @dataclass
@@ -377,6 +381,39 @@ def load_cache(path: str,
     return out
 
 
+def assemble_rings(role_geoms: list[tuple[str, list[tuple[float, float]]]]
+                   ) -> list[tuple[str, list[tuple[float, float]]]]:
+    """Join a multipolygon's member ways into closed rings.
+
+    A relation's outline is rarely one way: a lake shore, a harbour or a
+    forest edge is split into dozens of ways that only close into a ring end
+    to end. Painted one way at a time, each way became a polygon of its own -
+    a sliver from one end to the other - so Sydney Harbour came out as 6%
+    water in scattered wedges. Ways are merged per role (outer, inner) and
+    closed into rings; whatever does not close is kept as it was.
+    """
+    from shapely.geometry import LineString
+    from shapely.ops import linemerge, polygonize, unary_union
+
+    out: list[tuple[str, list[tuple[float, float]]]] = []
+    for role in ("outer", "inner"):
+        lines = [LineString([(lon, lat) for lat, lon in ring])
+                 for r, ring in role_geoms
+                 if (r or "outer") == role and len(ring) >= 2]
+        if not lines:
+            continue
+        try:
+            faces = list(polygonize(linemerge(unary_union(lines))))
+        except Exception:  # noqa: BLE001 - malformed geometry: keep the ways
+            faces = []
+        if faces:
+            out += [(role, [(lat, lon) for lon, lat in face.exterior.coords])
+                    for face in faces]
+        else:
+            out += [(r, ring) for r, ring in role_geoms if (r or "outer") == role]
+    return out or role_geoms
+
+
 def _parse(payload: dict) -> list[OSMFeature]:
     elements = payload.get("elements", [])
     out: list[OSMFeature] = []
@@ -398,7 +435,9 @@ def _parse(payload: dict) -> list[OSMFeature]:
                 role_geoms.append((m.get("role", ""), ring))
                 rings.append(ring)
             if rings:
-                feat = OSMFeature(el["id"], "relation", tags, rings)
+                role_geoms = assemble_rings(role_geoms)
+                feat = OSMFeature(el["id"], "relation", tags,
+                                  [ring for _role, ring in role_geoms] or rings)
                 feat.role_geoms = role_geoms
                 out.append(feat)
         elif kind == "node":
@@ -472,6 +511,8 @@ def classify(tags: dict) -> str | None:
 
     if leisure == "swimming_pool" and tags.get("indoor") not in ("yes", "covered"):
         return "pool"
+    if tags.get("natural") == "coastline":
+        return "coastline"
     if tags.get("natural") == "water" or tags.get("waterway") in {
             "river", "riverbank", "canal", "stream"}:
         return "water"

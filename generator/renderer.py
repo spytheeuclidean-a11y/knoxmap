@@ -245,6 +245,32 @@ def _is_polygon(feat: OSMFeature) -> bool:
     return False
 
 
+def _paint_multipolygon(image: Image.Image, feat: OSMFeature, proj: Projector,
+                        fill: tuple[int, int, int]) -> None:
+    """Fill a relation's outer rings and leave its inner rings as they were.
+
+    An island in a lake or a clearing in a wood is an inner ring. Drawn like
+    the outers it was flooded or planted over; here it is cut out of a mask
+    the size of the relation, so whatever lies under it shows through.
+    """
+    rings = [(role, [proj.to_px(la, lo) for la, lo in ring])
+             for role, ring in feat.role_geoms if len(ring) >= 3]
+    if not rings:
+        return
+    xs = [x for _r, ring in rings for x, _y in ring]
+    ys = [y for _r, ring in rings for _x, y in ring]
+    x0, y0 = max(0, int(min(xs))), max(0, int(min(ys)))
+    x1, y1 = min(image.width, int(max(xs)) + 2), min(image.height, int(max(ys)) + 2)
+    if x1 <= x0 or y1 <= y0:
+        return
+    mask = Image.new("L", (x1 - x0, y1 - y0), 0)
+    md = ImageDraw.Draw(mask)
+    for role, ring in sorted(rings, key=lambda r: r[0] == "inner"):
+        md.polygon([(x - x0, y - y0) for x, y in ring],
+                   fill=0 if role == "inner" else 255)
+    image.paste(Image.new("RGB", mask.size, fill), (x0, y0), mask)
+
+
 def _draw_polygon(draw: ImageDraw.ImageDraw, rings: list[list[tuple[float, float]]],
                   fill: tuple[int, int, int]) -> None:
     for ring in rings:
@@ -334,6 +360,15 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             width_px = (_way_width_m(feat, cat) + 2 * margin) / meters_per_tile
             _draw_line(l_draw, rings, C.PALE_CONCRETE, int(width_px))
 
+    # The sea first, under everything: a pier or a beach mapped over it
+    # paints on top.
+    for sea in sea_polygons(buckets.get("coastline", []), proj):
+        for part in getattr(sea, "geoms", None) or [sea]:
+            if hasattr(part, "exterior"):
+                l_draw.polygon(list(part.exterior.coords), fill=C.WATER)
+                for hole in part.interiors:
+                    l_draw.polygon(list(hole.coords), fill=C.DARK_GRASS)
+
     for cat in LANDSCAPE_ORDER:
         fill = LANDSCAPE_FILL.get(cat)
         if fill is None:
@@ -343,6 +378,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             if cat in ROAD_WIDTHS_M and not _is_polygon(feat):
                 width_px = _way_width_m(feat, cat) / meters_per_tile
                 _draw_line(l_draw, rings, fill, int(width_px))
+            elif feat.kind == "relation":
+                _paint_multipolygon(landscape, feat, proj, fill)
             elif _is_polygon(feat):
                 _draw_polygon(l_draw, rings, fill)
             else:
@@ -427,6 +464,65 @@ COVERAGE_WINDOW = 15   # samples across the window, so 120 m
 # Mapped green space keeps its grass however built-up the area around it is.
 GREEN_CATEGORIES = {"park", "grass", "sports", "cemetery", "orchard", "farmland",
                     "wetland", "hospital_grounds"}
+
+
+def sea_polygons(feats: list[OSMFeature], proj: Projector) -> list:
+    """The sea inside the map, as shapely polygons in tile coordinates.
+
+    OSM maps the sea only by its shore: natural=coastline ways, each running
+    with the land on its left and the water on its right. The map rectangle is
+    cut along every shore line into faces, and each face is sea or land by
+    which side of its nearest stretch of shore it lies on. That handles a
+    headland, a bay, an island - any mix, as long as the shore is in view.
+    A map with no shore in it is taken to be land.
+    """
+    from shapely.geometry import LineString, Point, box
+    from shapely.ops import nearest_points, polygonize, unary_union
+
+    w, h = proj.width, proj.height
+    frame = box(0, 0, w, h)
+    shores = []
+    for feat in feats:
+        if feat.kind != "way" or feat.tags.get("natural") != "coastline":
+            continue
+        pts = [proj.to_px(la, lo) for la, lo in feat.geometry]
+        if len(pts) >= 2:
+            shores.append(LineString(pts))
+    if not shores:
+        return []
+    # Clip the shore to a little beyond the frame, so lines that only graze
+    # the edge still split it, and the faces stay inside the map.
+    reach = frame.buffer(2)
+    clipped = [s.intersection(reach) for s in shores]
+    lines = [g for c in clipped for g in (getattr(c, "geoms", None) or [c])
+             if not g.is_empty and g.length > 0]
+    if not lines:
+        return []
+    faces = list(polygonize(unary_union(lines + [frame.exterior])))
+
+    def seaward(face) -> bool:
+        spot = face.representative_point()
+        best, best_d = None, None
+        for line in lines:
+            d = line.distance(spot)
+            if best_d is None or d < best_d:
+                best, best_d = line, d
+        coords = list(best.coords)
+        at = best.project(nearest_points(best, spot)[0])
+        # The segment the nearest point falls on.
+        run = 0.0
+        for (x1, y1), (x2, y2) in zip(coords, coords[1:]):
+            seg = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
+            if run + seg >= at or (x2, y2) == coords[-1]:
+                break
+            run += seg
+        cross = (x2 - x1) * (spot.y - y1) - (y2 - y1) * (spot.x - x1)
+        # Tile y grows southward, which mirrors the plane: "right of the line"
+        # has a positive cross product here, where it is negative on a map.
+        return cross > 0
+
+    return [f.intersection(frame) for f in faces
+            if f.intersection(frame).area > 1 and seaward(f)]
 
 
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
@@ -883,7 +979,9 @@ def _buildings_geojson(feats: list[OSMFeature]) -> dict:
                 })
         elif f.kind == "relation":
             polys = []
-            for _role, ring in f.role_geoms:
+            for role, ring in f.role_geoms:
+                if role == "inner":
+                    continue
                 coords = [[lon, lat] for lat, lon in ring]
                 if len(coords) >= 3:
                     polys.append([coords])

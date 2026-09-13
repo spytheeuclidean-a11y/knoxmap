@@ -31,7 +31,7 @@ from shapely.geometry import LineString, MultiLineString, Polygon, box
 from shapely.ops import linemerge, unary_union
 
 from generator import osm
-from generator.renderer import _is_polygon, _way_width_m
+from generator.renderer import _is_polygon, _way_width_m, sea_polygons
 
 from .world import WORLD_ORIGIN_CELLS
 
@@ -141,6 +141,12 @@ def write(out_dir: str, map_name: str, proj, info: dict,
                 if poly is not None and poly.area >= MIN_PLACE_TILES:
                     spot = poly.representative_point()
                     labels.append((name, "text-place", PLACE_SCALE, spot.x, spot.y))
+
+    for sea in sea_polygons(feats, proj):
+        for part in getattr(sea, "geoms", None) or [sea]:
+            poly = _clean(part) if hasattr(part, "exterior") else None
+            if poly is not None:
+                features.append((poly, "water", "river"))
 
     cells = _write_worldmap(os.path.join(out_dir, "worldmap.xml"), features,
                             width, height)
