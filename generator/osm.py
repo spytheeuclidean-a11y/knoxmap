@@ -37,6 +37,9 @@ OVERPASS_FILTERS: Sequence[str] = (
     # land on its left. Without it every coastal town was a meadow to the
     # horizon - see renderer.sea_polygons.
     'way["natural"="coastline"]',
+    # Piers and breakwaters stand on the water; without them a marina's
+    # jetties vanish and anything built on one floats.
+    'way["man_made"~"^(pier|breakwater|groyne)$"]',
     'way["natural"="water"]',
     'way["waterway"]',
     'relation["natural"="water"]',
@@ -96,7 +99,7 @@ OVERPASS_FILTERS: Sequence[str] = (
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 5
+FILTERS_VERSION = 6
 
 
 @dataclass
@@ -513,6 +516,8 @@ def classify(tags: dict) -> str | None:
         return "pool"
     if tags.get("natural") == "coastline":
         return "coastline"
+    if tags.get("man_made") in {"pier", "breakwater", "groyne"}:
+        return "pier"
     if tags.get("natural") == "water" or tags.get("waterway") in {
             "river", "riverbank", "canal", "stream"}:
         return "water"

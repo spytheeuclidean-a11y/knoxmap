@@ -113,6 +113,7 @@ LANDSCAPE_ORDER = [
     "track",
     "dirt_path",      # thin dirt line
     "paved_path",     # footway, pavement, cycleway
+    "pier",           # jetties and breakwaters, over the water
     "parking",        # car park tarmac
     "plaza",          # paved pedestrian square
     "road_service",   # alleys and driveways
@@ -140,6 +141,7 @@ ROAD_WIDTHS_M = {
     "road_service": 3.5,
     "dirt_path": 2.5,
     "paved_path": 2.5,
+    "pier": 3.0,
 }
 
 # Metres of kerb either side. Town streets in the vanilla game sit in a band of
@@ -157,6 +159,7 @@ LANDSCAPE_FILL = {
     "dirt": C.DIRT,
     "dirt_path": C.DIRT,
     "paved_path": C.PALE_CONCRETE,
+    "pier": C.PALE_CONCRETE,
     "grass": C.MEDIUM_GRASS,
     "park": C.MEDIUM_GRASS,
     "farmland": C.LIGHT_GRASS,
