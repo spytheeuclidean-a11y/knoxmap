@@ -95,6 +95,28 @@ def _grid_path(points: list[tuple[float, float]]) -> list[tuple[int, int]]:
     return path
 
 
+def _tarmac_mask(bmp_path: str, width: int, height: int):
+    """True where the ground is a road, service lane or car park."""
+    import numpy as np
+    from PIL import Image
+
+    from generator import pz_colors as C
+
+    if not os.path.exists(bmp_path):
+        return None
+    ground = np.asarray(Image.open(bmp_path).convert("RGB"))
+    if ground.shape[:2] != (height, width):
+        return None
+    mask = np.zeros((height, width), dtype=bool)
+    for colour in (C.LIGHT_ASPHALT, C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
+                   C.DARKEST_ASPHALT, C.DARK_POTHOLE, C.LIGHT_POTHOLE):
+        same = ground[:, :, 0] == colour[0]
+        same &= ground[:, :, 1] == colour[1]
+        same &= ground[:, :, 2] == colour[2]
+        mask |= same
+    return mask
+
+
 def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
                  bdir: str) -> tuple[list, int]:
     """Write one fence .tbx per map cell that has fences. Returns placements."""
@@ -110,6 +132,20 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
 
     def building_at(x: int, y: int) -> bool:
         return 0 <= x < map_w and 0 <= y < map_h and bool(occupied[y, x])
+
+    # Mappers draw a fence as one line and put the gate in as a separate point,
+    # so a schoolyard fence crosses its own driveway and a factory fence the
+    # road into the works. Built as drawn, the fence walls the road off. An
+    # edge with tarmac on both sides is a road crossing, and is left open; a
+    # fence along the side of a car park has tarmac on one side only and stays.
+    tarmac = _tarmac_mask(os.path.join(out_dir, f"{map_name}.bmp"), map_w, map_h)
+
+    def crossing(ax: int, ay: int, bx: int, by: int) -> bool:
+        if tarmac is None:
+            return False
+        inside = (0 <= ax < map_w and 0 <= ay < map_h and
+                  0 <= bx < map_w and 0 <= by < map_h)
+        return inside and bool(tarmac[ay, ax]) and bool(tarmac[by, bx])
 
     # (x, y) -> {"W": style, "N": style}
     edges: dict[tuple[int, int], dict[str, str]] = {}
@@ -129,10 +165,14 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
                 # A fence never runs through a building: that edge is a wall.
                 if building_at(x, y1) or building_at(x, y1 - 1):
                     continue
+                if crossing(x, y1, x, y1 - 1):
+                    continue
                 edges.setdefault((x, y1), {})["N"] = style
             else:                             # along a west edge
                 y = min(y1, y2)
                 if building_at(x1, y) or building_at(x1 - 1, y):
+                    continue
+                if crossing(x1, y, x1 - 1, y):
                     continue
                 edges.setdefault((x1, y), {})["W"] = style
         if walk:
