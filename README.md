@@ -123,6 +123,7 @@ second, without rebuilding - then compile again so the game sees the change.
 | Setup cannot find Project Zomboid | It asks for the folder - paste the `ProjectZomboid` folder from your Steam library. |
 | *OSM query failed* | The free OpenStreetMap servers are busy. Wait a minute and try again, or draw a smaller area. |
 | The map is not in the game | Enable it under **Mods**, then start a **new** game. |
+| Setup says the game looks like Build 41 | KnoxMap maps need Build 42. In Steam: right-click Project Zomboid → **Properties → Betas** → pick the Build 42 branch. |
 | The window is blank | Install the [Microsoft Edge WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (built into Windows 11). |
 
 ## For tinkerers
