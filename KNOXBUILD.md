@@ -1,9 +1,8 @@
 # knoxbuild — furnished buildings for Knoxify maps
 
 > **Just want the map?** Double-click `KnoxMap.bat`. It wraps everything below
-> in one window: search a place, build terrain and buildings, hand off to
-> WorldEd for the two compile commands, and install the result into
-> `~/Zomboid/mods`. The rest of this file is what it does underneath, and how to
+> in one window: search a place, build terrain and buildings, compile them with
+> the patched WorldEd, and install the result into `~/Zomboid/mods`. The rest of this file is what it does underneath, and how to
 > drive each piece by hand.
 
 Knoxify stops at building *footprints*: OSM has outlines but no interiors, so it
