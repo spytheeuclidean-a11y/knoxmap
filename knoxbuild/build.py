@@ -32,6 +32,7 @@ from .population import build_spawn_map, official_population, save_footprints
 from .settings import PRESETS, Settings
 from .tbx import render_tbx
 from .world import Placement, render_pzw
+from . import worldmap
 
 # OSM building tags that should get a commercial room mix rather than a house.
 COMMERCIAL_TAGS = {
@@ -436,6 +437,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     areas = AreaIndex.load(out_dir, map_name, proj)
     # (x0, y0, mask, storeys, kind) for the population estimate.
     peopled: list[tuple[int, int, np.ndarray, int, str]] = []
+    # Real outlines of the buildings placed, for the in-game paper map.
+    outlines: list[tuple[list[tuple[float, float]], str]] = []
     occupied = np.zeros((proj.height, proj.width), dtype=bool)
 
     # Biggest footprints claim their tiles first. Where two real buildings
@@ -530,6 +533,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         p = Placement(f"buildings/{fname}", x0, y0, w, h)
         placements.append(p)
         peopled.append((x0, y0, fp.mask, len(plan.storeys), special or "house"))
+        outlines.append((px, special or "house"))
         rows.append({
             "file": fname, "name": label,
             "tile_x": x0, "tile_y": y0, "width": w, "height": h,
@@ -563,6 +567,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     with open(os.path.join(out_dir, f"{map_name}_population.json"), "w",
               encoding="utf-8") as f:
         json.dump(population, f, indent=2, ensure_ascii=False)
+
+    paper_map = worldmap.write(out_dir, map_name, proj, info, outlines)
 
     zones = _detect_zones(os.path.join(out_dir, f"{map_name}.bmp"),
                           placements, settings=settings)
@@ -617,6 +623,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"zones                 : {n_park} parking, {n_town} town")
     print(f"fences                : {fence_tiles} fence tiles in "
           f"{len(fence_placements)} lots")
+    print(f"paper map             : {paper_map['map_features']} features in "
+          f"{paper_map['map_cells']} cells, {paper_map['streets']} named streets")
     print(f"population            : {population['residents']:,} residents, "
           f"{population['daytime_occupants']:,} at work or school")
     print(f"zombie spawn map      : {population['share_with_zombies']:.1%} of chunks "

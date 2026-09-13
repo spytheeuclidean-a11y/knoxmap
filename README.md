@@ -40,6 +40,8 @@ lines are the real footprints from OpenStreetMap. Map data © OpenStreetMap cont
   switch, every staircase is clear, and roofs follow the footprint.
 - **The ground between them.** Gardens, schoolyards, industrial yards,
   playgrounds, pools, cemeteries, orchards, fences, walls and hedges.
+- **The real map in your pocket.** The in-game map (M) shows the real
+  streets, buildings, rivers and woods, with real street names.
 - **Zombies where the people were.** The spawn map is drawn from an estimate
   of who lived and worked in each building, and is fully adjustable.
 - **Landmarks included.** Big buildings like factories and civic centres are

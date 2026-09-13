@@ -145,6 +145,26 @@ def write_spawnpoints(project_dir: str, map_dir: str, limit: int = 8) -> int:
     return len(points)
 
 
+def folder_name(title: str, fallback: str) -> str:
+    """A map folder name the game and Windows both accept, from a display title.
+
+    The folder used to be the title itself, so "Paris: Le Marais" asked Windows
+    for a path with a colon in it, and "Kadıköy" put non-ASCII characters into
+    paths the game hands to Lua. Accents are folded ("Kadikoy"), anything else
+    outside letters, digits, spaces, commas, dots and dashes is dropped. The
+    title in map.info keeps its real spelling.
+    """
+    import re
+    import unicodedata
+
+    folded = unicodedata.normalize("NFKD", title)
+    folded = folded.replace("ı", "i").replace("ß", "ss")
+    ascii_only = folded.encode("ascii", "ignore").decode("ascii")
+    safe = re.sub(r"[^A-Za-z0-9 ,.\-_]+", " ", ascii_only)
+    safe = re.sub(r"\s+", " ", safe).strip(" .")
+    return safe or fallback
+
+
 def package(project_dir: str, name: str, mod_id: str,
             lots_dir: str | None = None, mods_dir: str | None = None,
             description: str = "") -> tuple[str, int, list[str]]:
@@ -159,7 +179,8 @@ def package(project_dir: str, name: str, mod_id: str,
             f"first.")
 
     mod_root = os.path.join(mods_dir, mod_id)
-    map_dir = os.path.join(mod_root, "common", "media", "maps", name)
+    map_dir = os.path.join(mod_root, "common", "media", "maps",
+                           folder_name(name, mod_id))
     os.makedirs(map_dir, exist_ok=True)
 
     for src in cells + extras:
