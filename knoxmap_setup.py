@@ -136,11 +136,23 @@ def ensure_patched_cli(tools: Path) -> bool:
 
 # ---- 3 & 4. game artwork and configuration ------------------------------------------
 
+def _warn_if_not_build42(game: Path) -> None:
+    if knoxpaths.is_build42(game):
+        return
+    say("")
+    say("      !! This looks like Build 41. KnoxMap makes Build 42 maps, which")
+    say("         Build 41 cannot load. In Steam: right-click Project Zomboid >")
+    say("         Properties > Betas, choose the Build 42 (unstable) branch, let")
+    say("         it update, then run Setup.bat again.")
+    say("")
+
+
 def find_game() -> Path | None:
     step(3, "Project Zomboid install")
     game = knoxpaths.pz_install_dir()
     if game:
         say(f"      found at {game}")
+        _warn_if_not_build42(game)
         return game
     say("      Could not find Project Zomboid in your Steam libraries.")
     while True:
@@ -148,6 +160,7 @@ def find_game() -> Path | None:
         if not answer:
             return None
         if (Path(answer) / "media" / "texturepacks").exists():
+            _warn_if_not_build42(Path(answer))
             return Path(answer)
         say("      That folder has no media/texturepacks inside - try again.")
 

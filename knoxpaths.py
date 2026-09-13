@@ -123,6 +123,15 @@ def pz_install_dir() -> Path | None:
     return None
 
 
+def is_build42(game: Path | None) -> bool:
+    """Whether this install is Build 42, the only one KnoxMap's maps load in.
+
+    Build 42 split the floor tiles into their own *.floor.pack files; Build 41,
+    still Steam's default branch for many players, has none.
+    """
+    return bool(game) and any((Path(game) / "media" / "texturepacks").glob("*.floor.pack"))
+
+
 def zomboid_user_dir() -> Path:
     """~/Zomboid, where the game keeps saves and mods."""
     configured = os.environ.get("ZOMBOID_DIR") or load_config().get("zomboid_dir")

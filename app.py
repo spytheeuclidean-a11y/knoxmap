@@ -422,6 +422,10 @@ def api_setup_status():
          "fix": "Run Setup.bat, or compile by hand with Open in WorldEd."},
         {"id": "game", "ok": bool(game), "label": "Project Zomboid install",
          "fix": "Install the game, then run Setup.bat again."},
+        {"id": "build42", "ok": knoxpaths.is_build42(game),
+         "label": "Project Zomboid Build 42",
+         "fix": "Your game looks like Build 41. In Steam choose the Build 42 "
+                "(unstable) branch under Properties > Betas."},
         {"id": "tiles", "ok": tiles >= 400, "label": "Tile artwork from your game",
          "fix": "Run Setup.bat to extract it from your install."},
     ]
