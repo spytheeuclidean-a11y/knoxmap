@@ -299,7 +299,12 @@
   // People per km² of a whole map area, before any buildings are counted:
   // built-up blocks, roads, parks and yards together. Scaled by the living
   // space setting, since that is what the real count divides floor area by.
-  const PEOPLE_PER_KM2 = { town: 6000, suburb: 2500, city: 14000, rural: 150 };
+  // Residents plus people at work, per km2 of selection, as the census counts
+  // them on test maps at each preset's own living space: a Tokyo or Kadikoy
+  // core runs 30,000-60,000, Levittown 3,000, a French village centre 6,000
+  // (mostly fields around it, so rural sits far lower).
+  const PEOPLE_PER_KM2 = { town: 10000, suburb: 3000, city: 30000, rural: 800 };
+  const PRESET_SPACE = { town: 45, suburb: 60, city: 50, rural: 70 };
 
   function setting(key, fallback) {
     const el = document.querySelector(`#advanced-body input[data-key="${key}"]`);
@@ -319,7 +324,7 @@
     const preset = ($('#preset') || {}).value || 'town';
     const perPerson = setting('zombies_per_resident', 1);
     const space = setting('m2_per_person', 45);
-    const people = km2 * (PEOPLE_PER_KM2[preset] || 6000) * (35 / space);
+    const people = km2 * (PEOPLE_PER_KM2[preset] || 10000) * ((PRESET_SPACE[preset] || 45) / space);
     const guess = Math.max(1, Math.round(people * perPerson));
     // Judged per km², so a big quiet area does not read as scarier than a
     // small packed one.
