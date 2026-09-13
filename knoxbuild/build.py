@@ -364,6 +364,43 @@ def _ring_points(geom: dict) -> list[list[float]]:
     return pts
 
 
+def _make_one(job: tuple) -> tuple[int, int, int]:
+    """Lay out one building and write its .tbx. Returns (storeys, rooms, furniture)."""
+    w, h, levels, commercial, seed, kind, mask, settings, style, label, path = job
+    plan = build_building(w, h, levels=levels, commercial=commercial, seed=seed,
+                          kind=kind, mask=mask, settings=settings)
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(render_tbx(plan, label, style))
+    return (len(plan.storeys), len(plan.rooms),
+            sum(len(s.furniture) for s in plan.storeys))
+
+
+# Below this many buildings, starting worker processes costs more than it saves.
+PARALLEL_FROM = 60
+
+
+def _make_all(jobs: list[tuple]) -> list[tuple[int, int, int]]:
+    """Every building, in order, across processes when there are enough.
+
+    KNOXBUILD_WORKERS=1 forces one process. If worker processes cannot start
+    at all - some locked-down PCs refuse them - the work simply runs here.
+    """
+    workers = int(os.environ.get("KNOXBUILD_WORKERS") or
+                  max(1, min(12, (os.cpu_count() or 2) - 2)))
+    if workers <= 1 or len(jobs) < PARALLEL_FROM:
+        return [_make_one(job) for job in jobs]
+    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures.process import BrokenProcessPool
+
+    try:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            return list(pool.map(_make_one, jobs,
+                                 chunksize=max(4, len(jobs) // (workers * 8))))
+    except (BrokenProcessPool, OSError) as exc:
+        print(f"  (worker processes unavailable: {exc}; building in one process)")
+        return [_make_one(job) for job in jobs]
+
+
 def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           max_size: int | None = None, settings: Settings | None = None) -> int:
     """Generate every building for a rendered map.
@@ -445,6 +482,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # share a wall, one of them has to give up that row of tiles, and it should
     # not be the town hall giving way to the shed behind it.
     order = []
+    jobs: list[tuple] = []       # what each building needs to lay itself out
+    decided: list[tuple] = []    # and what the map needs to know about it
     surroundings: list[tuple[float, float, float, int | None]] = []
     for i, feat in enumerate(geo["features"]):
         pts = _ring_points(feat["geometry"])
@@ -519,30 +558,35 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             levels = max(1, min(top, int(round(nearby)) +
                                 style_rng.choice((-1, 0, 0, 1))))
             from_near += 1
-        plan = build_building(w, h, levels=levels, commercial=commercial,
-                              seed=seed + i, kind=special, mask=mask,
-                              settings=settings)
         style = pick_style(special, x0, y0, style_rng, settings,
                            density=context.density(cx, cy))
 
         fname = f"{map_name}_{i:04d}.tbx"
         label = tags.get("name") or f"{map_name} building {i}"
-        with open(os.path.join(bdir, fname), "w", encoding="utf-8") as f:
-            f.write(render_tbx(plan, label, style))
+        jobs.append((w, h, levels, commercial, seed + i, special, mask,
+                     settings, style, label, os.path.join(bdir, fname)))
+        decided.append((fname, label, x0, y0, w, h, fp, px, special, measured,
+                        commercial, style, mask))
 
+    # Every decision above is made in order, from one random stream, so the
+    # town comes out the same each time. What is left - laying out rooms and
+    # writing the files - depends only on each building's own seed, so it runs
+    # across processes: a 4,000-building district took three minutes on one.
+    for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
+         style, mask), (storeys, rooms, furniture) in zip(decided, _make_all(jobs)):
         p = Placement(f"buildings/{fname}", x0, y0, w, h)
         placements.append(p)
-        peopled.append((x0, y0, fp.mask, len(plan.storeys), special or "house"))
+        peopled.append((x0, y0, fp.mask, storeys, special or "house"))
         outlines.append((px, special or "house"))
         rows.append({
             "file": fname, "name": label,
             "tile_x": x0, "tile_y": y0, "width": w, "height": h,
             "cell_x": p.cell_x, "cell_y": p.cell_y,
             "offset_x": p.offset_x, "offset_y": p.offset_y,
-            "levels": len(plan.storeys),
+            "levels": storeys,
             "levels_from_osm": int(measured),
-            "rooms": len(plan.rooms),
-            "furniture": sum(len(s.furniture) for s in plan.storeys),
+            "rooms": rooms,
+            "furniture": furniture,
             "commercial": int(commercial),
             "kind": special or "house",
             "style": style["name"],

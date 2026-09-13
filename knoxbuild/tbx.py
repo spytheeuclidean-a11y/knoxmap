@@ -23,7 +23,11 @@ VERSION = 4
 
 
 def _attrs(pairs: list[tuple[str, object]]) -> str:
-    return "".join(f" {k}={quoteattr(str(v))}" for k, v in pairs)
+    # Nearly every value is a coordinate or an index. Quoting those through
+    # quoteattr, nine million calls for a town, was 40% of the time spent
+    # writing buildings; numbers never need escaping.
+    return "".join(f' {k}="{v}"' if type(v) is int else f" {k}={quoteattr(str(v))}"
+                   for k, v in pairs)
 
 
 def render_tbx(plan: Plan | Building, name: str,
