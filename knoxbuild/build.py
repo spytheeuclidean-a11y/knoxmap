@@ -72,6 +72,25 @@ FOLLOWS_NEIGHBOURS = {"house", "apartment", "shop", "civic", "restaurant"}
 HOUSE_MAX_LEVELS = 3
 
 
+# Named buildings worth a label on the paper map: the public ones people give
+# directions by. Hotels, banks and offices are "civic" for their room plan,
+# but a label on each buries the map in brand names.
+NOTABLE_AMENITY = {"townhall", "police", "fire_station", "library", "courthouse",
+                   "post_office", "community_centre", "theatre", "hospital",
+                   "school", "university", "college", "place_of_worship",
+                   "marketplace", "prison", "arts_centre"}
+
+
+def is_notable(tags: dict, kind: str | None) -> bool:
+    if kind in ("school", "church", "medical"):
+        return True
+    return (tags.get("amenity") in NOTABLE_AMENITY
+            or tags.get("tourism") in ("museum", "attraction")
+            or tags.get("historic") not in (None, "", "no")
+            or tags.get("building") in ("government", "public", "civic", "townhall")
+            or "wikidata" in tags or "wikipedia" in tags)
+
+
 # OSM values that identify a building as something other than a house. Checked
 # against the building/amenity/shop/leisure/tourism/healthcare tags in turn.
 SPECIAL_BY_VALUE = {
@@ -475,7 +494,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # (x0, y0, mask, storeys, kind) for the population estimate.
     peopled: list[tuple[int, int, np.ndarray, int, str]] = []
     # Real outlines of the buildings placed, for the in-game paper map.
-    outlines: list[tuple[list[tuple[float, float]], str]] = []
+    outlines: list[tuple[list[tuple[float, float]], str, str]] = []
     occupied = np.zeros((proj.height, proj.width), dtype=bool)
 
     # Biggest footprints claim their tiles first. Where two real buildings
@@ -566,18 +585,19 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         jobs.append((w, h, levels, commercial, seed + i, special, mask,
                      settings, style, label, os.path.join(bdir, fname)))
         decided.append((fname, label, x0, y0, w, h, fp, px, special, measured,
-                        commercial, style, mask))
+                        commercial, style, mask,
+                        (tags.get("name") or "") if is_notable(tags, special) else ""))
 
     # Every decision above is made in order, from one random stream, so the
     # town comes out the same each time. What is left - laying out rooms and
     # writing the files - depends only on each building's own seed, so it runs
     # across processes: a 4,000-building district took three minutes on one.
     for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
-         style, mask), (storeys, rooms, furniture) in zip(decided, _make_all(jobs)):
+         style, mask, real_name), (storeys, rooms, furniture) in zip(decided, _make_all(jobs)):
         p = Placement(f"buildings/{fname}", x0, y0, w, h)
         placements.append(p)
         peopled.append((x0, y0, fp.mask, storeys, special or "house"))
-        outlines.append((px, special or "house"))
+        outlines.append((px, special or "house", real_name))
         rows.append({
             "file": fname, "name": label,
             "tile_x": x0, "tile_y": y0, "width": w, "height": h,
@@ -668,7 +688,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"fences                : {fence_tiles} fence tiles in "
           f"{len(fence_placements)} lots")
     print(f"paper map             : {paper_map['map_features']} features in "
-          f"{paper_map['map_cells']} cells, {paper_map['streets']} named streets")
+          f"{paper_map['map_cells']} cells, {paper_map['streets']} named streets, "
+          f"{paper_map['labels']} labels")
     print(f"population            : {population['residents']:,} residents, "
           f"{population['daytime_occupants']:,} at work or school")
     print(f"zombie spawn map      : {population['share_with_zombies']:.1%} of chunks "

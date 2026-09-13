@@ -23,7 +23,7 @@ import sys
 
 LOT_PATTERNS = (".lotheader", ".lotpack")
 EXTRA_FILES = ("spawnpoints.lua", "objects.lua", "roomtones.lua",
-               "worldmap.xml", "streets.xml")
+               "worldmap.xml", "streets.xml", "worldmap-annotations.lua")
 
 
 def default_mods_dir() -> str:

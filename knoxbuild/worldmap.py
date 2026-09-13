@@ -16,9 +16,14 @@ worldmap.xml   <world version="1.0"> of <cell x y> blocks, one per 300-tile
                strips as wide as the road.
 streets.xml    <streets version="1"> of <street name width> with <point x y>
                in absolute world tiles.
+worldmap-annotations.lua
+               a function adding text labels through the map's symbols API,
+               in absolute world tiles: the town's name, its parks and
+               squares, rivers and lakes, and its best-known buildings.
 """
 from __future__ import annotations
 
+import json
 import os
 from xml.sax.saxutils import quoteattr
 
@@ -56,8 +61,24 @@ NAMED_CLASSES = {"road_major", "road_medium", "road_minor", "road_service"}
 SIMPLIFY = 0.5     # tiles; the map is drawn far smaller than one tile per pixel
 
 
+# Labels: the style layer each goes on and how large, as the vanilla
+# Muldraugh annotations use them.
+TOWN_SCALE = {"city": 4.5, "town": 3.5, "village": 2.5, "suburb": 2.0,
+              "quarter": 1.5, "neighbourhood": 1.2, "hamlet": 1.2}
+PLACE_SCALE = 0.6
+BUILDING_SCALE = 0.6
+# Only buildings people would give directions by, and not every one of them:
+# a label per corner shop buries the map.
+LABELLED_KINDS = {"school", "church", "medical", "civic", "industrial", "shop",
+                  "restaurant", "house", "apartment"}
+MIN_LABELLED_TILES = 150
+MAX_BUILDING_LABELS = 40
+MIN_PLACE_TILES = 400
+PLACE_CATEGORIES = {"park", "plaza", "cemetery", "sports", "grass"}
+
+
 def write(out_dir: str, map_name: str, proj, info: dict,
-          buildings: list[tuple[list[tuple[float, float]], str]]) -> dict:
+          buildings: list[tuple[list[tuple[float, float]], str, str]]) -> dict:
     """Write worldmap.xml and streets.xml into `out_dir`. Returns counts.
 
     `buildings` holds each placed building's projected outline and its kind.
@@ -68,10 +89,18 @@ def write(out_dir: str, map_name: str, proj, info: dict,
     width, height = proj.width, proj.height
     features: list[tuple[Polygon, str, str]] = []
 
-    for outline, kind in buildings:
+    labels: list[tuple[str, str, float, float, float]] = []
+    named_buildings = []
+    for outline, kind, name in buildings:
         poly = _clean(Polygon(outline))
         if poly is not None:
             features.append((poly, "building", BUILDING_VALUE.get(kind, "yes")))
+            if name and kind in LABELLED_KINDS and poly.area >= MIN_LABELLED_TILES:
+                named_buildings.append((poly.area, name, poly))
+    named_buildings.sort(key=lambda b: -b[0])
+    for _area, name, poly in named_buildings[:MAX_BUILDING_LABELS]:
+        spot = poly.representative_point()
+        labels.append((name, "text-building", BUILDING_SCALE, spot.x, spot.y))
 
     bbox = info.get("bbox") or {}
     feats = osm.load_cache(osm.cache_path(out_dir, map_name),
@@ -100,11 +129,71 @@ def write(out_dir: str, map_name: str, proj, info: dict,
                 poly = _clean(Polygon(ring))
                 if poly is not None:
                     features.append((poly, key, value))
+                    name = (feat.tags.get("name") or "").strip()
+                    if name and key == "water" and poly.area >= MIN_PLACE_TILES:
+                        spot = poly.representative_point()
+                        labels.append((name, "text-water-medium", 1.0, spot.x, spot.y))
+        elif cat in PLACE_CATEGORIES and _is_polygon(feat) and "highway" not in feat.tags:
+            name = (feat.tags.get("name") or "").strip()
+            rings = _outer_rings(feat, proj)
+            if name and rings:
+                poly = _clean(Polygon(rings[0]))
+                if poly is not None and poly.area >= MIN_PLACE_TILES:
+                    spot = poly.representative_point()
+                    labels.append((name, "text-place", PLACE_SCALE, spot.x, spot.y))
 
     cells = _write_worldmap(os.path.join(out_dir, "worldmap.xml"), features,
                             width, height)
     named = _write_streets(os.path.join(out_dir, "streets.xml"), streets)
-    return {"map_features": len(features), "map_cells": cells, "streets": named}
+
+    places_path = os.path.join(out_dir, f"{map_name}_places.json")
+    if os.path.exists(places_path):
+        with open(places_path, encoding="utf-8") as f:
+            for place in json.load(f):
+                if place.get("inside") and place.get("name"):
+                    labels.append((place["name"], "text-town",
+                                   TOWN_SCALE.get(place.get("place"), 2.0),
+                                   place["tile_x"], place["tile_y"]))
+    _write_annotations(os.path.join(out_dir, "worldmap-annotations.lua"),
+                       labels, width, height)
+    return {"map_features": len(features), "map_cells": cells, "streets": named,
+            "labels": len(labels)}
+
+def _lua_string(text: str) -> str:
+    escaped = (text.replace("\\", "\\\\").replace('"', '\\"')
+               .replace("\n", " ").replace("\r", " "))
+    return f'"{escaped}"'
+
+
+def _write_annotations(path: str, labels: list[tuple[str, str, float, float, float]],
+                       width: int, height: int) -> None:
+    """Text on the paper map, the way vanilla's worldmap-annotations.lua adds it."""
+    ox, oy = WORLD_ORIGIN_CELLS[0] * CELL, WORLD_ORIGIN_CELLS[1] * CELL
+    seen = set()
+    lines = ["return function(mapUI)",
+             "\tlocal mapAPI = mapUI.javaObject:getAPIv3()",
+             "\tlocal symbolsAPI = mapAPI:getSymbolsAPIv2()",
+             "\tlocal symbol"]
+    for name, layer, scale, x, y in labels:
+        if not (0 <= x < width and 0 <= y < height) or (name, layer) in seen:
+            continue
+        seen.add((name, layer))
+        lines += [
+            f"\tsymbol = symbolsAPI:addUntranslatedText({_lua_string(name)}, "
+            f'"{layer}", {round(x + ox)}, {round(y + oy)})',
+            "\tsymbol:setRGBA(0.000, 0.000, 0.000, 0.000)",
+            f"\tsymbol:setScale({scale:.3f})",
+            "\tsymbol:setAnchor(0.50, 0.50)",
+            "\tsymbol:setRotation(0.0)",
+            "\tsymbol:setMatchPerspective(true)",
+            "\tsymbol:setApplyZoom(true)",
+            "\tsymbol:setMinZoom(0.00)",
+            "\tsymbol:setMaxZoom(24.00)",
+            "\tsymbol:setUserDefined(false)",
+            ""]
+    lines.append("end")
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 def _clean(poly) -> Polygon | None:
