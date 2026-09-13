@@ -92,12 +92,12 @@ and a Gebze industrial estate):
   only go on isolated buildings (coverage under 6%). Clapboard and timber stay
   out of dense quarters (over 28%). Before this, Kadıköy had 36 log houses.
 - *Tagged heights spread to their neighbours.* An untagged building takes the
-  median storey count of the tagged buildings within 120 tiles, plus or minus
+  median storey count of the tagged buildings within 120 m, plus or minus
   one, once at least four of them agree. A large untagged building among
   3-storey-plus blocks becomes flats. Kadıköy's single-storey buildings fell
   from 168 to 117, and its blocks of flats rose from 295 to 475.
 - *Outbuildings are sheds.* `shed`, `garage`, `hut`, `service` and similar
-  tags, and any untagged building of 30 tiles or fewer, get one storage or
+  tags, and any untagged building of 30 m² or less, get one storage or
   garage room, one storey and no residents. The village gained 55 sheds
   instead of 55 one-room "living rooms".
 - *Things that are not buildings are skipped.* `roof`, `carport`, `ruins`,

@@ -14,8 +14,10 @@ import math
 import numpy as np
 
 # Coverage is measured on a coarse grid and averaged over a 3x3 window of it,
-# so a building sees roughly the 120 m around it - a block or two.
-DENSITY_CELL = 40
+# so a building sees roughly the 120 m around it - a block or two. Distances
+# here are real metres, whatever the map's scale: the question is what the
+# street is like, not how many tiles it became.
+DENSITY_CELL_M = 40
 # Share of the ground under buildings. Measured on real places: central
 # Paris, Kadikoy and a Tokyo neighbourhood put most buildings at 0.4-0.5;
 # Levittown and a French village both sit around 0.16, so density cannot tell
@@ -30,22 +32,25 @@ SPARSE = 0.06
 RURAL_ONLY = {"logs", "trailer"}
 NOT_DENSE = {"clapboard", "timber"}
 
-# Tagged heights count within this distance of a building, in tiles, and only
-# when enough of them agree to be a pattern rather than one tower.
-NEIGHBOUR_RADIUS = 120
+# Tagged heights count within this distance of a building, and only when
+# enough of them agree to be a pattern rather than one tower.
+NEIGHBOUR_RADIUS_M = 120
 NEIGHBOUR_SAMPLES = 4
 
 
 class Context:
     def __init__(self, width: int, height: int,
-                 buildings: list[tuple[float, float, float, int | None]]):
+                 buildings: list[tuple[float, float, float, int | None]],
+                 metres_per_tile: float = 1.0):
         """`buildings` holds (centre x, centre y, area in tiles, storeys or None)."""
-        gw = max(1, math.ceil(width / DENSITY_CELL))
-        gh = max(1, math.ceil(height / DENSITY_CELL))
+        self.cell = max(1.0, DENSITY_CELL_M / metres_per_tile)
+        self.radius = NEIGHBOUR_RADIUS_M / metres_per_tile
+        gw = max(1, math.ceil(width / self.cell))
+        gh = max(1, math.ceil(height / self.cell))
         covered = np.zeros((gh, gw), dtype=float)
         for x, y, area, _levels in buildings:
-            gx = min(gw - 1, max(0, int(x // DENSITY_CELL)))
-            gy = min(gh - 1, max(0, int(y // DENSITY_CELL)))
+            gx = min(gw - 1, max(0, int(x // self.cell)))
+            gy = min(gh - 1, max(0, int(y // self.cell)))
             covered[gy, gx] += area
         # 3x3 window sums, divided by the ground each window really spans so
         # the map's edges are not read as empty countryside.
@@ -53,15 +58,15 @@ class Context:
         ground = np.pad(np.ones_like(covered), 1)
         sums = sum(padded[dy:dy + gh, dx:dx + gw] for dy in range(3) for dx in range(3))
         spans = sum(ground[dy:dy + gh, dx:dx + gw] for dy in range(3) for dx in range(3))
-        self.coverage = np.clip(sums / (spans * DENSITY_CELL * DENSITY_CELL), 0, 1)
+        self.coverage = np.clip(sums / (spans * self.cell * self.cell), 0, 1)
 
         tagged = [(x, y, lv) for x, y, _a, lv in buildings if lv is not None]
         self._tagged = np.array(tagged, dtype=float).reshape(-1, 3)
 
     def density(self, x: float, y: float) -> float:
         gh, gw = self.coverage.shape
-        gx = min(gw - 1, max(0, int(x // DENSITY_CELL)))
-        gy = min(gh - 1, max(0, int(y // DENSITY_CELL)))
+        gx = min(gw - 1, max(0, int(x // self.cell)))
+        gy = min(gh - 1, max(0, int(y // self.cell)))
         return float(self.coverage[gy, gx])
 
     def neighbour_levels(self, x: float, y: float) -> float | None:
@@ -69,7 +74,7 @@ class Context:
         if len(self._tagged) < NEIGHBOUR_SAMPLES:
             return None
         d2 = (self._tagged[:, 0] - x) ** 2 + (self._tagged[:, 1] - y) ** 2
-        near = self._tagged[d2 <= NEIGHBOUR_RADIUS ** 2, 2]
+        near = self._tagged[d2 <= self.radius ** 2, 2]
         if len(near) < NEIGHBOUR_SAMPLES:
             return None
         return float(np.median(near))

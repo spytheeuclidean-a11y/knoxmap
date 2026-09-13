@@ -422,8 +422,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
 # Measured: central Paris, Kadikoy and a Tokyo neighbourhood sit at 0.4-0.5, a
 # US suburb and a French village around 0.16.
 DENSE_COVERAGE = 0.28
-COVERAGE_CELL = 8      # tiles per sample when measuring coverage
-COVERAGE_WINDOW = 15   # samples across the window, so 120 tiles
+COVERAGE_CELL_M = 8    # metres per sample when measuring coverage
+COVERAGE_WINDOW = 15   # samples across the window, so 120 m
 # Mapped green space keeps its grass however built-up the area around it is.
 GREEN_CATEGORIES = {"park", "grass", "sports", "cemetery", "orchard", "farmland",
                     "wetland", "hospital_grounds"}
@@ -451,8 +451,8 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
         for ring in _feature_coords_px(feat, proj):
             if len(ring) >= 3:
                 bd.polygon(ring, fill=255)
-    small = built.resize((max(1, w // COVERAGE_CELL), max(1, h // COVERAGE_CELL)),
-                         Image.BOX)
+    cell = max(1, round(COVERAGE_CELL_M / proj.meters_per_tile))
+    small = built.resize((max(1, w // cell), max(1, h // cell)), Image.BOX)
     cover = np.asarray(small, dtype=float) / 255.0
     # Mean over a square window, from a summed-area table; divided by how much
     # of the window is on the map so the edges are not read as empty.

@@ -57,12 +57,14 @@ SHED_VALUES = {
 # An untagged building this small is a shed, a garage or a kiosk, not a home:
 # 30 square metres of house would be one living room with a sofa filling it.
 # Mappers tag the small houses that do exist (building=house), and those
-# stay houses.
-SHED_MAX_TILES = 30
+# stay houses. Real square metres, so a map drawn at 4 m a tile does not turn
+# its houses into sheds.
+SHED_MAX_M2 = 30
 HOUSE_TAGS = ("house", "detached", "bungalow", "semidetached_house", "cabin")
 # An untagged building among tagged blocks of flats is taken for one when it
-# is at least this big; smaller ones are the shops and garages between them.
-NEIGHBOUR_FLATS_TILES = 60
+# is at least this big, in square metres; smaller ones are the shops and
+# garages between them.
+NEIGHBOUR_FLATS_M2 = 60
 # Kinds whose height follows the tagged buildings around them. A school or a
 # church is its own shape whatever the street is like.
 FOLLOWS_NEIGHBOURS = {"house", "apartment", "shop", "civic", "restaurant"}
@@ -459,7 +461,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             surroundings.append((centre.x, centre.y, poly.area,
                                  levels_from_tags(tags, settings)))
     order.sort()
-    context = Context(proj.width, proj.height, surroundings)
+    metres_per_tile = info["meters_per_tile"]
+    context = Context(proj.width, proj.height, surroundings, metres_per_tile)
 
     for _neg_area, i, px in order:
         feat = geo["features"][i]
@@ -476,15 +479,16 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         btag = (tags.get("building") or "").strip().lower()
         cx = x0 + w / 2
         cy = y0 + h / 2
+        real_m2 = fp.tiles * metres_per_tile * metres_per_tile
         special = classify_building(tags)
         if special is None and (btag in SHED_VALUES or (
-                btag in ("", "yes") and fp.tiles <= SHED_MAX_TILES)):
+                btag in ("", "yes") and real_m2 <= SHED_MAX_M2)):
             special = "shed"
             sheds += 1
         nearby = (context.neighbour_levels(cx, cy)
                   if levels_from_tags(tags, settings) is None else None)
         if special is None and nearby is not None and nearby >= 3 \
-                and fp.tiles >= NEIGHBOUR_FLATS_TILES and btag not in HOUSE_TAGS:
+                and real_m2 >= NEIGHBOUR_FLATS_M2 and btag not in HOUSE_TAGS:
             # Among tagged blocks of flats, a big untagged building is one more.
             special = "apartment"
         if special is None:

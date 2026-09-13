@@ -35,7 +35,7 @@ class Settings:
 
     # --- buildings -------------------------------------------------------
     seed: int = 1
-    min_size: int = 3            # skip footprints smaller than this, in tiles
+    min_size: int = 3            # skip footprints narrower than this, in tiles
     # and larger than this. It was 60, which threw away the largest
     # buildings in town - the factory, the cultural centre - which are
     # exactly the landmarks a place is recognised by.

@@ -171,7 +171,7 @@ const SETTING_LABELS = {
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
   tree_density:        ['Woodland', 'Scales tree cover. Trees are cover to hide in.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
-  min_size:            ['Smallest building', 'Footprints below this many tiles are skipped.'],
+  min_size:            ['Smallest building', 'Buildings narrower than this many tiles are left out.'],
   max_size:            ['Largest building', 'Footprints above this are skipped.'],
   apartment_footprint: ['Flats above', 'An untagged footprint this big reads as flats.'],
   apartment_chance:    ['Flats chance', 'How often such a footprint really becomes flats.'],
