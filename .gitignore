@@ -1,8 +1,34 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
-.DS_Store
-output/
+*.py[cod]
+.venv/
+venv/
+
+# Generated maps, OpenStreetMap downloads and compiled lots. Large, and built
+# from OSM data rather than source. The folder itself is kept.
+output/*
 !output/.gitkeep
+
+# Setup installs the map tools here and writes local paths here.
+vendor/
+knoxmap_config.json
+
+# Building the patched compiler yourself
+worlded/src/
+worlded/build/
+
+# Never commit Project Zomboid game artwork. Setup extracts it from each
+# player's own install; it is The Indie Stone's and not ours to share.
+Tiles/
+*.pack
+
+# Logs and leftovers
+*.log
+*.orig
+*.bak
+
+# Kept from the original project
+.DS_Store
 .claude/
 CLAUDE.local.md
+knoxmap_error.log
