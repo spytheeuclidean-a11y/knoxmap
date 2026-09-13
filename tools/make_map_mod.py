@@ -68,6 +68,67 @@ def _world_origin_tiles(project_dir: str) -> tuple[int, int]:
     return 0, 0
 
 
+def _spawn_tiles(project_dir: str, limit: int) -> list[tuple[int, int]]:
+    """Map tiles to start on: inside homes, as far apart as the town allows.
+
+    These used to be the middle of each building's bounding box, taken from
+    every n-th row of the placements file. For an L-shaped or turned building
+    that middle is often outside it - a start in the yard or inside a wall -
+    and the rows are in file order, so the picks could bunch up in one street
+    or land in a church. Now they come from the real footprints: homes first,
+    each pick the building furthest from those already chosen, and within it
+    a tile with floor on every side, away from the walls the furniture lines.
+    """
+    import numpy as np
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from knoxbuild.population import load_footprints
+
+    saved = [os.path.join(project_dir, e) for e in os.listdir(project_dir)
+             if e.endswith("_footprints.npz")]
+    if not saved:
+        return []
+    buildings = load_footprints(saved[0])
+    homes = [b for b in buildings if b[4] in ("house", "apartment")]
+    pool = homes or [b for b in buildings if b[4] != "shed"] or buildings
+    if not pool:
+        return []
+
+    def inner_tile(x0, y0, mask):
+        # Tiles whose eight neighbours are all floor, nearest the middle.
+        m = mask.astype(bool)
+        core = m.copy()
+        core[1:, :] &= m[:-1, :]
+        core[:-1, :] &= m[1:, :]
+        core[:, 1:] &= m[:, :-1]
+        core[:, :-1] &= m[:, 1:]
+        core[1:, 1:] &= m[:-1, :-1]
+        core[:-1, :-1] &= m[1:, 1:]
+        core[1:, :-1] &= m[:-1, 1:]
+        core[:-1, 1:] &= m[1:, :-1]
+        ys, xs = np.nonzero(core if core.any() else m)
+        if len(xs) == 0:
+            return None
+        cy, cx = ys.mean(), xs.mean()
+        i = int(np.argmin((xs - cx) ** 2 + (ys - cy) ** 2))
+        return x0 + int(xs[i]), y0 + int(ys[i])
+
+    spots = [s for s in (inner_tile(x0, y0, m) for x0, y0, m, _l, _k in pool) if s]
+    if not spots:
+        return []
+    arr = np.array(spots, dtype=float)
+    centre = arr.mean(axis=0)
+    chosen = [int(np.argmin(((arr - centre) ** 2).sum(axis=1)))]
+    nearest = ((arr - arr[chosen[0]]) ** 2).sum(axis=1)
+    while len(chosen) < min(limit, len(spots)):
+        nxt = int(np.argmax(nearest))
+        if nearest[nxt] == 0:
+            break
+        chosen.append(nxt)
+        nearest = np.minimum(nearest, ((arr - arr[nxt]) ** 2).sum(axis=1))
+    return [spots[i] for i in chosen]
+
+
 def write_spawnpoints(project_dir: str, map_dir: str, limit: int = 8) -> int:
     """Write spawnpoints.lua, without which the map is not a startable region.
 
@@ -85,29 +146,9 @@ def write_spawnpoints(project_dir: str, map_dir: str, limit: int = 8) -> int:
     (Older community maps use worldX/worldY cell coordinates plus an in-cell
     offset; that form still loads but is not what the shipped maps do.)
 
-    Knoxify projects sit at world origin 0,0, so a building's map tile position
-    is already its world position. Spawns are placed at the middle of generated
-    buildings, spread across the map, so you start indoors rather than in a wall
-    or a lake.
+    Spawns go inside homes, spread across the town - see _spawn_tiles.
     """
-    import csv as _csv
-
-    placements = None
-    for entry in os.listdir(project_dir):
-        if entry.endswith("_placements.csv"):
-            placements = os.path.join(project_dir, entry)
-            break
-
-    points: list[tuple[int, int]] = []
-    if placements:
-        with open(placements, newline="", encoding="utf-8") as f:
-            rows = list(_csv.DictReader(f))
-        # Spread the picks across the file so spawns aren't all in one corner.
-        step = max(1, len(rows) // limit) if rows else 1
-        for row in rows[::step][:limit]:
-            x = int(row["tile_x"]) + int(row["width"]) // 2
-            y = int(row["tile_y"]) + int(row["height"]) // 2
-            points.append((x, y))
+    points = _spawn_tiles(project_dir, limit)
 
     if not points:
         # No buildings: fall back to the centre of the map.
