@@ -1,0 +1,3 @@
+# Windows batch files must keep CRLF - stored as-is so even a ZIP download
+# gets them, or cmd can mis-jump to labels.
+*.bat -text
