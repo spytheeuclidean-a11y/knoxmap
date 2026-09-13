@@ -327,7 +327,8 @@ ROOM_COLORS = {'livingroom': '233 112 19',
  'lobby': '22 126 102',
  'gym': '231 186 87',
  'library': '177 28 237',
- 'medical': '9 184 97'}
+ 'medical': '9 184 97',
+ 'shed': '95 115 162'}
 
 # Houses draw from these, picked per neighbourhood block so a
 # street stays coherent while the next one differs.

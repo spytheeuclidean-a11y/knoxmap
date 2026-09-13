@@ -255,7 +255,7 @@ def main(argv: list[str]) -> int:
              "hall", "storage", "office",
              # Rooms only special buildings use; all present in RoomNames.txt.
              "classroom", "church", "warehouse", "garage", "clinic",
-             "bar", "restaurant", "lobby", "gym", "library", "medical"]
+             "bar", "restaurant", "lobby", "gym", "library", "medical", "shed"]
     missing = [k for k in KINDS if k not in room_colors]
     if missing:
         raise SystemExit(f"ERROR: room names absent from RoomNames.txt: {missing}")

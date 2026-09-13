@@ -126,6 +126,9 @@ ROOM_STYLE = {
     "warehouse": (C.FLOOR_LINO, "Warehouse",
                   ["crate", "crate", "shelf", "shelf", "crate"]),
     "garage": (C.FLOOR_LINO, "Garage", ["crate", "shelf", "counter"]),
+    # The game's own shed room: its loot is carpentry, farming and metalwork
+    # tools, where "garage" would stock a garden shed with car parts.
+    "shed": (C.FLOOR_WOOD, "Shed", ["counter", "shelf", "crate"]),
 }
 
 # Room mixes per building flavour. Order matters: the biggest room gets the
@@ -160,7 +163,7 @@ SPECIAL_MIXES = {
                     "garage"],
                    ["warehouse", "storage"]),
     "barn":       (["warehouse", "storage", "garage"], ["warehouse", "storage"]),
-    "shed":       (["garage"], ["storage"]),
+    "shed":       (["shed"], ["shed"]),
     "medical":    (["clinic", "medical", "lobby", "office", "bathroom",
                     "storage"],
                    ["clinic", "medical", "storage"]),
@@ -922,7 +925,7 @@ FACADE_SPACING = {
 DEFAULT_FACADE_SPACING = (5, 11)
 # Most windows one room may take, whatever the facade offers it.
 ROOM_WINDOW_CAP = {
-    "bathroom": 1, "storage": 0, "hall": 0, "garage": 0,
+    "bathroom": 1, "storage": 0, "hall": 0, "garage": 0, "shed": 1,
     "kitchen": 1, "bedroom": 2, "dining": 2, "office": 1, "livingroom": 3,
 }
 DEFAULT_ROOM_WINDOW_CAP = 4
