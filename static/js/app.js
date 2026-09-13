@@ -167,7 +167,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 const SETTING_LABELS = {
   zombies_per_resident:['Zombies per person', 'Each person who lived or worked here becomes this many zombies.'],
-  m2_per_person:       ['Living space (m²)', 'Per resident. Lower = more crowded homes = more zombies. ~25 city, 35 town, 60 suburb.'],
+  m2_per_person:       ['Living space (m²)', 'Per resident. Lower = more crowded homes = more zombies. ~50 city, 45 town, 60 suburb.'],
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
   tree_density:        ['Woodland', 'Scales tree cover. Trees are cover to hide in.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],

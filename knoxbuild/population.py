@@ -40,9 +40,18 @@ RESIDENTIAL = {"house", "apartment"}
 
 # Spawn value per person in a chunk, before the zombies-per-person dial. Set so
 # a chunk wholly covered by five storeys of flats - about 500 m2 of floor, or
-# 14 people at 35 m2 each - reaches 10, the densest value vanilla Knox County
-# uses anywhere. Everything else scales down from there.
-VALUE_PER_PERSON = 0.7
+# 11 people at the default 45 m2 each - reaches 10, the densest value vanilla
+# Knox County uses anywhere. Everything else scales down from there.
+#
+# Living space was 35 m2 (25 for a city), which is floor per person as a
+# census counts it - net, in homes. Footprint floor area is gross: stairs,
+# walls, shops and offices on the ground floor. Measured against real
+# densities the old figures counted two to seven times the people: central
+# Paris at 140,000 a km2 where the 4th arrondissement has 17,000, Kadikoy at
+# 76,000, Tokyo's Nakano at 50,000 against 21,000. At 45 and 50 the census
+# lands within reach of the real numbers, and this value moved with it so a
+# town's zombies are exactly what they were.
+VALUE_PER_PERSON = 0.9
 
 # Share of each chunk's people who are out in the chunks around it rather
 # than indoors, as a light blur. Without it the map is dotted with isolated

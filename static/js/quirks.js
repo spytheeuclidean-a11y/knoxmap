@@ -318,7 +318,7 @@
     if (!km2) return;
     const preset = ($('#preset') || {}).value || 'town';
     const perPerson = setting('zombies_per_resident', 1);
-    const space = setting('m2_per_person', 35);
+    const space = setting('m2_per_person', 45);
     const people = km2 * (PEOPLE_PER_KM2[preset] || 6000) * (35 / space);
     const guess = Math.max(1, Math.round(people * perPerson));
     // Judged per km², so a big quiet area does not read as scarier than a

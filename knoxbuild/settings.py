@@ -23,11 +23,13 @@ class Settings:
     # How many zombies each person who lived or worked here becomes. The
     # spawn map is drawn from an estimate of where people were; this scales it.
     zombies_per_resident: float = 1.0
-    # Living space per resident, in square metres. It is what turns a
-    # building's floor area into a head count, and it varies a lot by place:
-    # roughly 25 in a dense city, 35 in a typical European town, 60 or more
-    # in American suburbs.
-    m2_per_person: float = 35.0
+    # Floor area per resident, in square metres. It is what turns a
+    # building's floor area into a head count. The floor area is gross - the
+    # whole footprint on every storey, stairs and shop fronts included - so
+    # this runs higher than the living space a census quotes: about 50 in a
+    # dense city, 45 in a town, 60 or more in American suburbs. See
+    # VALUE_PER_PERSON in population.py for how these were checked.
+    m2_per_person: float = 45.0
 
     # --- terrain ---------------------------------------------------------
     # Multiplies how much of a forest polygon actually becomes trees.
@@ -125,7 +127,7 @@ PRESETS = {
     "city": Settings(apartment_footprint=90, apartment_chance=0.85,
                      max_levels=6, neighbourhood_tiles=70,
                      spawn_density=14, tree_density=0.6,
-                     m2_per_person=25.0),
+                     m2_per_person=50.0),
     # Scattered farms and barns under heavy tree cover.
     "rural": Settings(apartment_footprint=2000, apartment_chance=0.0,
                       max_levels=2, spawn_density=4, tree_density=2.0,
