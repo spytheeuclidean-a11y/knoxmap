@@ -27,6 +27,7 @@ from .areas import AreaIndex
 from .fences import build_fences
 from .footprint import place
 from .layout import build_building
+from .context import Context, style_fits
 from .population import build_spawn_map, official_population, save_footprints
 from .settings import PRESETS, Settings
 from .tbx import render_tbx
@@ -38,6 +39,34 @@ COMMERCIAL_TAGS = {
     "supermarket", "school", "hospital", "church", "civic", "public",
     "government", "hotel", "service", "garage", "garages", "kiosk",
 }
+
+
+# building=* values that are not walled buildings at all. A carport or a petrol
+# station canopy is a roof on posts; ruins and tanks have no rooms. Built as
+# houses they would be solid boxes standing where the real place is open.
+NOT_BUILDINGS = {
+    "roof", "carport", "canopy", "ruins", "collapsed", "demolished", "no",
+    "bridge", "storage_tank", "tank", "silo", "transformer_tower", "chimney",
+    "tower", "grandstand", "construction",
+}
+# Outbuildings: one room, one storey, nobody living there.
+SHED_VALUES = {
+    "shed", "garage", "garages", "hut", "service", "toilets", "boathouse",
+    "allotment_house", "bunker", "garbage_shed", "guardhouse", "gatehouse",
+}
+# An untagged building this small is a shed, a garage or a kiosk, not a home:
+# 30 square metres of house would be one living room with a sofa filling it.
+# Mappers tag the small houses that do exist (building=house), and those
+# stay houses.
+SHED_MAX_TILES = 30
+HOUSE_TAGS = ("house", "detached", "bungalow", "semidetached_house", "cabin")
+# An untagged building among tagged blocks of flats is taken for one when it
+# is at least this big; smaller ones are the shops and garages between them.
+NEIGHBOUR_FLATS_TILES = 60
+# Kinds whose height follows the tagged buildings around them. A school or a
+# church is its own shape whatever the street is like.
+FOLLOWS_NEIGHBOURS = {"house", "apartment", "shop", "civic", "restaurant"}
+HOUSE_MAX_LEVELS = 3
 
 
 # OSM values that identify a building as something other than a house. Checked
@@ -88,6 +117,7 @@ SPECIAL_BY_NAME = [
 DEFAULT_LEVELS = {
     "industrial": (1, 1),
     "barn": (1, 1),
+    "shed": (1, 1),
     "church": (1, 1),
     "apartment": (3, 5),
     "civic": (2, 3),
@@ -209,20 +239,26 @@ def classify_building(tags: dict) -> str | None:
 
 
 def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
-               settings: Settings) -> dict:
-    """Materials for one building: its own if special, else its block's."""
+               settings: Settings, density: float = 0.0) -> dict:
+    """Materials for one building: its own if special, else its block's.
+
+    Only styles that suit how built-up the place is are in the running, so the
+    old town gets render and brick and the log cabins stay in the countryside.
+    """
     from . import catalog as C
 
     if kind and kind in C.SPECIAL_STYLES:
         return C.SPECIAL_STYLES[kind]
 
+    styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
+        or C.HOUSE_STYLES
     size = settings.neighbourhood_tiles
     block = (tile_x // size, tile_y // size)
     # Deterministic per block, so re-running gives the same town.
-    idx = (block[0] * 73856093 ^ block[1] * 19349663) % len(C.HOUSE_STYLES)
-    if rng.random() < settings.style_oddity:
-        idx = (idx + 1 + rng.randrange(len(C.HOUSE_STYLES) - 1)) % len(C.HOUSE_STYLES)
-    return C.HOUSE_STYLES[idx]
+    idx = (block[0] * 73856093 ^ block[1] * 19349663) % len(styles)
+    if len(styles) > 1 and rng.random() < settings.style_oddity:
+        idx = (idx + 1 + rng.randrange(len(styles) - 1)) % len(styles)
+    return styles[idx]
 
 
 def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
@@ -387,7 +423,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     placements: list[Placement] = []
     rows = []
-    skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0}
+    skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0,
+               "not a building": 0}
+    sheds = 0        # outbuildings given a single storage room
+    from_near = 0    # storeys borrowed from tagged neighbours
     from_osm = 0   # buildings whose storey count came from the data
     from_area = 0  # buildings whose kind came from the land around them
     squared = 0    # buildings close enough to the grid to square up
@@ -401,14 +440,26 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # share a wall, one of them has to give up that row of tiles, and it should
     # not be the town hall giving way to the shed behind it.
     order = []
+    surroundings: list[tuple[float, float, float, int | None]] = []
     for i, feat in enumerate(geo["features"]):
         pts = _ring_points(feat["geometry"])
         if len(pts) < 3:
             continue
+        tags = feat.get("properties", {})
+        if (tags.get("building") or "").strip().lower() in NOT_BUILDINGS:
+            skipped["not a building"] += 1
+            continue
         px = [proj.to_px(lat, lon) for lon, lat in pts]
         poly = Polygon(px)
-        order.append((-(poly.area if poly.is_valid else poly.buffer(0).area), i, px))
+        if not poly.is_valid:
+            poly = poly.buffer(0)
+        order.append((-poly.area, i, px))
+        centre = poly.centroid
+        if not centre.is_empty:
+            surroundings.append((centre.x, centre.y, poly.area,
+                                 levels_from_tags(tags, settings)))
     order.sort()
+    context = Context(proj.width, proj.height, surroundings)
 
     for _neg_area, i, px in order:
         feat = geo["features"][i]
@@ -422,10 +473,21 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             squared += 1
 
         tags = feat.get("properties", {})
+        btag = (tags.get("building") or "").strip().lower()
+        cx = x0 + w / 2
+        cy = y0 + h / 2
         special = classify_building(tags)
+        if special is None and (btag in SHED_VALUES or (
+                btag in ("", "yes") and fp.tiles <= SHED_MAX_TILES)):
+            special = "shed"
+            sheds += 1
+        nearby = (context.neighbour_levels(cx, cy)
+                  if levels_from_tags(tags, settings) is None else None)
+        if special is None and nearby is not None and nearby >= 3 \
+                and fp.tiles >= NEIGHBOUR_FLATS_TILES and btag not in HOUSE_TAGS:
+            # Among tagged blocks of flats, a big untagged building is one more.
+            special = "apartment"
         if special is None:
-            cx = x0 + w / 2
-            cy = y0 + h / 2
             around = areas.kind_for(cx, cy, fp.tiles)
             # A tall building in a shopping street is flats over shops; the
             # mapper's height says so more reliably than the zoning does.
@@ -443,10 +505,18 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                                            style_rng, settings)
         if measured:
             from_osm += 1
+        elif nearby is not None and (special or "house") in FOLLOWS_NEIGHBOURS:
+            top = settings.max_levels
+            if special is None:
+                top = min(top, HOUSE_MAX_LEVELS)
+            levels = max(1, min(top, int(round(nearby)) +
+                                style_rng.choice((-1, 0, 0, 1))))
+            from_near += 1
         plan = build_building(w, h, levels=levels, commercial=commercial,
                               seed=seed + i, kind=special, mask=mask,
                               settings=settings)
-        style = pick_style(special, x0, y0, style_rng, settings)
+        style = pick_style(special, x0, y0, style_rng, settings,
+                           density=context.density(cx, cy))
 
         fname = f"{map_name}_{i:04d}.tbx"
         label = tags.get("name") or f"{map_name} building {i}"
@@ -516,6 +586,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"  too large (>{max_size})   : {skipped['large']}")
     print(f"  outside the map     : {skipped['outside']}")
     print(f"  swallowed by others : {skipped['taken']}")
+    print(f"  not buildings       : {skipped['not a building']} (roofs, ruins, tanks)")
     import collections as _c
     kinds = _c.Counter(r["kind"] for r in rows)
     styles = _c.Counter(r["style"] for r in rows)
@@ -526,6 +597,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"  on real footprint   : {len(rows) - squared} turned, "
           f"{squared} squared up ({shaped} with irregular outlines)")
     print(f"  kind from land use  : {from_area}")
+    print(f"  sheds and garages   : {sheds}")
+    print(f"  storeys from nearby : {from_near}")
     storeys = _c.Counter(r["levels"] for r in rows)
     print(f"  storeys             : {dict(sorted(storeys.items()))}")
     pct = 100.0 * from_osm / len(rows) if rows else 0.0

@@ -112,6 +112,7 @@ LANDSCAPE_ORDER = [
     "playground",
     "track",
     "dirt_path",      # thin dirt line
+    "paved_path",     # footway, pavement, cycleway
     "parking",        # car park tarmac
     "plaza",          # paved pedestrian square
     "road_service",   # alleys and driveways
@@ -138,6 +139,7 @@ ROAD_WIDTHS_M = {
     "road_minor": 6.0,
     "road_service": 3.5,
     "dirt_path": 2.5,
+    "paved_path": 2.5,
 }
 
 # Metres of kerb either side. Town streets in the vanilla game sit in a band of
@@ -154,6 +156,7 @@ LANDSCAPE_FILL = {
     "sand": C.SAND,
     "dirt": C.DIRT,
     "dirt_path": C.DIRT,
+    "paved_path": C.PALE_CONCRETE,
     "grass": C.MEDIUM_GRASS,
     "park": C.MEDIUM_GRASS,
     "farmland": C.LIGHT_GRASS,
@@ -346,6 +349,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 # Unexpected: linear water like a stream. Draw it narrow.
                 _draw_line(l_draw, rings, fill, max(1, int(3 / meters_per_tile)))
 
+    _pave_dense_ground(landscape, building_feats, buckets, proj)
     _weather_roads(landscape, proj)
 
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
@@ -411,6 +415,105 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         cells_x=cells_x,
         cells_y=cells_y,
     )
+
+
+# Ground counts as built-up where buildings cover at least this share of the
+# ~120 m around it - the same line knoxbuild draws between a city and a suburb.
+# Measured: central Paris, Kadikoy and a Tokyo neighbourhood sit at 0.4-0.5, a
+# US suburb and a French village around 0.16.
+DENSE_COVERAGE = 0.28
+COVERAGE_CELL = 8      # tiles per sample when measuring coverage
+COVERAGE_WINDOW = 15   # samples across the window, so 120 tiles
+# Mapped green space keeps its grass however built-up the area around it is.
+GREEN_CATEGORIES = {"park", "grass", "sports", "cemetery", "orchard", "farmland",
+                    "wetland", "hospital_grounds"}
+
+
+def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
+                       buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+    """Pave the unmapped ground of built-up quarters.
+
+    Land OSM says nothing about is painted as wild grass, which is right in the
+    countryside and wrong in an old town, where it is courtyards, alleys and
+    the gaps between blocks. Central Paris came out 77% meadow. Where buildings
+    are packed that close, unmapped ground becomes concrete instead. Anything
+    mapped - a park, a garden, a residential area with its yards - keeps its
+    own colour. A residential area's lawns are the exception: in a suburb they
+    are gardens, but between blocks of flats packed this tight they are
+    concrete yards, so they are paved too.
+    """
+    import numpy as np
+
+    w, h = landscape.size
+    built = Image.new("L", (w, h), 0)
+    bd = ImageDraw.Draw(built)
+    for feat in building_feats:
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 3:
+                bd.polygon(ring, fill=255)
+    small = built.resize((max(1, w // COVERAGE_CELL), max(1, h // COVERAGE_CELL)),
+                         Image.BOX)
+    cover = np.asarray(small, dtype=float) / 255.0
+    # Mean over a square window, from a summed-area table; divided by how much
+    # of the window is on the map so the edges are not read as empty.
+    r = COVERAGE_WINDOW // 2
+    padded = np.pad(cover, ((r + 1, r), (r + 1, r)))
+    ones = np.pad(np.ones_like(cover), ((r + 1, r), (r + 1, r)))
+    sat = padded.cumsum(0).cumsum(1)
+    cnt = ones.cumsum(0).cumsum(1)
+    k = COVERAGE_WINDOW
+
+    def window(t):
+        return t[k:, k:] - t[:-k, k:] - t[k:, :-k] + t[:-k, :-k]
+
+    density = window(sat) / np.maximum(window(cnt), 1)
+    if density.max() < DENSE_COVERAGE:
+        return
+    # Interpolated back up to tiles, then thresholded with a little noise, so
+    # the edge of the paved quarter follows the buildings in a ragged line
+    # rather than a staircase of 8-tile blocks. A median pass then drops the
+    # lone specks the noise leaves on either side of that line.
+    smooth = Image.fromarray((np.clip(density, 0, 1) * 255).astype(np.uint8))
+    smooth = smooth.resize((w, h), Image.BILINEAR)
+    threshold = int(DENSE_COVERAGE * 255)
+
+    keep = Image.new("L", (w, h), 0)
+    kd = ImageDraw.Draw(keep)
+    for cat in GREEN_CATEGORIES:
+        for feat in buckets.get(cat, []):
+            if _is_polygon(feat):
+                for ring in _feature_coords_px(feat, proj):
+                    if len(ring) >= 3:
+                        kd.polygon(ring, fill=255)
+
+    # Strip by strip: a town-sized map is tens of millions of tiles, and
+    # whole-map arrays for what is one yes/no per tile ran to most of a
+    # gigabyte. Strips overlap by the median filter's reach so its seams
+    # never show.
+    strip, reach = 1024, 2
+    rng = np.random.default_rng(w * 7919 + h)
+    for y0 in range(0, h, strip):
+        y1 = min(h, y0 + strip)
+        top, bottom = max(0, y0 - reach), min(h, y1 + reach)
+        level = np.asarray(smooth.crop((0, top, w, bottom)), dtype=np.int16)
+        level += rng.integers(-10, 11, level.shape, dtype=np.int16)
+        dense = Image.fromarray((level >= threshold).astype(np.uint8) * 255)
+        dense = np.asarray(dense.filter(ImageFilter.MedianFilter(5)))
+        mask = dense[y0 - top:y0 - top + (y1 - y0)] > 0
+        mask &= np.asarray(keep.crop((0, y0, w, y1))) == 0
+        if not mask.any():
+            continue
+        ground = np.asarray(landscape.crop((0, y0, w, y1)))
+        grass = np.zeros(mask.shape, dtype=bool)
+        for colour in (C.DARK_GRASS, C.MEDIUM_GRASS):
+            same = ground[:, :, 0] == colour[0]
+            same &= ground[:, :, 1] == colour[1]
+            same &= ground[:, :, 2] == colour[2]
+            grass |= same
+        mask &= grass
+        if mask.any():
+            paint = Image.new("RGB", (w, y1 - y0), C.PALE_CONCRETE)
+            landscape.paste(paint, (0, y0), Image.fromarray(mask.astype(np.uint8) * 255))
 
 
 def _weather_roads(landscape: Image.Image, proj: Projector) -> None:

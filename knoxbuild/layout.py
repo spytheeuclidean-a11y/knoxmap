@@ -160,6 +160,7 @@ SPECIAL_MIXES = {
                     "garage"],
                    ["warehouse", "storage"]),
     "barn":       (["warehouse", "storage", "garage"], ["warehouse", "storage"]),
+    "shed":       (["garage"], ["storage"]),
     "medical":    (["clinic", "medical", "lobby", "office", "bathroom",
                     "storage"],
                    ["clinic", "medical", "storage"]),
@@ -914,7 +915,7 @@ def _exterior_door(plan: Plan, rng: random.Random,
 # its other sides. A house has windows across its front and few down the side;
 # a shop front is mostly glass; a barn barely any.
 FACADE_SPACING = {
-    "house": (7, 13), "apartment": (9, 16), "barn": (12, 24),
+    "house": (7, 13), "apartment": (9, 16), "barn": (12, 24), "shed": (12, 24),
     "industrial": (9, 18), "shop": (3, 8), "restaurant": (3, 8),
     "civic": (4, 9), "school": (4, 8), "church": (7, 14), "medical": (5, 10),
 }
@@ -1423,7 +1424,7 @@ def _stair_foot(stairs: tuple[int, int, str] | None) -> tuple[int, int] | None:
 
 # Rooms scale with what the building is: a warehouse is a few great halls, a
 # church one nave, a school rooms the size of classrooms.
-KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 5.0, "church": 4.0,
+KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 5.0, "shed": 8.0, "church": 4.0,
                    "shop": 2.0, "school": 1.6, "civic": 1.5,
                    "restaurant": 1.5, "medical": 1.3}
 MAX_ROOMS_PER_FLOOR = 90

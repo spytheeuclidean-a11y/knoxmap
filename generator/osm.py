@@ -414,6 +414,14 @@ FENCE_BARRIERS = {"fence", "wall", "retaining_wall", "city_wall"}
 SCHOOL_AMENITIES = {"school", "university", "college", "kindergarten"}
 
 
+PAVED_SURFACES = {"paved", "asphalt", "concrete", "concrete:plates",
+                  "concrete:lanes", "paving_stones", "sett", "cobblestone",
+                  "unhewn_cobblestone", "bricks", "metal", "wood", "tiles"}
+UNPAVED_SURFACES = {"unpaved", "dirt", "earth", "ground", "grass", "gravel",
+                    "fine_gravel", "compacted", "sand", "mud", "pebblestone",
+                    "woodchips", "grass_paver"}
+
+
 def classify(tags: dict) -> str | None:
     """Map OSM tags to a PZ feature category string. None = ignore."""
     if "building" in tags:
@@ -448,6 +456,17 @@ def classify(tags: dict) -> str | None:
         if h in {"service", "pedestrian"}:
             return "road_service"
         if h in {"track", "path", "footway", "cycleway", "bridleway", "steps"}:
+            # A city's pavements are mapped as footways alongside each street,
+            # and painting them as dirt put a brown strip down every kerb in
+            # Paris. Footways, cycleways and steps are paved unless the mapper
+            # says otherwise; tracks and paths are dirt unless they say paved.
+            surface = (tags.get("surface") or "").lower()
+            if surface in PAVED_SURFACES:
+                return "paved_path"
+            if surface in UNPAVED_SURFACES:
+                return "dirt_path"
+            if h in {"footway", "cycleway", "steps"}:
+                return "paved_path"
             return "dirt_path"
         return "road_minor"
 

@@ -53,6 +53,8 @@ SPILL = 0.3
 def occupants(kind: str, tiles: int, levels: int, metres_per_tile: float,
               m2_per_person: float) -> tuple[float, float]:
     """(residents, daytime occupants) for one building."""
+    if kind == "shed":
+        return 0.0, 0.0
     floor = tiles * metres_per_tile * metres_per_tile * max(1, levels)
     if kind in RESIDENTIAL:
         return floor / m2_per_person, 0.0

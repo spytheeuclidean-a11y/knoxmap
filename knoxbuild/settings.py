@@ -35,7 +35,7 @@ class Settings:
 
     # --- buildings -------------------------------------------------------
     seed: int = 1
-    min_size: int = 5            # skip footprints smaller than this, in tiles
+    min_size: int = 3            # skip footprints smaller than this, in tiles
     # and larger than this. It was 60, which threw away the largest
     # buildings in town - the factory, the cultural centre - which are
     # exactly the landmarks a place is recognised by.
@@ -98,7 +98,7 @@ LIMITS = {
     "seed": (0, 2 ** 31 - 1),
     # MIN_ROOM in layout.py is 3, and a building has to hold at least one room
     # plus its walls. MAX_BUILDING_DIMENSION in the reader is 300.
-    "min_size": (4, 40),
+    "min_size": (3, 40),
     "max_size": (8, 250),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),

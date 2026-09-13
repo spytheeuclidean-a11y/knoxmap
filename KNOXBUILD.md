@@ -58,8 +58,8 @@ commercial room mix (storage/office) instead of a domestic one.
 Every building used to share one exterior wall, one interior wall and one floor
 palette, so a whole town came out identical.
 
-**Houses** now draw from eight material styles — clapboard, brick, painted,
-stucco, panel, timber, logs, trailer — chosen by *neighbourhood block*
+**Houses** draw from ten material styles — clapboard, brick, painted,
+stucco, panel, timber, logs, trailer, render, plaster — chosen by *neighbourhood block*
 (`NEIGHBOURHOOD_TILES`, 110 tiles) rather than per building. Houses on the same
 street therefore look like they went up together, while the next block over
 differs, and `STYLE_ODDITY` (18%) lets the occasional house break ranks. The
@@ -81,6 +81,39 @@ by OSM tags (`amenity`, `shop`, `healthcare`, `leisure`, `tourism`, `office`,
 
 Room names all come from `RoomNames.txt`, so the loot tables recognise them —
 a classroom is stocked like a classroom.
+
+**Reading the neighbourhood** (`knoxbuild/context.py`). Most buildings in OSM
+carry nothing but `building=yes`, so each untagged one borrows what its
+surroundings make plain. The numbers below were measured on six test maps
+(central Paris, Kadıköy, a Tokyo neighbourhood, Levittown, a French village
+and a Gebze industrial estate):
+
+- *Density picks the materials.* Building coverage of the ~120 m around each
+  building decides which house styles are allowed. Log cabins and trailers
+  only go on isolated buildings (coverage under 6%). Clapboard and timber stay
+  out of dense quarters (over 28%). Before this, Kadıköy had 36 log houses.
+- *Tagged heights spread to their neighbours.* An untagged building takes the
+  median storey count of the tagged buildings within 120 tiles, plus or minus
+  one, once at least four of them agree. A large untagged building among
+  3-storey-plus blocks becomes flats. Kadıköy's single-storey buildings fell
+  from 168 to 117, and its blocks of flats rose from 295 to 475.
+- *Outbuildings are sheds.* `shed`, `garage`, `hut`, `service` and similar
+  tags, and any untagged building of 30 tiles or fewer, get one storage or
+  garage room, one storey and no residents. The village gained 55 sheds
+  instead of 55 one-room "living rooms".
+- *Things that are not buildings are skipped.* `roof`, `carport`, `ruins`,
+  tanks and silos would otherwise stand as solid boxes where the real place is
+  open.
+
+The smallest building kept is now 3 tiles across, down from 5. That had been
+throwing away 28% of Tokyo's buildings: real narrow houses and kiosks.
+
+The same density measure paints the ground (`_pave_dense_ground` in
+`generator/renderer.py`). Unmapped ground in a built-up quarter becomes
+concrete instead of wild grass; central Paris used to render as 77% meadow.
+Mapped parks and gardens keep their grass. Pavements mapped as
+`highway=footway` are also paved now, where they used to be dirt strips
+running along every street.
 
 This needed Knoxify's GeoJSON export widened: it previously kept only the
 `building` tag, which cannot tell a school from a shed.
