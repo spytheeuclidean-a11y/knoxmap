@@ -49,6 +49,11 @@ actually lived, and installs the result as a mod.
 - **Working lifts** in buildings of five storeys or more, when the
   [Elevators](https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632)
   mod is enabled (optional).
+- **Start where you like.** With the optional
+  [Spawn Selector](https://steamcommunity.com/sharedfiles/filedetails/?id=3772052709) mod, the map's
+  named buildings and places appear as starting points.
+- **Buildings that look their part**: wall materials and window styles by
+  neighbourhood and building type, flat roofs, curtains only where people live.
 - **The real map in your pocket.** The in-game map (M) shows the real streets,
   buildings, water and woods, with real street names and landmarks labelled.
 - **Zombies where the people were.** The spawn map comes from an estimate of who
@@ -165,7 +170,9 @@ second without rebuilding, then compile again so the game sees the change.
 - **Windows only.** The map compiler is a Windows program.
 - **Mods:** the generated map is an ordinary map mod. Lifts need the optional
   [Elevators](https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632)
-  mod; without it they are just closed doors. Other map mods that occupy the same
+  mod; without it they are just closed doors. With the optional
+  [Spawn Selector](https://steamcommunity.com/sharedfiles/filedetails/?id=3772052709) mod you can pick
+  any landmark of the map as your start. Other map mods that occupy the same
   area of the world may conflict.
 - **Multiplayer and dedicated servers:** not tested.
 
@@ -273,10 +280,12 @@ it to get around those limits; for heavy use, run your own servers.
 **Privacy.** KnoxMap has no accounts, telemetry or analytics. The servers it
 contacts, and what they see, are listed in [docs/LEGAL.md](docs/LEGAL.md#privacy).
 
-**Third-party mods.** The Elevators mod is a separate work by its own author. It
-is not included in, affiliated with or maintained by KnoxMap, and its behaviour
-and compatibility are up to that mod. KnoxMap only lays out buildings the way the
-mod recognises lifts.
+**Third-party mods.** The Elevators and Spawn Selector mods are separate works by
+their own authors. Neither is included in, affiliated with or maintained by
+KnoxMap, and their behaviour and compatibility are up to those mods. KnoxMap only
+lays out buildings the way Elevators recognises lifts, and adds the map's places
+to Spawn Selector's lists when that mod is running; no code or files from either
+mod are copied.
 
 **No warranty.** KnoxMap is provided as is, without warranty of any kind. Maps
 are generated automatically and have not been checked in game place by place.
@@ -291,7 +300,8 @@ for any damage or loss from using KnoxMap or its maps.
 - **[PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools)** by Alree /
   Unjammer, built on Tim Baker's TileZed and WorldEd (GPL).
 - **Map data** © OpenStreetMap contributors (ODbL).
-- **Elevators** mod for Project Zomboid, by its author, on the Steam Workshop.
+- **Elevators** and **Spawn Selector** mods for Project Zomboid, by their
+  authors, on the Steam Workshop.
 - Thuztor's *Mapping Guide v0.2* for the terrain colour conventions.
 
 The code here is under different terms depending on where it came from: work

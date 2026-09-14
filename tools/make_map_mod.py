@@ -186,6 +186,91 @@ def write_spawnpoints(project_dir: str, map_dir: str, limit: int = 8) -> int:
     return len(points)
 
 
+SPAWN_SELECTOR_MAX_POIS = 80
+# Paper-map label styles that name somewhere a player might want to start.
+SPAWN_SELECTOR_STYLES = {"text-building": "landmark", "text-place": "landmark"}
+
+
+def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
+                         name: str) -> int:
+    """Put this map into Spawn Selector, if the player has that mod.
+
+    Spawn Selector (workshop 3772052709) lets a new character pick a starting
+    spot on the world map, but its regions and points of interest are a fixed
+    list for Knox County, so a generated town elsewhere in the world could not
+    be picked. This adds a Lua file that, only when Spawn Selector is loaded,
+    adds the map's area to its random-start regions and its named buildings and
+    places - the same ones labelled on the paper map - to its points of
+    interest. Without the mod the file does nothing, so it adds no dependency.
+
+    The tables are filled at OnGameBoot, after every mod's Lua has run:
+    Spawn Selector assigns its lists outright, so adding to them any earlier
+    could be wiped out by load order. Returns how many points were added.
+    """
+    import json as _json
+    import re as _re
+
+    annotations = os.path.join(project_dir, "worldmap-annotations.lua")
+    pois, town = [], name
+    if os.path.exists(annotations):
+        text = open(annotations, encoding="utf-8").read()
+        found = _re.findall(r'addUntranslatedText\("((?:[^"\\]|\\.)*)", "([a-z-]+)", '
+                            r'(-?[\d.]+), (-?[\d.]+)\)', text)
+        for label, style, x, y in found:
+            label = label.replace('\\"', '"').replace("\\\\", "\\")
+            if style == "text-town":
+                town = label
+            elif style in SPAWN_SELECTOR_STYLES and len(pois) < SPAWN_SELECTOR_MAX_POIS:
+                pois.append((label, SPAWN_SELECTOR_STYLES[style], float(x), float(y)))
+
+    width = height = 0
+    for entry in os.listdir(project_dir):
+        if entry.endswith("_info.json"):
+            with open(os.path.join(project_dir, entry), encoding="utf-8") as f:
+                meta = _json.load(f)
+            width, height = meta.get("width_tiles", 0), meta.get("height_tiles", 0)
+    if not width or not height:
+        return 0
+    ox, oy = _world_origin_tiles(project_dir)
+
+    def lua_str(s: str) -> str:
+        return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
+
+    entries = "\n".join(
+        f'        {{ type = "custom_poi", group = {lua_str(group)}, name = {lua_str(label)}, '
+        f'location = {lua_str(town)}, x = {x:.1f}, y = {y:.1f}, z = 0, placement = "building" }},'
+        for label, group, x, y in pois)
+    guard = _re.sub(r"\W", "_", mod_id)
+    lua = f"""-- Written by KnoxMap for {name}.
+-- Adds this map to Spawn Selector (Steam workshop 3772052709) when it is
+-- installed. Does nothing otherwise.
+local function addToSpawnSelector()
+    if not (SpawnSelector and SpawnSelector.RANDOM_REGIONS
+            and SpawnSelectorPOIs and SpawnSelectorPOIs.entries) then
+        return
+    end
+    if SpawnSelector.KnoxMapAdded_{guard} then return end
+    SpawnSelector.KnoxMapAdded_{guard} = true
+    table.insert(SpawnSelector.RANDOM_REGIONS,
+        {{ minX = {ox}, minY = {oy}, maxX = {ox + width - 1}, maxY = {oy + height - 1} }})
+    local pois = {{
+{entries}
+    }}
+    for _, poi in ipairs(pois) do
+        table.insert(SpawnSelectorPOIs.entries, poi)
+    end
+end
+
+Events.OnGameBoot.Add(addToSpawnSelector)
+"""
+    folder = os.path.join(mod_root, "common", "media", "lua", "shared", "KnoxMap")
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, f"{guard}_SpawnSelector.lua"), "w",
+              encoding="utf-8") as f:
+        f.write(lua)
+    return len(pois)
+
+
 KNOXMAP_URL = "https://github.com/spytheeuclidean-a11y/knoxify"
 
 
@@ -286,6 +371,14 @@ def package(project_dir: str, name: str, mod_id: str,
     # used, and a game map may carry it in its menus; the mod list is where
     # players see it. See write_attribution for the rest.
     desc = f"{desc} Map data (c) OpenStreetMap contributors (ODbL)."
+    # Optional mods this map makes use of, so players know what they add.
+    buildings = os.path.join(project_dir, "buildings")
+    has_lifts = os.path.isdir(buildings) and any(
+        "fixtures_escalators_01_4" in open(os.path.join(buildings, f), encoding="utf-8").read()
+        for f in os.listdir(buildings) if f.endswith(".tbx"))
+    works_with = (["Elevators (working lifts)"] if has_lifts else []) + \
+        ["Spawn Selector (choose where to start)"]
+    desc = f"{desc} Optional: {', '.join(works_with)}."
 
     # lots=Muldraugh, KY tells the game which vanilla lot set to inherit room
     # and tile definitions from; every community map sets it.
@@ -316,9 +409,11 @@ def package(project_dir: str, name: str, mod_id: str,
             f.write(info)
 
     write_attribution(project_dir, mod_root, name)
+    n_pois = write_spawn_selector(project_dir, mod_root, mod_id, name)
     extra_names = [os.path.basename(e) for e in extras]
     if n_spawns:
         extra_names.append(f"spawnpoints.lua ({n_spawns} spawn points)")
+    extra_names.append(f"Spawn Selector support ({n_pois} places)")
     return mod_root, sum(1 for c in cells if c.endswith(".lotheader")), extra_names
 
 

@@ -227,6 +227,12 @@ def main(argv: list[str]) -> int:
         check("OpenStreetMap" in info, "OpenStreetMap credit in the mod description")
         check(os.path.isdir(os.path.join(mod_root, "common", "media", "maps", "Selftest Town")),
               "map folder name is safe for Windows")
+        lua_dir = os.path.join(mod_root, "common", "media", "lua", "shared", "KnoxMap")
+        selector = [open(os.path.join(lua_dir, f), encoding="utf-8").read()
+                    for f in os.listdir(lua_dir)] if os.path.isdir(lua_dir) else []
+        check(selector and "Selftest School" in selector[0] and "OnGameBoot" in selector[0]
+              and selector[0].count("{") == selector[0].count("}"),
+              "Spawn Selector gets the town and its landmarks")
     except Exception:
         import traceback
         traceback.print_exc()

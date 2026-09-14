@@ -26,6 +26,7 @@ map.
   shops, schools, churches, clinics, offices, factories and sheds.
 - Real heights up to 30 storeys, borrowed from tagged neighbours where missing.
 - Lifts in buildings of five storeys or more, working with the Elevators mod.
+- Window styles and wall materials by neighbourhood and building type.
 - A light switch in every room, clear staircases, roofs that follow the
   footprint, loot tables that match the room.
 
@@ -34,7 +35,8 @@ map.
   landmarks.
 - Zombies spawned from an estimate of who lived and worked in each building,
   with a census and a one-second recount.
-- Spawn points inside homes across the town.
+- Spawn points inside homes across the town, and the map's landmarks as
+  starting points in the Spawn Selector mod when it is installed.
 
 **The app**
 - One window: search, generate, build, compile, install. Setup.bat downloads
