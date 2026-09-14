@@ -52,9 +52,6 @@ class Settings:
     apartment_footprint: int = 150
     apartment_chance: float = 0.55
     max_levels: int = 6
-    # Below 1 means fewer windows. A house at 1.0 gets one every five tiles of
-    # wall; the old behaviour was one every three, around the whole perimeter.
-    window_density: float = 1.0
     room_size: int = 56          # target room area in tiles before splitting
     # How far a neighbourhood reaches before the materials change, and how
     # often one building breaks from its block anyway.
@@ -91,11 +88,6 @@ class Settings:
             kept[name] = min(max(value, lo), hi)
         return cls(**kept)
 
-    @property
-    def window_spacing_scale(self) -> float:
-        """Multiplier on the per-kind window spacing. Denser means smaller."""
-        return 1.0 / self.window_density
-
 
 # name -> (minimum, maximum). Wider than anyone sensibly wants, narrow enough
 # that nothing here can produce a building the .tbx reader rejects.
@@ -117,7 +109,6 @@ LIMITS = {
     # storey is a full floor of rooms and furniture, so tall towns cost build
     # and compile time - the presets stay low and this is the ceiling.
     "max_levels": (1, 30),
-    "window_density": (0.2, 3.0),
     "room_size": (16, 400),
     "neighbourhood_tiles": (20, 2000),
     "style_oddity": (0.0, 1.0),

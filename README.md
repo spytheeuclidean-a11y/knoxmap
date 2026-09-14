@@ -52,8 +52,10 @@ actually lived, and installs the result as a mod.
 - **Start where you like.** With the optional
   [Spawn Selector](https://steamcommunity.com/sharedfiles/filedetails/?id=3772052709) mod, the map's
   named buildings and places appear as starting points.
-- **Buildings that look their part**: wall materials and window styles by
-  neighbourhood and building type, flat roofs, curtains only where people live.
+- **Buildings that look their part**: wall materials by neighbourhood; windows
+  that suit the building - sash windows on houses, tall panes on flats, glass
+  panels on towers and shop fronts, stained glass on churches - spaced the way
+  that kind of building is, with blinds or curtains to match.
 - **The real map in your pocket.** The in-game map (M) shows the real streets,
   buildings, water and woods, with real street names and landmarks labelled.
 - **Zombies where the people were.** The spawn map comes from an estimate of who
@@ -137,7 +139,7 @@ Open **Fine tuning** under *Style*:
 | **Flats above / Flats chance** | How readily large untagged buildings become blocks of flats. |
 | **Tallest building** | The storey limit, up to 30. Real heights from OpenStreetMap are used where mapped. Tall cities take much longer to compile. |
 | **Straighten streets** | 1 turns the map so its main street grid runs along the tiles; 0 keeps north straight up, with diagonal streets as staircases. |
-| **Windows**, **Woodland**, **Parking**, **Room size** | What they say. |
+| **Woodland**, **Parking**, **Room size** | What they say. |
 | **Seed** | The same area and seed always give the same town. |
 
 After **Build**, a **Zombie census** shows the estimated residents, workers and

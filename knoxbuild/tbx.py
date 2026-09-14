@@ -30,6 +30,17 @@ def _attrs(pairs: list[tuple[str, object]]) -> str:
                    for k, v in pairs)
 
 
+def _add(entries: list[dict], entry: dict | None) -> int:
+    """The 1-based index of `entry` in the tile-entry table, appending it if it
+    is not there yet; 0, BuildingEd's "none", for no entry."""
+    if not entry:
+        return 0
+    if entry in entries:
+        return entries.index(entry) + 1
+    entries.append(entry)
+    return len(entries)
+
+
 def render_tbx(plan: Plan | Building, name: str,
                style: dict | None = None) -> str:
     """Return the complete .tbx document for a plan or a stack of them.
@@ -51,6 +62,7 @@ def render_tbx(plan: Plan | Building, name: str,
     window_idx = C.WINDOW
     roof_cap_idx = C.ROOF_CAP
     curtains_idx = C.CURTAINS
+    front_idx = front_curtains = None
 
     if style:
         entries.append(style["exterior"])
@@ -63,8 +75,17 @@ def render_tbx(plan: Plan | Building, name: str,
         if style.get("window"):
             entries.append(style["window"])
             window_idx = len(entries)
-        if style.get("curtains") is False:
-            curtains_idx = 0
+        curtains_idx = _add(entries, style.get("curtains")) if "curtains" in style else C.CURTAINS
+        # Taller buildings of a kind take bigger windows: the last row whose
+        # storey count this building reaches.
+        for levels, entry, curtains in style.get("windows_by_levels") or ():
+            if len(storeys) >= levels and levels > 1:
+                window_idx = _add(entries, entry)
+                curtains_idx = _add(entries, curtains)
+        if style.get("shop_front"):
+            entry, curtains = style["shop_front"]
+            front_idx = _add(entries, entry)
+            front_curtains = _add(entries, curtains)
     # A depth-three flat roof walls in its storey with the cap entry's
     # CapGap tiles, which BuildingTemplates.txt sets to stucco - every top
     # floor came out stucco whatever the building was made of. Give each
@@ -163,9 +184,12 @@ def render_tbx(plan: Plan | Building, name: str,
             out.append(f"  <object{_attrs(attrs)}/>")
 
         for x, y, direction in storey.windows:
-            attrs = [("type", "window"), ("CurtainsTile", curtains_idx),
+            tile, curtains = window_idx, curtains_idx
+            if front_idx and (x, y, direction) in getattr(storey, "shop_front", ()):
+                tile, curtains = front_idx, front_curtains
+            attrs = [("type", "window"), ("CurtainsTile", curtains),
                      ("ShuttersTile", 0), ("x", x), ("y", y),
-                     ("dir", direction), ("Tile", window_idx)]
+                     ("dir", direction), ("Tile", tile)]
             out.append(f"  <object{_attrs(attrs)}/>")
 
         for role, x, y, orient in storey.furniture:

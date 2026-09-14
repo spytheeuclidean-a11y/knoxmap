@@ -723,7 +723,7 @@ def main(argv: list[str] | None = None) -> int:
                     help="suburb / town / city / rural")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE",
                     help="override one setting, repeatable "
-                         "(e.g. --set window_density=0.6)")
+                         "(e.g. --set max_levels=12)")
     args = ap.parse_args(argv)
 
     # A saved settings.json in the map folder is the starting point, so the

@@ -26,7 +26,9 @@ map.
   shops, schools, churches, clinics, offices, factories and sheds.
 - Real heights up to 30 storeys, borrowed from tagged neighbours where missing.
 - Lifts in buildings of five storeys or more, working with the Elevators mod.
-- Window styles and wall materials by neighbourhood and building type.
+- Windows that suit the building: kind, size and spacing follow what it is
+  and how tall (glass towers, shop fronts, tall panes on flats), with
+  matching curtains or blinds. Window count is not a setting.
 - A light switch in every room, clear staircases, roofs that follow the
   footprint, loot tables that match the room.
 
@@ -41,7 +43,7 @@ map.
 **The app**
 - One window: search, generate, build, compile, install. Setup.bat downloads
   the tools, extracts tiles from your own game and checks everything.
-- Presets and fine tuning for zombies, living space, heights, windows,
+- Presets and fine tuning for zombies, living space, heights,
   woodland, parking and more.
 - A patched, headless map compiler so compiling needs no clicks in WorldEd.
 

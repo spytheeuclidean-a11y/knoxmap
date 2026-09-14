@@ -87,6 +87,8 @@ class Plan:
     shaft_door: tuple[int, int, str] | None = None
     # Wall edges carrying a switch, painting or mirror; windows keep off them.
     wall_pieces: set = field(default_factory=set)
+    # Ground-floor windows that are a shop front, glazed with big panels.
+    shop_front: set = field(default_factory=set)
 
 
 # kind -> (floor tile entry index, display name, furniture wishlist)
@@ -927,20 +929,40 @@ def _exterior_door(plan: Plan, rng: random.Random,
 
 
 # Tiles of wall per window bay, by what the building is, on its front and on
-# its other sides. A house has windows across its front and few down the side;
-# a shop front is mostly glass; a barn barely any.
+# its other sides. Not a setting: how glazed a facade is follows from what the
+# building is. A tile is about a metre, and real buildings put a window in
+# roughly every room-width of wall: a house every four metres or so across its
+# front and fewer down the side; flats every three metres on every side, since
+# each flat looks out wherever it can; offices and hotels close to a band of
+# glass; a works or a barn only a few high windows. The old spacings (nine and
+# sixteen tiles for flats) left city blocks looking like warehouses.
 FACADE_SPACING = {
-    "house": (7, 13), "apartment": (9, 16), "barn": (12, 24), "shed": (12, 24),
-    "industrial": (9, 18), "shop": (3, 8), "restaurant": (3, 8),
-    "civic": (4, 9), "school": (4, 8), "church": (7, 14), "medical": (5, 10),
+    "house": (4, 7), "apartment": (3, 3), "barn": (10, 20), "shed": (12, 24),
+    "industrial": (6, 9), "shop": (3, 5), "restaurant": (3, 5),
+    "civic": (2, 2), "school": (3, 3), "church": (4, 5), "medical": (3, 3),
 }
-DEFAULT_FACADE_SPACING = (5, 11)
+DEFAULT_FACADE_SPACING = (4, 6)
+# Towers are glass: from this many storeys an office or hotel is glazed on
+# every tile of its outside wall.
+GLASS_TOWER_FROM_LEVELS = 8
+# The ground floor of a shop or restaurant is its shop front: glass across the
+# front, broken only by the door.
+SHOP_FRONT_KINDS = {"shop", "restaurant"}
+# Buildings laid out like a house, where each room takes only the windows it
+# needs. Elsewhere a room takes whatever its stretch of facade offers - an
+# open office along a glazed wall is not limited to one window.
+HOUSE_LIKE_KINDS = {"house", "barn", "shed", None}
 # Most windows one room may take, whatever the facade offers it.
 ROOM_WINDOW_CAP = {
     "bathroom": 1, "storage": 0, "hall": 0, "garage": 0, "shed": 1, "elevator": 0,
     "kitchen": 1, "bedroom": 2, "dining": 2, "office": 1, "livingroom": 3,
 }
 DEFAULT_ROOM_WINDOW_CAP = 4
+# Outside house-like buildings a facade keeps its rhythm whatever is behind
+# it - a stockroom or washroom on an office front still has its window - so
+# only these are capped. Limiting bathrooms and storerooms as in a house left
+# a third of an office block's bays empty, holes all over the grid.
+SERVICE_WINDOW_CAP = {"garage": 0, "elevator": 0, "shed": 1}
 # Rooms that must not be left without daylight.
 # Kept to the rooms that matter: guaranteeing every office and dining room a
 # window as well pushed facades back up to 1.09 windows per ten tiles of wall.
@@ -1020,8 +1042,35 @@ def _front_side(building: "Building", kind: str | None) -> set[str]:
     return {"S"}
 
 
-def _place_windows(building: "Building", kind: str | None,
-                   scale: float = 1.0) -> None:
+def _bays(by_side: dict, front: set[str], near: int, far: int,
+          only: set[str] | None = None) -> list[tuple[int, int, str, int, int]]:
+    """Window positions along each side, `near` tiles apart on the front and
+    `far` elsewhere. `only` limits them to those sides."""
+    bays: list[tuple[int, int, str, int, int]] = []
+    for side, edges in by_side.items():
+        if only is not None and side not in only:
+            continue
+        # Position along the side: x for north and south faces, y for west
+        # and east.
+        along = (lambda e: e[3]) if side in ("N", "S") else (lambda e: e[4])
+        positions = sorted({along(e) for e in edges})
+        if len(positions) < MIN_WALL_FOR_WINDOW:
+            continue
+        spacing = max(1, near if side in front else far)
+        if side not in front and len(positions) < spacing:
+            continue            # a short side stays blank
+        inner = positions[1:-1]
+        if spacing == 1:
+            chosen = set(inner)
+        else:
+            count = max(1, round(len(inner) / spacing))
+            step = len(inner) / count
+            chosen = {inner[int((i + 0.5) * step)] for i in range(count)}
+        bays.extend(e for e in edges if along(e) in chosen)
+    return bays
+
+
+def _place_windows(building: "Building", kind: str | None) -> None:
     """Windows in bays down the facade, the same bays on every storey.
 
     Two things made the buildings look wrong. Windows were spaced along every
@@ -1030,6 +1079,11 @@ def _place_windows(building: "Building", kind: str | None,
     below. Real facades are built in bays: the positions are decided once for
     the building and repeated floor by floor, and a storey skips a bay only
     where the room behind has no use for a window.
+
+    How many bays there are is not a setting. It follows from what the
+    building is (FACADE_SPACING): a glass tower, a shop front, a block of
+    flats and a barn are glazed nothing alike, and one dial for all of them
+    could only ever be right for one.
 
     Bays are counted along each side of the building rather than along each
     straight run of wall. A building on its real footprint at 38 degrees has
@@ -1042,55 +1096,51 @@ def _place_windows(building: "Building", kind: str | None,
         return
     front = _front_side(building, kind)
     near, far = FACADE_SPACING.get(kind or "house", DEFAULT_FACADE_SPACING)
+    if kind == "civic" and len(building.storeys) >= GLASS_TOWER_FROM_LEVELS:
+        near = far = 1
     by_side: dict[str, list[tuple[int, int, str, int, int]]] = {}
     for side, wall in _facade_runs(building.storeys[0].grid):
         by_side.setdefault(side, []).extend(wall)
-    bays: list[tuple[int, int, str, int, int]] = []
-    for side, edges in by_side.items():
-        # Position along the side: x for north and south faces, y for west
-        # and east.
-        along = (lambda e: e[3]) if side in ("N", "S") else (lambda e: e[4])
-        positions = sorted({along(e) for e in edges})
-        if len(positions) < MIN_WALL_FOR_WINDOW:
-            continue
-        spacing = max(3, round((near if side in front else far) * scale))
-        if side not in front and len(positions) < spacing:
-            continue            # a short side stays blank
-        inner = positions[1:-1]
-        count = max(1, round(len(inner) / spacing))
-        step = len(inner) / count
-        chosen = {inner[int((i + 0.5) * step)] for i in range(count)}
-        bays.extend(e for e in edges if along(e) in chosen)
+    bays = _bays(by_side, front, near, far)
+    ground_bays = bays
+    glass: list[tuple[int, int, str, int, int]] = []
+    glass_set: set = set()
+    if kind in SHOP_FRONT_KINDS:
+        glass = _bays(by_side, front, 1, far, only=front)
+        glass_set = set(glass)
+        ground_bays = glass + [b for b in bays if b not in glass_set]
+    house_like = kind in HOUSE_LIKE_KINDS
 
-    for storey in building.storeys:
+    for level, storey in enumerate(building.storeys):
         blocked = set(getattr(storey, "wall_pieces", set()))
         for x, y, d in storey.doors:
             for off in (-1, 0, 1):
                 blocked.add((x + off, y, d) if d == "N" else (x, y + off, d))
         taken: dict[int, int] = {}
-        for x, y, d, ix, iy in bays:
+        for x, y, d, ix, iy in (ground_bays if level == 0 else bays):
             if (x, y, d) in blocked:
                 continue
             idx = storey.grid[iy][ix]
             if not idx:
                 continue
             room = storey.rooms[idx - 1]
-            cap = ROOM_WINDOW_CAP.get(room.kind, DEFAULT_ROOM_WINDOW_CAP)
+            if house_like:
+                cap = ROOM_WINDOW_CAP.get(room.kind, DEFAULT_ROOM_WINDOW_CAP)
+            else:
+                cap = SERVICE_WINDOW_CAP.get(room.kind, 1 << 30)
             if room.is_core:
                 cap = 1 if kind == "apartment" else 0
             if taken.get(idx, 0) >= cap:
                 continue
             storey.windows.append((x, y, d))
             taken[idx] = taken.get(idx, 0) + 1
+            if level == 0 and kind in SHOP_FRONT_KINDS and (x, y, d, ix, iy) in glass_set:
+                storey.shop_front.add((x, y, d))
 
         # The bays keep windows in columns, but a room they miss would have no
         # daylight at all. Any room people spend time in that still has none
         # gets one in the middle of its longest outside wall.
         for idx, room in enumerate(storey.rooms, 1):
-            # Turning the Windows setting well down turns this promise off
-            # too, or the slider would stop having any effect below it.
-            if scale > 1.35:
-                break
             if taken.get(idx) or room.kind not in LIVED_IN:
                 continue
             for _side, wall in _outside_runs(storey, idx):
@@ -1196,6 +1246,15 @@ def _furnish(plan: Plan, rng: random.Random,
                     if _room_at(plan, nx, ny) != idx:
                         slots.append((x, y, facing))
         used_walls: set[tuple[int, int, str]] = set()
+        # Outside walls are where the windows go, and the windows are laid out
+        # last, in columns up the facade: a painting or switch hung there took
+        # the bay and left a hole in the column. Hang things inside first.
+        step = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
+
+        def on_facade(slot: tuple[int, int, str]) -> bool:
+            x, y, facing = slot
+            ox, oy = step[facing]
+            return not _room_at(plan, x + ox, y + oy)
 
         def hang(role: str, x: int, y: int, facing: str) -> bool:
             edge = _wall_edge(x, y, facing)
@@ -1213,7 +1272,7 @@ def _furnish(plan: Plan, rng: random.Random,
         by_reach = sorted(
             slots,
             key=lambda s: min((abs(s[0] - dx) + abs(s[1] - dy) for dx, dy in mine),
-                              default=0))
+                              default=0) + (4 if on_facade(s) else 0))
         for x, y, facing in by_reach:
             if (x, y) in mine and _wall_edge(x, y, facing) in door_edges:
                 continue
@@ -1235,7 +1294,7 @@ def _furnish(plan: Plan, rng: random.Random,
         rng.shuffle(floor_slots)
         for role in wishlist:
             if _is_wall_piece(role):
-                for x, y, facing in floor_slots:
+                for x, y, facing in sorted(floor_slots, key=on_facade):
                     if hang(role, x, y, facing):
                         break
                 continue
@@ -1518,7 +1577,7 @@ def build_building(width: int, height: int, levels: int = 1,
             _clear_for_stairs(storeys[lvl + 1], *stairs)
     # Windows last and for the whole building at once, so they stack in
     # columns instead of each floor scattering its own.
-    _place_windows(building, kind, (settings or Settings()).window_spacing_scale)
+    _place_windows(building, kind)
     return building
 
 

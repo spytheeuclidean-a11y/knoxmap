@@ -109,6 +109,18 @@ def main(argv: list[str]) -> int:
                      errors="replace").read()
     window_pairs = dict(re.findall(r"West = (fixtures_windows_\w+)\s+North = (\w+)", tiles_txt))
 
+    def curtains(anchor: str | None) -> dict | None:
+        """A curtains entry from its West tile: East, North, South follow it."""
+        if not anchor:
+            return None
+        sheet, idx = anchor.rsplit("_", 1)
+        n = int(idx)
+        names = [f"{sheet}_{n + i:03d}" for i in range(4)]
+        if names[0] not in tiles_txt:
+            raise SystemExit(f"ERROR: no curtains {anchor!r} in BuildingTiles.txt.")
+        return {"category": "curtains",
+                "tiles": dict(zip(("West", "East", "North", "South"), names))}
+
     def window(anchor: str) -> dict:
         if anchor not in window_pairs:
             raise SystemExit(f"ERROR: no window {anchor!r} in BuildingTiles.txt.")
@@ -210,27 +222,28 @@ def main(argv: list[str]) -> int:
     # coherent while the next one differs), and anything OSM tags as a school,
     # church, shop, diner or works gets its own materials from SPECIAL_STYLES.
     HOUSE_STYLE_SPEC = [
-        ("clapboard", "walls_exterior_house_01_032", "walls_interior_house_01_016", "fixtures_windows_01_008"),
-        ("brick", "walls_exterior_house_01_016", "walls_interior_house_02_000", "fixtures_windows_01_016"),
-        ("painted", "walls_exterior_house_01_052", "walls_interior_house_03_000", "fixtures_windows_white_024"),
-        ("stucco", "walls_exterior_house_02_004", "walls_interior_house_02_032", "fixtures_windows_01_024"),
-        ("panel", "walls_exterior_house_02_016", "walls_interior_house_03_020", "fixtures_windows_01_032"),
-        ("timber", "walls_exterior_wooden_01_024", "walls_interior_house_01_052", "fixtures_windows_wood_024"),
-        ("logs", "walls_logs_000", "walls_interior_house_03_032", "fixtures_windows_wood_016"),
-        ("trailer", "location_trailer_01_000", "location_trailer_01_024", "fixtures_windows_01_000"),
+        ("clapboard", "walls_exterior_house_01_032", "walls_interior_house_01_016", "fixtures_windows_01_008", "fixtures_windows_curtains_01_032"),
+        ("brick", "walls_exterior_house_01_016", "walls_interior_house_02_000", "fixtures_windows_wood_008", "fixtures_windows_curtains_01_040"),
+        ("painted", "walls_exterior_house_01_052", "walls_interior_house_03_000", "fixtures_windows_white_024", "fixtures_windows_curtains_02_008"),
+        ("stucco", "walls_exterior_house_02_004", "walls_interior_house_02_032", "fixtures_windows_01_024", "fixtures_windows_curtains_02_000"),
+        ("panel", "walls_exterior_house_02_016", "walls_interior_house_03_020", "fixtures_windows_01_032", "fixtures_windows_curtains_02_000"),
+        ("timber", "walls_exterior_wooden_01_024", "walls_interior_house_01_052", "fixtures_windows_wood_024", "fixtures_windows_curtains_01_040"),
+        ("logs", "walls_logs_000", "walls_interior_house_03_032", "fixtures_windows_wood_016", "fixtures_windows_curtains_01_040"),
+        ("trailer", "location_trailer_01_000", "location_trailer_01_024", "fixtures_windows_01_000", "fixtures_windows_curtains_02_008"),
         # BuildingTemplates.txt offers 24 exterior wall families and the first
         # eight entries here used a third of them, so a long street ran out of
         # variety and started repeating itself.
-        ("render", "walls_exterior_house_02_064", "walls_interior_house_03_036", "fixtures_windows_white_016"),
-        ("plaster", "walls_interior_house_02_032", "walls_interior_bathroom_01_000", "fixtures_windows_01_056"),
+        ("render", "walls_exterior_house_02_064", "walls_interior_house_03_036", "fixtures_windows_white_016", "fixtures_windows_curtains_01_032"),
+        ("plaster", "walls_interior_house_02_032", "walls_interior_bathroom_01_000", "fixtures_windows_01_056", "fixtures_windows_curtains_02_000"),
     ]
     house_styles = []
-    for style_name, ext, inte, window_name in HOUSE_STYLE_SPEC:
+    for style_name, ext, inte, window_name, curtain_name in HOUSE_STYLE_SPEC:
         house_styles.append({
             "name": style_name,
             "exterior": pick("exterior_walls", ext),
             "interior": pick("interior_walls", inte),
             "window": window(window_name),
+            "curtains": curtains(curtain_name),
         })
 
     # kind -> materials, and the floor that overrides the usual palette.
@@ -255,32 +268,61 @@ def main(argv: list[str]) -> int:
         "apartment":  ("walls_interior_house_03_032", "walls_interior_house_02_048",
                        "floors_interior_carpet_01_032"),
     }
-    # Every building once had the same brown four-pane window. Each style now
-    # names its own, and says whether it hangs curtains: a works, a church or
-    # a shop front has none. Only single-storey sizes are used - the tall
-    # arched metal windows are drawn two floors high.
+    # Every building once had the same brown four-pane window, and later a
+    # small one everywhere. A wall tile is one storey (226 px) and the small
+    # domestic windows are 95 px of it - right for a house, lost on a block of
+    # flats or an office, where real facades are tall panes or whole panels of
+    # glass. So a style lists its windows by height of building: (from this
+    # many storeys, window, curtains or None). Every window used to hang the
+    # same pink drapes; flats, offices and clinics get roller blinds, and
+    # glass panels hang nothing - a curtain sized for a small window looks
+    # stuck on. "shop_front" glazes the ground
+    # floor of a shop or restaurant. Measured heights: small 95-105 px, tall
+    # 150-160, floor-to-ceiling 216-225.
     SPECIAL_WINDOWS = {
-        "school": ("fixtures_windows_01_040", False),
-        "church": ("fixtures_windows_church_024", False),
-        "restaurant": ("fixtures_windows_01_048", True),
-        "shop": ("fixtures_windows_metal_028", False),
-        "industrial": ("fixtures_windows_metal_024", False),
-        "barn": ("fixtures_windows_wood_024", False),
-        "medical": ("fixtures_windows_01_048", True),
-        "civic": ("fixtures_windows_white_008", False),
-        "apartment": ("fixtures_windows_01_056", True),
+        # Tall three-pane classroom windows.
+        "school": [(1, "fixtures_windows_metal_020", None)],
+        # Stained glass.
+        "church": [(1, "fixtures_windows_church_014", None)],
+        "restaurant": [(1, "fixtures_windows_01_048", "fixtures_windows_curtains_01_040")],
+        "shop": [(1, "fixtures_windows_01_048", "fixtures_windows_curtains_02_000")],
+        # Wide, low windows high on a works wall.
+        "industrial": [(1, "fixtures_windows_metal_026", None)],
+        "barn": [(1, "fixtures_windows_wood_024", None)],
+        "medical": [(1, "fixtures_windows_white_010", "fixtures_windows_curtains_02_000"),
+                    (5, "fixtures_windows_metal_010", "fixtures_windows_curtains_02_000")],
+        # Offices, hotels, town halls: tall panes, then glass from the height
+        # layout.GLASS_TOWER_FROM_LEVELS glazes every tile.
+        "civic": [(1, "fixtures_windows_white_010", "fixtures_windows_curtains_02_000"),
+                  (5, "fixtures_windows_metal_010", "fixtures_windows_curtains_02_000"),
+                  (8, "fixtures_windows_metal_014", None)],
+        # Low flats: tall sash. Mid-rise: tall double panes. Towers: panels
+        # floor to ceiling.
+        "apartment": [(1, "fixtures_windows_white_016", "fixtures_windows_curtains_02_000"),
+                      (5, "fixtures_windows_metal_010", "fixtures_windows_curtains_02_000"),
+                      (12, "fixtures_windows_metal_014", None)],
+    }
+    SHOP_FRONTS = {
+        "shop": ("fixtures_windows_metal_014", None),
+        "restaurant": ("fixtures_windows_metal_008", None),
     }
     special_styles = {}
     for kind, (ext, inte, floor) in SPECIAL_SPEC.items():
-        window_name, curtains = SPECIAL_WINDOWS[kind]
-        special_styles[kind] = {
+        by_height = SPECIAL_WINDOWS[kind]
+        style = {
             "name": kind,
             "exterior": pick("exterior_walls", ext),
             "interior": pick("interior_walls", inte),
             "floor": pick("floors", floor) if floor else None,
-            "window": window(window_name),
-            "curtains": curtains,
+            "window": window(by_height[0][1]),
+            "curtains": curtains(by_height[0][2]),
+            "windows_by_levels": [[levels, window(name), curtains(cur)]
+                                  for levels, name, cur in by_height],
         }
+        if kind in SHOP_FRONTS:
+            name, cur = SHOP_FRONTS[kind]
+            style["shop_front"] = [window(name), curtains(cur)]
+        special_styles[kind] = style
 
     KINDS = ["livingroom", "kitchen", "bedroom", "bathroom", "dining",
              "hall", "storage", "office",
