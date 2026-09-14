@@ -841,9 +841,17 @@ document.getElementById('installBtn').addEventListener('click', async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    let lifts = '';
+    try {
+      const status = await (await fetch('/api/setup-status')).json();
+      const elevators = (status.optional || []).find(c => c.id === 'elevators');
+      lifts = elevators && elevators.ok
+        ? ' Enable "Elevators" too, for working lifts in tall buildings.'
+        : ' Tall buildings have lifts: subscribe to the Elevators mod on the Steam Workshop to make them work.';
+    } catch (_) { /* the install itself worked; the tip is optional */ }
     note('installNote',
          `Installed ${data.cells} cells to ${data.modRoot}. Enable "${data.title}" `
-         + 'in the game\'s Mods menu, then start a NEW save.', 'ok');
+         + 'in the game\'s Mods menu, then start a NEW save.' + lifts, 'ok');
   } catch (err) {
     note('installNote', err.message, 'bad');
     btn.disabled = false;
