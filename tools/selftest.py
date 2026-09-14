@@ -173,6 +173,19 @@ def main(argv: list[str]) -> int:
         pop = json.load(open(os.path.join(out, "selftest_population.json"), encoding="utf-8"))
         check(pop.get("residents", 0) > 0, f"people counted ({pop.get('residents')} residents)")
 
+        print("app page")
+        import re
+
+        import app as knoxmap_app
+        client = knoxmap_app.app.test_client()
+        page = client.get("/")
+        assets = re.findall(r'(?:href|src)="(/static/[^"]+)"', page.get_data(as_text=True))
+        missing = [a for a in assets if client.get(a).status_code != 200]
+        check(page.status_code == 200 and len(assets) >= 8 and not missing,
+              f"page and all {len(assets)} of its files are served" + (f" - missing {missing}" if missing else ""))
+        check(not re.search(r'(?:href|src)="https?://', page.get_data(as_text=True)),
+              "page loads nothing from other sites")
+
         print("install")
         lots = os.path.join(out, "lots")
         os.makedirs(lots, exist_ok=True)

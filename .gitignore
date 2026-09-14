@@ -10,7 +10,7 @@ output/*
 !output/.gitkeep
 
 # Setup installs the map tools here and writes local paths here.
-vendor/
+/vendor/
 knoxmap_config.json
 
 # Building the patched compiler yourself
