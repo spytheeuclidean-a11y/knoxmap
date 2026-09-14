@@ -185,7 +185,7 @@ def api_search():
 @app.route("/api/landmarks", methods=["POST"])
 def api_landmarks():
     """List the named landmarks inside a bbox."""
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     try:
         south = float(data["south"])
         west = float(data["west"])
@@ -256,6 +256,14 @@ def _wrap_lon(lon: float) -> float:
     return (lon + 180.0) % 360.0 - 180.0
 
 
+def _json_body() -> dict:
+    """The request's JSON object, or {} for anything else - a bare number, a
+    list, broken JSON. Endpoints then report what is missing instead of
+    failing with a server error."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else {}
+
+
 def _normalise_bbox(south: float, west: float, north: float,
                     east: float) -> tuple[tuple[float, float, float, float],
                                           str | None]:
@@ -288,7 +296,7 @@ def _normalise_bbox(south: float, west: float, north: float,
 
 @app.route("/api/generate", methods=["POST"])
 def generate():
-    data = request.get_json(force=True) or {}
+    data = _json_body()
     shape, problem = _clean_shape(data.get("shape"))
     if problem:
         return jsonify({"error": problem}), 400
@@ -307,6 +315,9 @@ def generate():
     except (KeyError, TypeError, ValueError):
         return jsonify({"error": "Missing or invalid bbox / scale."}), 400
 
+    import math
+    if not all(math.isfinite(v) for v in (south, west, north, east, meters_per_tile)):
+        return jsonify({"error": "Missing or invalid bbox / scale."}), 400
     (south, west, north, east), problem = _normalise_bbox(
         south, west, north, east)
     if problem:
@@ -471,7 +482,7 @@ def api_buildings():
     """Run knoxbuild over a generated map."""
     from knoxbuild.build import build as build_buildings
 
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     map_dir = _map_dir(data.get("mapName", ""))
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
@@ -507,7 +518,7 @@ def api_zombies():
     """
     from knoxbuild.population import recount
 
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     map_dir = _map_dir(data.get("mapName", ""))
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
@@ -528,7 +539,7 @@ def api_worlded():
     """Open the generated project in PZWorldEd."""
     import subprocess
 
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     map_dir = _map_dir(data.get("mapName", ""))
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
@@ -690,7 +701,7 @@ def api_compile():
     """
     import subprocess
 
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     map_dir = _map_dir(data.get("mapName", ""))
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
@@ -768,12 +779,17 @@ def api_install():
     """Package the compiled map into ~/Zomboid/mods."""
     from tools import make_map_mod
 
-    data = request.get_json(silent=True) or {}
+    data = _json_body()
     map_dir = _map_dir(data.get("mapName", ""))
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
-    title = (data.get("title") or map_dir.name).strip()
-    mod_id = SAFE_NAME.sub("_", (data.get("modId") or map_dir.name)).strip("_")
+    # Both end up in folder names and mod.info, so they are text of a sane
+    # length whatever the page sent.
+    raw_title, raw_id = data.get("title"), data.get("modId")
+    title = (raw_title if isinstance(raw_title, str) and raw_title.strip()
+             else map_dir.name).strip()[:80]
+    mod_id = SAFE_NAME.sub("_", raw_id if isinstance(raw_id, str) and raw_id.strip()
+                           else map_dir.name).strip("_")[:60] or map_dir.name[:60]
     try:
         mod_root, n_cells, extras = make_map_mod.package(
             str(map_dir), title, mod_id)

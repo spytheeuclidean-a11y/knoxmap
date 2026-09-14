@@ -72,7 +72,7 @@ class Settings:
     @classmethod
     def from_dict(cls, data: dict | None) -> "Settings":
         """Build from untrusted input, ignoring junk and clamping the rest."""
-        data = data or {}
+        data = data if isinstance(data, dict) else {}
         preset = PRESETS.get(str(data.get("preset", "")).lower())
         base = preset.to_dict() if preset else {}
 
@@ -83,8 +83,10 @@ class Settings:
                 continue          # unknown key, including "preset" itself
             try:
                 value = int(raw) if types[name] == "int" else float(raw)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):
                 continue          # unparseable, keep the default
+            if value != value:
+                continue          # NaN compares false with everything; keep the default
             lo, hi = LIMITS[name]
             kept[name] = min(max(value, lo), hi)
         return cls(**kept)
