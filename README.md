@@ -97,7 +97,7 @@ Open **Fine tuning** under *Style* to adjust how the town comes out:
 | **Living space** | Square metres per resident. Lower means more crowded homes and more zombies. |
 | **Horde cap** | The most zombies one 10×10-tile spot can hold. Vanilla towns peak at 10. |
 | **Flats above / Flats chance** | How readily large untagged buildings become blocks of flats. |
-| **Tallest building** | The storey limit. Real heights from OpenStreetMap are used where mapped. |
+| **Tallest building** | The storey limit, up to 30 - as tall as the tallest tower in the base game. Real heights from OpenStreetMap are used where mapped. Presets stay at 6 or lower, because every storey is a full floor of rooms: Midtown Manhattan at 30 storeys took 4 minutes to compile instead of 1. |
 | **Windows**, **Woodland**, **Parking**, **Room size** | What they say. |
 | **Straighten streets** | Turns the map so the town's main street grid runs along the game's tiles, so streets are straight instead of staircases. Set to 0 to keep north up. |
 | **Seed** | The same area and seed always give the same town. |

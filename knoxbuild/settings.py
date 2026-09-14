@@ -110,9 +110,11 @@ LIMITS = {
     "max_size": (8, 250),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),
-    # Every storey is a full floor of rooms and furniture; past six the roof
-    # reaches the game's ceiling and the file gets big for no visible gain.
-    "max_levels": (1, 6),
+    # Build 42 has 32 levels above ground (WorldEd's MAX_WORLD_LEVELS is 64,
+    # -32 to 31), and the vanilla map's tallest tower reaches level 29. Every
+    # storey is a full floor of rooms and furniture, so tall towns cost build
+    # and compile time - the presets stay low and this is the ceiling.
+    "max_levels": (1, 30),
     "window_density": (0.2, 3.0),
     "room_size": (16, 400),
     "neighbourhood_tiles": (20, 2000),
