@@ -68,9 +68,11 @@ and tiles, © OpenStreetMap contributors.
   KnoxMap's local server under the
   [tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
   (There is no satellite view: Esri's imagery terms do not cover this use.)
-- **Leaflet** (BSD-2-Clause) and **Leaflet.draw** (MIT), loaded from unpkg.
-  **Fonts**: Oswald, Inter and JetBrains Mono (SIL Open Font License), from
-  Google Fonts.
+- **Bundled in `static/vendor/`**, each with its licence text beside it:
+  **Leaflet** 1.9.4 (BSD-2-Clause, © Volodymyr Agafonkin), **Leaflet.draw**
+  1.0.4 (MIT, © Jon West, Jacob Toye and Leaflet), and the fonts **Oswald**,
+  **Inter** and **JetBrains Mono** (SIL Open Font License 1.1, latin and
+  latin-ext subsets).
 
 ## Not affiliated
 

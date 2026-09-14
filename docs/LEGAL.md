@@ -103,9 +103,10 @@ Source: [GPL-2.0](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
   permission.
 - **PZ Mapping Tools** is downloaded by Setup from its official release, not
   included here.
-- **Leaflet** (BSD-2-Clause) and **Leaflet.draw** (MIT) are loaded from unpkg;
-  **Oswald, Inter and JetBrains Mono** (SIL Open Font License) from Google
-  Fonts. Their licences allow this use.
+- **Leaflet** (BSD-2-Clause), **Leaflet.draw** (MIT) and the fonts **Oswald,
+  Inter and JetBrains Mono** (SIL Open Font License 1.1) are bundled in
+  `static/vendor/` with their licence texts, as all three licences require
+  when redistributing.
 - Python dependencies (Flask, Pillow, requests, pyproj, shapely, numpy,
   pywebview) are installed by pip from PyPI under their own permissive
   licences, and are not included in this repository.
@@ -119,7 +120,8 @@ contacts:
 
 - OpenStreetMap's tile server, Nominatim and Overpass servers, for the map,
   searches and map data (these see your IP address and what you look up);
-- unpkg.com and Google Fonts, for the map library and fonts the window loads;
 - GitHub, once during setup, to download PZ Mapping Tools and the compiler.
+
+The map library and fonts are bundled, so no CDN or font service is contacted.
 
 Your searches and chosen areas are not sent anywhere else.
