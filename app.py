@@ -38,6 +38,21 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 
+# Only this PC may talk to the app. The server listens on 127.0.0.1, but a web
+# page in any browser on the PC can still point a hostname of its own at that
+# address ("DNS rebinding") and call the API as if it were the app's own page.
+# Such a request carries the attacker's hostname, so anything not addressed to
+# localhost is refused before it reaches a route.
+LOCAL_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
+
+
+@app.before_request
+def _only_local():
+    host = (request.host or "").rsplit(":", 1)[0] if not (request.host or "").startswith("[")         else (request.host or "").split("]")[0] + "]"
+    if host not in LOCAL_HOSTS:
+        return ("KnoxMap only answers requests from this computer.", 403)
+
+
 # Safety rails. The area cap used to be 20 km² because one Overpass query that
 # size is about all the API will answer; osm.fetch_features_tiled lifts that by
 # splitting a big request into a grid of small ones, so the real limits now are
