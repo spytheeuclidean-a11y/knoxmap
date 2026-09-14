@@ -439,18 +439,6 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             building_feats.append(feat)
         buckets.setdefault(cat, []).append(feat)
 
-    # Kerbs first, as one pass over every road class. Doing it per class would
-    # let a side street's pavement cut across the high street it joins, because
-    # the high street is painted earlier in the order.
-    for cat in ("road_minor", "road_medium", "road_major"):
-        margin = SIDEWALK_M[cat]
-        for feat in buckets.get(cat, []):
-            if _is_polygon(feat):
-                continue
-            rings = _feature_coords_px(feat, proj)
-            width_px = (_way_width_m(feat, cat) + 2 * margin) / meters_per_tile
-            _draw_line(l_draw, rings, C.PALE_CONCRETE, int(width_px))
-
     # The sea first, under everything: a pier or a beach mapped over it
     # paints on top.
     for sea in sea_polygons(buckets.get("coastline", []), proj):
@@ -461,6 +449,19 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                     l_draw.polygon(list(hole.coords), fill=C.DARK_GRASS)
 
     for cat in LANDSCAPE_ORDER:
+        if cat == "railway":
+            # Pavements, as one pass over every road class and after the land
+            # use: painted first, a park or a lawn mapped up to the kerb erased
+            # the pavement and the tarmac met the grass. One pass so a side
+            # street's pavement cannot cut across the high street it joins.
+            for road in ("road_minor", "road_medium", "road_major"):
+                margin = SIDEWALK_M[road]
+                for feat in buckets.get(road, []):
+                    if _is_polygon(feat):
+                        continue
+                    width_px = (_way_width_m(feat, road) + 2 * margin) / meters_per_tile
+                    _draw_line(l_draw, _feature_coords_px(feat, proj),
+                               C.PALE_CONCRETE, int(width_px))
         fill = LANDSCAPE_FILL.get(cat)
         if fill is None:
             continue
@@ -619,6 +620,91 @@ def sea_polygons(feats: list[OSMFeature], proj: Projector) -> list:
             if f.intersection(frame).area > 1 and seaward(f)]
 
 
+def _real_kerbs(sides):
+    """Keep kerbs that run along a straight edge; drop the steps of a staircase.
+
+    Where a road crosses the tile grid at an angle its edge steps one tile
+    every row, and a corner kerb on every step drew the edge as a row of
+    teeth. A straight kerb stays when it is part of a run of at least three
+    along the same edge (a corner may end the run); a corner stays only where straight
+    kerbs lead into it on both arms. Staircase edges are left to the ground
+    blends, which soften them.
+    """
+    import numpy as np
+
+    W, N, S, E = 1, 2, 4, 8
+    NW, SW, NE, SE = W | N, S | W, N | E, S | E
+    padded = np.pad(sides, 2)
+    core = (slice(2, -2), slice(2, -2))
+    left, right = padded[2:-2, 1:-3], padded[2:-2, 3:-1]
+    left2, right2 = padded[2:-2, :-4], padded[2:-2, 4:]
+    up, down = padded[1:-3, 2:-2], padded[3:-1, 2:-2]
+    up2, down2 = padded[:-4, 2:-2], padded[4:, 2:-2]
+    del core
+
+    def run3(here, a, a2, b, b2, allowed):
+        # At least three in a row along the edge, this tile included.
+        ia, ia2, ib, ib2 = (np.isin(x, allowed) for x in (a, a2, b, b2))
+        return here & ((ia & ib) | (ia & ia2) | (ib & ib2))
+
+    keep = np.zeros(sides.shape, dtype=bool)
+    keep |= run3(sides == N, left, left2, right, right2, (N, NW, NE))
+    keep |= run3(sides == S, left, left2, right, right2, (S, SW, SE))
+    keep |= run3(sides == W, up, up2, down, down2, (W, NW, SW))
+    keep |= run3(sides == E, up, up2, down, down2, (E, NE, SE))
+    keep |= (sides == NW) & (right == N) & (down == W)
+    keep |= (sides == NE) & (left == N) & (down == E)
+    keep |= (sides == SW) & (right == S) & (up == W)
+    keep |= (sides == SE) & (left == S) & (up == E)
+    return np.where(keep, sides, 0).astype(sides.dtype)
+
+
+def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
+    """Fill one-tile notches along the edge of the road, and shave one-tile bumps.
+
+    A street a degree or two off the tile grid rasterises with its edge
+    stepping back and forth by a tile; kerbs follow every step, and the edge
+    came out as a row of teeth. A pavement tile with road on both sides of it
+    along a line becomes road, and a road tile with pavement on both sides
+    becomes pavement.
+    """
+    import numpy as np
+
+    w, h = landscape.size
+    strip = 1024
+    for y0 in range(0, h, strip):
+        y1 = min(h, y0 + strip)
+        top, bottom = max(0, y0 - 1), min(h, y1 + 1)
+        ground = np.asarray(landscape.crop((0, top, w, bottom))).copy()
+        for _ in range(2):
+            road = is_colour(ground, asphalt)
+            pave = is_colour(ground, (C.PALE_CONCRETE,))
+            notch = np.zeros_like(road)
+            notch[1:-1, :] |= road[:-2, :] & road[2:, :]
+            notch[:, 1:-1] |= road[:, :-2] & road[:, 2:]
+            notch &= pave
+            bump = np.zeros_like(road)
+            bump[1:-1, :] |= pave[:-2, :] & pave[2:, :]
+            bump[:, 1:-1] |= pave[:, :-2] & pave[:, 2:]
+            bump &= road
+            if not notch.any() and not bump.any():
+                break
+            # A filled notch takes the tarmac of the road beside it.
+            ys, xs = np.nonzero(notch)
+            for y, x in zip(ys, xs):
+                if y > 0 and road[y - 1, x]:
+                    ground[y, x] = ground[y - 1, x]
+                elif x > 0 and road[y, x - 1]:
+                    ground[y, x] = ground[y, x - 1]
+                elif y + 1 < road.shape[0] and road[y + 1, x]:
+                    ground[y, x] = ground[y + 1, x]
+                else:
+                    ground[y, x] = ground[y, x + 1]
+            ground[bump] = C.PALE_CONCRETE
+        rows = slice(y0 - top, y0 - top + (y1 - y0))
+        landscape.paste(Image.fromarray(ground[rows]), (0, y0))
+
+
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,
                         buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
     """Kerbs where pavement meets the road, and lines down two-lane roads.
@@ -643,6 +729,8 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
             mask |= same
         return mask
 
+    _smooth_road_edges(landscape, asphalt, is_colour)
+
     # Kerbs, a strip at a time, each strip read with a row of overlap so the
     # tiles either side of a seam still see their neighbours.
     kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
@@ -660,6 +748,7 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
         sides[:-1, :] |= road[1:, :] * np.uint8(4)     # road to the south
         sides[:, :-1] |= road[:, 1:] * np.uint8(8)     # road to the east
         sides[~pave] = 0
+        sides = _real_kerbs(sides)
         rows = slice(y0 - top, y0 - top + (y1 - y0))
         sides = sides[rows]
         existing = np.asarray(veg.crop((0, y0, w, y1)))

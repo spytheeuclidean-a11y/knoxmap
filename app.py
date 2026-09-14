@@ -246,7 +246,7 @@ def generate():
     osm_bbox = bbox
     if settings.align_streets:
         angle, strength = renderer.dominant_road_angle(features, *bbox)
-        if strength >= renderer.ALIGN_MIN_STRENGTH and abs(angle) >= 2.0:
+        if strength >= renderer.ALIGN_MIN_STRENGTH and abs(angle) >= 0.5:
             rotation = -angle
             turned = renderer.Projector.build(*bbox, meters_per_tile, rotation)
             osm_bbox = turned.latlon_bbox()
