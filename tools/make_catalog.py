@@ -352,7 +352,7 @@ def main(argv: list[str]) -> int:
     }
     # Anything big is flat-roofed in grey membrane, not wooden planks; barns
     # and churches are pitched.
-    FLAT_GREY = (None, "roofs_02_054", False)
+    FLAT_GREY = (None, "floors_exterior_street_01_016", False)  # roofs_02_054 is half transparent
     SPECIAL_ROOFS = {"barn": RED, "church": SLATE}
     SHOP_FRONTS = {
         "shop": ("fixtures_windows_metal_014", None),
