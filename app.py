@@ -232,14 +232,44 @@ def generate():
         except OSError:
             pass  # a map that cannot be cached still renders
 
-    osm_time = time.time() - t0
-
-    _set_progress(map_name, stage="render", features=len(features))
     # Remembered next to the map, so Generate buildings and any later rebuild
     # use the same ones without the page having to send them again - and so a
     # map from last week can be reproduced exactly.
     settings = Settings.from_dict(data.get("settings"))
     _save_settings(map_dir, settings)
+
+    # Turn the map to its street grid (see renderer.dominant_road_angle). A
+    # turned map's corners reach past the drawn selection, so the ground for
+    # them is fetched too - otherwise each corner would be an empty wedge.
+    rotation = 0.0
+    osm_cache_name = Path(cache).name
+    osm_bbox = bbox
+    if settings.align_streets:
+        angle, strength = renderer.dominant_road_angle(features, *bbox)
+        if strength >= renderer.ALIGN_MIN_STRENGTH and abs(angle) >= 2.0:
+            rotation = -angle
+            turned = renderer.Projector.build(*bbox, meters_per_tile, rotation)
+            osm_bbox = turned.latlon_bbox()
+            wide_cache = osm.cache_path(str(map_dir), f"{map_name}_turned")
+            wider = osm.load_cache(wide_cache, osm_bbox)
+            if wider is None:
+                _set_progress(map_name, stage="osm", done=0, total=1)
+                try:
+                    wider = osm.fetch_features_tiled(
+                        *osm_bbox, max_tile_km2=OVERPASS_TILE_KM2,
+                        progress=lambda i, total: _set_progress(
+                            map_name, stage="osm", done=i - 1, total=total))
+                    osm.save_cache(wide_cache, osm_bbox, wider)
+                except Exception:  # noqa: BLE001 - keep north up rather than fail
+                    wider = None
+            if wider is not None:
+                features = wider
+                osm_cache_name = Path(wide_cache).name
+            else:
+                rotation, osm_bbox = 0.0, bbox
+
+    osm_time = time.time() - t0
+    _set_progress(map_name, stage="render", features=len(features))
 
     result = renderer.render(
         features, south, west, north, east,
@@ -248,6 +278,9 @@ def generate():
         map_name=map_name,
         spawn_density=settings.spawn_density,
         tree_density=settings.tree_density,
+        rotation=rotation,
+        osm_cache=osm_cache_name,
+        osm_bbox=osm_bbox,
     )
 
     _write_readme(map_dir, map_name, result)
@@ -260,6 +293,7 @@ def generate():
         "cellsX": result.cells_x,
         "cellsY": result.cells_y,
         "featureCount": len(features),
+        "rotation": round(rotation, 1),
         "osmSeconds": round(osm_time, 2),
         "files": {
             "landscape": f"/output/{map_name}/{Path(result.landscape_path).name}",

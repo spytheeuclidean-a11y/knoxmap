@@ -31,7 +31,8 @@ lines are the real footprints from OpenStreetMap. Map data © OpenStreetMap cont
 ## What you get
 
 - **The real street plan.** Roads follow their true shape and width, with
-  kerbs, car parks and paved squares. Buildings sit on their real footprints,
+  pavements, kerbs, centre lines, car parks and paved squares, and the map is
+  turned so the main street grid runs straight along the game's tiles. Buildings sit on their real footprints,
   diagonal streets included.
 - **Buildings you can walk into.** Houses with a living room by the front
   door, kitchen beside it and bedrooms upstairs. Blocks of flats with a
@@ -94,6 +95,7 @@ Open **Fine tuning** under *Style* to adjust how the town comes out:
 | **Flats above / Flats chance** | How readily large untagged buildings become blocks of flats. |
 | **Tallest building** | The storey limit. Real heights from OpenStreetMap are used where mapped. |
 | **Windows**, **Woodland**, **Parking**, **Room size** | What they say. |
+| **Straighten streets** | Turns the map so the town's main street grid runs along the game's tiles, so streets are straight instead of staircases. Set to 0 to keep north up. |
 | **Seed** | The same area and seed always give the same town. |
 
 After **Build**, a **Zombie census** shows the estimated residents and

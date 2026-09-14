@@ -448,7 +448,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     bbox = info["bbox"]
     proj = Projector.build(bbox["south"], bbox["west"], bbox["north"],
-                           bbox["east"], info["meters_per_tile"])
+                           bbox["east"], info["meters_per_tile"],
+                           info.get("rotation") or 0.0)
     if (proj.width, proj.height) != (info["width_tiles"], info["height_tiles"]):
         print("projection does not match the rendered BMP - is this folder "
               "from a different Knoxify version?", file=sys.stderr)

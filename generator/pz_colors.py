@@ -15,11 +15,17 @@ DARK_GRASS = (90, 100, 35)
 MEDIUM_GRASS = (117, 117, 47)
 LIGHT_GRASS = (145, 135, 60)
 SAND = (210, 200, 160)
-DARK_ASPHALT = (100, 100, 100)
-MEDIUM_ASPHALT = (120, 120, 120)
-LIGHT_ASPHALT = (165, 160, 140)
-DARKEST_ASPHALT = (80, 80, 80)   # street4 — widest roads
-PALE_CONCRETE = (150, 150, 150)  # street3 — kerbs and pavement
+# The road colours are named for what their tiles look like in Build 42, not
+# for the labels in Rules.txt, which are older than the textures and wrong:
+# Rules.txt calls 120 "Medium Asphalt" but its tiles (blends_street_01_96-103)
+# are pale concrete slabs, and 150 "Smooth Asphalt" is the grey asphalt. With
+# the labels believed, every residential street was paved in slabs and every
+# pavement in tarmac.
+DARK_ASPHALT = (100, 100, 100)   # street2 — dark tarmac; no edge blends, so car parks
+MEDIUM_ASPHALT = (150, 150, 150) # street3 — smooth grey tarmac, blends at its edges
+LIGHT_ASPHALT = (165, 160, 140)  # lightgravel — beige gravel: yards, track beds
+DARKEST_ASPHALT = (80, 80, 80)   # street4 — speckled worn tarmac, blends
+PALE_CONCRETE = (120, 120, 120)  # street — pale concrete slabs: pavements, kerbs
 PAVING = (170, 160, 130)         # sandstone slabs — squares, plazas
 CLAY = (110, 80, 60)             # clay — running tracks
 DIRT = (120, 70, 20)
@@ -39,6 +45,22 @@ BUSHES = (250, 0, 160)                  # bushes, any ground — hedges
 DENSE_BUSHES_GRASS = (200, 0, 200)      # must sit on DARK_GRASS — wetland
 FLOWERS = (200, 100, 200)               # flowers, any ground — cemeteries
 VEG_NOTHING = (0, 0, 0)
+
+# Road details on the vegetation bitmap, placed by the rules that
+# worlded/patch_rules_roads.py adds: a kerb on each edge of a pavement tile
+# that meets the road, and centre lines along the edge between two lanes.
+KERB_W = (12, 34, 200)
+KERB_N = (12, 34, 201)
+KERB_S = (12, 34, 202)
+KERB_E = (12, 34, 203)
+KERB_NW = (12, 34, 204)
+KERB_SW = (12, 34, 205)
+KERB_NE = (12, 34, 206)
+KERB_SE = (12, 34, 207)
+LINE_YELLOW_N = (12, 35, 200)
+LINE_YELLOW_W = (12, 35, 201)
+LINE_WHITE_N = (12, 35, 202)
+LINE_WHITE_W = (12, 35, 203)
 
 # Zombie spawn map: grayscale, 10x smaller than landscape/vegetation.
 # (0,0,0) = no spawns, (255,255,255) = max spawn density.

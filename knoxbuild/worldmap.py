@@ -104,9 +104,11 @@ def write(out_dir: str, map_name: str, proj, info: dict,
         labels.append((name, "text-building", BUILDING_SCALE, spot.x, spot.y))
 
     bbox = info.get("bbox") or {}
-    feats = osm.load_cache(osm.cache_path(out_dir, map_name),
-                           (bbox.get("south"), bbox.get("west"),
-                            bbox.get("north"), bbox.get("east"))) or []
+    cache = os.path.join(out_dir, info["osm_cache"]) if info.get("osm_cache") \
+        else osm.cache_path(out_dir, map_name)
+    wanted = tuple(info["osm_bbox"]) if info.get("osm_bbox") else \
+        (bbox.get("south"), bbox.get("west"), bbox.get("north"), bbox.get("east"))
+    feats = osm.load_cache(cache, wanted) or []
     streets: dict[str, list[tuple[LineString, float]]] = {}
     for feat in feats:
         if feat.kind == "node":

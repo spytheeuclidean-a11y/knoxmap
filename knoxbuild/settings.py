@@ -31,6 +31,11 @@ class Settings:
     # VALUE_PER_PERSON in population.py for how these were checked.
     m2_per_person: float = 45.0
 
+    # Turn the map so the town's main street grid runs along the tile grid
+    # (1) or keep north straight up (0). Diagonal streets become staircases of
+    # tiles; turning the map straightens every street on the grid.
+    align_streets: int = 1
+
     # --- terrain ---------------------------------------------------------
     # Multiplies how much of a forest polygon actually becomes trees.
     tree_density: float = 1.0
@@ -101,6 +106,7 @@ LIMITS = {
     # MIN_ROOM in layout.py is 3, and a building has to hold at least one room
     # plus its walls. MAX_BUILDING_DIMENSION in the reader is 300.
     "min_size": (3, 40),
+    "align_streets": (0, 1),
     "max_size": (8, 250),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),

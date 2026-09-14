@@ -213,11 +213,12 @@ def configure_tools(tools: Path, game: Path | None) -> None:
     with contextlib.redirect_stdout(io.StringIO()):
         prune_tilesets.main(["prune_tilesets", str(tilesets), str(two_x)])
 
-    patch = BASE_DIR / "worlded" / "patch_rules_b42_trees.py"
-    rules = subprocess.run([sys.executable, str(patch), str(tools)],
-                           capture_output=True, text=True, check=False)
-    say("      Build 42 trees and flowers " +
-        ("set up" if rules.returncode == 0 else f"not set up: {rules.stderr.strip()[-200:]}"))
+    for script, what in (("patch_rules_b42_trees.py", "Build 42 trees and flowers"),
+                         ("patch_rules_roads.py", "Kerbs and road markings")):
+        rules = subprocess.run([sys.executable, str(BASE_DIR / "worlded" / script), str(tools)],
+                               capture_output=True, text=True, check=False)
+        say(f"      {what} " +
+            ("set up" if rules.returncode == 0 else f"not set up: {rules.stderr.strip()[-200:]}"))
 
 
 # ---- 5. where the game keeps mods ---------------------------------------------------

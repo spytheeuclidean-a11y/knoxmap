@@ -45,10 +45,13 @@ class Projector:
     min_x_m: float
     min_y_m: float
     _transformer: pyproj.Transformer
+    # Degrees the map is turned, counter-clockwise, so its main street grid
+    # runs along the tile grid. See dominant_road_angle.
+    rotation: float = 0.0
 
     @classmethod
     def build(cls, south: float, west: float, north: float, east: float,
-              meters_per_tile: float) -> "Projector":
+              meters_per_tile: float, rotation: float = 0.0) -> "Projector":
         lon_c = (west + east) / 2
         lat_c = (south + north) / 2
         utm_zone = int((lon_c + 180) / 6) + 1
@@ -69,17 +72,87 @@ class Projector:
         return cls(south, west, north, east, meters_per_tile,
                    tiles_w, tiles_h,
                    cx - half_w_m, cy - half_h_m,
-                   t)
+                   t, rotation)
 
     def to_px(self, lat: float, lon: float) -> tuple[float, float]:
         x_m, y_m = self._transformer.transform(lon, lat)
+        if self.rotation:
+            cx = self.min_x_m + self.width * self.meters_per_tile / 2
+            cy = self.min_y_m + self.height * self.meters_per_tile / 2
+            a = math.radians(self.rotation)
+            dx, dy = x_m - cx, y_m - cy
+            x_m = cx + dx * math.cos(a) - dy * math.sin(a)
+            y_m = cy + dx * math.sin(a) + dy * math.cos(a)
         px = (x_m - self.min_x_m) / self.meters_per_tile
         # Image Y grows downward; UTM Y grows northward → flip.
         py = self.height - (y_m - self.min_y_m) / self.meters_per_tile
         return px, py
 
+    def latlon_bbox(self) -> tuple[float, float, float, float]:
+        """(south, west, north, east) covering the whole map, turned or not."""
+        back = pyproj.Transformer.from_crs(self._transformer.target_crs,
+                                           "EPSG:4326", always_xy=True)
+        w_m = self.width * self.meters_per_tile
+        h_m = self.height * self.meters_per_tile
+        cx, cy = self.min_x_m + w_m / 2, self.min_y_m + h_m / 2
+        a = math.radians(-self.rotation)
+        lons, lats = [], []
+        for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+            dx, dy = sx * w_m / 2, sy * h_m / 2
+            lon, lat = back.transform(cx + dx * math.cos(a) - dy * math.sin(a),
+                                      cy + dx * math.sin(a) + dy * math.cos(a))
+            lons.append(lon)
+            lats.append(lat)
+        return min(lats), min(lons), max(lats), max(lons)
+
     def cell_grid(self) -> tuple[int, int]:
         return self.width // C.CELL_SIZE, self.height // C.CELL_SIZE
+
+
+# Roads that count towards a town's street grid. Paths wander, and a motorway
+# slicing through at its own angle should not turn the town around it.
+GRID_ROADS = {"road_minor", "road_medium", "road_service"}
+# How strongly the streets must agree on a direction before the map is turned
+# to it: 1 is a perfect grid, 0 no preference. Measured on test maps, gridded
+# towns sit well above this and old organic centres below it.
+ALIGN_MIN_STRENGTH = 0.25
+
+
+def dominant_road_angle(features: Iterable[OSMFeature], south: float, west: float,
+                        north: float, east: float) -> tuple[float, float]:
+    """The main direction of a town's streets, and how strongly they share it.
+
+    Tiles are square, so a street at 20 degrees becomes a staircase with a step
+    every few tiles - kerbs zigzagging along it and blends failing at every
+    corner. Most towns have a grid, even a loose one; turning the whole map so
+    that grid runs along the tiles straightens every street on it. Buildings,
+    fences and the paper map are projected the same way, so nothing is
+    misaligned - only north is no longer straight up.
+
+    Returns (angle, strength): the angle in degrees in (-45, 45], counter-
+    clockwise from east, and the strength in [0, 1]. Directions are averaged
+    with a 90-degree period, so a north-south street and an east-west one
+    agree; each segment weighs by its length.
+    """
+    proj = Projector.build(south, west, north, east, 1.0)
+    sin_sum = cos_sum = total = 0.0
+    for feat in features:
+        if feat.kind != "way" or classify(feat.tags) not in GRID_ROADS:
+            continue
+        pts = [proj.to_px(la, lo) for la, lo in feat.geometry]
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            dx, dy = bx - ax, ay - by      # tile y grows south; flip to north-up
+            length = math.hypot(dx, dy)
+            if length < 1:
+                continue
+            a = 4 * math.atan2(dy, dx)
+            sin_sum += length * math.sin(a)
+            cos_sum += length * math.cos(a)
+            total += length
+    if total == 0:
+        return 0.0, 0.0
+    angle = math.degrees(math.atan2(sin_sum, cos_sum) / 4)
+    return angle, math.hypot(sin_sum, cos_sum) / total
 
 
 def _ceil_to(value: float, step: int) -> int:
@@ -175,9 +248,12 @@ LANDSCAPE_FILL = {
     # street/street2/street4 in Rules.txt. road_minor used to paint
     # lightgravel, which put a gravel track through the middle of every
     # residential street in town.
-    "road_service": C.LIGHT_ASPHALT,
+    # Service lanes were gravel, which next to slab pavements read as more
+    # pavement. Main roads get the worn speckled tarmac so they stand apart
+    # from the smooth tarmac of ordinary streets; both blend at the edges.
+    "road_service": C.DARKEST_ASPHALT,
     "road_minor": C.MEDIUM_ASPHALT,
-    "road_medium": C.DARK_ASPHALT,
+    "road_medium": C.MEDIUM_ASPHALT,
     "road_major": C.DARKEST_ASPHALT,
     "parking": C.DARK_ASPHALT,
     "plaza": C.PAVING,
@@ -323,8 +399,11 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            north: float, east: float, meters_per_tile: float,
            output_dir: str, map_name: str,
            spawn_density: int = 10,
-           tree_density: float = 1.0) -> RenderResult:
-    proj = Projector.build(south, west, north, east, meters_per_tile)
+           tree_density: float = 1.0,
+           rotation: float = 0.0,
+           osm_cache: str | None = None,
+           osm_bbox: tuple[float, float, float, float] | None = None) -> RenderResult:
+    proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
     landscape = Image.new("RGB", (proj.width, proj.height), C.DARK_GRASS)
     vegetation = Image.new("RGB", (proj.width, proj.height), C.VEG_NOTHING)
     l_draw = ImageDraw.Draw(landscape)
@@ -405,6 +484,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
                       density=tree_density)
     _clear_building_vegetation(vegetation, building_feats, proj)
+    _paint_road_details(vegetation, landscape, buckets, proj)
 
     # --- zombie spawn map (10x smaller, grayscale) ---
     spawn_w = proj.width // C.SPAWN_MAP_SCALE
@@ -443,6 +523,9 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         json.dump({
             "map_name": map_name,
             "bbox": {"south": south, "west": west, "north": north, "east": east},
+            "rotation": rotation,
+            "osm_cache": osm_cache,
+            "osm_bbox": list(osm_bbox) if osm_bbox else None,
             "meters_per_tile": meters_per_tile,
             "width_tiles": proj.width,
             "height_tiles": proj.height,
@@ -467,13 +550,11 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     )
 
 
-# Ground counts as built-up where buildings cover at least this share of the
-# ~120 m around it - the same line knoxbuild draws between a city and a suburb.
+# A city block is paved when buildings cover at least this share of it - the
+# same line knoxbuild draws between a city and a suburb.
 # Measured: central Paris, Kadikoy and a Tokyo neighbourhood sit at 0.4-0.5, a
 # US suburb and a French village around 0.16.
 DENSE_COVERAGE = 0.28
-COVERAGE_CELL_M = 8    # metres per sample when measuring coverage
-COVERAGE_WINDOW = 15   # samples across the window, so 120 m
 # Mapped green space keeps its grass however built-up the area around it is.
 GREEN_CATEGORIES = {"park", "grass", "sports", "cemetery", "orchard", "farmland",
                     "wetland", "hospital_grounds"}
@@ -538,53 +619,175 @@ def sea_polygons(feats: list[OSMFeature], proj: Projector) -> list:
             if f.intersection(frame).area > 1 and seaward(f)]
 
 
-def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
-                       buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
-    """Pave the unmapped ground of built-up quarters.
+def _paint_road_details(veg: Image.Image, landscape: Image.Image,
+                        buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+    """Kerbs where pavement meets the road, and lines down two-lane roads.
 
-    Land OSM says nothing about is painted as wild grass, which is right in the
-    countryside and wrong in an old town, where it is courtyards, alleys and
-    the gaps between blocks. Central Paris came out 77% meadow. Where buildings
-    are packed that close, unmapped ground becomes concrete instead. Anything
-    mapped - a park, a garden, a residential area with its yards - keeps its
-    own colour. A residential area's lawns are the exception: in a suburb they
-    are gardens, but between blocks of flats packed this tight they are
-    concrete yards, so they are paved too.
+    Asphalt ran straight into the pavement with nothing between them, and a
+    road wider than a car had nothing painted on it. The vanilla map has both
+    on every street - laid by hand - and without them a street reads as a grey
+    patch rather than a road.
     """
     import numpy as np
 
     w, h = landscape.size
-    built = Image.new("L", (w, h), 0)
-    bd = ImageDraw.Draw(built)
+    asphalt = (C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT,
+               C.DARK_POTHOLE, C.LIGHT_POTHOLE)
+
+    def is_colour(ground, colours):
+        mask = np.zeros(ground.shape[:2], dtype=bool)
+        for colour in colours:
+            same = ground[:, :, 0] == colour[0]
+            same &= ground[:, :, 1] == colour[1]
+            same &= ground[:, :, 2] == colour[2]
+            mask |= same
+        return mask
+
+    # Kerbs, a strip at a time, each strip read with a row of overlap so the
+    # tiles either side of a seam still see their neighbours.
+    kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
+                3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
+    strip = 1024
+    for y0 in range(0, h, strip):
+        y1 = min(h, y0 + strip)
+        top, bottom = max(0, y0 - 1), min(h, y1 + 1)
+        ground = np.asarray(landscape.crop((0, top, w, bottom)))
+        road = is_colour(ground, asphalt)
+        pave = is_colour(ground, (C.PALE_CONCRETE,))
+        sides = np.zeros(road.shape, dtype=np.uint8)
+        sides[:, 1:] |= road[:, :-1] * np.uint8(1)     # road to the west
+        sides[1:, :] |= road[:-1, :] * np.uint8(2)     # road to the north
+        sides[:-1, :] |= road[1:, :] * np.uint8(4)     # road to the south
+        sides[:, :-1] |= road[:, 1:] * np.uint8(8)     # road to the east
+        sides[~pave] = 0
+        rows = slice(y0 - top, y0 - top + (y1 - y0))
+        sides = sides[rows]
+        existing = np.asarray(veg.crop((0, y0, w, y1)))
+        free = (existing.reshape(-1, 3).max(axis=1) == 0).reshape(sides.shape)
+        out = existing.copy()
+        for bits, colour in kerb_for.items():
+            out[(sides == bits) & free] = colour
+        veg.paste(Image.fromarray(out), (0, y0))
+
+    # Centre lines, on roads wide enough for two lanes and straight enough to
+    # run along one axis of the tile grid; a line stepping round a diagonal
+    # reads as a zigzag, so those are left plain.
+    mpt = proj.meters_per_tile
+    marks = []
+    for cat, style in (("road_major", "yellow"), ("road_medium", "white")):
+        for feat in buckets.get(cat, []):
+            if _is_polygon(feat):
+                continue
+            width = _way_width_m(feat, cat) / mpt
+            if width < 6 or feat.tags.get("oneway") in ("yes", "1", "-1"):
+                continue
+            for ring in _feature_coords_px(feat, proj):
+                for (ax, ay), (bx, by) in zip(ring, ring[1:]):
+                    dx, dy = bx - ax, by - ay
+                    if abs(dy) <= 0.2 * abs(dx):
+                        marks.append((style, "N", ax, ay, bx, by, width))
+                    elif abs(dx) <= 0.2 * abs(dy):
+                        marks.append((style, "W", ax, ay, bx, by, width))
+    if not marks:
+        return
+    colour_for = {("yellow", "N"): C.LINE_YELLOW_N, ("yellow", "W"): C.LINE_YELLOW_W,
+                  ("white", "N"): C.LINE_WHITE_N, ("white", "W"): C.LINE_WHITE_W}
+    ground_px = landscape.load()
+    veg_px = veg.load()
+
+    def road_at(x, y):
+        return 0 <= x < w and 0 <= y < h and ground_px[x, y] in asphalt
+
+    for style, edge, ax, ay, bx, by, width in marks:
+        steps = int(max(abs(bx - ax), abs(by - ay)))
+        for i in range(steps + 1):
+            t = i / steps if steps else 0
+            # The line sits on the edge between two tiles, so the road's
+            # middle is rounded to the nearest tile boundary.
+            x = int(round(ax + (bx - ax) * t))
+            y = int(round(ay + (by - ay) * t))
+            along = x if edge == "N" else y
+            if style == "white" and (along // 3) % 2:
+                continue
+            if not (road_at(x, y) and (road_at(x, y - 1) if edge == "N" else road_at(x - 1, y))):
+                continue
+            # At a junction the tarmac runs on across the line; a line through
+            # the middle of a crossroads is wrong, so stop short of it.
+            run = 0
+            for k in range(1, int(width) + 4):
+                if edge == "N":
+                    run += road_at(x, y - k) + road_at(x, y + k - 1)
+                else:
+                    run += road_at(x - k, y) + road_at(x + k - 1, y)
+            if run > width + 3:
+                continue
+            if veg_px[x, y] == C.VEG_NOTHING:
+                veg_px[x, y] = colour_for[(style, edge)]
+
+
+def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
+                       buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+    """Pave the unmapped ground of built-up city blocks.
+
+    Land OSM says nothing about is painted as wild grass, which is right in the
+    countryside and wrong in an old town, where it is courtyards, alleys and
+    the gaps between blocks. Central Paris came out 77% meadow.
+
+    The decision is made per city block - the ground the streets enclose - on
+    how much of that block is under buildings. It used to be made per patch of
+    ground on the density nearby, which near the threshold flickered between
+    paved and grass across a single block and left it blotched like camouflage.
+    A block is paved whole or not at all, as real ones are. Mapped parks,
+    gardens and pitches keep their grass inside a paved block; a residential
+    area's lawns do not, since between buildings packed this tight they are
+    yards.
+    """
+    import numpy as np
+    from shapely import STRtree
+    from shapely.geometry import LineString, Polygon, box
+    from shapely.ops import polygonize, unary_union
+
+    w, h = landscape.size
+    frame = box(0, 0, w, h)
+    streets = []
+    for cat in ("road_major", "road_medium", "road_minor", "road_service"):
+        for feat in buckets.get(cat, []):
+            if feat.kind == "way" and not _is_polygon(feat):
+                pts = [proj.to_px(la, lo) for la, lo in feat.geometry]
+                if len(pts) >= 2:
+                    streets.append(LineString(pts))
+    if not streets:
+        return
+    blocks = [b.intersection(frame) for b in
+              polygonize(unary_union(streets + [frame.exterior]))]
+    blocks = [b for b in blocks if not b.is_empty and b.area > 50]
+
+    footprints = []
     for feat in building_feats:
         for ring in _feature_coords_px(feat, proj):
             if len(ring) >= 3:
-                bd.polygon(ring, fill=255)
-    cell = max(1, round(COVERAGE_CELL_M / proj.meters_per_tile))
-    small = built.resize((max(1, w // cell), max(1, h // cell)), Image.BOX)
-    cover = np.asarray(small, dtype=float) / 255.0
-    # Mean over a square window, from a summed-area table; divided by how much
-    # of the window is on the map so the edges are not read as empty.
-    r = COVERAGE_WINDOW // 2
-    padded = np.pad(cover, ((r + 1, r), (r + 1, r)))
-    ones = np.pad(np.ones_like(cover), ((r + 1, r), (r + 1, r)))
-    sat = padded.cumsum(0).cumsum(1)
-    cnt = ones.cumsum(0).cumsum(1)
-    k = COVERAGE_WINDOW
-
-    def window(t):
-        return t[k:, k:] - t[:-k, k:] - t[k:, :-k] + t[:-k, :-k]
-
-    density = window(sat) / np.maximum(window(cnt), 1)
-    if density.max() < DENSE_COVERAGE:
+                poly = Polygon(ring)
+                footprints.append(poly if poly.is_valid else poly.buffer(0))
+    if not footprints:
         return
-    # Interpolated back up to tiles, then thresholded with a little noise, so
-    # the edge of the paved quarter follows the buildings in a ragged line
-    # rather than a staircase of 8-tile blocks. A median pass then drops the
-    # lone specks the noise leaves on either side of that line.
-    smooth = Image.fromarray((np.clip(density, 0, 1) * 255).astype(np.uint8))
-    smooth = smooth.resize((w, h), Image.BILINEAR)
-    threshold = int(DENSE_COVERAGE * 255)
+    tree = STRtree(footprints)
+
+    paved = Image.new("L", (w, h), 0)
+    pd = ImageDraw.Draw(paved)
+    any_paved = False
+    for block in blocks:
+        covered = sum(footprints[i].intersection(block).area
+                      for i in tree.query(block))
+        if covered / block.area < DENSE_COVERAGE:
+            continue
+        for part in getattr(block, "geoms", None) or [block]:
+            if hasattr(part, "exterior"):
+                pd.polygon(list(part.exterior.coords), fill=255)
+                for hole in part.interiors:
+                    pd.polygon(list(hole.coords), fill=0)
+                any_paved = True
+    if not any_paved:
+        return
 
     keep = Image.new("L", (w, h), 0)
     kd = ImageDraw.Draw(keep)
@@ -595,20 +798,11 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
                     if len(ring) >= 3:
                         kd.polygon(ring, fill=255)
 
-    # Strip by strip: a town-sized map is tens of millions of tiles, and
-    # whole-map arrays for what is one yes/no per tile ran to most of a
-    # gigabyte. Strips overlap by the median filter's reach so its seams
-    # never show.
-    strip, reach = 1024, 2
-    rng = np.random.default_rng(w * 7919 + h)
+    # Strip by strip, so the colour tests never hold the whole map at once.
+    strip = 1024
     for y0 in range(0, h, strip):
         y1 = min(h, y0 + strip)
-        top, bottom = max(0, y0 - reach), min(h, y1 + reach)
-        level = np.asarray(smooth.crop((0, top, w, bottom)), dtype=np.int16)
-        level += rng.integers(-10, 11, level.shape, dtype=np.int16)
-        dense = Image.fromarray((level >= threshold).astype(np.uint8) * 255)
-        dense = np.asarray(dense.filter(ImageFilter.MedianFilter(5)))
-        mask = dense[y0 - top:y0 - top + (y1 - y0)] > 0
+        mask = np.asarray(paved.crop((0, y0, w, y1))) > 0
         mask &= np.asarray(keep.crop((0, y0, w, y1))) == 0
         if not mask.any():
             continue

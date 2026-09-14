@@ -172,6 +172,7 @@ const SETTING_LABELS = {
   tree_density:        ['Woodland', 'Scales tree cover. Trees are cover to hide in.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
   min_size:            ['Smallest building', 'Buildings narrower than this many tiles are left out.'],
+  align_streets:       ['Straighten streets', '1 turns the map so the main street grid runs along the tiles - no staircase roads. 0 keeps north up.'],
   max_size:            ['Largest building', 'Footprints above this are skipped.'],
   apartment_footprint: ['Flats above', 'An untagged footprint this big reads as flats.'],
   apartment_chance:    ['Flats chance', 'How often such a footprint really becomes flats.'],
