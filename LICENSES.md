@@ -24,7 +24,8 @@ two sections, including:
 
 `knoxbuild/` · `tools/` · `knoxmap.py` · `knoxmap_setup.py` · `knoxpaths.py` ·
 `KnoxMap.bat` · `Setup.bat` · `generator/places.py` · `static/js/fx.js` ·
-`static/js/quirks.js` · `KNOXBUILD.md` · `LICENSES.md` · `docs/`
+`static/js/quirks.js` · `KNOXBUILD.md` · `LICENSES.md` · `CHANGELOG.md` ·
+`CONTRIBUTING.md` · `.github/` · `docs/`
 
 ## The map compiler patch — GPL-2.0-or-later
 

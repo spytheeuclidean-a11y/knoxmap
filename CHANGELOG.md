@@ -1,0 +1,51 @@
+# Changelog
+
+## 1.0 (first release)
+
+KnoxMap grows [Knoxify](https://github.com/arytek/knoxify)'s terrain generator
+into a full pipeline, from a real place to an installed Project Zomboid Build 42
+map.
+
+**Choosing an area**
+- Rectangle, polygon, circle and freehand lasso tools, and a search result's
+  real boundary (a park, a district, a town). Only the shape is built; main
+  roads and rivers run on past it.
+- `?q=<place>&outline=1` opens the app straight to a place.
+
+**Terrain**
+- Streets at real widths, with pavements, kerbs and centre lines; the map turns
+  so the main street grid runs along the tiles.
+- Seas from OpenStreetMap coastlines, harbours and lakes from multipolygons,
+  rivers with their bridges, canals, piers and railways.
+- Parks, schoolyards, industrial yards, cemeteries, orchards, playgrounds,
+  pools, fences, walls and hedges; dense city blocks paved.
+
+**Buildings**
+- Every building on its real footprint, turned to the grid, with rooms laid out
+  for what it is: houses, blocks of flats with corridors and separate flats,
+  shops, schools, churches, clinics, offices, factories and sheds.
+- Real heights up to 30 storeys, borrowed from tagged neighbours where missing.
+- Lifts in buildings of five storeys or more, working with the Elevators mod.
+- A light switch in every room, clear staircases, roofs that follow the
+  footprint, loot tables that match the room.
+
+**In the game**
+- The paper map (M) with real buildings, water, streets, street names and
+  landmarks.
+- Zombies spawned from an estimate of who lived and worked in each building,
+  with a census and a one-second recount.
+- Spawn points inside homes across the town.
+
+**The app**
+- One window: search, generate, build, compile, install. Setup.bat downloads
+  the tools, extracts tiles from your own game and checks everything.
+- Presets and fine tuning for zombies, living space, heights, windows,
+  woodland, parking and more.
+- A patched, headless map compiler so compiling needs no clicks in WorldEd.
+
+**Behind the scenes**
+- Follows OpenStreetMap's tile, Nominatim and Overpass usage policies; credits
+  OpenStreetMap in every map; ships the compiler with its GPL source. See
+  [docs/LEGAL.md](docs/LEGAL.md).
+- `tools/selftest.py` runs the whole pipeline offline, `tools/audit_layouts.py`
+  stress-tests floor plans, and GitHub Actions runs both on every push.
