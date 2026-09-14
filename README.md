@@ -169,6 +169,22 @@ second without rebuilding, then compile again so the game sees the change.
   area of the world may conflict.
 - **Multiplayer and dedicated servers:** not tested.
 
+## Known limitations
+
+KnoxMap is new, and most of it has been checked by tools rather than by
+playing. Help is very welcome here, especially screenshots from the game.
+
+- **Not yet confirmed in game:** that kerb tiles face the right way, that lifts
+  carry players with the Elevators mod, how labels in non-Latin scripts appear
+  on the in-game map, and how 30-storey towers play.
+- **Winding old towns** have no single street grid, so their streets still step
+  across the tiles where they turn.
+- **Very large buildings** (over 200 tiles across by default) are skipped.
+- **Interiors are generic:** rooms suit what a building is, but they are not the
+  real layout of any real building.
+- **Big maps take time.** Downloading, and above all compiling, a large or tall
+  city can take many minutes; the map compiler uses one process at a time.
+
 ## Troubleshooting
 
 | Problem | Fix |
