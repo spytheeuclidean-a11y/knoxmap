@@ -1,0 +1,40 @@
+name: The map looks wrong
+description: Everything ran, but a map comes out wrong - buildings, roads, water, zombies, lifts or the in-game map.
+labels: [map quality]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Screenshots help more than anything. If the real-world data is what's wrong (a missing building, a street in the wrong place), fix it on OpenStreetMap instead: https://www.openstreetmap.org/fixthemap
+  - type: input
+    id: area
+    attributes:
+      label: The area
+      description: The place you searched for, or the South/West/North/East numbers from the Area panel.
+    validations:
+      required: true
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What looks wrong?
+      multiple: true
+      options: [Roads or pavements, Buildings from outside, Rooms or furniture inside, Stairs or lifts, Water or bridges, Trees or ground, Zombie numbers, The in-game map (M), Something else]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: Describe it
+      description: What you see, and what the real place is like.
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Drag images in. An in-game screenshot next to a real photo or map of the place is ideal.
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: Kind of place and anything changed in Fine tuning, or attach output\<your map>\settings.json.

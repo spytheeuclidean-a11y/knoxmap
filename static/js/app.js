@@ -965,3 +965,23 @@ function pollCompile() {
     } catch (_) { /* keep watching */ }
   }, 2000);
 }
+
+// ---- links straight to a place ----------------------------------------------------
+// ?q=<place> searches on load and selects the first match; &outline=1 takes its
+// real boundary instead of a box. Handy for sharing "make this" with someone.
+(function openFromLink() {
+  const params = new URLSearchParams(location.search);
+  const q = params.get('q');
+  if (!q) return;
+  searchInput.value = q;
+  const wantOutline = params.get('outline') === '1';
+  const watch = new MutationObserver(() => {
+    const outline = wantOutline && searchResults.querySelector('button[data-outline]');
+    const first = searchResults.querySelector('li[data-i]');
+    if (!outline && !first) return;
+    watch.disconnect();
+    (outline || first).click();
+  });
+  watch.observe(searchResults, { childList: true });
+  runSearch(q);
+})();

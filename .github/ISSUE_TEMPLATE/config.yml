@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: A street, building or place is wrong in the real data
+    url: https://www.openstreetmap.org/fixthemap
+    about: KnoxMap draws what OpenStreetMap says. If the map data itself is wrong or missing, fixing it on OpenStreetMap fixes every map made from it.
+  - name: Problems with the Elevators mod itself
+    url: https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632
+    about: KnoxMap only lays out lifts; the mod that runs them is maintained separately.

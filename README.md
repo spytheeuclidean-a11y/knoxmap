@@ -1,167 +1,269 @@
 <p align="center">
-  <img src="branding/logo.svg" width="140" alt="KnoxMap logo"/>
+  <img src="branding/logo.svg" width="130" alt="KnoxMap logo"/>
 </p>
 
 <h1 align="center">KnoxMap</h1>
 
-<p align="center"><em>Draw a rectangle anywhere on Earth. Play it in Project Zomboid.</em></p>
+<p align="center"><strong>Draw any place on Earth. Play it in Project Zomboid.</strong></p>
 
 <p align="center">
-  An unofficial fan tool for Project Zomboid Build 42 · Windows · built on
-  <a href="https://github.com/arytek/knoxify">Knoxify</a> by arytek
+  <img alt="Project Zomboid Build 42" src="https://img.shields.io/badge/Project%20Zomboid-Build%2042-8b0000"/>
+  <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d6"/>
+  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab"/>
+  <img alt="Unofficial fan project" src="https://img.shields.io/badge/unofficial-fan%20project-555"/>
 </p>
 
----
+> [!IMPORTANT]
+> KnoxMap is an **unofficial fan project**. It is not made, endorsed or supported
+> by The Indie Stone. It contains no game files: it builds maps from your own copy
+> of Project Zomboid. See [Disclaimers](#disclaimers).
 
-KnoxMap turns a real place into a playable Project Zomboid map, from one
-window:
+KnoxMap turns a real place into a playable Project Zomboid map, from one window:
 
-**draw an area → terrain → furnished buildings → compile → install into the game**
+**choose an area → terrain → furnished buildings → compile → install into the game**
 
-It reads the real roads, buildings, parks, fences and land use from
-OpenStreetMap, puts every building on its real footprint with rooms, stairs,
-furniture and light switches, spawns zombies where people actually lived, and
-installs the result as a mod.
+It reads the real streets, buildings, water, parks, railways and land use from
+[OpenStreetMap](https://www.openstreetmap.org), fits every building onto its real
+footprint with rooms, stairs, furniture and lights, spawns zombies where people
+actually lived, and installs the result as a mod.
 
-![Generated town: game buildings in beige, real OpenStreetMap outlines in red](docs/images/town_overlay.png)
-
-*Central Bergama as generated. Beige is the game's buildings, the thin red
-lines are the real footprints from OpenStreetMap. Map data © OpenStreetMap contributors.*
+<p align="center">
+  <img src="docs/images/app.jpg" alt="The KnoxMap window with Central Park's real outline selected" width="100%"/>
+  <br/><sub>Choosing an area: Central Park's real boundary, straight from a search. Map tiles © OpenStreetMap contributors.</sub>
+</p>
 
 ## What you get
 
-- **The real street plan.** Roads follow their true shape and width, with
-  pavements, kerbs, centre lines, car parks and paved squares, and the map is
-  turned so the main street grid runs straight along the game's tiles. Buildings sit on their real footprints,
-  diagonal streets included.
-- **Buildings you can walk into.** Houses with a living room by the front
-  door, kitchen beside it and bedrooms upstairs. Blocks of flats with a
-  corridor, separate flats and one front door each. Schools, shops, churches,
-  clinics and factories laid out as what they are. Every room has a light
-  switch, every staircase is clear, and roofs follow the footprint.
-- **The ground between them.** Gardens, schoolyards, industrial yards,
-  playgrounds, pools, cemeteries, orchards, fences, walls and hedges.
-- **The real map in your pocket.** The in-game map (M) shows the real
-  streets, buildings, rivers and woods, with real street names and
-  landmarks labelled.
-- **Zombies where the people were.** The spawn map is drawn from an estimate
-  of who lived and worked in each building, and is fully adjustable.
-- **Landmarks included.** Big buildings like factories and civic centres are
-  kept, and buildings OpenStreetMap does not describe are typed from the land
-  they stand on.
+- **The real street plan.** Roads at their real widths, with pavements, kerbs
+  and centre lines. The map is turned so the town's main street grid runs along
+  the game's tiles, so streets are straight lines, not staircases.
+- **Water, bridges and railways.** Seas and harbours, rivers with their bridges
+  intact, canals, piers and railway lines.
+- **Buildings you can walk into**, every one on its real footprint. Houses with
+  bedrooms upstairs; blocks of flats with a corridor and separate flats; shops,
+  schools, churches, clinics, offices and factories laid out as what they are.
+  Every room has a light switch, every staircase is clear, and roofs follow the
+  footprint.
+- **Real heights, up to 30 storeys**, taken from OpenStreetMap where they are
+  mapped and from the neighbours where they are not.
+- **Working lifts** in buildings of five storeys or more, when the
+  [Elevators](https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632)
+  mod is enabled (optional).
+- **The real map in your pocket.** The in-game map (M) shows the real streets,
+  buildings, water and woods, with real street names and landmarks labelled.
+- **Zombies where the people were.** The spawn map comes from an estimate of who
+  lived and worked in each building, and every part of it is adjustable.
+- **Any shape you like**: a rectangle, a polygon, a circle, a freehand outline,
+  or a place's real boundary.
 
 <p align="center">
-  <img src="docs/images/sheet_apartment.png" alt="Floor plans of a generated apartment block" width="100%"/>
-  <br/><em>A generated block of flats: a corridor, flats outlined in orange, stairs, doors and windows.</em>
+  <img src="docs/images/nyc_midtown.png" alt="Midtown Manhattan: the terrain bitmap and the in-game paper map" width="100%"/>
+  <br/><sub>Midtown Manhattan around Bryant Park: the terrain (left), turned 26.7° to the street grid, and the paper map
+  players carry in game (right). Map data © OpenStreetMap contributors.</sub>
+</p>
+
+<p align="center">
+  <img src="docs/images/roads_ingame_tiles.jpg" alt="Streets drawn with the game's own tiles: kerbs, pavements and a centre line" width="100%"/>
+  <br/><sub>Streets as KnoxMap lays them, drawn with the game's own tiles by <code>tools/render_ground.py</code>
+  (not an in-game screenshot). Tile artwork © The Indie Stone.</sub>
 </p>
 
 ## Quick start
 
 **You need:** Windows 10 or 11 · [Python 3.10 or newer](https://www.python.org/downloads/)
-(tick *Add python.exe to PATH* when installing) · Project Zomboid Build 42
+(tick *Add python.exe to PATH* when installing) · **Project Zomboid Build 42**
 installed through Steam · an internet connection.
 
-1. **Download KnoxMap**: the green **Code** button above → **Download ZIP**,
-   then unzip it anywhere. (Or `git clone` it.)
+1. **Download KnoxMap**: the green **Code** button above → **Download ZIP**, then
+   unzip it anywhere. (Or `git clone` it.)
 2. **Double-click `KnoxMap.bat`.** The first time, it runs setup for you, which:
-   - creates a private Python environment,
+   - creates a private Python environment inside the KnoxMap folder,
    - downloads the free [PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools),
-   - downloads the map compiler from this repository's releases and checks it,
-   - finds your Project Zomboid install and copies the tile artwork the map
-     tools need out of your own copy of the game.
+   - downloads the map compiler from this repository's releases and checks its fingerprint,
+   - finds your Project Zomboid install and copies the tile artwork the map tools
+     need **from your own copy of the game**,
+   - adds the rules for kerbs, road markings and Build 42 trees to the map tools.
 
-   It takes a few minutes once. After that, `KnoxMap.bat` opens straight away.
+   It takes a few minutes, once. After that `KnoxMap.bat` opens straight away.
 3. **Make a map** in the window that opens:
-   1. Search for a place, or draw an area with the tools on the map's left
-      edge: a rectangle, a polygon, a circle, or freehand (✎). A search result
-      with **outline** selects the place's real boundary - a park, a district,
-      a whole town. Only what's inside a drawn shape is built; around it the
-      land turns to countryside, with main roads and rivers running on. Start
-      small - a few streets - while you get a feel for it.
-   2. Pick a **kind of place** (Town, Suburb, City, Rural) and press
-      **Generate map**.
+   1. **Choose an area** (see below). Start small, a few streets, while you get a
+      feel for it.
+   2. Pick a **kind of place** (Town, Suburb, City, Rural) and press **Generate map**.
    3. Under *Finish the map*: **Build** → **Compile** → **Install**.
-4. **In Project Zomboid**: enable your map in **Mods**, then start a **new**
-   game and choose it. Existing saves never pick up new maps.
+4. **In Project Zomboid**: enable your map in **Mods** (and **Elevators** too, if
+   you want working lifts), then start a **new** game and choose it. Existing
+   saves never pick up new maps.
 
-If anything is missing, a *Setup incomplete* panel in the app says exactly
-what and how to fix it. You can run `Setup.bat` again at any time.
+If anything is missing, a *Setup incomplete* panel in the app says exactly what
+and how to fix it. You can run `Setup.bat` again at any time; it only does what
+is still needed.
+
+## Choosing an area
+
+| Tool | How |
+|---|---|
+| **Search** | Type a place. Pick a result for a box around it, or its **OUTLINE** button for the place's real boundary: a park, a district, a whole town. |
+| **Rectangle** | Drag a box on the map. |
+| **Polygon** | Click point by point round any outline; click the first point to finish. |
+| **Circle** | Drag out a radius from a centre. |
+| **Freehand ✎** | Drag round what you want. The line is smoothed into a clean outline. |
+
+A shape is built only inside itself. The map still covers the shape's whole
+bounding box (the game needs whole cells), but outside the shape the land turns
+back to countryside, with the main roads and rivers running on so the town is not
+an island.
+
+You can also open KnoxMap straight to a place: add `?q=Bryant Park, New York` to
+the address, and `&outline=1` to take its real boundary.
+
+<p align="center">
+  <img src="docs/images/shape_circle.png" alt="A circle around Times Square: only the circle is built" width="420"/>
+</p>
 
 ## Tuning a map
 
-Open **Fine tuning** under *Style* to adjust how the town comes out:
+Open **Fine tuning** under *Style*:
 
 | Setting | What it does |
 |---|---|
 | **Zombies per person** | How many zombies each person who lived or worked there becomes. |
-| **Living space** | Square metres per resident. Lower means more crowded homes and more zombies. |
+| **Living space** | Floor area per person. Lower means more crowded buildings and more zombies. |
 | **Horde cap** | The most zombies one 10×10-tile spot can hold. Vanilla towns peak at 10. |
 | **Flats above / Flats chance** | How readily large untagged buildings become blocks of flats. |
-| **Tallest building** | The storey limit, up to 30 - as tall as the tallest tower in the base game. Real heights from OpenStreetMap are used where mapped. Presets stay at 6 or lower, because every storey is a full floor of rooms: Midtown Manhattan at 30 storeys took 4 minutes to compile instead of 1. |
+| **Tallest building** | The storey limit, up to 30. Real heights from OpenStreetMap are used where mapped. Tall cities take much longer to compile. |
+| **Straighten streets** | 1 turns the map so its main street grid runs along the tiles; 0 keeps north straight up, with diagonal streets as staircases. |
 | **Windows**, **Woodland**, **Parking**, **Room size** | What they say. |
-| **Straighten streets** | Turns the map so the town's main street grid runs along the game's tiles, so streets are straight instead of staircases. Set to 0 to keep north up. |
 | **Seed** | The same area and seed always give the same town. |
 
-After **Build**, a **Zombie census** shows the estimated residents and
+After **Build**, a **Zombie census** shows the estimated residents, workers and
 zombies. Change the zombie settings and press **Recount** to redraw them in a
-second, without rebuilding - then compile again so the game sees the change.
+second without rebuilding, then compile again so the game sees the change.
 
-![Zombie spawn map before and after](docs/images/spawn_before_after.png)
+<p align="center">
+  <img src="docs/images/sheet_apartment.png" alt="Floor plans of a generated block of flats" width="100%"/>
+  <br/><sub>A generated block of flats, floor by floor: a corridor, flats outlined in orange, stairs, doors and windows.</sub>
+</p>
 
 ## Good to know
 
-- **Size.** A few square kilometres is a comfortable town. Compiling is the
-  slow part: a 7×7-cell town (about 4 km²) takes around 10 minutes.
+- **Size and time.** A few square kilometres is a comfortable town. Compiling is
+  the slow part: a 600 × 600 m city block takes a minute or two, and several
+  minutes with 30-storey towers.
+- **North may not be up.** With *Straighten streets* on, the map is turned to
+  its street grid, often by 20-45°. The in-game map is turned the same way.
 - **Maps are cached.** Regenerating the same area reuses its OpenStreetMap
-  download, so changing settings is quick.
-- **Not every place is mapped equally.** The result is only as detailed as
-  OpenStreetMap is for that area. Well-mapped city centres come out best.
+  download, so trying different settings is quick.
+- **A map is only as good as OpenStreetMap's data for that place.** Well-mapped
+  city centres come out best; rural areas often lack buildings entirely.
 - **Where maps go.** Installed maps are copied into `%USERPROFILE%\Zomboid\mods`.
-  Generated project files stay in `output\`.
-- **Share credit.** Maps are built from OpenStreetMap data: if you publish
-  one, credit "© OpenStreetMap contributors".
+  Project files stay in KnoxMap's `output\` folder.
+
+## Compatibility
+
+- **Project Zomboid Build 42 only.** Build 41 cannot load these maps, and setup
+  warns you if your game looks like Build 41.
+- **Windows only.** The map compiler is a Windows program.
+- **Mods:** the generated map is an ordinary map mod. Lifts need the optional
+  [Elevators](https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632)
+  mod; without it they are just closed doors. Other map mods that occupy the same
+  area of the world may conflict.
+- **Multiplayer and dedicated servers:** not tested.
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
 | `Python 3.10 or newer is needed` | Install Python from python.org with *Add to PATH* ticked, then run `Setup.bat`. |
-| Setup cannot find Project Zomboid | It asks for the folder - paste the `ProjectZomboid` folder from your Steam library. |
-| *OSM query failed* | The free OpenStreetMap servers are busy. Wait a minute and try again, or draw a smaller area. |
+| Setup cannot find Project Zomboid | It asks for the folder: paste the `ProjectZomboid` folder from your Steam library. |
+| Setup says the game looks like Build 41 | In Steam: right-click Project Zomboid → **Properties → Betas** → pick the Build 42 branch, then run `Setup.bat` again. |
+| *OSM query failed* | The free OpenStreetMap servers are busy. Wait a minute and try again, or choose a smaller area. |
 | The map is not in the game | Enable it under **Mods**, then start a **new** game. |
-| Setup says the game looks like Build 41 | KnoxMap maps need Build 42. In Steam: right-click Project Zomboid → **Properties → Betas** → pick the Build 42 branch. |
 | The window is blank | Install the [Microsoft Edge WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/) (built into Windows 11). |
+| KnoxMap closes straight away | It shows a message and writes `knoxmap_error.log` in the KnoxMap folder. Running `Setup.bat` again fixes most causes. |
+
+Found a bug, or a place that comes out wrong? [Open an issue](../../issues/new/choose),
+with screenshots if you can.
 
 ## For tinkerers
 
-Everything the app does is also available from the command line inside
-`.venv`:
+Everything the app does also works from the command line inside `.venv`:
 
 ```bat
-.venv\Scripts\python -m knoxbuild output\mytown --preset city --set zombies_per_resident=0.6
+.venv\Scripts\python -m knoxbuild output\mytown --preset city --set max_levels=12
 .venv\Scripts\python tools\compile_map.py output\mytown
+.venv\Scripts\python tools\render_ground.py output\mytown street.png 300 300 40 40
 .venv\Scripts\python tools\audit_layouts.py 400
 ```
 
-- [KNOXBUILD.md](KNOXBUILD.md) — how buildings, rooms, fences and the
-  population model work, and why.
-- [worlded/README.md](worlded/README.md) — the map compiler patch and how to
-  build it yourself.
-- `tools/audit_layouts.py` stress-tests the floor plan generator for sealed
-  rooms, blocked stairs and bad roofs; `tools/validate_tbx.py` checks
-  generated buildings against the editor's own rules.
+- [KNOXBUILD.md](KNOXBUILD.md): how buildings, rooms, lifts, fences, streets and
+  the population model work, and the measurements behind them.
+- [worlded/README.md](worlded/README.md): the map compiler patch and how to build
+  it yourself.
+- `tools/render_ground.py` draws a map's ground from the real tiles the way the
+  compiler lays them; `tools/audit_layouts.py` stress-tests floor plans for
+  sealed rooms, blocked stairs, bad roofs and lifts; `tools/validate_tbx.py`
+  checks buildings against the editor's own rules.
+
+## Disclaimers
+
+**Not affiliated.** KnoxMap is an unofficial, non-commercial fan project. It is
+not made, endorsed, supported or reviewed by The Indie Stone. *Project Zomboid*
+and The Indie Stone are trademarks of The Indie Stone Ltd., used here only to
+say what KnoxMap works with. Please do not contact The Indie Stone about
+problems with KnoxMap or the maps it makes.
+
+**No game files.** This repository and its releases contain no Project Zomboid
+game files. Setup reads tile artwork from **your own installed, legitimately
+owned copy** of the game and keeps it on your PC, for use with the map tools. Do
+not redistribute those extracted files. Pictures in this README that are drawn
+from the game's tiles (marked as such) contain artwork © The Indie Stone, shown
+to illustrate what the tool produces.
+
+**Real places, invented contents.** Maps are built from OpenStreetMap, which may
+be incomplete, outdated or wrong, and KnoxMap simplifies it further. Everything
+inside the buildings (rooms, furniture, loot, residents, zombies) is invented by
+the generator and says nothing about the real building or anyone who lives or
+works there. The population figures are rough estimates for gameplay, not real
+statistics. **Do not use KnoxMap maps for navigation, planning, emergencies or
+any real-world decision.** Please be thoughtful about where you set a zombie
+game and what you share: homes, schools, hospitals and places of worship are
+real places to the people who use them.
+
+**Map data licence.** Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
+available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/).
+If you publish a map made with KnoxMap, on the Steam Workshop or anywhere else,
+credit it as **"Map data © OpenStreetMap contributors"**, and check the ODbL's
+terms for what else applies to what you share.
+
+**Online services.** KnoxMap asks OpenStreetMap's free community services
+([Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) and
+[Nominatim](https://operations.osmfoundation.org/policies/nominatim/)) for data,
+and shows map tiles from OpenStreetMap and Esri. These are run by volunteers and
+companies with their own usage policies. KnoxMap identifies itself, caches
+downloads and paces its searches; please do not modify it to hammer them.
+
+**Third-party mods.** The Elevators mod is a separate work by its own author. It
+is not included in, affiliated with or maintained by KnoxMap, and its behaviour
+and compatibility are up to that mod. KnoxMap only lays out buildings the way the
+mod recognises lifts.
+
+**No warranty.** KnoxMap is provided as is, without warranty of any kind. Maps
+are generated automatically and have not been checked in game place by place.
+They can contain mistakes, and a map mod added to or removed from a save can
+break that save. **Back up saves you care about.** The authors are not liable
+for any damage or loss from using KnoxMap or its maps.
 
 ## Credits and licences
 
-- **[Knoxify](https://github.com/arytek/knoxify)** by arytek — the original
-  OpenStreetMap-to-Project-Zomboid terrain generator this is built on.
-- **[PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools)** by
-  Alree / Unjammer, built on Tim Baker's TileZed and WorldEd (GPL).
+- **[Knoxify](https://github.com/arytek/knoxify)** by arytek: the original
+  OpenStreetMap-to-Project-Zomboid terrain generator KnoxMap is built on.
+- **[PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools)** by Alree /
+  Unjammer, built on Tim Baker's TileZed and WorldEd (GPL).
 - **Map data** © OpenStreetMap contributors (ODbL).
+- **Elevators** mod for Project Zomboid, by its author, on the Steam Workshop.
 - Thuztor's *Mapping Guide v0.2* for the terrain colour conventions.
 
-The code here is under different terms depending on where it came from - see
-**[LICENSES.md](LICENSES.md)**. This repository contains no Project Zomboid
-game artwork; setup reads it from your own installed copy.
-
-*KnoxMap is an unofficial fan project, not made or endorsed by The Indie Stone.*
+The code here is under different terms depending on where it came from: work
+added in this fork is MIT, the compiler patch in `worlded/` and its prebuilt
+binary are GPL, and files from the original Knoxify have no published licence.
+See **[LICENSES.md](LICENSES.md)** for the details.

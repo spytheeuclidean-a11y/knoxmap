@@ -42,6 +42,16 @@ the GNU General Public License version 2 or later. See
   included here or downloaded from anywhere.
 - **PZ Mapping Tools itself.** Setup downloads the official release from its
   own GitHub page.
+- **The Elevators mod.** KnoxMap lays out lifts the way that mod recognises
+  them; the mod is a separate work, installed by players from the Steam
+  Workshop.
+
+Some pictures in `docs/images/` (`roads_ingame_tiles.jpg`) are drawn from
+Project Zomboid's tile artwork by `tools/render_ground.py`. That artwork is
+© The Indie Stone and is shown only to illustrate what KnoxMap produces; it is
+not covered by this repository's licences. Pictures made from map data
+(`nyc_midtown.png`, `shape_circle.png`, `app.jpg`) contain OpenStreetMap data
+and tiles, © OpenStreetMap contributors.
 
 ## Data and services
 

@@ -1,0 +1,50 @@
+name: Something broke
+description: Setup, the app, generating, building, compiling or installing failed.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. KnoxMap is an unofficial fan project - please don't send KnoxMap problems to The Indie Stone.
+  - type: dropdown
+    id: step
+    attributes:
+      label: Which step went wrong?
+      options: [Setup.bat, Opening KnoxMap, Choosing an area / search, Generate map, Build, Compile, Install, In the game]
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Paste any error message exactly.
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: The area
+      description: The place you searched for, or the South/West/North/East numbers from the Area panel.
+      placeholder: "e.g. Bryant Park, New York - or 40.7505, -73.9880, 40.7560, -73.9805"
+  - type: textarea
+    id: settings
+    attributes:
+      label: Settings
+      description: The kind of place (Town/Suburb/City/Rural) and anything you changed in Fine tuning. Or attach output\<your map>\settings.json.
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Whatever exists of: knoxmap_error.log in the KnoxMap folder; the Setup.bat window's text; the newest file in vendor\PZMappingTools\settings\logs (for compile problems).
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: KnoxMap version
+      description: The date you downloaded it, or the commit (git log -1 --oneline).
+  - type: input
+    id: game
+    attributes:
+      label: Project Zomboid version
+      description: From the game's main menu, e.g. 42.20.4.
