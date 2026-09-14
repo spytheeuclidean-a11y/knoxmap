@@ -351,7 +351,14 @@ ROAD_WIDTHS_M = {
 # looks like it was dropped on the landscape rather than built into it.
 SIDEWALK_M = {
     "road_major": 2.5,
-    "road_medium": 2.0,
+    "road_medium": 3.5,
+    "road_minor": 3.0,
+}
+# Of that, the strip of grass between the kerb and the pavement on a
+# residential street - Knox County's streets run kerb, verge, pavement, lawn.
+# In a built-up block the verge is paved over with the rest of the ground.
+VERGE_M = {
+    "road_medium": 1.5,
     "road_minor": 1.5,
 }
 
@@ -590,6 +597,13 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                     width_px = (_way_width_m(feat, road) + 2 * margin) / meters_per_tile
                     _draw_line(l_draw, _feature_coords_px(feat, proj),
                                C.PALE_CONCRETE, int(width_px))
+            for road, verge in VERGE_M.items():
+                for feat in buckets.get(road, []):
+                    if _is_polygon(feat):
+                        continue
+                    width_px = (_way_width_m(feat, road) + 2 * verge) / meters_per_tile
+                    _draw_line(l_draw, _feature_coords_px(feat, proj),
+                               C.DARK_GRASS, int(width_px))
         fill = LANDSCAPE_FILL.get(cat)
         if fill is None:
             continue
@@ -617,6 +631,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     _clear_building_vegetation(vegetation, building_feats, proj)
     _paint_road_details(vegetation, landscape, buckets, proj)
+    _paint_street_furniture(vegetation, landscape)
 
     # --- zombie spawn map (10x smaller, grayscale) ---
     spawn_w = proj.width // C.SPAWN_MAP_SCALE
@@ -974,6 +989,150 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
                 veg_px[x, y] = colour_for[(style, edge)]
 
 
+# How often the vanilla streets have each, measured on their squares
+# (tools/building_stats.py's neighbourhoods): grime on 9% of the tarmac, cracks
+# on under 0.5%, a lamp per ~290 squares of street, and so on. Spacings are in
+# tiles along the kerb.
+GRIME_SHARE = 0.14
+# Roads at least this wide get a faded edge line down each side.
+EDGE_LINE_MIN_WIDTH = 5
+CRACK_SHARE = 0.012
+LITTER_SHARE = 0.002
+LAMP_EVERY = 26
+HYDRANT_EVERY = 70
+DRAIN_EVERY = 34
+
+
+def _paint_street_furniture(veg: Image.Image, landscape: Image.Image) -> dict:
+    """Lamps, hydrants and drains along the kerbs; grime, cracks and litter.
+
+    A generated street was clean tarmac, kerb and pavement and nothing else;
+    Knox County's have all of these, and a road without them reads as a
+    diagram. They go by the kerbs already painted: a lamp stands on the
+    pavement one tile back from a straight kerb with its arm over the road, a
+    hydrant likewise, a drain in the gutter in front of it.
+    """
+    import numpy as np
+
+    rng = np.random.default_rng(4321)
+    ground = np.asarray(landscape.convert("RGB"))
+    vp = np.array(veg.convert("RGB"))
+    h, w = ground.shape[:2]
+
+    def is_colour(arr, colours):
+        mask = np.zeros(arr.shape[:2], dtype=bool)
+        for c in colours:
+            mask |= np.all(arr == c, axis=2)
+        return mask
+
+    empty = np.all(vp == 0, axis=2)
+    asphalt = is_colour(ground, (C.MEDIUM_ASPHALT, C.DARKEST_ASPHALT))
+    pavement = is_colour(ground, (C.PALE_CONCRETE,))
+    counts = {}
+
+    # Edge lines: tarmac with the road's edge on exactly one side and enough
+    # road across from it to be a carriageway, not a car park aisle's end.
+    # (Dark tarmac, 100, is car parks and yards, and is left out.)
+    k = EDGE_LINE_MIN_WIDTH
+    edge_lines = 0
+    for colour, (dx, dy) in ((C.EDGE_LINE_W, (-1, 0)), (C.EDGE_LINE_E, (1, 0)),
+                             (C.EDGE_LINE_N, (0, -1)), (C.EDGE_LINE_S, (0, 1))):
+        outside = np.zeros_like(asphalt)
+        across = np.ones_like(asphalt)
+        if dx:
+            if dx < 0:
+                outside[:, 1:] = ~asphalt[:, :-1]
+                for i in range(1, k):
+                    across[:, :-i] &= asphalt[:, i:]
+                    across[:, -i:] = False
+            else:
+                outside[:, :-1] = ~asphalt[:, 1:]
+                for i in range(1, k):
+                    across[:, i:] &= asphalt[:, :-i]
+                    across[:, :i] = False
+            side_a = np.zeros_like(asphalt); side_b = np.zeros_like(asphalt)
+            side_a[1:, :] = asphalt[:-1, :]; side_b[:-1, :] = asphalt[1:, :]
+        else:
+            if dy < 0:
+                outside[1:, :] = ~asphalt[:-1, :]
+                for i in range(1, k):
+                    across[:-i, :] &= asphalt[i:, :]
+                    across[-i:, :] = False
+            else:
+                outside[:-1, :] = ~asphalt[1:, :]
+                for i in range(1, k):
+                    across[i:, :] &= asphalt[:-i, :]
+                    across[:i, :] = False
+            side_a = np.zeros_like(asphalt); side_b = np.zeros_like(asphalt)
+            side_a[:, 1:] = asphalt[:, :-1]; side_b[:, :-1] = asphalt[:, 1:]
+        # Straight edges only: the road continues along the line both ways.
+        pick = asphalt & outside & across & side_a & side_b & empty
+        vp[pick] = colour
+        empty &= ~pick
+        edge_lines += int(pick.sum())
+    counts["edge lines"] = edge_lines
+
+    # Along each straight edge of the carriageway, road on one side: the lamp
+    # stands a tile or two off the tarmac (past the kerb or on the verge) with
+    # its arm reaching back over the road, the drain sits in the gutter.
+    # (edge colour just painted, step away from the road, lamp colour)
+    straight = [(C.EDGE_LINE_W, (-1, 0), C.LAMP_E), (C.EDGE_LINE_E, (1, 0), C.LAMP_W),
+                (C.EDGE_LINE_N, (0, -1), C.LAMP_S), (C.EDGE_LINE_S, (0, 1), C.LAMP_N)]
+    taken: dict[str, set] = {"lamp": set(), "hydrant": set(), "drain": set()}
+    out = vp.copy()
+    for edge, (sx, sy), lamp in straight:
+        ys, xs = np.nonzero(np.all(vp == edge, axis=2))
+        order = rng.permutation(len(xs))
+        for i in order.tolist():
+            gx, gy = int(xs[i]), int(ys[i])     # the gutter square itself
+            bx, by = gx + 2 * sx, gy + 2 * sy   # past the kerb or the verge
+            if not (0 <= bx < w and 0 <= by < h):
+                continue
+            for what, every, colour, at, need in (
+                    ("lamp", LAMP_EVERY, lamp, (bx, by), None),
+                    ("hydrant", HYDRANT_EVERY, C.HYDRANT, (bx, by), None),
+                    ("drain", DRAIN_EVERY, C.STORM_DRAIN, (gx, gy), None)):
+                px, py = at
+                cell = (px // every, py // every)
+                if cell in taken[what]:
+                    continue
+                # A drain takes the gutter square from its edge line; a lamp
+                # or hydrant needs an empty square off the road.
+                if what != "drain" and (not empty[py, px] or asphalt[py, px]):
+                    continue
+                taken[what].add(cell)
+                out[py, px] = colour
+                empty[py, px] = False
+                counts[what] = counts.get(what, 0) + 1
+                break
+
+    # Wear comes in patches, as it does on a real road and on the vanilla
+    # map; picked square by square it came out as a chequerboard. Smooth noise
+    # - coarse random values, blurred up to full size - gives the patches.
+    coarse = Image.fromarray((rng.random((max(1, h // 5), max(1, w // 5))) * 255).astype(np.uint8))
+    noise = np.asarray(coarse.resize((w, h), Image.BICUBIC)
+                       .filter(ImageFilter.GaussianBlur(2)), dtype=np.float32)
+    level = np.quantile(noise[asphalt], 1 - GRIME_SHARE) if asphalt.any() else 256
+    pick = asphalt & empty & (noise >= level)
+    out[pick] = C.ASPHALT_GRIME
+    empty &= ~pick
+    counts["grime"] = int(pick.sum())
+    # Scattered things: each square rolls once, and each kind has its own band
+    # of the roll, so no square gets two.
+    roll = rng.random((h, w))
+    lo = 0.0
+    for mask, share, colour, name in (
+            (asphalt, CRACK_SHARE, C.ASPHALT_CRACKS, "cracks"),
+            (pavement, LITTER_SHARE, C.LITTER, "litter")):
+        pick = mask & empty & (roll >= lo) & (roll < lo + share)
+        lo += share
+        out[pick] = colour
+        empty &= ~pick
+        counts[name] = int(pick.sum())
+    veg.paste(Image.fromarray(out), (0, 0))
+    return counts
+
+
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
                        buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
     """Pave the unmapped ground of built-up city blocks.
@@ -1263,6 +1422,12 @@ GARDEN_TREE_CHANCE = 0.6
 GARDEN_CLEAR_OF_HOUSE = 3      # a tree trunk this far off the wall at least
 GARDEN_CLEAR_OF_PAVING = 2     # and off the kerb, drive or path
 SHRUB_CHANCE = 0.12            # per tile of lawn along a house wall
+# Tufts over open grass. A lawn of one flat grass tile looked like felt beside
+# the vanilla map, whose grass is broken up by clumps everywhere.
+SHORT_GRASS_SHARE = 0.2
+# Long grass is off: its rule mixes in flowerbed tiles, which came out as pink
+# and blue squares all over every lawn.
+LONG_GRASS_SHARE = 0.0
 GRASS_COLOURS = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
 
 
@@ -1325,6 +1490,15 @@ def _paint_gardens(veg: Image.Image, landscape: Image.Image,
     ys, xs = np.nonzero(beside & (rng.random(house.shape) < SHRUB_CHANCE * density))
     for x, y in zip(xs.tolist(), ys.tolist()):
         px[x, y] = C.BUSHES
+
+    open_grass = lawn & ~beside & ~_box_any(house, 0)
+    roll = rng.random(house.shape)
+    for colour, share, lo in ((C.SHORT_GRASS, SHORT_GRASS_SHARE, 0.0),
+                              (C.GRASS_ON_DARK, LONG_GRASS_SHARE, SHORT_GRASS_SHARE)):
+        ys, xs = np.nonzero(open_grass & (roll >= lo) & (roll < lo + share))
+        for x, y in zip(xs.tolist(), ys.tolist()):
+            if px[x, y] == C.VEG_NOTHING:
+                px[x, y] = colour
     return planted
 
 

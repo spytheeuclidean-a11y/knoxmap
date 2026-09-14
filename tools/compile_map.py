@@ -88,6 +88,13 @@ def clear_stale(project: Path) -> None:
 
     lots, tmx = project / "lots", project / "tmx"
     terrain = newest(project.glob("*.bmp"))
+    # The rules are baked in when a bitmap is converted, so new rules (Setup
+    # adding street furniture, say) need the conversion done again too.
+    tools = knoxpaths.mapping_tools_dir()
+    if tools:
+        terrain = max(terrain, newest(p for p in (tools / "config" / "Rules.txt",
+                                                  tools / "config" / "Blends.txt")
+                                      if p.exists()))
     inputs = max(terrain, newest((project / "buildings").glob("*.tbx")))
     written = [p for p in lots.glob("*") if p.is_file()] if lots.is_dir() else []
     if written and min(p.stat().st_mtime for p in written) < inputs:

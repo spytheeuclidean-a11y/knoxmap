@@ -38,7 +38,8 @@ LIGHT_POTHOLE = (130, 120, 120)
 TREES = (255, 0, 0)
 TREES_DARK_GRASS = (127, 0, 0)          # fewer trees + more dark grass
 SPARSE_TREES = (64, 0, 0)               # sparse trees + mostly dark grass
-GRASS_ON_DARK = (0, 255, 0)             # must sit on DARK_GRASS landscape
+GRASS_ON_DARK = (0, 255, 0)             # long grass; Rules.txt has it for every grass
+SHORT_GRASS = (0, 250, 0)               # short grass tufts, on any grass ground landscape
 LOT_OF_GRASS_AND_TREES = (0, 128, 0)
 BUSHES_TREES_DARK_GRASS = (255, 0, 255)
 BUSHES = (250, 0, 160)                  # bushes, any ground — hedges
@@ -61,6 +62,20 @@ LINE_YELLOW_N = (12, 35, 200)
 LINE_YELLOW_W = (12, 35, 201)
 LINE_WHITE_N = (12, 35, 202)
 LINE_WHITE_W = (12, 35, 203)
+EDGE_LINE_W = (12, 35, 204)
+EDGE_LINE_N = (12, 35, 205)
+EDGE_LINE_E = (12, 35, 206)
+EDGE_LINE_S = (12, 35, 207)
+# Street furniture and wear (worlded/patch_rules_roads.py).
+ASPHALT_GRIME = (12, 36, 200)
+ASPHALT_CRACKS = (12, 36, 201)
+LAMP_N = (12, 36, 202)
+LAMP_E = (12, 36, 203)
+LAMP_S = (12, 36, 204)
+LAMP_W = (12, 36, 205)
+HYDRANT = (12, 36, 206)
+STORM_DRAIN = (12, 36, 207)
+LITTER = (12, 36, 208)
 
 # Zombie spawn map: grayscale, 10x smaller than landscape/vegetation.
 # (0,0,0) = no spawns, (255,255,255) = max spawn density.
