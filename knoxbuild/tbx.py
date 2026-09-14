@@ -176,7 +176,13 @@ def render_tbx(plan: Plan | Building, name: str,
                     ("width", rw),
                     ("height", rh),
                     ("RoofType", "FlatTop"),
-                    ("Depth", "Zero"),
+                    # "Zero" puts a flat roof's tiles in this storey's own
+                    # floor layer, where the rooms' floors then overwrite
+                    # them: every building compiled roofless. "Three" is
+                    # BuildingEd's flat roof over a full storey, laid in the
+                    # floor layer of the floor above (see the empty roof floor
+                    # written after the storeys).
+                    ("Depth", "Three"),
                     ("cappedW", str(caps["cappedW"]).lower()),
                     ("cappedN", str(caps["cappedN"]).lower()),
                     ("cappedE", str(caps["cappedE"]).lower()),
@@ -203,5 +209,20 @@ def render_tbx(plan: Plan | Building, name: str,
         out.append("  <rooms>" + escape("".join(text)) + "</rooms>")
 
         out.append(" </floor>")
+
+    # The roof floor: no rooms, no objects, only the flat roof tops BuildingEd
+    # places here from the depth-three roofs on the storey below.
+    empty = ["\n"]
+    count, total = 0, building.width * building.height
+    for _y in range(building.height):
+        for _x in range(building.width):
+            empty.append("0")
+            count += 1
+            if count < total:
+                empty.append(",")
+        empty.append("\n")
+    out.append(" <floor>")
+    out.append("  <rooms>" + escape("".join(empty)) + "</rooms>")
+    out.append(" </floor>")
     out.append("</building>")
     return "\n".join(out) + "\n"

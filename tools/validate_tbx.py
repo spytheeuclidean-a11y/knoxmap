@@ -133,7 +133,7 @@ def check(path: str) -> list[str]:
                     errs.append(f"{where}: stairs at ({x},{y}) run off the south edge")
                 if o.get("dir") == "W" and x + 5 > w + 1:
                     errs.append(f"{where}: stairs at ({x},{y}) run off the east edge")
-                if level == len(floors) - 1:
+                if level >= len(floors) - 2:
                     errs.append(f"{where}: stairs on the top storey lead nowhere")
             elif typ == "furniture":
                 idx = int(o.get("FurnitureTiles", -1))
@@ -144,8 +144,12 @@ def check(path: str) -> list[str]:
                 if o.get("orient") not in VALID_ORIENTS:
                     errs.append(f"{where}: furniture bad orient {o.get('orient')!r}")
             elif typ == "roof":
-                if level != len(floors) - 1:
-                    errs.append(f"{where}: roof below the top storey")
+                # Flat roofs sit on the top storey with Depth Three, and
+                # BuildingEd lays their tiles on the empty floor above it.
+                if level != len(floors) - 2:
+                    errs.append(f"{where}: roof not on the top storey")
+                if o.get("Depth") != "Three":
+                    errs.append(f"{where}: flat roof Depth {o.get('Depth')!r} compiles to no roof - use Three")
                 if o.get("RoofType") not in VALID_ROOF_TYPES:
                     errs.append(f"{where}: roof bad RoofType {o.get('RoofType')!r}")
                 if o.get("Depth") not in VALID_ROOF_DEPTHS:

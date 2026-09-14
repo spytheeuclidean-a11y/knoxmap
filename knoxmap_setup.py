@@ -194,6 +194,18 @@ def configure_tools(tools: Path, game: Path | None) -> None:
     if full.exists():
         shutil.copyfile(full, tilesets)
     catalog, _packs = extract_tiles.read_tilesets_txt(str(tilesets))
+    # Sheets extracted before the split-sheet fix lack the tiles B42 keeps in
+    # the floor packs - flat roof tops among them - so merge those in once.
+    merged = tools / "settings" / "floor_tiles_merged"
+    present = sorted(n for n in catalog if (two_x / f"{n}.png").exists())
+    if present and not merged.exists():
+        say("      adding Build 42 floor-pack tiles to your tile sheets ...")
+        log = io.StringIO()
+        with contextlib.redirect_stdout(log):
+            for pack in sorted((game / "media" / "texturepacks").glob("*2x.floor.pack")):
+                extract_tiles.extract_pack(str(pack), catalog, set(present), str(two_x), merge=True)
+        merged.parent.mkdir(parents=True, exist_ok=True)
+        merged.write_text("1", encoding="utf-8")
     missing = sorted(n for n in catalog if not (two_x / f"{n}.png").exists())
     if missing:
         say(f"      extracting {len(missing)} tile sheets from your game (a few minutes) ...")
@@ -202,6 +214,7 @@ def configure_tools(tools: Path, game: Path | None) -> None:
             extract_tiles.main(["extract_tiles", str(game / "media" / "texturepacks"),
                                 str(tilesets), str(two_x), *missing])
         (tools / "settings" / "extract_tiles.log").write_text(log.getvalue(), encoding="utf-8")
+        merged.write_text("1", encoding="utf-8")   # main() merges the floor packs itself
         found = sum(1 for n in missing if (two_x / f"{n}.png").exists())
         say(f"      extracted {found} of {len(missing)}"
             + ("" if found == len(missing) else

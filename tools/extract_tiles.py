@@ -137,8 +137,11 @@ def read_tilesets_txt(path: str) -> tuple[dict[str, tuple[int, int]],
 
 
 def extract_pack(pack_path: str, catalog: dict, wanted: set,
-                 out_dir: str) -> set:
-    """Write every wanted sheet this pack holds. Returns the names written."""
+                 out_dir: str, merge: bool = False) -> set:
+    """Write every wanted sheet this pack holds. Returns the names written.
+
+    With `merge`, a sheet already on disk is added to rather than replaced.
+    """
     os.makedirs(out_dir, exist_ok=True)
 
     # Pass 1, metadata only: which page does each tileset last appear on?
@@ -190,8 +193,13 @@ def extract_pack(pack_path: str, catalog: dict, wanted: set,
             cols, rows = catalog[tname]
             if tname not in sheets:
                 cell[tname] = (fx, fy)
-                sheets[tname] = Image.new("RGBA", (cols * fx, rows * fy),
-                                          (0, 0, 0, 0))
+                existing = os.path.join(out_dir, f"{tname}.png")
+                if merge and os.path.exists(existing):
+                    with Image.open(existing) as old:
+                        sheets[tname] = old.convert("RGBA")
+                else:
+                    sheets[tname] = Image.new("RGBA", (cols * fx, rows * fy),
+                                              (0, 0, 0, 0))
             cw, ch = cell[tname]
             col, row = idx % cols, idx // cols
             if row >= rows:
@@ -260,12 +268,16 @@ def main(argv: list[str]) -> int:
         found |= extract_pack(available[pack], catalog, names, out_dir)
 
     # Build 42 moved the floor sheets (grass blends, kerbs, ceilings...) into
-    # "<pack>.floor.pack" while Tilesets.txt still names the old pack. Look for
-    # whatever is still missing in the floor packs first, then in any other 2x
-    # pack. 1x packs are skipped: their frames would make half-size sheets.
-    retry = sorted((p for p in available if "2x" in p.lower()),
-                   key=lambda p: (".floor." not in p, p))
-    for pack in retry:
+    # "<pack>.floor.pack" while Tilesets.txt still names the old pack. Some
+    # sheets are split between the two: roofs_01 keeps its slopes in Tiles2x
+    # but its flat tops (54, 55) went to the floor pack, so every flat roof
+    # previewed as blank. The 2x floor packs are therefore merged into every
+    # sheet; any other 2x pack is then searched for whatever is still missing.
+    # 1x packs are skipped: their frames would make half-size sheets.
+    for pack in sorted(p for p in available if "2x" in p.lower() and ".floor." in p):
+        print(f"== {pack}: merging floor tiles into {len(wanted)} sheets ==")
+        found |= extract_pack(available[pack], catalog, wanted, out_dir, merge=True)
+    for pack in sorted(p for p in available if "2x" in p.lower() and ".floor." not in p):
         names = wanted - found
         if not names:
             break

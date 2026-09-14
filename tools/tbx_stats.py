@@ -32,6 +32,10 @@ def main(argv):
         root = ET.parse(path).getroot()
         w, h = int(root.get("width")), int(root.get("height"))
         floors = root.findall("floor")
+        # The last <floor> is the empty roof floor over the top storey; only
+        # the storeys below it have rooms, walls and windows.
+        if len(floors) > 1 and not any(v for row in grid_of(floors[-1], w, h) for v in row):
+            floors = floors[:-1]
         grids = [grid_of(f, w, h) for f in floors]
         buildings += 1
         for fl, g in zip(floors, grids):
