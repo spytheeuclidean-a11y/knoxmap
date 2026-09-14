@@ -1,0 +1,44 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  generator:
+    name: Generator self-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      # Everything but pywebview: the desktop window is not needed to
+      # generate maps, and it pulls in GUI toolkits a server does not have.
+      - name: Install dependencies
+        run: |
+          grep -v -i pywebview requirements.txt > requirements-ci.txt
+          pip install -r requirements-ci.txt
+
+      - name: Python parses
+        run: python -m compileall -q app.py knoxmap.py knoxmap_setup.py knoxpaths.py generator knoxbuild tools worlded
+
+      - name: JavaScript parses
+        run: |
+          for f in static/js/*.js; do
+            node -e "new Function(require('fs').readFileSync('$f', 'utf8'))" && echo "ok $f"
+          done
+
+      - name: Whole pipeline on a made-up town (offline)
+        run: python tools/selftest.py
+
+      - name: Floor plans (sealed rooms, stairs, roofs, lifts)
+        run: python tools/audit_layouts.py 200

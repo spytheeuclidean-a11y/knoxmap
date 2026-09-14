@@ -696,6 +696,33 @@ def sea_polygons(feats: list[OSMFeature], proj: Projector) -> list:
             shores.append(LineString(pts))
     if not shores:
         return []
+    # Join the shore into as few lines as possible, then carry any end that
+    # stops inside the map on in its own direction to beyond the edge. The
+    # download holds only coast that touches the area, so a shore that wanders
+    # out of it and back arrives in pieces - and a line that does not cross
+    # the map cannot split it, which left whole bays as dry land.
+    from shapely.ops import linemerge
+    merged = linemerge(unary_union(shores)) if len(shores) > 1 else shores[0]
+    pieces = [merged] if isinstance(merged, LineString) else list(getattr(merged, "geoms", []))
+    far = 3 * (w + h)
+    inner = frame.buffer(-1)
+    shores = []
+    for line in pieces:
+        coords = list(line.coords)
+        if len(coords) < 2:
+            continue
+        if coords[0] == coords[-1]:
+            shores.append(line)          # an island: closed, nothing to extend
+            continue
+        for end, before in ((0, 1), (-1, -2)):
+            ex, ey = coords[end]
+            if inner.contains(Point(ex, ey)):
+                bx, by = coords[before]
+                dx, dy = ex - bx, ey - by
+                length = math.hypot(dx, dy) or 1.0
+                tip = (ex + dx / length * far, ey + dy / length * far)
+                coords = [tip] + coords if end == 0 else coords + [tip]
+        shores.append(LineString(coords))
     # Clip the shore to a little beyond the frame, so lines that only graze
     # the edge still split it, and the faces stay inside the map.
     reach = frame.buffer(2)
