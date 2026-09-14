@@ -594,9 +594,29 @@ def api_setup_status():
                 "(unstable) branch under Properties > Betas."},
         {"id": "tiles", "ok": tiles >= 400, "label": "Tile artwork from your game",
          "fix": "Run Setup.bat to extract it from your install."},
+        # Added to the tools after KnoxMap 1.0's first setups: without them a
+        # compile still works but lays no kerbs or road markings, silently.
+        {"id": "road_rules", "ok": _has_road_rules(tools), "label": "Kerbs and road markings",
+         "fix": "Run Setup.bat again to add them to the map tools."},
+    ]
+    optional = [
+        {"id": "elevators", "ok": knoxpaths.elevators_mod_installed(),
+         "label": "Elevators mod (optional)",
+         "fix": "Subscribe to it on the Steam Workshop for working lifts in tall buildings."},
     ]
     return jsonify({"ready": all(c["ok"] for c in checks), "checks": checks,
+                    "optional": optional,
                     "mods_dir": str(knoxpaths.zomboid_user_dir() / "mods")})
+
+
+def _has_road_rules(tools) -> bool:
+    if not tools:
+        return False
+    rules = tools / "config" / "Rules.txt"
+    try:
+        return "KnoxMap road" in rules.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
 
 
 @app.route("/api/settings")

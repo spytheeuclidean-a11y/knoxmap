@@ -132,6 +132,19 @@ def is_build42(game: Path | None) -> bool:
     return bool(game) and any((Path(game) / "media" / "texturepacks").glob("*.floor.pack"))
 
 
+ELEVATORS_WORKSHOP_ID = "3780306632"
+
+
+def elevators_mod_installed() -> bool:
+    """Whether the Elevators mod (which runs KnoxMap's lifts) is on this PC:
+    subscribed on the Workshop in any Steam library, or copied into mods."""
+    for lib in _steam_libraries():
+        if (lib / "steamapps" / "workshop" / "content" / "108600" / ELEVATORS_WORKSHOP_ID).is_dir():
+            return True
+    mods = zomboid_user_dir() / "mods"
+    return any((mods / name).is_dir() for name in ("Elevators",))
+
+
 def zomboid_user_dir() -> Path:
     """~/Zomboid, where the game keeps saves and mods."""
     configured = os.environ.get("ZOMBOID_DIR") or load_config().get("zomboid_dir")
