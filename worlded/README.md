@@ -51,3 +51,18 @@ folder contain and modify that code, so **everything in this folder is
 distributed under GPL-2.0-or-later**, as is the prebuilt `PZWorldEd_cli.exe`
 in this repository's releases. Its complete corresponding source is the
 upstream repository at the commit above plus `patch_worlded_cli.py`.
+
+## Releases and the GPL
+
+Each compiler release on GitHub carries four files, built by
+`python worlded/make_release.py <PZ_Mapping_Tools checkout> <built exe> <out dir>`:
+
+- `PZWorldEd_cli.exe` - the patched build (its SHA-256 is pinned in `knoxmap_setup.py`);
+- `PZWorldEd_cli-source.zip` - its complete corresponding source: the upstream
+  tree at the pinned commit with the patch applied, plus these scripts;
+- `LICENSE-GPL-2.0.txt` - the licence;
+- `README-RELEASE.txt` - build instructions and a written offer of the source
+  for at least three years.
+
+The two files the patch changes carry a notice at their end saying so, as
+GPL-2.0 section 2(a) requires.

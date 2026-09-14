@@ -182,6 +182,10 @@ def write(out_dir: str, map_name: str, proj, info: dict,
                     labels.append((place["name"], "text-town",
                                    TOWN_SCALE.get(place.get("place"), 2.0),
                                    place["tile_x"], place["tile_y"]))
+    # OpenStreetMap attribution in the game itself, in a corner of the map
+    # players open, as the ODbL attribution guidelines ask of produced works.
+    labels.append(("Map data (c) OpenStreetMap contributors", "text-note", 0.35,
+                   min(width - 1, 150), min(height - 1, 12)))
     _write_annotations(os.path.join(out_dir, "worldmap-annotations.lua"),
                        labels, width, height)
     return {"map_features": len(features), "map_cells": cells, "streets": named,

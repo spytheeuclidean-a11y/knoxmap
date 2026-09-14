@@ -186,6 +186,60 @@ def write_spawnpoints(project_dir: str, map_dir: str, limit: int = 8) -> int:
     return len(points)
 
 
+KNOXMAP_URL = "https://github.com/spytheeuclidean-a11y/knoxify"
+
+
+def write_attribution(project_dir: str, mod_root: str, name: str) -> None:
+    """ATTRIBUTION.txt at the root of every mod: what the map is made from.
+
+    - OpenStreetMap's ODbL requires crediting OpenStreetMap wherever a
+      Produced Work (a map, an image, a game world) made from its data is
+      used, and making the source data or the method of deriving it
+      available (section 4.6). The method is KnoxMap itself, open source, and
+      the area and date below are what it was run on.
+    - The Indie Stone's terms ask fan productions to say what they are.
+    """
+    import datetime
+    import json as _json
+
+    info = {}
+    for entry in os.listdir(project_dir):
+        if entry.endswith("_info.json"):
+            with open(os.path.join(project_dir, entry), encoding="utf-8") as f:
+                info = _json.load(f)
+            break
+    bbox = info.get("osm_bbox") or [info.get("bbox", {}).get(k) for k in ("south", "west", "north", "east")]
+    text = f"""{name}
+{"=" * len(name)}
+
+A Project Zomboid map generated with KnoxMap ({KNOXMAP_URL}).
+
+MAP DATA
+Map data (c) OpenStreetMap contributors, available under the Open Database
+License (ODbL): https://www.openstreetmap.org/copyright
+
+This map is a Produced Work made from OpenStreetMap data. It was derived from
+the OpenStreetMap data inside this area (south, west, north, east):
+    {bbox}
+downloaded on or before {datetime.date.today().isoformat()}, using the open-source
+method in KnoxMap at the address above. If you publish this map, keep this
+file with it and credit "Map data (c) OpenStreetMap contributors".
+
+Buildings' interiors, residents and zombies are invented by the generator and
+do not describe the real places or anyone connected with them. Not for
+navigation or any real-world use.
+
+PROJECT ZOMBOID
+Thanks to The Indie Stone for creating Project Zomboid (https://projectzomboid.com/),
+which made this possible. This is an unofficial fan production for
+non-commercial purposes made under the Indie Stone Terms
+(https://projectzomboid.com/blog/support/terms-conditions/).
+KnoxMap is not made, endorsed or supported by The Indie Stone.
+"""
+    with open(os.path.join(mod_root, "ATTRIBUTION.txt"), "w", encoding="utf-8") as f:
+        f.write(text)
+
+
 def folder_name(title: str, fallback: str) -> str:
     """A map folder name the game and Windows both accept, from a display title.
 
@@ -228,6 +282,10 @@ def package(project_dir: str, name: str, mod_id: str,
         shutil.copy2(src, os.path.join(map_dir, os.path.basename(src)))
 
     desc = description or f"{name}, generated from real-world map data."
+    # OpenStreetMap's licence (ODbL) requires attribution wherever the map is
+    # used, and a game map may carry it in its menus; the mod list is where
+    # players see it. See write_attribution for the rest.
+    desc = f"{desc} Map data (c) OpenStreetMap contributors (ODbL)."
 
     # lots=Muldraugh, KY tells the game which vanilla lot set to inherit room
     # and tile definitions from; every community map sets it.
@@ -257,6 +315,7 @@ def package(project_dir: str, name: str, mod_id: str,
                   encoding="utf-8") as f:
             f.write(info)
 
+    write_attribution(project_dir, mod_root, name)
     extra_names = [os.path.basename(e) for e in extras]
     if n_spawns:
         extra_names.append(f"spawnpoints.lua ({n_spawns} spawn points)")

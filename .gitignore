@@ -32,3 +32,6 @@ Tiles/
 .claude/
 CLAUDE.local.md
 knoxmap_error.log
+
+# Map tiles cached by the app, per the OSM tile policy
+cache/

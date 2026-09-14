@@ -85,6 +85,74 @@ def index():
     return render_template("index.html")
 
 
+# ---- map tiles, fetched the way the OSM tile policy asks -------------------------
+#
+# https://operations.osmfoundation.org/policies/tiles/ - an installed app must
+# identify itself with its own User-Agent (never a browser's), honour the
+# server's caching headers or keep tiles at least 7 days, and never pre-fetch
+# or bulk-download. The page's map used to load tiles straight from
+# tile.openstreetmap.org inside the app window, which sent WebView2's browser
+# identity and cached nothing. Tiles now come through here: fetched only when
+# the map shows them, with KnoxMap's User-Agent, kept on disk and revalidated.
+TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+TILE_CACHE = BASE_DIR / "cache" / "tiles"
+TILE_MIN_AGE = 7 * 24 * 3600
+TILE_FETCHES = threading.BoundedSemaphore(2)   # a couple at a time, no more
+
+
+@app.route("/tiles/<int:z>/<int:x>/<int:y>.png")
+def tile(z: int, x: int, y: int):
+    import requests
+
+    if not (0 <= z <= 19 and 0 <= x < 2 ** z and 0 <= y < 2 ** z):
+        return ("", 404)
+    path = TILE_CACHE / str(z) / str(x) / f"{y}.png"
+    meta = path.with_suffix(".json")
+    info = {}
+    if path.exists() and meta.exists():
+        try:
+            info = json.loads(meta.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            info = {}
+    fresh = path.exists() and time.time() < info.get("expires", 0)
+    if not fresh:
+        headers = {"User-Agent": places.HEADERS["User-Agent"]}
+        if path.exists() and info.get("etag"):
+            headers["If-None-Match"] = info["etag"]
+        try:
+            with TILE_FETCHES:
+                r = requests.get(TILE_URL.format(z=z, x=x, y=y), headers=headers, timeout=20)
+            if r.status_code == 200 or r.status_code == 304:
+                max_age = TILE_MIN_AGE
+                for part in (r.headers.get("Cache-Control") or "").split(","):
+                    if part.strip().startswith("max-age="):
+                        try:
+                            max_age = max(TILE_MIN_AGE, int(part.split("=", 1)[1]))
+                        except ValueError:
+                            pass
+                if r.status_code == 200:
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_bytes(r.content)
+                    info["etag"] = r.headers.get("ETag")
+                info["expires"] = time.time() + max_age
+                meta.write_text(json.dumps(info), encoding="utf-8")
+            elif not path.exists():
+                return ("", r.status_code)
+        except requests.RequestException:
+            if not path.exists():
+                return ("", 502)
+    resp = send_file(path, mimetype="image/png")
+    resp.headers["Cache-Control"] = f"max-age={TILE_MIN_AGE}"
+    return resp
+
+
+# Nominatim asks that results are cached on the application's side and that
+# the same query is not sent again and again
+# (https://operations.osmfoundation.org/policies/nominatim/).
+_SEARCH_CACHE: dict[tuple, tuple[float, list]] = {}
+SEARCH_CACHE_SECONDS = 24 * 3600
+
+
 @app.route("/api/search")
 def api_search():
     """Find a place by name, so the map can jump to it."""
@@ -100,10 +168,17 @@ def api_search():
         pass
     bounded = request.args.get("bounded") == "1"
 
+    key = (q.strip().lower(), viewbox and tuple(round(v, 3) for v in viewbox), bounded)
+    cached = _SEARCH_CACHE.get(key)
+    if cached and time.time() - cached[0] < SEARCH_CACHE_SECONDS:
+        return jsonify({"results": cached[1]})
     try:
         results = places.search(q, viewbox=viewbox, bounded=bounded)
     except Exception as exc:  # network, rate limit, bad JSON
         return jsonify({"error": f"Search failed: {exc}"}), 502
+    if len(_SEARCH_CACHE) > 500:
+        _SEARCH_CACHE.clear()
+    _SEARCH_CACHE[key] = (time.time(), results)
     return jsonify({"results": results})
 
 

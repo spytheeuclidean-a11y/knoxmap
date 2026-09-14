@@ -13,7 +13,9 @@ const OVERPASS_TILE_KM2 = 30.0;
 const SLOW_ABOVE_KM2 = 60.0;
 
 const map = L.map('map', { zoomControl: true }).setView([38.0406, -84.5037], 14);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+// Tiles through KnoxMap's own server, which follows the OSM tile policy -
+// see the /tiles route in app.py.
+L.tileLayer('/tiles/{z}/{x}/{y}.png', {
   maxZoom: 19,
   attribution: '© OpenStreetMap contributors',
 }).addTo(map);
@@ -645,11 +647,9 @@ async function runSearch(q) {
   }
 }
 
-searchInput.addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  // Nominatim allows one request a second; don't fire on every keystroke.
-  searchTimer = setTimeout(() => runSearch(searchInput.value), 500);
-});
+// Search runs when you press Enter, never as you type. Nominatim's usage
+// policy forbids autocomplete-style searching on its public server
+// (https://operations.osmfoundation.org/policies/nominatim/).
 searchInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') { clearTimeout(searchTimer); runSearch(searchInput.value); }
   if (e.key === 'Escape') hideSearchResults();

@@ -307,6 +307,26 @@ HEADER_ADD = """    QString errorString() const { return mError; }
     bool isGenerating() const { return mTimer.isActive(); }"""
 
 
+# GPL-2.0 section 2(a): modified files must carry a prominent notice that
+# they were changed, and when. Appended at the end so no line of the original
+# code moves.
+MODIFIED_NOTICE = """
+/*
+ * Modified by KnoxMap (https://github.com/spytheeuclidean-a11y/knoxify),
+ * 2026-09: {what}
+ * These modifications are distributed under the same GNU General Public
+ * License as the rest of this file.
+ */
+"""
+
+
+def _mark_modified(path: Path, what: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    if "Modified by KnoxMap" not in text:
+        path.write_text(text.rstrip("\n") + "\n" + MODIFIED_NOTICE.format(what=what),
+                        encoding="utf-8")
+
+
 def patch_header(root: Path) -> bool:
     header = root / "WorldEd" / "src" / "editor" / "lotfilesmanager256.h"
     text = header.read_text(encoding="utf-8")
@@ -319,6 +339,7 @@ def patch_header(root: Path) -> bool:
         print("header anchor not found exactly once - aborting", file=sys.stderr)
         return False
     header.write_text(text.replace(HEADER_ANCHOR, HEADER_ADD, 1), encoding="utf-8")
+    _mark_modified(header, "added LotFilesManager256::isGenerating() for headless compiling.")
     print("patched: lotfilesmanager256.h")
     return True
 
@@ -351,6 +372,8 @@ def main(argv: list[str]) -> int:
         print(f"patched: {label}")
 
     main_cpp.write_text(text, encoding="utf-8")
+    _mark_modified(main_cpp, "added the --generate-map and --cells command-line "
+                             "switches for headless map compiling.")
     print(f"wrote {main_cpp}")
     return 0
 

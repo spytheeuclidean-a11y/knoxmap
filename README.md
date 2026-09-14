@@ -102,7 +102,7 @@ is still needed.
 
 | Tool | How |
 |---|---|
-| **Search** | Type a place. Pick a result for a box around it, or its **OUTLINE** button for the place's real boundary: a park, a district, a whole town. |
+| **Search** | Type a place and press **Enter**. Pick a result for a box around it, or its **OUTLINE** button for the place's real boundary: a park, a district, a whole town. |
 | **Rectangle** | Drag a box on the map. |
 | **Polygon** | Click point by point round any outline; click the first point to finish. |
 | **Circle** | Drag out a radius from a centre. |
@@ -219,6 +219,10 @@ not redistribute those extracted files. Pictures in this README that are drawn
 from the game's tiles (marked as such) contain artwork © The Indie Stone, shown
 to illustrate what the tool produces.
 
+> Thanks to The Indie Stone for creating Project Zomboid (https://projectzomboid.com/),
+> which made this possible. This is an unofficial fan production for non-commercial
+> purposes made under the [Indie Stone Terms](https://projectzomboid.com/blog/support/terms-conditions/).
+
 **Real places, invented contents.** Maps are built from OpenStreetMap, which may
 be incomplete, outdated or wrong, and KnoxMap simplifies it further. Everything
 inside the buildings (rooms, furniture, loot, residents, zombies) is invented by
@@ -231,16 +235,27 @@ real places to the people who use them.
 
 **Map data licence.** Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright),
 available under the [Open Database License (ODbL)](https://opendatacommons.org/licenses/odbl/).
-If you publish a map made with KnoxMap, on the Steam Workshop or anywhere else,
-credit it as **"Map data © OpenStreetMap contributors"**, and check the ODbL's
-terms for what else applies to what you share.
+Every map KnoxMap installs carries the credit in game and an `ATTRIBUTION.txt`
+saying which data it was made from and how.
 
-**Online services.** KnoxMap asks OpenStreetMap's free community services
-([Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) and
-[Nominatim](https://operations.osmfoundation.org/policies/nominatim/)) for data,
-and shows map tiles from OpenStreetMap and Esri. These are run by volunteers and
-companies with their own usage policies. KnoxMap identifies itself, caches
-downloads and paces its searches; please do not modify it to hammer them.
+**Publishing a map you made.** You may share maps made with KnoxMap for free.
+If you do, on the Steam Workshop or anywhere else: keep `ATTRIBUTION.txt` in the
+mod, credit **"Map data © OpenStreetMap contributors"** on its page, do not sell
+it, and do not present it as official. Under The Indie Stone's
+[Modding Policy](https://projectzomboid.com/blog/modding-policy/), publishing a
+mod grants The Indie Stone a non-exclusive, royalty-free licence to use it in
+connection with Project Zomboid.
+
+**Online services.** KnoxMap uses OpenStreetMap's free, volunteer-run services
+under their usage policies: the [tile server](https://operations.osmfoundation.org/policies/tiles/)
+for the background map, [Nominatim](https://operations.osmfoundation.org/policies/nominatim/)
+for place search, and the [Overpass API](https://dev.overpass-api.de/overpass-doc/en/preface/commons.html)
+for map data. KnoxMap identifies itself, caches tiles, searches and downloads,
+searches only when you press Enter, and paces its requests. Please do not modify
+it to get around those limits; for heavy use, run your own servers.
+
+**Privacy.** KnoxMap has no accounts, telemetry or analytics. The servers it
+contacts, and what they see, are listed in [docs/LEGAL.md](docs/LEGAL.md#privacy).
 
 **Third-party mods.** The Elevators mod is a separate work by its own author. It
 is not included in, affiliated with or maintained by KnoxMap, and its behaviour
@@ -266,4 +281,6 @@ for any damage or loss from using KnoxMap or its maps.
 The code here is under different terms depending on where it came from: work
 added in this fork is MIT, the compiler patch in `worlded/` and its prebuilt
 binary are GPL, and files from the original Knoxify have no published licence.
-See **[LICENSES.md](LICENSES.md)** for the details.
+See **[LICENSES.md](LICENSES.md)** for the details, and
+**[docs/LEGAL.md](docs/LEGAL.md)** for every licence and policy KnoxMap follows
+and how.

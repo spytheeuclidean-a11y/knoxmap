@@ -24,6 +24,10 @@ HEADERS = {
     "Accept-Language": "en",
 }
 
+# Nominatim's public server is shared and has a usage policy every client must
+# follow: https://operations.osmfoundation.org/policies/nominatim/
+# One request a second (see _throttle), a real User-Agent (HEADERS), results
+# cached (app.py), no autocomplete (the page searches only on Enter), no bulk use.
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 OVERPASS_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",

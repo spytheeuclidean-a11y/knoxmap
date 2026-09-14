@@ -244,17 +244,15 @@ const fx = (() => {
       // The standard OSM tiles, inverted in CSS. Hosted dark basemaps come and
       // go - CARTO's started stamping "API KEY REQUIRED" across every tile -
       // and this one needs no key and no third party.
-      dark: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      dark: L.tileLayer('/tiles/{z}/{x}/{y}.png', {
         maxZoom: 19, className: 'tiles-dark',
-        attribution: '© OpenStreetMap contributors',
+        attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }),
-      streets: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19, attribution: '© OpenStreetMap contributors',
+      streets: L.tileLayer('/tiles/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       }),
-      satellite: L.tileLayer(
-        'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-          maxZoom: 19, attribution: 'Imagery © Esri, Maxar, Earthstar Geographics',
-        }),
+      // No satellite view: Esri's World Imagery may only be used under Esri's
+      // terms, which expect an ArcGIS account for use in other applications.
     };
     // app.js adds a plain OSM layer; swap it for the chosen one.
     const existing = [];

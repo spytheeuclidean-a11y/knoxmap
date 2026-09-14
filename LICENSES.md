@@ -32,8 +32,11 @@ Everything in [`worlded/`](worlded/), and the prebuilt `PZWorldEd_cli.exe` in
 this repository's releases, modifies
 [PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools) (Alree /
 Unjammer, built on Tim Baker's TileZed and WorldEd) and is distributed under
-the GNU General Public License version 2 or later. See
-[worlded/README.md](worlded/README.md) for the corresponding source.
+the GNU General Public License version 2 or later. Each compiler release
+carries the binary's complete corresponding source (`PZWorldEd_cli-source.zip`,
+made by `worlded/make_release.py`), the licence text and a written source
+offer. See [worlded/README.md](worlded/README.md) and
+[docs/LEGAL.md](docs/LEGAL.md#the-map-compiler-gnu-gpl-version-2).
 
 ## Things this repository does not contain
 
@@ -61,9 +64,10 @@ and tiles, © OpenStreetMap contributors.
   share them.
 - **Overpass API** and **Nominatim** are free community services with usage
   policies; KnoxMap identifies itself and keeps to one search a second.
-- **Map tiles** in the app: OpenStreetMap standard tiles (subject to the
-  [tile usage policy](https://operations.osmfoundation.org/policies/tiles/))
-  and Esri World Imagery for the satellite view.
+- **Map tiles** in the app: OpenStreetMap standard tiles, fetched through
+  KnoxMap's local server under the
+  [tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+  (There is no satellite view: Esri's imagery terms do not cover this use.)
 - **Leaflet** (BSD-2-Clause) and **Leaflet.draw** (MIT), loaded from unpkg.
   **Fonts**: Oswald, Inter and JetBrains Mono (SIL Open Font License), from
   Google Fonts.
