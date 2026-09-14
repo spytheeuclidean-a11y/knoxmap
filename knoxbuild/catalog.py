@@ -280,7 +280,9 @@ FURNITURE = {'bed': {'W': {'0,0': 'furniture_bedding_01_002', '1,0': 'furniture_
  'wardrobe2': {'W': {'0,0': 'furniture_storage_01_037', '0,1': 'furniture_storage_01_036'},
                'N': {'0,0': 'furniture_storage_01_038', '1,0': 'furniture_storage_01_039'},
                'E': {'0,0': 'furniture_storage_02_021', '0,1': 'furniture_storage_02_020'},
-               'S': {'0,0': 'furniture_storage_02_022', '1,0': 'furniture_storage_02_023'}}}
+               'S': {'0,0': 'furniture_storage_02_022', '1,0': 'furniture_storage_02_023'}},
+ 'elevator_door': {'W': {'0,0': 'fixtures_escalators_01_49', '0,1': 'fixtures_escalators_01_48'},
+                   'N': {'0,0': 'fixtures_escalators_01_50', '1,0': 'fixtures_escalators_01_51'}}}
 
 # Furniture layer per role; anything but Furniture sits on a wall.
 FURNITURE_LAYERS = {'armchair': 'Furniture',
@@ -292,6 +294,7 @@ FURNITURE_LAYERS = {'armchair': 'Furniture',
  'counter': 'Furniture',
  'crate': 'Furniture',
  'dresser': 'Furniture',
+ 'elevator_door': 'Walls',
  'fridge': 'Furniture',
  'mirror': 'WallFurniture',
  'painting': 'WallFurniture',
@@ -328,7 +331,8 @@ ROOM_COLORS = {'livingroom': '233 112 19',
  'gym': '231 186 87',
  'library': '177 28 237',
  'medical': '9 184 97',
- 'shed': '95 115 162'}
+ 'shed': '95 115 162',
+ 'elevator': '23 241 127'}
 
 # Houses draw from these, picked per neighbourhood block so a
 # street stays coherent while the next one differs.

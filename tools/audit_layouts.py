@@ -18,7 +18,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from knoxbuild.layout import STAIR_RUN, build_building, roof_rects  # noqa: E402
+from knoxbuild.layout import ELEVATOR_FROM_LEVELS, STAIR_RUN, build_building, roof_rects  # noqa: E402
 
 KINDS = [None, None, "apartment", "apartment", "shop", "school", "civic",
          "church", "medical", "restaurant", "shed"]
@@ -88,10 +88,17 @@ def audit(building, kind):
             elif ua != ub:
                 fronts[ua or ub] += 1
         lit = {s.grid[fy][fx] for role, fx, fy, _o in s.furniture if role == "switch"}
-        if any(i not in lit for i in range(1, n + 1)):
+        shafts = {i for i, r in enumerate(s.rooms, 1) if r.is_shaft}
+        if any(i not in lit and i not in shafts for i in range(1, n + 1)):
             problems["room with no light switch"] += 1
+        # A lift shaft is a sealed box: a doorway into it is a hole to fall down.
+        for door in s.doors:
+            pair = door_pair(s, door)
+            if pair and any(p in shafts for p in pair):
+                problems["doorway into the lift shaft"] += 1
         if n:
-            seen, stack = {1}, [1]
+            start = next((i for i in range(1, n + 1) if i not in shafts), 1)
+            seen, stack = {start} | shafts, [start]
             while stack:
                 cur = stack.pop()
                 for nx in adj[cur] - seen:
@@ -127,6 +134,29 @@ def audit(building, kind):
                 problems["roof over open ground"] += 1
             if inside - covered:
                 problems["building with a hole in its roof"] += 1
+    # Lifts: the mod finds a shaft by its doors at the same square on every
+    # floor, so every storey needs the same shaft and a door hung on it.
+    shafts = [s.shaft for s in building.storeys]
+    if any(shafts):
+        if len(set(shafts)) != 1:
+            problems["lift shaft moves between floors"] += 1
+        for s in building.storeys:
+            doors = [f for f in s.furniture if f[0] == "elevator_door"]
+            if len(doors) != 1:
+                problems["floor without lift doors"] += 1
+                continue
+            _r, lx, ly, ld = doors[0]
+            for i in range(2):
+                ax, ay = (lx, ly + i) if ld == "W" else (lx + i, ly)
+                bx, by = (ax - 1, ay) if ld == "W" else (ax, ay - 1)
+                sides = {s.grid[ay][ax] if 0 <= ax < s.width and 0 <= ay < s.height else 0,
+                         s.grid[by][bx] if 0 <= bx < s.width and 0 <= by < s.height else 0}
+                kinds = {s.rooms[v - 1].is_shaft for v in sides if v}
+                if 0 in sides or kinds != {True, False}:
+                    problems["lift doors not between shaft and landing"] += 1
+                    break
+    elif len(building.storeys) >= ELEVATOR_FROM_LEVELS:
+        problems["tall building without a lift"] += 1
     for lvl, (x, y, d) in enumerate(building.stairs):
         dx, dy = (0, 1) if d == "N" else (1, 0)
         run = [(x + dx * i, y + dy * i) for i in range(STAIR_RUN)]
@@ -161,7 +191,7 @@ def main(argv):
             fp = rotated_mask(rng)
             if fp is not None:
                 w, h, mask = fp.width, fp.height, fp.mask_list()
-        levels = rng.randint(1, 5)
+        levels = rng.choice((1, 2, 3, 4, 5, 6, 8, 12))
         b = build_building(w, h, levels=levels, seed=i, kind=kind, mask=mask,
                            commercial=kind not in (None, "apartment"))
         found = audit(b, kind)

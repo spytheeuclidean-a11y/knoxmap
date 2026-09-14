@@ -255,7 +255,8 @@ def main(argv: list[str]) -> int:
              "hall", "storage", "office",
              # Rooms only special buildings use; all present in RoomNames.txt.
              "classroom", "church", "warehouse", "garage", "clinic",
-             "bar", "restaurant", "lobby", "gym", "library", "medical", "shed"]
+             "bar", "restaurant", "lobby", "gym", "library", "medical", "shed",
+             "elevator"]
     missing = [k for k in KINDS if k not in room_colors]
     if missing:
         raise SystemExit(f"ERROR: room names absent from RoomNames.txt: {missing}")
@@ -278,6 +279,17 @@ def main(argv: list[str]) -> int:
                 "FLOOR_TILE_PALE = 11\nFLOOR_TILE_CHECK = 12\nFLOOR_LINO = 13\n\n")
         f.write("ROOF_CAP = 14\nROOF_SLOPE = 15\nROOF_TOP = 16\n"
                 "CEILING = 17\nINTERIOR_WALL_TRIM = 18\n\n")
+        # Elevator doors are not in BuildingFurniture.txt, so they are written
+        # here directly. They are the vanilla tiles the Elevators mod looks
+        # for (fixtures_escalators_01_48-51), set into the Walls layer, which
+        # BuildingEd uses to replace a stretch of wall with the given tiles.
+        # Each door is two squares wide; the halves were matched to their end
+        # of the doorway from the artwork - the frame post is on the outer end.
+        furniture["elevator_door"] = {
+            "W": {"0,0": "fixtures_escalators_01_49", "0,1": "fixtures_escalators_01_48"},
+            "N": {"0,0": "fixtures_escalators_01_50", "1,0": "fixtures_escalators_01_51"},
+        }
+        furniture_layers["elevator_door"] = "Walls"
         f.write("FURNITURE = " + pprint.pformat(furniture, width=100, sort_dicts=False) + "\n\n")
         f.write("# Furniture layer per role; anything but Furniture sits on a wall.\n")
         f.write("FURNITURE_LAYERS = " + pprint.pformat(furniture_layers, width=100) + "\n\n")

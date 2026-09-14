@@ -104,6 +104,20 @@ and a Gebze industrial estate):
   tanks and silos would otherwise stand as solid boxes where the real place is
   open.
 
+**Lifts.** Buildings of five storeys or more get a 2x2 lift shaft against the
+long side of the stair hall, on the same squares on every floor. Its doors
+are the base game's own elevator tiles (`fixtures_escalators_01_48`-`51`), set
+into the wall facing the landing through BuildingEd's Walls furniture layer.
+The shaft is a sealed `elevator` room: no doorway, no switch, no furniture.
+That is exactly what the [Elevators](https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632)
+mod looks for - door tiles repeated at one square through a column of floors,
+with a small closed box behind them - so with it enabled the lifts run: call
+one from the doors, pick a floor, ride. Without it they are doors that do not
+open. `tools/audit_layouts.py` checks every tall building has one, aligned on
+every floor, with its doors between shaft and landing. In Midtown Manhattan at
+up to 30 storeys, 513 of 528 tall buildings got a lift; the rest have
+footprints with no room for a shaft beside the stairs.
+
 The smallest building kept is now 3 tiles across, down from 5. That had been
 throwing away 28% of Tokyo's buildings: real narrow houses and kiosks.
 

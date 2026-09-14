@@ -46,6 +46,9 @@ class Room:
     # The stair shaft or corridor. Kept as a flag rather than recognised by its
     # rectangle, because a sliver folded into it changes the rectangle.
     is_core: bool = False
+    # An elevator shaft: a sealed box with the lift doors set into one wall.
+    # No doorway, no furniture, no windows, never merged into a neighbour.
+    is_shaft: bool = False
 
     @property
     def w(self) -> int:
@@ -78,6 +81,10 @@ class Plan:
     core: tuple[int, int, int, int] | None = None
     # True when the core is a corridor flats open onto, not just a stair shaft.
     corridor: bool = False
+    # The elevator shaft (x0, y0, x1, y1) inclusive, and where its doors hang:
+    # (x, y, "W" or "N") for the two-square wall edge facing the stair hall.
+    shaft: tuple[int, int, int, int] | None = None
+    shaft_door: tuple[int, int, str] | None = None
     # Wall edges carrying a switch, painting or mirror; windows keep off them.
     wall_pieces: set = field(default_factory=set)
 
@@ -126,6 +133,8 @@ ROOM_STYLE = {
     "warehouse": (C.FLOOR_LINO, "Warehouse",
                   ["crate", "crate", "shelf", "shelf", "crate"]),
     "garage": (C.FLOOR_LINO, "Garage", ["crate", "shelf", "counter"]),
+    # Nothing goes in a lift car; the door is hung separately (see _furnish).
+    "elevator": (C.FLOOR_LINO, "Elevator", []),
     # The game's own shed room: its loot is carpentry, farming and metalwork
     # tools, where "garage" would stock a garden shed with car parts.
     "shed": (C.FLOOR_WOOD, "Shed", ["counter", "shelf", "crate"]),
@@ -565,7 +574,7 @@ def _mend_fragments(plan: Plan) -> None:
                                        and len(cells) < 3 * SLIVER)
 
     for idx in range(1, len(plan.rooms) + 1):
-        if plan.rooms[idx - 1].is_core:
+        if plan.rooms[idx - 1].is_core or plan.rooms[idx - 1].is_shaft:
             continue
         cells = [(x, y) for y in range(plan.height) for x in range(plan.width)
                  if plan.grid[y][x] == idx]
@@ -577,7 +586,7 @@ def _mend_fragments(plan: Plan) -> None:
             for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
                 if 0 <= nx < plan.width and 0 <= ny < plan.height:
                     v = plan.grid[ny][nx]
-                    if v and v != idx:
+                    if v and v != idx and not plan.rooms[v - 1].is_shaft:
                         options[v] = options.get(v, 0) + 1
         if not options:
             continue
@@ -749,8 +758,10 @@ def _doors(plan: Plan, rng: random.Random) -> None:
     n = len(plan.rooms)
     if n <= 1:
         return
-    edges = _boundary_edges(plan)
     rooms = plan.rooms
+    sealed = {i for i, r in enumerate(rooms, 1) if r.is_shaft}
+    edges = {k: v for k, v in _boundary_edges(plan).items()
+             if k[0] not in sealed and k[1] not in sealed}
 
     def start_room() -> int:
         for kind in ("hall", "lobby", "livingroom"):
@@ -759,7 +770,7 @@ def _doors(plan: Plan, rng: random.Random) -> None:
                 return max(found, key=lambda i: rooms[i - 1].area)
         return max(range(1, n + 1), key=lambda i: rooms[i - 1].area)
 
-    connected = {start_room()}
+    connected = {start_room()} | sealed
     front: set[int] = set()
     placed: set[tuple[int, int]] = set()
     doors_of: dict[int, int] = {}
@@ -893,7 +904,8 @@ def _exterior_door(plan: Plan, rng: random.Random,
     straight onto the bottom step.
     """
     order = {k: i for i, k in enumerate(ENTRY_KINDS)}
-    candidates = sorted(range(1, len(plan.rooms) + 1),
+    candidates = sorted((i for i in range(1, len(plan.rooms) + 1)
+                         if not plan.rooms[i - 1].is_shaft),
                         key=lambda i: (order.get(plan.rooms[i - 1].kind, 50),
                                        -plan.rooms[i - 1].area))
     for idx in candidates:
@@ -925,7 +937,7 @@ FACADE_SPACING = {
 DEFAULT_FACADE_SPACING = (5, 11)
 # Most windows one room may take, whatever the facade offers it.
 ROOM_WINDOW_CAP = {
-    "bathroom": 1, "storage": 0, "hall": 0, "garage": 0, "shed": 1,
+    "bathroom": 1, "storage": 0, "hall": 0, "garage": 0, "shed": 1, "elevator": 0,
     "kitchen": 1, "bedroom": 2, "dining": 2, "office": 1, "livingroom": 3,
 }
 DEFAULT_ROOM_WINDOW_CAP = 4
@@ -1148,6 +1160,11 @@ def _furnish(plan: Plan, rng: random.Random,
     """
     door_tiles: set[tuple[int, int]] = set()
     door_edges = set(plan.doors)
+    # The lift doors take their stretch of wall: nothing hangs on it.
+    if plan.shaft_door is not None:
+        lx, ly, ld = plan.shaft_door
+        door_edges |= {(lx, ly + i, "W") if ld == "W" else (lx + i, ly, "N")
+                       for i in range(SHAFT_SIZE)}
     for x, y, d in plan.doors:
         door_tiles.add((x, y))
         door_tiles.add((x - 1, y) if d == "W" else (x, y - 1))
@@ -1159,7 +1176,14 @@ def _furnish(plan: Plan, rng: random.Random,
         dx, dy = (0, 1) if sd == "N" else (1, 0)
         stair_tiles = {(sx + dx * i, sy + dy * i) for i in range(STAIR_RUN)}
 
+    if plan.shaft_door is not None:
+        lx, ly, ld = plan.shaft_door
+        plan.furniture.append(("elevator_door", lx, ly, ld))
+
     for idx, r in enumerate(plan.rooms, start=1):
+        # A lift car has no switch and no furniture: it is a sealed box.
+        if r.is_shaft:
+            continue
         # Walls this room has, as (x, y, facing) for a piece standing on the
         # tile with its back to that wall.
         slots = []
@@ -1346,6 +1370,81 @@ def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
     return rng.choice(best) if best else None
 
 
+# Buildings this tall get a lift. Four flights is a fair climb; a thirty-storey
+# tower on stairs alone is not something anyone built.
+ELEVATOR_FROM_LEVELS = 5
+SHAFT_SIZE = 2
+
+
+def _pick_shaft(core: tuple[int, int, int, int], width: int, height: int,
+                mask: list[list[bool]] | None, stairs: tuple[int, int, str] | None
+                ) -> tuple[tuple[int, int, int, int], tuple[int, int, str]] | None:
+    """A 2x2 elevator shaft beside the stair hall, and the wall its doors go in.
+
+    The Elevators mod finds a lift by its door tiles - vanilla
+    fixtures_escalators_01_48-51 - repeated at the same square on every floor
+    it serves, with a small sealed box behind them. So the shaft is fixed once
+    for the whole building, like the stairs, and sits against the long side of
+    the stair hall so its doors open onto the landing on every storey.
+    """
+    cx0, cy0, cx1, cy1 = core
+    s = SHAFT_SIZE
+    stair_cells = set()
+    if stairs is not None:
+        sx, sy, d = stairs
+        stair_cells = {(sx, sy + i) if d == "N" else (sx + i, sy) for i in range(STAIR_RUN)}
+
+    def inside(x0, y0):
+        if x0 < 0 or y0 < 0 or x0 + s > width or y0 + s > height:
+            return False
+        return mask is None or all(mask[y][x] for y in range(y0, y0 + s)
+                                   for x in range(x0, x0 + s))
+
+    options = []
+    if (cy1 - cy0) >= (cx1 - cx0):
+        # Hall runs north-south: shafts to its west or east, doors in a W wall.
+        mid = (cy0 + cy1) / 2
+        for y0 in range(cy0, cy1 - s + 2):
+            landing = [(cx0, y0 + i) for i in range(s)] + [(cx1, y0 + i) for i in range(s)]
+            for x0, door_x, side_col in ((cx0 - s, cx0, cx0), (cx1 + 1, cx1 + 1, cx1)):
+                if not inside(x0, y0):
+                    continue
+                if any((side_col, y0 + i) in stair_cells for i in range(s)):
+                    continue
+                options.append((abs(y0 + s / 2 - 1 - mid), (x0, y0, x0 + s - 1, y0 + s - 1),
+                                (door_x, y0, "W")))
+    else:
+        mid = (cx0 + cx1) / 2
+        for x0 in range(cx0, cx1 - s + 2):
+            for y0, door_y, side_row in ((cy0 - s, cy0, cy0), (cy1 + 1, cy1 + 1, cy1)):
+                if not inside(x0, y0):
+                    continue
+                if any((x0 + i, side_row) in stair_cells for i in range(s)):
+                    continue
+                options.append((abs(x0 + s / 2 - 1 - mid), (x0, y0, x0 + s - 1, y0 + s - 1),
+                                (x0, door_y, "N")))
+    if not options:
+        return None
+    options.sort(key=lambda o: (o[0], o[1]))
+    return options[0][1], options[0][2]
+
+
+def _carve_shaft(plan: Plan, shaft: tuple[int, int, int, int],
+                 door: tuple[int, int, str]) -> None:
+    """Paint the elevator shaft over the storey as a sealed room of its own."""
+    x0, y0, x1, y1 = shaft
+    plan.rooms.append(Room(x0, y0, x1, y1, kind="elevator", unit=0, is_shaft=True))
+    idx = len(plan.rooms)
+    for y in range(y0, y1 + 1):
+        for x in range(x0, x1 + 1):
+            plan.grid[y][x] = idx
+    plan.shaft = shaft
+    plan.shaft_door = door
+    _renumber(plan)
+    _mend_fragments(plan)
+    _refit(plan)
+
+
 def _stairs_in_core(core: tuple[int, int, int, int]
                     ) -> tuple[int, int, str]:
     """The flight inside a shaft. Runs along the shaft's long axis.
@@ -1399,11 +1498,16 @@ def build_building(width: int, height: int, levels: int = 1,
         levels = 1          # nowhere to put a staircase, so one floor it is
 
     stairs = _stairs_in_core(core) if core is not None and levels > 1 else None
+    shaft = shaft_door = None
+    if core is not None and levels >= ELEVATOR_FROM_LEVELS:
+        found = _pick_shaft(core, width, height, mask, stairs)
+        if found:
+            shaft, shaft_door = found
     storeys = [
         build_plan(width, height, commercial=commercial, seed=seed + 977 * lvl,
                    kind=kind, mask=mask, ground=(lvl == 0), settings=settings,
                    core=core, level=lvl, levels=levels, stairs=stairs,
-                   corridor=corridor)
+                   corridor=corridor, shaft=shaft, shaft_door=shaft_door)
         for lvl in range(levels)
     ]
     building = Building(width=width, height=height, storeys=storeys)
@@ -1441,7 +1545,9 @@ def build_plan(width: int, height: int, commercial: bool = False,
                core: tuple[int, int, int, int] | None = None,
                level: int = 0, levels: int = 1,
                stairs: tuple[int, int, str] | None = None,
-               corridor: bool = False) -> Plan:
+               corridor: bool = False,
+               shaft: tuple[int, int, int, int] | None = None,
+               shaft_door: tuple[int, int, str] | None = None) -> Plan:
     """Lay out and furnish one storey of the given tile size.
 
     `ground` gates the exterior door: a door in an upper-floor wall opens onto
@@ -1486,6 +1592,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
     for room in plan.rooms:
         if room.is_core:
             room.kind = "hall"
+    if shaft is not None:
+        _carve_shaft(plan, shaft, shaft_door)
 
     _doors(plan, rng)
     if ground:
