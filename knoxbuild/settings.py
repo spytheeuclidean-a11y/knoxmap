@@ -52,7 +52,9 @@ class Settings:
     apartment_footprint: int = 150
     apartment_chance: float = 0.55
     max_levels: int = 6
-    room_size: int = 56          # target room area in tiles before splitting
+    # Target room area in tiles before splitting. Knox County's rooms are 16 m2
+    # at the median; 56 made them twice that, big bare halls.
+    room_size: int = 24
     # How far a neighbourhood reaches before the materials change, and how
     # often one building breaks from its block anyway.
     neighbourhood_tiles: int = 110

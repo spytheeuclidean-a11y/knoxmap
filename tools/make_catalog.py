@@ -233,6 +233,21 @@ def main(argv: list[str]) -> int:
         "mirror": "walls_decoration_01_003",       # E N S W
         "painting": "walls_decoration_01_034",
         "wardrobe2": "furniture_storage_01_037",
+        # What Knox County's own houses are furnished with most, counted in
+        # their rooms (tools/building_stats.py): double beds, the kitchen sink
+        # and stove, showers and bath mats, table lamps, shag rugs, dressers.
+        "double_bed": "furniture_bedding_01_030",       # 2x2
+        "double_bed_alt": "furniture_bedding_01_042",   # 2x2
+        "kitchen_sink": "fixtures_sinks_01_008",
+        "stove_alt": "appliances_cooking_01_012",
+        "shower": "fixtures_bathroom_01_035",           # 2x1
+        "bath_mat": "floors_rugs_01_051",               # 1x2
+        "lamp": "lighting_indoor_01_008",
+        "shag_rug": "floors_rugs_02_000",               # 2x2
+        "dresser_alt": "furniture_storage_01_012",
+        "washer": "appliances_laundry_01_001",
+        "wall_cabinet": "fixtures_counters_01_027",     # above a counter
+        "microwave": "appliances_cooking_01_068",
         # On flat roofs (tbx.ROOFTOP): an air-conditioning unit, a vent, a hatch.
         "roof_ac": "rooftop_furniture_001",
         "roof_vent": "rooftop_furniture_015",
@@ -459,7 +474,7 @@ def main(argv: list[str]) -> int:
              # Rooms only special buildings use; all present in RoomNames.txt.
              "classroom", "church", "warehouse", "garage", "clinic",
              "bar", "restaurant", "lobby", "gym", "library", "medical", "shed",
-             "elevator"]
+             "elevator", "kidsbedroom", "closet", "laundry"]
     missing = [k for k in KINDS if k not in room_colors]
     if missing:
         raise SystemExit(f"ERROR: room names absent from RoomNames.txt: {missing}")

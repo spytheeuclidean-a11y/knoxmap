@@ -38,6 +38,7 @@ PEAK_MIN_TILES = 4
 # 11 and a flat strip. Wider than that, the steep 45-degree gable with a flat
 # top in the middle is all the editor offers.
 PEAK30_MAX_ACROSS = 11
+HIP_MAX_ACROSS = 7
 _PEAK_DEPTHS = {1: "Point5", 2: "One", 3: "OnePoint5", 4: "Two", 5: "TwoPoint5"}
 _NO_CAPS = {"cappedW": False, "cappedN": False, "cappedE": False, "cappedS": False}
 
@@ -79,7 +80,9 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True):
                 out.append(("PeakNS", _peak_depth(rw), cap, (rx, ry, rw, rh)))
             continue
         odd = across if across % 2 else across - 1
-        hip = single and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0
+        # Hips only on small houses: across a wide one the four slopes meet
+        # in a tall point that looks like a hat.
+        hip = single and odd <= HIP_MAX_ACROSS and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0
         cap = dict(_NO_CAPS)
         if along_x:
             box = (rx, ry + (rh - odd), rw, odd)

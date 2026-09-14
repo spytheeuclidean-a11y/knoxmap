@@ -94,23 +94,29 @@ class Plan:
 # kind -> (floor tile entry index, display name, furniture wishlist)
 ROOM_STYLE = {
     "livingroom": (C.FLOOR_CARPET_RED, "Living Room",
-                   ["sofa", "armchair", "tv", "sidetable", "bookshelf",
-                    "painting", "plant", "shelf"]),
+                   ["sofa", "armchair", "tv", "sidetable", "bookshelf", "lamp",
+                    "painting", "plant", "armchair", "shelf", "lamp", "shag_rug"]),
     "kitchen": (C.FLOOR_TILE_CHECK, "Kitchen",
-                ["counter", "fridge", "stove", "sink", "counter", "shelf",
-                 "table", "chair", "plant"]),
+                ["fridge", "stove", "kitchen_sink", "counter", "counter", "counter",
+                 "washer", "shelf", "plant"]),
     "bedroom": (C.FLOOR_CARPET_BLUE, "Bedroom",
-                ["bed", "wardrobe", "dresser", "sidetable",
-                 "painting", "mirror", "bookshelf"]),
+                ["double_bed", "wardrobe", "dresser_alt", "sidetable", "lamp",
+                 "painting", "mirror", "dresser", "bookshelf", "plant"]),
     "bathroom": (C.FLOOR_TILE_PALE, "Bathroom",
-                 ["toilet", "bath", "sink", "mirror", "shelf"]),
+                 ["toilet", "bath", "sink", "mirror", "bath_mat", "shelf", "shower"]),
     "dining": (C.FLOOR_WOOD, "Dining Room",
-               ["table", "chair", "chair", "dresser",
-                "painting", "plant", "shelf"]),
+               ["dresser", "painting", "plant", "shelf", "lamp", "bookshelf"]),
     "hall": (C.FLOOR_WOOD, "Hall",
-             ["shelf", "painting", "plant", "mirror"]),
+             ["sidetable", "painting", "plant", "mirror", "lamp", "shelf",
+              "bookshelf", "painting"]),
     "storage": (C.FLOOR_LINO, "Storage",
                 ["shelf", "crate", "shelf", "crate", "bookshelf"]),
+    # Vanilla room names, with the game's own loot for them.
+    "kidsbedroom": (C.FLOOR_CARPET_BLUE, "Kids Bedroom",
+                    ["bed", "dresser", "bookshelf", "lamp", "shelf", "plant",
+                     "painting", "sidetable"]),
+    "closet": (C.FLOOR_WOOD, "Closet", ["wardrobe", "shelf", "crate", "wardrobe2"]),
+    "laundry": (C.FLOOR_TILE_PALE, "Laundry", ["washer", "shelf", "crate", "sink"]),
     "office": (C.FLOOR_WOOD, "Office",
                ["table", "chair", "bookshelf", "painting", "plant"]),
     # Rooms only special buildings use. Every name is in RoomNames.txt, so loot
@@ -400,6 +406,15 @@ def _graph_distance(adj: dict[int, dict[int, int]], start: int) -> dict[int, int
     return dist
 
 
+# Knox County's houses (546 measured) have per house about 1.4 bedrooms, 0.4
+# children's bedrooms, 0.5 closets and 0.2 laundries - and ours had three
+# bedrooms and an office apiece, every spare room another bedroom. A room this
+# small is a closet; the rest take turns down these lists.
+SMALL_ROOM_TILES = 8
+HOUSE_SLEEPING = ["bedroom", "kidsbedroom", "bedroom", "office", "storage"]
+UPSTAIRS = ["bedroom", "kidsbedroom", "bedroom", "office", "kidsbedroom", "storage"]
+
+
 def _assign_house_kinds(plan: Plan, level: int, levels: int) -> None:
     """Rooms of a house, placed by what they sit next to.
 
@@ -436,17 +451,21 @@ def _assign_house_kinds(plan: Plan, level: int, levels: int) -> None:
                 take(max(near, key=lambda i: area[i]), "dining")
         if free and (levels == 1 or len(free) >= 2):
             take(min(free, key=lambda i: area[i]), "bathroom")
+        # A small room beside the kitchen is its laundry.
+        near = [n for n in adj.get(kitchens[0], ()) if n in free
+                and area[n] <= SMALL_ROOM_TILES] if (kitchens := [i for i, k in kinds.items()
+                                                                  if k == "kitchen"]) else []
+        if near:
+            take(min(near, key=lambda i: area[i]), "laundry")
         dist = _graph_distance(adj, living)
         rest = sorted(free, key=lambda i: -dist.get(i, 99))
+        sleeping = HOUSE_SLEEPING if levels == 1 else ["office", "bedroom", "kidsbedroom"]
         for n, i in enumerate(rest):
-            if levels == 1:
-                kinds[i] = "bedroom" if n < 3 else ("storage" if n % 2 else "office")
-            else:
-                kinds[i] = ("office", "bedroom", "storage")[n % 3]
+            kinds[i] = "closet" if area[i] <= SMALL_ROOM_TILES else sleeping[n % len(sleeping)]
     else:
         take(min(free, key=lambda i: area[i]), "bathroom")
         for n, i in enumerate(sorted(free, key=lambda i: -area[i])):
-            kinds[i] = "bedroom" if n < 4 else ("office" if n % 2 else "storage")
+            kinds[i] = "closet" if area[i] <= SMALL_ROOM_TILES else UPSTAIRS[n % len(UPSTAIRS)]
 
     for i, kind in kinds.items():
         plan.rooms[i - 1].kind = kind
@@ -928,6 +947,27 @@ def _exterior_door(plan: Plan, rng: random.Random,
         return
 
 
+def _back_door(plan: Plan) -> None:
+    """A second way out, from the kitchen side, away from the front door.
+
+    Knox County's houses have two outside doors as a rule (the median of 546);
+    ours had one.
+    """
+    if not plan.doors:
+        return
+    fx, fy, _fd = plan.doors[-1]
+    for kind in ("kitchen", "dining", "hall", "livingroom"):
+        for idx, room in enumerate(plan.rooms, 1):
+            if room.kind != kind or room.is_shaft:
+                continue
+            far = [wall for _side, wall in _outside_runs(plan, idx) if len(wall) >= 3
+                   and abs(wall[len(wall) // 2][0] - fx) + abs(wall[len(wall) // 2][1] - fy) > 6]
+            if far:
+                wall = max(far, key=len)
+                plan.doors.append(wall[len(wall) // 2])
+                return
+
+
 # Tiles of wall per window bay, by what the building is, on its front and on
 # its other sides. Not a setting: how glazed a facade is follows from what the
 # building is. A tile is about a metre, and real buildings put a window in
@@ -937,7 +977,7 @@ def _exterior_door(plan: Plan, rng: random.Random,
 # glass; a works or a barn only a few high windows. The old spacings (nine and
 # sixteen tiles for flats) left city blocks looking like warehouses.
 FACADE_SPACING = {
-    "house": (4, 7), "apartment": (3, 3), "barn": (10, 20), "shed": (12, 24),
+    "house": (3, 4), "apartment": (3, 3), "barn": (10, 20), "shed": (12, 24),
     "industrial": (6, 9), "shop": (3, 5), "restaurant": (3, 5),
     "civic": (2, 2), "school": (3, 3), "church": (4, 5), "medical": (3, 3),
 }
@@ -955,7 +995,8 @@ HOUSE_LIKE_KINDS = {"house", "barn", "shed", None}
 # Most windows one room may take, whatever the facade offers it.
 ROOM_WINDOW_CAP = {
     "bathroom": 1, "storage": 0, "hall": 0, "garage": 0, "shed": 1, "elevator": 0,
-    "kitchen": 1, "bedroom": 2, "dining": 2, "office": 1, "livingroom": 3,
+    "kitchen": 2, "bedroom": 3, "dining": 3, "office": 2, "livingroom": 5,
+    "kidsbedroom": 2, "closet": 0, "laundry": 1,
 }
 DEFAULT_ROOM_WINDOW_CAP = 4
 # Outside house-like buildings a facade keeps its rhythm whatever is behind
@@ -967,7 +1008,7 @@ SERVICE_WINDOW_CAP = {"garage": 0, "elevator": 0, "shed": 1}
 # Kept to the rooms that matter: guaranteeing every office and dining room a
 # window as well pushed facades back up to 1.09 windows per ten tiles of wall.
 # Those rooms still get windows from the bays; they just are not promised one.
-LIVED_IN = {"livingroom", "bedroom", "kitchen", "classroom", "restaurant"}
+LIVED_IN = {"livingroom", "bedroom", "kidsbedroom", "kitchen", "classroom", "restaurant"}
 MIN_WALL_FOR_WINDOW = 3
 
 
@@ -1389,11 +1430,18 @@ def _furnish(plan: Plan, rng: random.Random,
         # and the only way past the flight both run through it, and one
         # bookcase beside the stairs closes the corridor.
         if r.is_core:
+            # Nothing standing, but the walls are fair game: Knox County's
+            # halls carry 7 pieces per 10 m2 and ours carried none.
+            for n, (x, y, facing) in enumerate(sorted(slots, key=on_facade)):
+                if n % 3 == 0:
+                    hang(("painting", "mirror", "painting")[n % 9 // 3], x, y, facing)
             continue
         _, _, base = ROOM_STYLE[r.kind]
         # Scale the wishlist with floor area, or a 12x9 living room ends up
         # with four items rattling around in it.
-        target = max(len(base), min(14, r.area // 7))
+        # Knox County's rooms hold 8-13 pieces per 10 m2 of floor (counting
+        # each tile a piece covers); one piece per 7 tiles gave 3-4.
+        target = max(len(base), min(24, r.area // 4))
         wishlist = [base[i % len(base)] for i in range(target)]
         occupied: set[tuple[int, int]] = set()
         # The middle first, with an aisle round it the wall pieces must leave
@@ -1419,6 +1467,51 @@ def _furnish(plan: Plan, rng: random.Random,
                 occupied.update(cells)
                 plan.furniture.append((role, x, y, orient))
                 break
+
+        if r.kind == "kitchen":
+            _counter_runs(plan, idx, slots, occupied, door_tiles, stair_tiles)
+
+
+def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
+                  door_tiles: set, stair_tiles: set) -> None:
+    """Fitted counters along a kitchen's two longest walls.
+
+    Knox County's kitchens are counters wall to wall with the sink and stove
+    set into them - 12 pieces per 10 m2, against 5 when a kitchen took three
+    counters from its wishlist and left the rest of the wall bare. Whatever the
+    wishlist placed stays; the gaps along those walls fill with counters,
+    except in front of a door.
+    """
+    by_wall: dict[str, list[tuple[int, int, str]]] = {}
+    for x, y, facing in slots:
+        by_wall.setdefault(facing, []).append((x, y, facing))
+    for facing in sorted(by_wall, key=lambda f: -len(by_wall[f]))[:2]:
+        for x, y, _f in by_wall[facing]:
+            orient = _facing("counter", facing)
+            cells = _cells_for("counter", x, y, orient)
+            if any(c in occupied or c in door_tiles or c in stair_tiles for c in cells):
+                continue
+            if any(_room_at(plan, cx, cy) != idx for cx, cy in cells):
+                continue
+            # A corner tile is on two walls; one counter is enough.
+            occupied.update(cells)
+            plan.furniture.append(("counter", x, y, orient))
+
+    # Cupboards on the wall above the counters, and a microwave on one - the
+    # rest of what makes a vanilla kitchen full. North and west walls only, as
+    # for everything fixed to a wall; the windows then keep off those tiles.
+    microwave = False
+    for role, x, y, orient in list(plan.furniture):
+        if role != "counter" or orient not in ("N", "W") or _room_at(plan, x, y) != idx:
+            continue
+        edge = _wall_edge(x, y, orient)
+        if edge in plan.wall_pieces or _room_at(plan, *((x, y - 1) if orient == "N" else (x - 1, y))) == idx:
+            continue
+        plan.furniture.append(("wall_cabinet", x, y, _facing("wall_cabinet", orient)))
+        plan.wall_pieces.add(edge)
+        if not microwave:
+            plan.furniture.append(("microwave", x, y, _facing("microwave", orient)))
+            microwave = True
 
 
 @dataclass
@@ -1768,6 +1861,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
     _doors(plan, rng)
     if ground:
         _exterior_door(plan, rng, avoid=_stair_foot(stairs))
+        if kind in (None, "house"):
+            _back_door(plan)
     _furnish(plan, rng, stairs)
     return plan
 
