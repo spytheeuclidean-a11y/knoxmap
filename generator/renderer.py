@@ -218,6 +218,27 @@ def _clip_to_shape(landscape: Image.Image, shape, buckets: dict[str, list[OSMFea
             landscape.paste(grass, (0, y0), Image.fromarray(outside.astype(np.uint8) * 255))
 
 
+def cover_bbox(south: float, west: float, north: float, east: float,
+               meters_per_tile: float) -> tuple[float, float, float, float]:
+    """A (south, west, north, east) box holding the map however it is turned.
+
+    The map is a rectangle of whole cells round the selection; turned, it
+    sweeps a circle through its corners. The box round that circle holds every
+    feature the map could show at any angle, so one download serves both
+    measuring the street grid and drawing the turned map.
+    """
+    proj = Projector.build(south, west, north, east, meters_per_tile)
+    w_m = proj.width * meters_per_tile
+    h_m = proj.height * meters_per_tile
+    cx, cy = proj.min_x_m + w_m / 2, proj.min_y_m + h_m / 2
+    r = math.hypot(w_m, h_m) / 2 + 50       # a margin for ways just outside
+    back = pyproj.Transformer.from_crs(proj._transformer.target_crs, "EPSG:4326",
+                                       always_xy=True)
+    lons, lats = zip(*(back.transform(cx + dx, cy + dy)
+                       for dx in (-r, r) for dy in (-r, r)))
+    return min(lats), min(lons), max(lats), max(lons)
+
+
 def dominant_road_angle(features: Iterable[OSMFeature], south: float, west: float,
                         north: float, east: float) -> tuple[float, float]:
     """The main direction of a town's streets, and how strongly they share it.

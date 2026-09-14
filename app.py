@@ -347,13 +347,30 @@ def generate():
     map_dir = OUTPUT_DIR / map_name
     map_dir.mkdir(parents=True, exist_ok=True)
     bbox = (south, west, north, east)
-    cache = osm.cache_path(str(map_dir), map_name)
+    # Remembered next to the map, so Generate buildings and any later rebuild
+    # use the same ones without the page having to send them again - and so a
+    # map from last week can be reproduced exactly.
+    settings = Settings.from_dict(data.get("settings"))
+    _save_settings(map_dir, settings)
+
+    # What to download. A map turned to its street grid (see
+    # renderer.dominant_road_angle) reaches past the drawn box at its corners,
+    # and the angle is only known once the streets are in. This used to fetch
+    # the box, measure the angle, then fetch the turned map's bounds as well -
+    # the same town twice over, about 2.4 times the data. Now one download
+    # covers the map at any angle: the circle round it, as a box.
+    if settings.align_streets:
+        fetch_box = renderer.cover_bbox(south, west, north, east, meters_per_tile)
+        cache = osm.cache_path(str(map_dir), f"{map_name}_turned")
+    else:
+        fetch_box = bbox
+        cache = osm.cache_path(str(map_dir), map_name)
 
     # Regenerating the same area is the common case - it is how a map gets
     # re-rendered after the ground or road rules change - and a town's worth of
     # Overpass tiles takes minutes to download every time. The reply is kept on
     # disk and reused whenever the bbox matches to the metre.
-    features = osm.load_cache(cache, bbox)
+    features = osm.load_cache(cache, fetch_box)
     if features is None:
         _set_progress(map_name, stage="osm", done=0, total=1)
         def _progress(i, total):
@@ -364,51 +381,22 @@ def generate():
             # tile it is the same single request, and it brings the retry that
             # quarters a bbox the servers call too heavy.
             features = osm.fetch_features_tiled(
-                south, west, north, east,
-                max_tile_km2=OVERPASS_TILE_KM2, progress=_progress)
+                *fetch_box, max_tile_km2=OVERPASS_TILE_KM2, progress=_progress)
         except Exception as exc:  # Overpass can be flaky — surface that clearly
             _set_progress(map_name, stage="error", message=str(exc))
             return jsonify({"error": f"OSM query failed: {exc}"}), 502
         try:
-            osm.save_cache(cache, bbox, features)
+            osm.save_cache(cache, fetch_box, features)
         except OSError:
             pass  # a map that cannot be cached still renders
 
-    # Remembered next to the map, so Generate buildings and any later rebuild
-    # use the same ones without the page having to send them again - and so a
-    # map from last week can be reproduced exactly.
-    settings = Settings.from_dict(data.get("settings"))
-    _save_settings(map_dir, settings)
-
-    # Turn the map to its street grid (see renderer.dominant_road_angle). A
-    # turned map's corners reach past the drawn selection, so the ground for
-    # them is fetched too - otherwise each corner would be an empty wedge.
     rotation = 0.0
-    osm_cache_name = Path(cache).name
-    osm_bbox = bbox
     if settings.align_streets:
         angle, strength = renderer.dominant_road_angle(features, *bbox)
         if strength >= renderer.ALIGN_MIN_STRENGTH and abs(angle) >= 0.5:
             rotation = -angle
-            turned = renderer.Projector.build(*bbox, meters_per_tile, rotation)
-            osm_bbox = turned.latlon_bbox()
-            wide_cache = osm.cache_path(str(map_dir), f"{map_name}_turned")
-            wider = osm.load_cache(wide_cache, osm_bbox)
-            if wider is None:
-                _set_progress(map_name, stage="osm", done=0, total=1)
-                try:
-                    wider = osm.fetch_features_tiled(
-                        *osm_bbox, max_tile_km2=OVERPASS_TILE_KM2,
-                        progress=lambda i, total: _set_progress(
-                            map_name, stage="osm", done=i - 1, total=total))
-                    osm.save_cache(wide_cache, osm_bbox, wider)
-                except Exception:  # noqa: BLE001 - keep north up rather than fail
-                    wider = None
-            if wider is not None:
-                features = wider
-                osm_cache_name = Path(wide_cache).name
-            else:
-                rotation, osm_bbox = 0.0, bbox
+    osm_cache_name = Path(cache).name
+    osm_bbox = fetch_box
 
     osm_time = time.time() - t0
     _set_progress(map_name, stage="render", features=len(features))
