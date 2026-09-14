@@ -295,7 +295,7 @@ const SETTING_LABELS = {
   max_size:            ['Largest building', 'Footprints above this are skipped.'],
   apartment_footprint: ['Flats above', 'An untagged footprint this big reads as flats.'],
   apartment_chance:    ['Flats chance', 'How often such a footprint really becomes flats.'],
-  max_levels:          ['Tallest building', 'Storeys, up to 30 (Build 42's own tallest tower). OSM heights are capped to this. Tall cities take longer to compile.'],
+  max_levels:          ['Tallest building', 'Storeys, up to 30 - as tall as the base game gets. OSM heights are capped to this. Tall cities take longer to compile.'],
   window_density:      ['Windows', 'Below 1 means fewer. 1 is about one per five tiles of wall.'],
   room_size:           ['Room size', 'Target room area in tiles before it gets split.'],
   neighbourhood_tiles: ['Neighbourhood', 'How far one set of materials reaches.'],
