@@ -455,6 +455,10 @@ def _worlded_exe(cli: bool = False) -> Path | None:
 
 
 def _map_dir(map_name: str) -> Path | None:
+    # A page sends null here before any map exists; that is "no such map",
+    # not a crash.
+    if not isinstance(map_name, str) or not map_name.strip():
+        return None
     safe = SAFE_NAME.sub("_", map_name)
     d = (OUTPUT_DIR / safe).resolve()
     if not str(d).startswith(str(OUTPUT_DIR.resolve())) or not d.is_dir():
