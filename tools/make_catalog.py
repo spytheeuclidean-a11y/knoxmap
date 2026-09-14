@@ -185,6 +185,15 @@ def main(argv: list[str]) -> int:
         "mirror": "walls_decoration_01_003",       # E N S W
         "painting": "walls_decoration_01_034",
         "wardrobe2": "furniture_storage_01_037",
+        # Pieces for the middle of a room (layout.CENTRE_GROUPS): a room
+        # furnished only along its walls was an empty floor with a ring of
+        # furniture round it.
+        "dining_table": "furniture_tables_high_01_000",   # 2x1
+        "round_table": "furniture_tables_high_01_023",    # 1x1, E N S W
+        "coffee_table": "furniture_tables_low_01_001",    # 1x2
+        "rug": "floors_rugs_01_024",                      # 2x3, E N S W
+        "rug_wide": "floors_rugs_01_119",                 # 3x2, E N S W
+        "rug_small": "floors_rugs_01_006",                # 2x2, E N S W
     }
 
     def find_furniture(anchor: str) -> dict:

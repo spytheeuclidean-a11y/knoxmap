@@ -1198,6 +1198,103 @@ def _wall_edge(x: int, y: int, facing: str) -> tuple[int, int, str]:
     return (x + 1, y, "W")
 
 
+# What stands in the middle of a room, as (role, dx, dy, orient) laid out for
+# a room wider than it is deep; turned for the other way. Orient is the side a
+# piece has its back to, as for pieces against a wall, so a chair north of a
+# table has its back to the north. Rugs go on the floor layer under the rest.
+# The group, and a clear tile all round it, has to fit inside the room away
+# from the furniture along its walls and the tiles in front of doors, or the
+# room keeps an open floor instead. `repeat` is how many a big room may take.
+# FALLBACK_GROUPS are smaller sets tried when the first does not fit.
+CENTRE_GROUPS: dict[str, tuple[list[tuple[str, int, int, str]], int]] = {
+    "livingroom": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "N")], 1),
+    "lobby": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "N")], 2),
+    "dining": ([("rug_wide", 0, 0, "W"), ("dining_table", 1, 1, "W"),
+                ("chair", 0, 1, "W"), ("chair", 3, 1, "E"),
+                ("chair", 1, 0, "N"), ("chair", 2, 2, "S")], 1),
+    "kitchen": ([("round_table", 1, 0, "W"), ("chair", 0, 0, "W"),
+                 ("chair", 2, 0, "E")], 1),
+    "bedroom": ([("rug_small", 0, 0, "W")], 1),
+    "office": ([("dining_table", 0, 1, "W"), ("chair", 0, 0, "N")], 3),
+    "library": ([("dining_table", 1, 1, "W"), ("chair", 0, 1, "W"),
+                 ("chair", 3, 1, "E")], 3),
+    "classroom": ([("dining_table", 0, 1, "W"), ("chair", 0, 0, "N"),
+                   ("chair", 1, 0, "N")], 6),
+    "restaurant": ([("round_table", 1, 1, "W"), ("chair", 0, 1, "W"),
+                    ("chair", 2, 1, "E"), ("chair", 1, 0, "N"),
+                    ("chair", 1, 2, "S")], 6),
+}
+FALLBACK_GROUPS: dict[str, list[list[tuple[str, int, int, str]]]] = {
+    "livingroom": [[("rug_small", 0, 0, "W"), ("coffee_table", 0, 0, "N")]],
+    "dining": [[("dining_table", 1, 0, "W"), ("chair", 0, 0, "W"), ("chair", 3, 0, "E")],
+               [("round_table", 1, 0, "W"), ("chair", 0, 0, "W"), ("chair", 2, 0, "E")]],
+    "kitchen": [[("round_table", 0, 0, "W"), ("chair", 1, 0, "E")]],
+    "lobby": [[("rug_small", 0, 0, "W"), ("coffee_table", 0, 0, "N")]],
+}
+_TURN = {"W": "N", "N": "W", "E": "S", "S": "E"}
+
+
+def _furnish_middle(plan: Plan, idx: int, room: Room,
+                    occupied: set[tuple[int, int]],
+                    keep_clear: set[tuple[int, int]]) -> int:
+    """Put the room's centre group(s) in its open middle. Returns how many."""
+    spec = CENTRE_GROUPS.get(room.kind)
+    if spec is None or room.is_core or room.is_shaft:
+        return 0
+    group, repeat = spec
+    placed = _place_group(plan, idx, room, group, repeat, occupied, keep_clear)
+    for smaller in FALLBACK_GROUPS.get(room.kind, ()):
+        if placed:
+            break
+        placed = _place_group(plan, idx, room, smaller, 1, occupied, keep_clear)
+    return placed
+
+
+def _place_group(plan: Plan, idx: int, room: Room,
+                 group: list[tuple[str, int, int, str]], repeat: int,
+                 occupied: set[tuple[int, int]],
+                 keep_clear: set[tuple[int, int]]) -> int:
+    """Up to `repeat` copies of one group, nearest the room's middle first."""
+    if (room.x1 - room.x0) < (room.y1 - room.y0):
+        # Rugs are drawn one way round whatever their orient, so a turned
+        # group swaps the wide rug for the long one.
+        swap = {"rug_wide": "rug", "rug": "rug_wide"}
+        group = [(swap.get(role, role), dy, dx, _TURN[o]) for role, dx, dy, o in group]
+    pieces = [(role, dx, dy, _facing(role, o)) for role, dx, dy, o in group]
+    shape = [(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             for cx, cy in _cells_for(role, 0, 0, o)]
+    gx0 = min(x for x, _ in shape)
+    gy0 = min(y for _, y in shape)
+    gx1 = max(x for x, _ in shape)
+    gy1 = max(y for _, y in shape)
+    solid = {(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             if C.FURNITURE_LAYERS.get(role, "Furniture") == "Furniture"
+             for cx, cy in _cells_for(role, 0, 0, o)}
+    mid_x, mid_y = (room.x0 + room.x1) / 2, (room.y0 + room.y1) / 2
+    spots = sorted(
+        ((x, y) for y in range(room.y0 - gy0, room.y1 - gy1 + 1)
+         for x in range(room.x0 - gx0, room.x1 - gx1 + 1)),
+        key=lambda p: abs(p[0] + (gx0 + gx1) / 2 - mid_x)
+        + abs(p[1] + (gy0 + gy1) / 2 - mid_y))
+    placed = 0
+    for ox, oy in spots:
+        if placed >= repeat:
+            break
+        ring = {(x, y) for y in range(oy + gy0 - 1, oy + gy1 + 2)
+                for x in range(ox + gx0 - 1, ox + gx1 + 2)}
+        if any(_room_at(plan, x, y) != idx or (x, y) in occupied
+               or (x, y) in keep_clear for x, y in ring):
+            continue
+        for role, dx, dy, o in pieces:
+            plan.furniture.append((role, ox + dx, oy + dy, o))
+        # The whole footprint and its ring stay clear of the next copy, so
+        # tables in a classroom keep an aisle between them.
+        occupied.update(ring)
+        occupied.update((ox + x, oy + y) for x, y in solid)
+        placed += 1
+    return placed
+
+
 def _furnish(plan: Plan, rng: random.Random,
              stairs: tuple[int, int, str] | None = None) -> None:
     """Push furniture against room walls, skipping tiles a door needs clear.
@@ -1290,6 +1387,9 @@ def _furnish(plan: Plan, rng: random.Random,
         target = max(len(base), min(14, r.area // 7))
         wishlist = [base[i % len(base)] for i in range(target)]
         occupied: set[tuple[int, int]] = set()
+        # The middle first, with an aisle round it the wall pieces must leave
+        # free; placed after them, it almost never found room.
+        _furnish_middle(plan, idx, r, occupied, door_tiles | stair_tiles)
         floor_slots = [s for s in slots]
         rng.shuffle(floor_slots)
         for role in wishlist:
