@@ -136,6 +136,7 @@ SPECIAL_BY_NAME = [
 # Storeys, when OSM does not say. A town of nothing but bungalows reads as a
 # film set - the skyline is what tells you whether you are downtown or in the
 # suburbs, and every building here was one floor tall.
+HOUSE_TWO_STOREY_CHANCE = 0.3
 DEFAULT_LEVELS = {
     "industrial": (1, 1),
     "barn": (1, 1),
@@ -234,6 +235,10 @@ def building_levels(tags: dict, kind: str | None, area_tiles: int,
     measured = levels_from_tags(tags, settings)
     if measured is not None:
         return measured, True
+    if kind is None:
+        # Most houses are a single storey under a pitched roof; an even split
+        # of one and two storeys made a suburb a street of tall boxes.
+        return (2 if rng.random() < HOUSE_TWO_STOREY_CHANCE else 1), False
     lo, hi = DEFAULT_LEVELS.get(kind or "", (1, 2))
     return rng.randint(min(lo, settings.max_levels),
                        min(hi, settings.max_levels)), False

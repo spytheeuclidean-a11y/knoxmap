@@ -109,6 +109,42 @@ def main(argv: list[str]) -> int:
                      errors="replace").read()
     window_pairs = dict(re.findall(r"West = (fixtures_windows_\w+)\s+North = (\w+)", tiles_txt))
 
+    def bt_entry(category: str, anchor: str | None) -> dict | None:
+        """An entry of BuildingTiles.txt's `category` whose first tile is
+        `anchor` - the editor's full lists, where the templates hold a few."""
+        if not anchor:
+            return None
+        start = tiles_txt.index(f"name = {category}\n")
+        nxt = tiles_txt.find("\n    name = ", start + 10)
+        block = tiles_txt[start:nxt if nxt > 0 else None]
+        for body in re.findall(r"entry\s*\{(.*?)\}", block, re.S):
+            pairs = re.findall(r"^\s*(\w+) = ([^\n]*)$", body, re.M)
+            tiles = {k: v.strip() for k, v in pairs if k != "offset" and v.strip()}
+            if tiles and next(iter(tiles.values())) == anchor:
+                return {"category": category, "tiles": tiles}
+        raise SystemExit(f"ERROR: no {category} {anchor!r} in BuildingTiles.txt.")
+
+    def wall_entry(anchor: str) -> dict:
+        """An exterior wall from the templates, or the editor's full list."""
+        for e in entries:
+            if e.get("category") == "exterior_walls":
+                vals = list(tile_keys(e).values())
+                if vals and vals[0] == anchor:
+                    return {"category": "exterior_walls", "tiles": tile_keys(e)}
+        return bt_entry("exterior_walls", anchor)
+
+    def caps_for(wall: str, fallback: str | None) -> dict | None:
+        """The gable-end set the editor pairs with this exterior wall: each of
+        its roof_caps entries names the wall it belongs to in CapGapE3."""
+        start = tiles_txt.index("name = roof_caps\n")
+        nxt = tiles_txt.find("\n    name = ", start + 10)
+        for body in re.findall(r"entry\s*\{(.*?)\}", tiles_txt[start:nxt], re.S):
+            pairs = dict((k, v.strip()) for k, v in re.findall(r"^\s*(\w+) = ([^\n]*)$", body, re.M))
+            if pairs.get("CapGapE3") == wall and pairs.get("CapPeak30S1"):
+                tiles = {k: v for k, v in pairs.items() if k != "offset" and v}
+                return {"category": "roof_caps", "tiles": tiles}
+        return bt_entry("roof_caps", fallback) if fallback else None
+
     def curtains(anchor: str | None) -> dict | None:
         """A curtains entry from its West tile: East, North, South follow it."""
         if not anchor:
@@ -125,7 +161,9 @@ def main(argv: list[str]) -> int:
         """Roof materials: a slope family from the templates, and a flat-top
         tile used for all three depths (the templates' roofs_01_054 entry has
         the same tile in every slot too)."""
-        return {"slopes": pick("roof_slopes", slopes) if slopes else None,
+        # From BuildingTiles.txt: its slope entries carry the 30-degree
+        # tiles as well, which the templates' copies leave out.
+        return {"slopes": bt_entry("roof_slopes", slopes) if slopes else None,
                 "tops": {"category": "roof_tops",
                          "tiles": {k: top for k in ("West1", "West2", "West3",
                                                     "North1", "North2", "North3")}},
@@ -195,6 +233,10 @@ def main(argv: list[str]) -> int:
         "mirror": "walls_decoration_01_003",       # E N S W
         "painting": "walls_decoration_01_034",
         "wardrobe2": "furniture_storage_01_037",
+        # On flat roofs (tbx.ROOFTOP): an air-conditioning unit, a vent, a hatch.
+        "roof_ac": "rooftop_furniture_001",
+        "roof_vent": "rooftop_furniture_015",
+        "roof_hatch": "rooftop_furniture_022",
         # Pieces for the middle of a room (layout.CENTRE_GROUPS): a room
         # furnished only along its walls was an empty floor with a ring of
         # furniture round it.
@@ -253,7 +295,14 @@ def main(argv: list[str]) -> int:
         # eight entries here used a third of them, so a long street ran out of
         # variety and started repeating itself.
         ("render", "walls_exterior_house_02_064", "walls_interior_house_03_036", "fixtures_windows_white_016", "fixtures_windows_curtains_01_032"),
-        ("plaster", "walls_interior_house_02_032", "walls_interior_bathroom_01_000", "fixtures_windows_01_056", "fixtures_windows_curtains_02_000"),
+        # Painted clapboard in the colours Knox County's own houses wear. The
+        # old "plaster" style was an interior wall used outside; the editor has
+        # no gable ends for it, so its roofs ended in white triangles.
+        ("siding_blue", "walls_exterior_house_02_020", "walls_interior_house_02_000", "fixtures_windows_white_024", "fixtures_windows_curtains_02_000"),
+        ("siding_yellow", "walls_exterior_house_02_032", "walls_interior_house_03_000", "fixtures_windows_white_016", "fixtures_windows_curtains_01_032"),
+        ("siding_green", "walls_exterior_house_02_080", "walls_interior_house_01_016", "fixtures_windows_white_024", "fixtures_windows_curtains_01_040"),
+        ("siding_pink", "walls_exterior_house_02_068", "walls_interior_house_03_036", "fixtures_windows_white_016", "fixtures_windows_curtains_02_000"),
+        ("siding_grey", "walls_exterior_house_01_000", "walls_interior_house_02_032", "fixtures_windows_01_008", "fixtures_windows_curtains_02_008"),
     ]
     # Houses have pitched roofs: every building used to wear the same flat
     # brown planks, which is no roof a suburb has. (slopes, flat top, peaked):
@@ -264,7 +313,8 @@ def main(argv: list[str]) -> int:
     RED = ("roofs_04_000", "roofs_04_022", True)  # 04_054 is white
     HOUSE_ROOFS = {"clapboard": SLATE, "brick": BROWN, "painted": RED, "stucco": WOOD,
                    "panel": SLATE, "timber": WOOD, "logs": WOOD, "render": RED,
-                   "plaster": BROWN,
+                   "siding_blue": SLATE, "siding_yellow": BROWN, "siding_green": BROWN,
+                   "siding_pink": SLATE, "siding_grey": RED,
                    # A trailer's roof is flat.
                    "trailer": (None, "roofs_01_054", False)}
     # The triangle of wall at a gable end, in the house's own material rather
@@ -279,20 +329,42 @@ def main(argv: list[str]) -> int:
                  "logs": "walls_logs_016",
                  "trailer": "walls_exterior_roofs_03_024",
                  "render": "walls_exterior_roofs_09_080",
-                 "plaster": "walls_exterior_roofs_08_024",
                  "barn": "location_barn_01_024",
                  "church": "walls_exterior_roofs_10_224"}
+    # What makes a Knox County house read as a house from outside, besides its
+    # roof: a trim board or foundation along the bottom of each storey and
+    # shutters either side of the windows. (trim, shutters) per style.
+    WHITE_BASE, FOUNDATION, BASE = ("walls_detailing_01_013", "walls_detailing_01_005",
+                                    "walls_detailing_01_021")
+    WHITE_S, BLUE_S, BROWN_S, DARK_S = ("fixtures_windows_detailing_01_016",
+                                        "fixtures_windows_detailing_01_020",
+                                        "fixtures_windows_detailing_01_024",
+                                        "fixtures_windows_detailing_01_028")
+    HOUSE_TRIM = {"clapboard": (WHITE_BASE, DARK_S), "brick": (FOUNDATION, WHITE_S),
+                  "painted": (FOUNDATION, WHITE_S), "stucco": (BASE, BROWN_S),
+                  "panel": (FOUNDATION, BLUE_S), "timber": (None, None),
+                  "logs": (None, None), "trailer": ("location_trailer_01_004", None),
+                  "render": (WHITE_BASE, DARK_S),
+                  "siding_blue": (WHITE_BASE, WHITE_S), "siding_yellow": (WHITE_BASE, DARK_S),
+                  "siding_green": (WHITE_BASE, WHITE_S), "siding_pink": (WHITE_BASE, WHITE_S),
+                  "siding_grey": (WHITE_BASE, BLUE_S)}
+    # Weathering streaks on every outside wall; spotless walls read as
+    # plastic next to the game's own buildings, which all carry it.
+    GRIME = pick("grime_wall", "overlay_grime_wall_01_000")
     house_styles = []
     for style_name, ext, inte, window_name, curtain_name in HOUSE_STYLE_SPEC:
         house_styles.append({
             "name": style_name,
-            "exterior": pick("exterior_walls", ext),
+            "exterior": wall_entry(ext),
             "interior": pick("interior_walls", inte),
             "window": window(window_name),
             "curtains": curtains(curtain_name),
             "roof": roof(*HOUSE_ROOFS[style_name]),
+            "trim": bt_entry("exterior_wall_trim", HOUSE_TRIM[style_name][0]),
+            "shutters": bt_entry("shutters", HOUSE_TRIM[style_name][1]),
+            "grime": GRIME,
         })
-        house_styles[-1]["roof"]["caps"] = pick("roof_caps", ROOF_CAPS[style_name])
+        house_styles[-1]["roof"]["caps"] = caps_for(ext, ROOF_CAPS.get(style_name))
 
     # kind -> materials, and the floor that overrides the usual palette.
     SPECIAL_SPEC = {
@@ -371,9 +443,12 @@ def main(argv: list[str]) -> int:
             "windows_by_levels": [[levels, window(name), curtains(cur)]
                                   for levels, name, cur in by_height],
             "roof": roof(*SPECIAL_ROOFS.get(kind, FLAT_GREY)),
+            "trim": bt_entry("exterior_wall_trim",
+                             None if kind in ("church", "barn", "industrial") else FOUNDATION),
+            "shutters": None,
+            "grime": GRIME,
         }
-        if kind in ROOF_CAPS:
-            style["roof"]["caps"] = pick("roof_caps", ROOF_CAPS[kind])
+        style["roof"]["caps"] = caps_for(ext, ROOF_CAPS.get(kind))
         if kind in SHOP_FRONTS:
             name, cur = SHOP_FRONTS[kind]
             style["shop_front"] = [window(name), curtains(cur)]

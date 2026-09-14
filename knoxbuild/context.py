@@ -30,7 +30,8 @@ SPARSE = 0.06
 # middle of a city reads as a mistake at first glance, and clapboard or timber
 # framing looks lost among blocks of flats.
 RURAL_ONLY = {"logs", "trailer"}
-NOT_DENSE = {"clapboard", "timber"}
+NOT_DENSE = {"clapboard", "timber", "siding_blue", "siding_yellow", "siding_green",
+             "siding_pink", "siding_grey"}
 
 # Tagged heights count within this distance of a building, and only when
 # enough of them agree to be a pattern rather than one tower.

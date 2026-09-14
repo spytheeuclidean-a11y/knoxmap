@@ -26,15 +26,29 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from knoxbuild import catalog as _C  # noqa: E402
 
 CATEGORY_ENUMS: dict[str, set[str]] = {}
-for _e in _C.TILE_ENTRIES:
-    CATEGORY_ENUMS.setdefault(_e["category"], set()).update(_e["tiles"])
+
+
+def _collect(node) -> None:
+    """Every tile entry the catalog can write, shared or in a style - all of
+    them copied from the editor's own config, so their enums are its enums."""
+    if isinstance(node, dict):
+        if isinstance(node.get("category"), str) and isinstance(node.get("tiles"), dict):
+            CATEGORY_ENUMS.setdefault(node["category"], set()).update(node["tiles"])
+        for v in node.values():
+            _collect(v)
+    elif isinstance(node, (list, tuple)):
+        for v in node:
+            _collect(v)
+
+
+_collect([_C.TILE_ENTRIES, _C.HOUSE_STYLES, _C.SPECIAL_STYLES])
 
 # BuildingReader rejects anything outside this, and accepts versions 1..7.
 MAX_BUILDING_DIMENSION = 300
 VALID_VERSIONS = {str(v) for v in range(1, 8)}
 
 VALID_ROOF_TYPES = {"FlatTop", "SlopeW", "SlopeN", "SlopeE", "SlopeS",
-                    "PeakWE", "PeakNS"}
+                    "PeakWE", "PeakNS", "Peak30WE", "Peak30NS", "Peak30Quad"}
 VALID_ROOF_DEPTHS = {"Zero", "Point5", "One", "OnePoint5", "Two",
                      "TwoPoint5", "Three"}
 

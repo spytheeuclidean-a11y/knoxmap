@@ -1,6 +1,10 @@
 """Draw a compiled map the way the game draws it, from the files the game loads.
 
     python tools/render_lots.py output/<map> out.png X Y W H [--max-level N] [--scale S]
+    python tools/render_lots.py "<game>/media/maps/Muldraugh, KY" out.png X Y W H --world
+
+With --world, X Y are world tile coordinates and the folder holds the
+.lotheader files itself - a vanilla map, for comparing against the real thing.
 
 X Y W H is an area of the map in its own tile coordinates (the same as the
 terrain bitmap). --max-level cuts the view off above a floor, the way the game
@@ -109,8 +113,12 @@ def main(argv: list[str]) -> int:
     import knoxpaths
     from knoxbuild.world import WORLD_ORIGIN_CELLS
 
-    ox, oy = WORLD_ORIGIN_CELLS[0] * 300, WORLD_ORIGIN_CELLS[1] * 300
-    lots = os.path.join(map_dir, "lots")
+    if "--world" in argv:
+        ox = oy = 0
+        lots = map_dir
+    else:
+        ox, oy = WORLD_ORIGIN_CELLS[0] * 300, WORLD_ORIGIN_CELLS[1] * 300
+        lots = os.path.join(map_dir, "lots")
     squares: dict[tuple[int, int, int], list[str]] = {}
     top = 0
     wx0, wy0 = ox + X, oy + Y

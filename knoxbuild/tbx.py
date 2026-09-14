@@ -33,12 +33,101 @@ def _attrs(pairs: list[tuple[str, object]]) -> str:
 # A pitched roof needs room for two slopes; a narrower strip of a house (a
 # porch, one step of a turned footprint) keeps a flat roof.
 PEAK_MIN_TILES = 4
+# The 30-degree roofs the game's own houses wear, which BuildingEd sizes to an
+# odd number of tiles across, 3 to 11; a house up to two tiles wider takes an
+# 11 and a flat strip. Wider than that, the steep 45-degree gable with a flat
+# top in the middle is all the editor offers.
+PEAK30_MAX_ACROSS = 11
 _PEAK_DEPTHS = {1: "Point5", 2: "One", 3: "OnePoint5", 4: "Two", 5: "TwoPoint5"}
+_NO_CAPS = {"cappedW": False, "cappedN": False, "cappedE": False, "cappedS": False}
 
 
 def _peak_depth(across: int) -> str:
-    """BuildingEd's depth for a peaked roof this many tiles across its slopes."""
+    """BuildingEd's depth for a 45-degree peaked roof this many tiles across."""
     return _PEAK_DEPTHS.get(across, "Three")
+
+
+def _roof_pieces(rects, peaked: bool, roof30: bool = True):
+    """(RoofType, Depth, caps, (x, y, w, h)) for each roof over a footprint.
+
+    Flat roofs are never capped: at depth three a cap is a storey-high wall of
+    roof tiles laid over the top storey's own walls. A pitched roof is capped
+    at its gable ends where they are the outside of the house, and left open
+    where it runs into the next roof.
+
+    30-degree roofs need an odd width across their slopes. On an even one the
+    roof covers one tile less and a flat strip takes the last row, on the side
+    away from the camera (north or west) where it shows least. A house that is
+    a single rectangle gets a hip roof about half the time, as Knox County's
+    do; an L-shape keeps gables, whose ends meet cleanly.
+    """
+    out = []
+    single = len(rects) == 1
+    for rx, ry, rw, rh, caps in rects:
+        across = min(rw, rh)
+        if not peaked or across < PEAK_MIN_TILES:
+            out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+            continue
+        along_x = rw >= rh
+        if not roof30 or across > PEAK30_MAX_ACROSS + 2:
+            cap = dict(_NO_CAPS)
+            if along_x:
+                cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
+                out.append(("PeakWE", _peak_depth(rh), cap, (rx, ry, rw, rh)))
+            else:
+                cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
+                out.append(("PeakNS", _peak_depth(rw), cap, (rx, ry, rw, rh)))
+            continue
+        odd = across if across % 2 else across - 1
+        hip = single and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0
+        cap = dict(_NO_CAPS)
+        if along_x:
+            box = (rx, ry + (rh - odd), rw, odd)
+            if rh != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
+            if not hip:
+                cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
+            out.append(("Peak30Quad" if hip else "Peak30WE", "Zero", cap, box))
+        else:
+            box = (rx + (rw - odd), ry, odd, rh)
+            if rw != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
+            if not hip:
+                cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
+            out.append(("Peak30Quad" if hip else "Peak30NS", "Zero", cap, box))
+    return out
+
+
+# Flat roofs carry plant: bare tar from edge to edge read as unfinished. One
+# air-conditioning unit per ROOF_AC_EVERY tiles of roof, a vent per
+# ROOF_VENT_EVERY, and a hatch, kept off the edges and off each other.
+ROOF_MIN_TILES = 60
+ROOF_AC_EVERY = 90
+ROOF_VENT_EVERY = 60
+
+
+def _rooftop(grid: list[list[int]], width: int, height: int) -> list[tuple[str, int, int, str]]:
+    import random
+
+    tiles = [(x, y) for y in range(1, height - 1) for x in range(1, width - 1)
+             if all(grid[y + dy][x + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1))]
+    area = sum(1 for row in grid for v in row if v)
+    if area < ROOF_MIN_TILES or not tiles:
+        return []
+    rng = random.Random(width * 7919 + height * 104729 + area)
+    wanted = (["roof_hatch"] + ["roof_ac"] * max(1, area // ROOF_AC_EVERY)
+              + ["roof_vent"] * (area // ROOF_VENT_EVERY))
+    taken: set[tuple[int, int]] = set()
+    out = []
+    rng.shuffle(tiles)
+    for role in wanted:
+        for x, y in tiles:
+            if any((x + dx, y + dy) in taken for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+                continue
+            taken.add((x, y))
+            out.append((role, x, y, rng.choice(("W", "N"))))
+            break
+    return out
 
 
 def _add(entries: list[dict], entry: dict | None) -> int:
@@ -75,6 +164,8 @@ def render_tbx(plan: Plan | Building, name: str,
     curtains_idx = C.CURTAINS
     front_idx = front_curtains = None
     slope_idx, top_idx, peaked = C.ROOF_SLOPE, C.ROOF_TOP, False
+    trim_idx = shutters_idx = grime_idx = 0
+    roof30 = False
 
     if style:
         entries.append(style["exterior"])
@@ -94,12 +185,17 @@ def render_tbx(plan: Plan | Building, name: str,
             if len(storeys) >= levels and levels > 1:
                 window_idx = _add(entries, entry)
                 curtains_idx = _add(entries, curtains)
+        trim_idx = _add(entries, style.get("trim"))
+        shutters_idx = _add(entries, style.get("shutters"))
+        grime_idx = _add(entries, style.get("grime"))
         if style.get("roof"):
             roof = style["roof"]
             if roof.get("slopes"):
                 slope_idx = _add(entries, roof["slopes"])
             top_idx = _add(entries, roof["tops"])
             peaked = bool(roof.get("peaked"))
+            # 30-degree roofs only where the gable ends have 30-degree tiles.
+            roof30 = "CapPeak30S1" in ((roof.get("caps") or {}).get("tiles") or {})                 and "Slope30S1" in ((roof.get("slopes") or {}).get("tiles") or {})
         if style.get("shop_front"):
             entry, curtains = style["shop_front"]
             front_idx = _add(entries, entry)
@@ -116,12 +212,16 @@ def render_tbx(plan: Plan | Building, name: str,
         entries.append({"category": "roof_caps", "tiles": cap})
         roof_cap_idx = len(entries)
 
+    rooftop = [] if peaked else _rooftop(storeys[-1].grid, building.width, building.height)
     # Which furniture roles this building actually uses, in first-use order.
     roles: list[str] = []
     for storey in storeys:
         for role, _x, _y, _o in storey.furniture:
             if role not in roles:
                 roles.append(role)
+    for role, _x, _y, _o in rooftop:
+        if role not in roles:
+            roles.append(role)
 
     out: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>']
 
@@ -130,17 +230,17 @@ def render_tbx(plan: Plan | Building, name: str,
         ("width", building.width),
         ("height", building.height),
         ("ExteriorWall", exterior_idx),
-        ("ExteriorWallTrim", 0),
+        ("ExteriorWallTrim", trim_idx),
         ("Door", C.DOOR),
         ("DoorFrame", C.DOOR_FRAME),
         ("Window", window_idx),
         ("Curtains", curtains_idx),
-        ("Shutters", 0),
+        ("Shutters", shutters_idx),
         ("Stairs", C.STAIRS),
         ("RoofCap", roof_cap_idx),
         ("RoofSlope", slope_idx),
         ("RoofTop", top_idx),
-        ("GrimeWall", 0),
+        ("GrimeWall", grime_idx),
     ]
     out.append(f"<building{_attrs(building_attrs)}>")
 
@@ -208,7 +308,8 @@ def render_tbx(plan: Plan | Building, name: str,
             if front_idx and (x, y, direction) in getattr(storey, "shop_front", ()):
                 tile, curtains = front_idx, front_curtains
             attrs = [("type", "window"), ("CurtainsTile", curtains),
-                     ("ShuttersTile", 0), ("x", x), ("y", y),
+                     ("ShuttersTile", 0 if tile == front_idx else shutters_idx),
+                     ("x", x), ("y", y),
                      ("dir", direction), ("Tile", tile)]
             out.append(f"  <object{_attrs(attrs)}/>")
 
@@ -233,34 +334,13 @@ def render_tbx(plan: Plan | Building, name: str,
         # rather than its bounding box, so an L-shaped building does not carry
         # a roof over its own back yard.
         if level == len(storeys) - 1:
-            for rx, ry, rw, rh, caps in roof_rects(storey.grid):
-                roof_type, depth = "FlatTop", "Three"
-                cap = dict.fromkeys(("cappedW", "cappedN", "cappedE", "cappedS"), False)
-                if peaked and min(rw, rh) >= PEAK_MIN_TILES:
-                    # A gable along the long side. BuildingEd works the depth
-                    # out from the short side itself; write what it would, so
-                    # the file reads back unchanged. The gable ends are capped
-                    # where they are the outside of the house, and left open
-                    # where this roof runs into the next one.
-                    if rw >= rh:
-                        roof_type, depth = "PeakWE", _peak_depth(rh)
-                        cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
-                    else:
-                        roof_type, depth = "PeakNS", _peak_depth(rw)
-                        cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
+            rects = roof_rects(storey.grid)
+            for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(rects, peaked, roof30):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),
                     ("height", rh),
                     ("RoofType", roof_type),
-                    # "Zero" puts a flat roof's tiles in this storey's own
-                    # floor layer, where the rooms' floors then overwrite
-                    # them: every building compiled roofless. "Three" is
-                    # BuildingEd's flat roof over a full storey, laid in the
-                    # floor layer of the floor above (see the empty roof floor
-                    # written after the storeys). Flat roofs are never capped:
-                    # at depth three a cap is a storey-high wall of brick roof
-                    # tiles laid over the top storey's own walls.
                     ("Depth", depth),
                     ("cappedW", str(cap["cappedW"]).lower()),
                     ("cappedN", str(cap["cappedN"]).lower()),
@@ -308,6 +388,10 @@ def render_tbx(plan: Plan | Building, name: str,
         empty.append("\n")
     out.append(" <floor>")
     out.extend(attic)
+    for role, x, y, orient in rooftop:
+        attrs = [("type", "furniture"), ("FurnitureTiles", roles.index(role)),
+                 ("orient", orient), ("x", x), ("y", y)]
+        out.append(f"  <object{_attrs(attrs)}/>")
     out.append("  <rooms>" + escape("".join(empty)) + "</rooms>")
     out.append(" </floor>")
     if attic:
