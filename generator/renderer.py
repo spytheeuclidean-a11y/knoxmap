@@ -614,6 +614,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
 
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
                       density=tree_density)
+    _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     _clear_building_vegetation(vegetation, building_feats, proj)
     _paint_road_details(vegetation, landscape, buckets, proj)
 
@@ -1249,6 +1250,82 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
                         if rng.random() < 0.35:
                             vp[x, y] = C.DENSE_BUSHES_GRASS
                             lp[x, y] = C.DARK_GRASS
+
+
+# Garden planting. Trees came only from mapped woods, orchards and single-tree
+# nodes, and suburbs rarely map their garden trees, so a real leafy suburb
+# came out as houses standing on bare lawn. Yards - grass within reach of a
+# house, clear of roads and paths - get a tree about every GARDEN_TREE_EVERY
+# tiles each way, and a few shrubs against the house walls.
+GARDEN_REACH_TILES = 18        # how far from a house its yard reaches
+GARDEN_TREE_EVERY = 9
+GARDEN_TREE_CHANCE = 0.6
+GARDEN_CLEAR_OF_HOUSE = 3      # a tree trunk this far off the wall at least
+GARDEN_CLEAR_OF_PAVING = 2     # and off the kerb, drive or path
+SHRUB_CHANCE = 0.12            # per tile of lawn along a house wall
+GRASS_COLOURS = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
+
+
+def _box_any(mask, radius: int):
+    """True wherever `mask` is true within `radius` tiles (a square reach)."""
+    import numpy as np
+
+    h, w = mask.shape
+    pad = np.pad(mask.astype(np.int32), radius + 1)
+    ii = pad.cumsum(0).cumsum(1)
+    k = 2 * radius + 1
+    total = ii[k:k + h, k:k + w] - ii[0:h, k:k + w] - ii[k:k + h, 0:w] + ii[0:h, 0:w]
+    return total > 0
+
+
+def _paint_gardens(veg: Image.Image, landscape: Image.Image,
+                   building_feats: list[OSMFeature], proj: Projector,
+                   density: float = 1.0) -> int:
+    """Trees in yards and shrubs along house walls. Returns trees planted."""
+    import numpy as np
+
+    if not building_feats or density <= 0:
+        return 0
+    houses = Image.new("1", veg.size, 0)
+    hd = ImageDraw.Draw(houses)
+    for feat in building_feats:
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 3:
+                hd.polygon(ring, fill=1)
+    house = np.array(houses, dtype=bool)
+    ground = np.array(landscape.convert("RGB"))
+    grass = np.zeros(house.shape, dtype=bool)
+    for colour in GRASS_COLOURS:
+        grass |= np.all(ground == colour, axis=2)
+    vegp = np.array(veg.convert("RGB"))
+    empty = np.all(vegp == 0, axis=2)
+    lawn = grass & empty & ~house
+    paved_near = _box_any(~grass & ~house, GARDEN_CLEAR_OF_PAVING)
+
+    yard = lawn & _box_any(house, GARDEN_REACH_TILES)         & ~_box_any(house, GARDEN_CLEAR_OF_HOUSE) & ~paved_near
+    rng = np.random.default_rng(1234)
+    step = GARDEN_TREE_EVERY
+    chance = min(1.0, GARDEN_TREE_CHANCE * density)
+    h, w = house.shape
+    px = veg.load()
+    planted = 0
+    for y0 in range(0, h, step):
+        for x0 in range(0, w, step):
+            if rng.random() >= chance:
+                continue
+            ys, xs = np.nonzero(yard[y0:y0 + step, x0:x0 + step])
+            if len(xs) == 0:
+                continue
+            i = rng.integers(len(xs))
+            px[int(x0 + xs[i]), int(y0 + ys[i])] = C.TREES
+            planted += 1
+
+    # Shrubs: lawn right against a wall, not in front of the paving.
+    beside = lawn & _box_any(house, 1) & ~house & ~paved_near
+    ys, xs = np.nonzero(beside & (rng.random(house.shape) < SHRUB_CHANCE * density))
+    for x, y in zip(xs.tolist(), ys.tolist()):
+        px[x, y] = C.BUSHES
+    return planted
 
 
 def _clear_building_vegetation(veg: Image.Image, feats: list[OSMFeature],

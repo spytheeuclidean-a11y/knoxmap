@@ -121,6 +121,16 @@ def main(argv: list[str]) -> int:
         return {"category": "curtains",
                 "tiles": dict(zip(("West", "East", "North", "South"), names))}
 
+    def roof(slopes: str | None, top: str, peaked: bool) -> dict:
+        """Roof materials: a slope family from the templates, and a flat-top
+        tile used for all three depths (the templates' roofs_01_054 entry has
+        the same tile in every slot too)."""
+        return {"slopes": pick("roof_slopes", slopes) if slopes else None,
+                "tops": {"category": "roof_tops",
+                         "tiles": {k: top for k in ("West1", "West2", "West3",
+                                                    "North1", "North2", "North3")}},
+                "peaked": peaked}
+
     def window(anchor: str) -> dict:
         if anchor not in window_pairs:
             raise SystemExit(f"ERROR: no window {anchor!r} in BuildingTiles.txt.")
@@ -245,6 +255,33 @@ def main(argv: list[str]) -> int:
         ("render", "walls_exterior_house_02_064", "walls_interior_house_03_036", "fixtures_windows_white_016", "fixtures_windows_curtains_01_032"),
         ("plaster", "walls_interior_house_02_032", "walls_interior_bathroom_01_000", "fixtures_windows_01_056", "fixtures_windows_curtains_02_000"),
     ]
+    # Houses have pitched roofs: every building used to wear the same flat
+    # brown planks, which is no roof a suburb has. (slopes, flat top, peaked):
+    # the top covers the flat middle of a wide house between its two slopes.
+    SLATE = ("roofs_01_000", "roofs_01_022", True)
+    BROWN = ("roofs_02_000", "roofs_02_022", True)
+    WOOD = ("roofs_03_000", "roofs_03_022", True)
+    RED = ("roofs_04_000", "roofs_04_022", True)  # 04_054 is white
+    HOUSE_ROOFS = {"clapboard": SLATE, "brick": BROWN, "painted": RED, "stucco": WOOD,
+                   "panel": SLATE, "timber": WOOD, "logs": WOOD, "render": RED,
+                   "plaster": BROWN,
+                   # A trailer's roof is flat.
+                   "trailer": (None, "roofs_01_054", False)}
+    # The triangle of wall at a gable end, in the house's own material rather
+    # than the one tan stone every gable had. Matched by eye against each
+    # style's exterior wall.
+    ROOF_CAPS = {"clapboard": "walls_exterior_roofs_03_024",
+                 "brick": "walls_exterior_roofs_04_000",
+                 "painted": "walls_exterior_roofs_04_024",
+                 "stucco": "walls_exterior_roofs_01_096",
+                 "panel": "walls_exterior_roofs_06_000",
+                 "timber": "walls_exterior_roofs_02_024",
+                 "logs": "walls_logs_016",
+                 "trailer": "walls_exterior_roofs_03_024",
+                 "render": "walls_exterior_roofs_09_080",
+                 "plaster": "walls_exterior_roofs_08_024",
+                 "barn": "location_barn_01_024",
+                 "church": "walls_exterior_roofs_10_224"}
     house_styles = []
     for style_name, ext, inte, window_name, curtain_name in HOUSE_STYLE_SPEC:
         house_styles.append({
@@ -253,7 +290,9 @@ def main(argv: list[str]) -> int:
             "interior": pick("interior_walls", inte),
             "window": window(window_name),
             "curtains": curtains(curtain_name),
+            "roof": roof(*HOUSE_ROOFS[style_name]),
         })
+        house_styles[-1]["roof"]["caps"] = pick("roof_caps", ROOF_CAPS[style_name])
 
     # kind -> materials, and the floor that overrides the usual palette.
     SPECIAL_SPEC = {
@@ -311,6 +350,10 @@ def main(argv: list[str]) -> int:
                       (5, "fixtures_windows_metal_010", "fixtures_windows_curtains_02_000"),
                       (12, "fixtures_windows_metal_014", None)],
     }
+    # Anything big is flat-roofed in grey membrane, not wooden planks; barns
+    # and churches are pitched.
+    FLAT_GREY = (None, "roofs_02_054", False)
+    SPECIAL_ROOFS = {"barn": RED, "church": SLATE}
     SHOP_FRONTS = {
         "shop": ("fixtures_windows_metal_014", None),
         "restaurant": ("fixtures_windows_metal_008", None),
@@ -327,7 +370,10 @@ def main(argv: list[str]) -> int:
             "curtains": curtains(by_height[0][2]),
             "windows_by_levels": [[levels, window(name), curtains(cur)]
                                   for levels, name, cur in by_height],
+            "roof": roof(*SPECIAL_ROOFS.get(kind, FLAT_GREY)),
         }
+        if kind in ROOF_CAPS:
+            style["roof"]["caps"] = pick("roof_caps", ROOF_CAPS[kind])
         if kind in SHOP_FRONTS:
             name, cur = SHOP_FRONTS[kind]
             style["shop_front"] = [window(name), curtains(cur)]

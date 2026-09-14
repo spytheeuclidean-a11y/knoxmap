@@ -146,6 +146,9 @@ def main(argv: list[str]) -> int:
         pixels = veg.get_flattened_data() if hasattr(veg, "get_flattened_data") else veg.getdata()
         kerbs = sum(1 for c in pixels if c[0] == 12 and c[1] == 34)
         check(kerbs > 100, f"kerbs laid ({kerbs})")
+        trees = sum(1 for c in pixels if c == C.TREES)
+        shrubs = sum(1 for c in pixels if c == C.BUSHES)
+        check(trees > 20 and shrubs > 20, f"gardens planted ({trees} trees, {shrubs} shrubs)")
 
         print("buildings")
         with contextlib.redirect_stdout(io.StringIO()) as log:
@@ -173,6 +176,7 @@ def main(argv: list[str]) -> int:
             gap = re.search(r'enum="CapGapE3" tile="(\w+)"', blocks[cap - 1])
             return bool(west and gap and west.group(1) == gap.group(1))
         check(all(gaps_match(t) for t in texts), "flat roofs wall in the top floor with its own material")
+        check(any('RoofType="Peak' in t for t in texts), "houses have pitched roofs")
 
         print("compile")
         from compile_map import clear_stale

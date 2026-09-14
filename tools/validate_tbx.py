@@ -146,9 +146,14 @@ def check(path: str) -> list[str]:
             elif typ == "roof":
                 # Flat roofs sit on the top storey with Depth Three, and
                 # BuildingEd lays their tiles on the empty floor above it.
-                if level != len(floors) - 2:
-                    errs.append(f"{where}: roof not on the top storey")
-                if o.get("Depth") != "Three":
+                # Pitched ones go on the roof floor above it.
+                pitched = any(r.get("RoofType") != "FlatTop" for r in floors[-2].iter("object")
+                              if r.get("type") == "roof") if len(floors) >= 2 else False
+                top = len(floors) - (3 if pitched else 2)
+                want = top if o.get("RoofType") == "FlatTop" else top + 1
+                if level != want:
+                    errs.append(f"{where}: {o.get('RoofType')} roof on floor {level}, expected {want}")
+                if o.get("RoofType") == "FlatTop" and o.get("Depth") != "Three":
                     errs.append(f"{where}: flat roof Depth {o.get('Depth')!r} compiles to no roof - use Three")
                 if o.get("RoofType") not in VALID_ROOF_TYPES:
                     errs.append(f"{where}: roof bad RoofType {o.get('RoofType')!r}")

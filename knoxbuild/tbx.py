@@ -30,6 +30,17 @@ def _attrs(pairs: list[tuple[str, object]]) -> str:
                    for k, v in pairs)
 
 
+# A pitched roof needs room for two slopes; a narrower strip of a house (a
+# porch, one step of a turned footprint) keeps a flat roof.
+PEAK_MIN_TILES = 4
+_PEAK_DEPTHS = {1: "Point5", 2: "One", 3: "OnePoint5", 4: "Two", 5: "TwoPoint5"}
+
+
+def _peak_depth(across: int) -> str:
+    """BuildingEd's depth for a peaked roof this many tiles across its slopes."""
+    return _PEAK_DEPTHS.get(across, "Three")
+
+
 def _add(entries: list[dict], entry: dict | None) -> int:
     """The 1-based index of `entry` in the tile-entry table, appending it if it
     is not there yet; 0, BuildingEd's "none", for no entry."""
@@ -63,6 +74,7 @@ def render_tbx(plan: Plan | Building, name: str,
     roof_cap_idx = C.ROOF_CAP
     curtains_idx = C.CURTAINS
     front_idx = front_curtains = None
+    slope_idx, top_idx, peaked = C.ROOF_SLOPE, C.ROOF_TOP, False
 
     if style:
         entries.append(style["exterior"])
@@ -82,6 +94,12 @@ def render_tbx(plan: Plan | Building, name: str,
             if len(storeys) >= levels and levels > 1:
                 window_idx = _add(entries, entry)
                 curtains_idx = _add(entries, curtains)
+        if style.get("roof"):
+            roof = style["roof"]
+            if roof.get("slopes"):
+                slope_idx = _add(entries, roof["slopes"])
+            top_idx = _add(entries, roof["tops"])
+            peaked = bool(roof.get("peaked"))
         if style.get("shop_front"):
             entry, curtains = style["shop_front"]
             front_idx = _add(entries, entry)
@@ -92,7 +110,8 @@ def render_tbx(plan: Plan | Building, name: str,
     # building a cap entry whose gaps are its own exterior wall.
     ext_tiles = entries[exterior_idx - 1]["tiles"]
     if ext_tiles.get("West") and ext_tiles.get("North"):
-        cap = dict(entries[C.ROOF_CAP - 1]["tiles"])
+        base = ((style or {}).get("roof") or {}).get("caps") or entries[C.ROOF_CAP - 1]
+        cap = dict(base["tiles"])
         cap["CapGapE3"], cap["CapGapS3"] = ext_tiles["West"], ext_tiles["North"]
         entries.append({"category": "roof_caps", "tiles": cap})
         roof_cap_idx = len(entries)
@@ -119,8 +138,8 @@ def render_tbx(plan: Plan | Building, name: str,
         ("Shutters", 0),
         ("Stairs", C.STAIRS),
         ("RoofCap", roof_cap_idx),
-        ("RoofSlope", C.ROOF_SLOPE),
-        ("RoofTop", C.ROOF_TOP),
+        ("RoofSlope", slope_idx),
+        ("RoofTop", top_idx),
         ("GrimeWall", 0),
     ]
     out.append(f"<building{_attrs(building_attrs)}>")
@@ -175,6 +194,7 @@ def render_tbx(plan: Plan | Building, name: str,
         ]
         out.append(f" <room{_attrs(room_attrs)}/>")
 
+    attic: list[str] = []
     for level, storey in enumerate(storeys):
         out.append(" <floor>")
 
@@ -213,32 +233,51 @@ def render_tbx(plan: Plan | Building, name: str,
         # rather than its bounding box, so an L-shaped building does not carry
         # a roof over its own back yard.
         if level == len(storeys) - 1:
-            for rx, ry, rw, rh, _caps in roof_rects(storey.grid):
+            for rx, ry, rw, rh, caps in roof_rects(storey.grid):
+                roof_type, depth = "FlatTop", "Three"
+                cap = dict.fromkeys(("cappedW", "cappedN", "cappedE", "cappedS"), False)
+                if peaked and min(rw, rh) >= PEAK_MIN_TILES:
+                    # A gable along the long side. BuildingEd works the depth
+                    # out from the short side itself; write what it would, so
+                    # the file reads back unchanged. The gable ends are capped
+                    # where they are the outside of the house, and left open
+                    # where this roof runs into the next one.
+                    if rw >= rh:
+                        roof_type, depth = "PeakWE", _peak_depth(rh)
+                        cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
+                    else:
+                        roof_type, depth = "PeakNS", _peak_depth(rw)
+                        cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),
                     ("height", rh),
-                    ("RoofType", "FlatTop"),
+                    ("RoofType", roof_type),
                     # "Zero" puts a flat roof's tiles in this storey's own
                     # floor layer, where the rooms' floors then overwrite
                     # them: every building compiled roofless. "Three" is
                     # BuildingEd's flat roof over a full storey, laid in the
                     # floor layer of the floor above (see the empty roof floor
-                    # written after the storeys).
-                    ("Depth", "Three"),
-                    # No caps: at depth three a cap is a storey-high wall of
-                    # brick roof tiles laid over the top storey's own walls,
-                    # which turned every house's top floor into brick.
-                    ("cappedW", "false"),
-                    ("cappedN", "false"),
-                    ("cappedE", "false"),
-                    ("cappedS", "false"),
+                    # written after the storeys). Flat roofs are never capped:
+                    # at depth three a cap is a storey-high wall of brick roof
+                    # tiles laid over the top storey's own walls.
+                    ("Depth", depth),
+                    ("cappedW", str(cap["cappedW"]).lower()),
+                    ("cappedN", str(cap["cappedN"]).lower()),
+                    ("cappedE", str(cap["cappedE"]).lower()),
+                    ("cappedS", str(cap["cappedS"]).lower()),
                     ("CapTiles", roof_cap_idx),
-                    ("SlopeTiles", C.ROOF_SLOPE),
-                    ("TopTiles", C.ROOF_TOP),
+                    ("SlopeTiles", slope_idx),
+                    ("TopTiles", top_idx),
                     ("x", rx), ("y", ry),
                 ]
-                out.append(f"  <object{_attrs(roof_attrs)}/>")
+                line = f"  <object{_attrs(roof_attrs)}/>"
+                # BuildingEd measures a roof's height up from the floor it is
+                # on. A flat roof at depth three on the top storey ends level
+                # with its ceiling, which is right; a pitched roof there rose
+                # through the top storey, its gable ends covering the upstairs
+                # walls. Pitched roofs go on the roof floor above instead.
+                (attic if roof_type != "FlatTop" else out).append(line)
 
         # Match BuildingWriter byte for byte: a comma follows every value
         # except the very last one, and each row ends with a newline.
@@ -256,8 +295,8 @@ def render_tbx(plan: Plan | Building, name: str,
 
         out.append(" </floor>")
 
-    # The roof floor: no rooms, no objects, only the flat roof tops BuildingEd
-    # places here from the depth-three roofs on the storey below.
+    # The roof floor: no rooms. It holds the pitched roofs, and the flat roof
+    # tops BuildingEd places here from the depth-three roofs below.
     empty = ["\n"]
     count, total = 0, building.width * building.height
     for _y in range(building.height):
@@ -268,7 +307,14 @@ def render_tbx(plan: Plan | Building, name: str,
                 empty.append(",")
         empty.append("\n")
     out.append(" <floor>")
+    out.extend(attic)
     out.append("  <rooms>" + escape("".join(empty)) + "</rooms>")
     out.append(" </floor>")
+    if attic:
+        # A pitched roof's top rises a full storey above the roof floor, and
+        # BuildingEd lays what is up there on the floor above that.
+        out.append(" <floor>")
+        out.append("  <rooms>" + escape("".join(empty)) + "</rooms>")
+        out.append(" </floor>")
     out.append("</building>")
     return "\n".join(out) + "\n"

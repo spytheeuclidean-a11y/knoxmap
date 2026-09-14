@@ -1180,6 +1180,13 @@ def _cells_for(role: str, x: int, y: int, orient: str) -> list[tuple[int, int]]:
 
 
 SWITCH = "switch"
+# Things fixed to a wall rather than standing against it. A painting has only
+# north and west sprites, so on a south or east wall the fallback drew it on
+# the far edge of the tile, hanging in mid-air a tile into the room; shelves
+# and mirrors on those walls rendered as planks floating over the floor. They
+# go on north and west walls only. (The switch has true east and south
+# sprites, and every room needs one, so it may go anywhere.)
+NORTH_WEST_ONLY = {"painting", "mirror", "shelf"}
 
 
 def _is_wall_piece(role: str) -> bool:
@@ -1207,8 +1214,8 @@ def _wall_edge(x: int, y: int, facing: str) -> tuple[int, int, str]:
 # room keeps an open floor instead. `repeat` is how many a big room may take.
 # FALLBACK_GROUPS are smaller sets tried when the first does not fit.
 CENTRE_GROUPS: dict[str, tuple[list[tuple[str, int, int, str]], int]] = {
-    "livingroom": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "N")], 1),
-    "lobby": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "N")], 2),
+    "livingroom": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "W")], 1),
+    "lobby": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "W")], 2),
     "dining": ([("rug_wide", 0, 0, "W"), ("dining_table", 1, 1, "W"),
                 ("chair", 0, 1, "W"), ("chair", 3, 1, "E"),
                 ("chair", 1, 0, "N"), ("chair", 2, 2, "S")], 1),
@@ -1354,6 +1361,8 @@ def _furnish(plan: Plan, rng: random.Random,
             return not _room_at(plan, x + ox, y + oy)
 
         def hang(role: str, x: int, y: int, facing: str) -> bool:
+            if role in NORTH_WEST_ONLY and facing in ("S", "E"):
+                return False
             edge = _wall_edge(x, y, facing)
             if edge in door_edges or edge in used_walls:
                 return False
@@ -1399,6 +1408,8 @@ def _furnish(plan: Plan, rng: random.Random,
                         break
                 continue
             for (x, y, wanted) in floor_slots:
+                if role in NORTH_WEST_ONLY and wanted in ("S", "E"):
+                    continue
                 orient = _facing(role, wanted)
                 cells = _cells_for(role, x, y, orient)
                 if any(c in occupied or c in door_tiles for c in cells):
