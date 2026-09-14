@@ -135,14 +135,26 @@ def is_build42(game: Path | None) -> bool:
 ELEVATORS_WORKSHOP_ID = "3780306632"
 
 
-def elevators_mod_installed() -> bool:
-    """Whether the Elevators mod (which runs KnoxMap's lifts) is on this PC:
-    subscribed on the Workshop in any Steam library, or copied into mods."""
+SPAWN_SELECTOR_WORKSHOP_ID = "3772052709"
+
+
+def workshop_mod_installed(workshop_id: str, folder: str) -> bool:
+    """Whether a mod is on this PC: subscribed on the Workshop in any Steam
+    library, or copied into the mods folder under its own name."""
     for lib in _steam_libraries():
-        if (lib / "steamapps" / "workshop" / "content" / "108600" / ELEVATORS_WORKSHOP_ID).is_dir():
+        if (lib / "steamapps" / "workshop" / "content" / "108600" / workshop_id).is_dir():
             return True
-    mods = zomboid_user_dir() / "mods"
-    return any((mods / name).is_dir() for name in ("Elevators",))
+    return (zomboid_user_dir() / "mods" / folder).is_dir()
+
+
+def elevators_mod_installed() -> bool:
+    """Whether the Elevators mod, which runs KnoxMap's lifts, is installed."""
+    return workshop_mod_installed(ELEVATORS_WORKSHOP_ID, "Elevators")
+
+
+def spawn_selector_installed() -> bool:
+    """Whether Spawn Selector, which offers the map's landmarks as starts, is installed."""
+    return workshop_mod_installed(SPAWN_SELECTOR_WORKSHOP_ID, "SpawnSelector")
 
 
 def zomboid_user_dir() -> Path:

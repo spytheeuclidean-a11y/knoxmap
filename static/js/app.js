@@ -848,6 +848,10 @@ document.getElementById('installBtn').addEventListener('click', async () => {
       lifts = elevators && elevators.ok
         ? ' Enable "Elevators" too, for working lifts in tall buildings.'
         : ' Tall buildings have lifts: subscribe to the Elevators mod on the Steam Workshop to make them work.';
+      const selector = (status.optional || []).find(c => c.id === 'spawn_selector');
+      if (selector && selector.ok) {
+        lifts += ' With "Spawn Selector" enabled you can start at any landmark of the map.';
+      }
     } catch (_) { /* the install itself worked; the tip is optional */ }
     note('installNote',
          `Installed ${data.cells} cells to ${data.modRoot}. Enable "${data.title}" `

@@ -621,6 +621,9 @@ def api_setup_status():
         {"id": "elevators", "ok": knoxpaths.elevators_mod_installed(),
          "label": "Elevators mod (optional)",
          "fix": "Subscribe to it on the Steam Workshop for working lifts in tall buildings."},
+        {"id": "spawn_selector", "ok": knoxpaths.spawn_selector_installed(),
+         "label": "Spawn Selector mod (optional)",
+         "fix": "Subscribe to it on the Steam Workshop to start at any landmark of your map."},
     ]
     return jsonify({"ready": all(c["ok"] for c in checks), "checks": checks,
                     "optional": optional,
