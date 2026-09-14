@@ -57,6 +57,10 @@ def search(query: str, viewbox: tuple[float, float, float, float] | None = None,
         "format": "jsonv2",
         "limit": str(max(1, min(limit, 20))),
         "addressdetails": "1",
+        # Real outlines for towns, districts and parks, simplified to about ten
+        # metres so a city boundary does not arrive as megabytes of points.
+        "polygon_geojson": "1",
+        "polygon_threshold": "0.0001",
     }
     if viewbox:
         s, w, n, e = viewbox
@@ -85,8 +89,20 @@ def search(query: str, viewbox: tuple[float, float, float, float] | None = None,
             "bbox": [south, west, north, east],
             "category": item.get("category") or item.get("class") or "",
             "type": item.get("type") or "",
+            "outline": _outline(item.get("geojson")),
         })
     return out
+
+
+def _outline(geojson: dict | None) -> dict | None:
+    """The place's own boundary, when it has one worth drawing a map in."""
+    if not geojson or geojson.get("type") not in ("Polygon", "MultiPolygon"):
+        return None
+    rings = geojson["coordinates"] if geojson["type"] == "Polygon" else \
+        [r for poly in geojson["coordinates"] for r in poly]
+    if sum(len(r) for r in rings) > 20000:
+        return None
+    return geojson
 
 
 # Tags worth listing as landmarks. Anything named under these keys is something

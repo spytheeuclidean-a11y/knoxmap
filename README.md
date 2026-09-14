@@ -72,8 +72,12 @@ installed through Steam · an internet connection.
 
    It takes a few minutes once. After that, `KnoxMap.bat` opens straight away.
 3. **Make a map** in the window that opens:
-   1. Search for a place, or use the rectangle tool on the map's left edge to
-      draw an area. Start small - a few streets - while you get a feel for it.
+   1. Search for a place, or draw an area with the tools on the map's left
+      edge: a rectangle, a polygon, a circle, or freehand (✎). A search result
+      with **outline** selects the place's real boundary - a park, a district,
+      a whole town. Only what's inside a drawn shape is built; around it the
+      land turns to countryside, with main roads and rivers running on. Start
+      small - a few streets - while you get a feel for it.
    2. Pick a **kind of place** (Town, Suburb, City, Rural) and press
       **Generate map**.
    3. Under *Finish the map*: **Build** → **Compile** → **Install**.

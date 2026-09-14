@@ -19,12 +19,15 @@ L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const drawnItems = new L.FeatureGroup().addTo(map);
+const SEL_STYLE = { color: '#a5e266', weight: 2, fillOpacity: 0.08, className: 'sel-rect' };
 const drawControl = new L.Control.Draw({
   draw: {
-    polygon: false, polyline: false, circle: false, marker: false,
-    circlemarker: false,
-    rectangle: { shapeOptions: { color: '#a5e266', weight: 2, fillOpacity: 0.08,
-                                 className: 'sel-rect' } },
+    polyline: false, marker: false, circlemarker: false,
+    rectangle: { shapeOptions: SEL_STYLE },
+    // Any outline, clicked point by point: a neighbourhood, a stretch of
+    // coast, the blocks either side of a high street.
+    polygon: { allowIntersection: false, showArea: true, shapeOptions: SEL_STYLE },
+    circle: { shapeOptions: SEL_STYLE, showRadius: true, metric: true },
   },
   edit: { featureGroup: drawnItems, remove: true },
 });
@@ -32,12 +35,125 @@ map.addControl(drawControl);
 
 let currentRect = null;
 
-map.on(L.Draw.Event.CREATED, (e) => {
+function setSelection(layer) {
   drawnItems.clearLayers();
-  currentRect = e.layer;
+  currentRect = layer;
   drawnItems.addLayer(currentRect);
   updateBboxFields();
+}
+
+map.on(L.Draw.Event.CREATED, (e) => setSelection(e.layer));
+
+// ---- freehand lasso ---------------------------------------------------------------
+// Drag round what you want. The traced line is thinned to a polygon, so the
+// server receives a few dozen points rather than every mouse move.
+const LassoControl = L.Control.extend({
+  options: { position: 'topleft' },
+  onAdd() {
+    const bar = L.DomUtil.create('div', 'leaflet-bar leaflet-control lasso-control');
+    const a = L.DomUtil.create('a', 'lasso-btn', bar);
+    a.href = '#';
+    a.title = 'Draw freehand: drag round the area you want';
+    a.innerHTML = '&#9998;';
+    L.DomEvent.on(a, 'click', (ev) => { L.DomEvent.stop(ev); startLasso(a); });
+    return bar;
+  },
 });
+map.addControl(new LassoControl());
+
+function startLasso(button) {
+  const box = map.getContainer();
+  button.classList.add('is-active');
+  box.classList.add('lasso-armed');
+  map.dragging.disable();
+  let points = [];
+  let trail = null;
+  const down = (e) => {
+    points = [e.latlng];
+    trail = L.polyline(points, { color: '#a5e266', weight: 2, dashArray: '4 4' }).addTo(map);
+    map.on('mousemove', move);
+  };
+  const move = (e) => { points.push(e.latlng); trail.setLatLngs(points); };
+  const up = () => {
+    map.off('mousedown', down); map.off('mousemove', move); map.off('mouseup', up);
+    map.dragging.enable();
+    button.classList.remove('is-active');
+    box.classList.remove('lasso-armed');
+    if (trail) map.removeLayer(trail);
+    const thin = simplifyLatLngs(points, 8);
+    if (thin.length >= 3) {
+      setSelection(L.polygon(thin, SEL_STYLE));
+      map.fire(L.Draw.Event.CREATED, { layer: currentRect, layerType: 'polygon', lasso: true });
+    }
+  };
+  map.on('mousedown', down);
+  map.on('mouseup', up);
+}
+
+// Douglas-Peucker on screen pixels, so "a few metres" means the same at every zoom.
+function simplifyLatLngs(latlngs, tolerancePx) {
+  if (latlngs.length < 3) return latlngs;
+  const pts = latlngs.map(ll => map.latLngToLayerPoint(ll));
+  const keep = new Array(pts.length).fill(false);
+  keep[0] = keep[pts.length - 1] = true;
+  const stack = [[0, pts.length - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let best = -1, bestD = tolerancePx;
+    for (let i = a + 1; i < b; i++) {
+      const d = L.LineUtil.pointToSegmentDistance(pts[i], pts[a], pts[b]);
+      if (d > bestD) { best = i; bestD = d; }
+    }
+    if (best >= 0) { keep[best] = true; stack.push([a, best], [best, b]); }
+  }
+  return latlngs.filter((_, i) => keep[i]);
+}
+
+// The selection as GeoJSON for the server, or null for a plain rectangle.
+function selectionShape() {
+  if (!currentRect || currentRect instanceof L.Rectangle) return null;
+  let rings;
+  if (currentRect instanceof L.Circle) {
+    const c = currentRect.getLatLng();
+    const r = currentRect.getRadius();
+    const ring = [];
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * 2 * Math.PI;
+      const dLat = (r * Math.cos(a)) / 111320;
+      const dLon = (r * Math.sin(a)) / (111320 * Math.cos(c.lat * Math.PI / 180));
+      ring.push([wrapLon(c.lng + dLon), c.lat + dLat]);
+    }
+    ring.push(ring[0]);
+    return { type: 'Polygon', coordinates: [ring] };
+  }
+  const geo = currentRect.toGeoJSON().geometry;
+  const fold = coords => coords.map(ring => ring.map(([lon, lat]) => [wrapLon(lon), lat]));
+  if (geo.type === 'Polygon') return { type: 'Polygon', coordinates: fold(geo.coordinates) };
+  if (geo.type === 'MultiPolygon') return { type: 'MultiPolygon', coordinates: geo.coordinates.map(fold) };
+  return null;
+}
+
+// Area inside the selection in km², on a local flat projection: plenty for
+// town-sized shapes.
+function selectionAreaKm2() {
+  const shape = selectionShape();
+  if (!shape) return null;
+  const polys = shape.type === 'Polygon' ? [shape.coordinates] : shape.coordinates;
+  let total = 0;
+  for (const rings of polys) {
+    rings.forEach((ring, idx) => {
+      const lat0 = ring[0][1] * Math.PI / 180;
+      let sum = 0;
+      for (let i = 0; i < ring.length - 1; i++) {
+        const [x1, y1] = [ring[i][0] * 111.32 * Math.cos(lat0), ring[i][1] * 111.32];
+        const [x2, y2] = [ring[i + 1][0] * 111.32 * Math.cos(lat0), ring[i + 1][1] * 111.32];
+        sum += x1 * y2 - x2 * y1;
+      }
+      total += (idx === 0 ? 1 : -1) * Math.abs(sum) / 2;
+    });
+  }
+  return total;
+}
 map.on(L.Draw.Event.EDITED, () => updateBboxFields());
 map.on(L.Draw.Event.DELETED, () => {
   currentRect = null;
@@ -111,6 +227,9 @@ function updateBboxFields() {
         <span>${fill < 1 ? '<1' : Math.round(fill)}% of limit</span></div>
       <div class="bar"><div class="bar-fill" style="width:${fill}%"></div></div>
     </div>
+    ${selectionAreaKm2() !== null ? `<div class="stat-note shape">Only the drawn shape is built:
+      <b>${selectionAreaKm2().toFixed(2)} km²</b> of this ${area.toFixed(2)} km² box. Outside it the land
+      turns back to countryside, with the main roads and rivers running on.</div>` : ''}
     ${blocked ? `<div class="stat-note bad">${blocked}</div>` : ''}
     ${slow ? `<div class="stat-note warn">A big map — roughly ${Math.ceil(queries * 12 / 60)}+ min
       of OpenStreetMap queries before rendering starts.</div>` : ''}
@@ -133,7 +252,7 @@ function clearBboxFields() {
   stats.className = 'empty';
   stats.innerHTML = `<div class="empty-state">
     <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="12" width="32" height="24" rx="2"/><path d="M8 20h32M16 12v24"/></svg>
-    Draw a rectangle on the map to see what you'll get.</div>`;
+    Draw an area on the map - rectangle, polygon, circle or freehand - to see what you'll get.</div>`;
   document.getElementById('generateBtn').disabled = true;
   document.getElementById('landmarksBtn').disabled = true;
   document.getElementById('landmark-results').innerHTML = '';
@@ -285,6 +404,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     metersPerTile: parseFloat(document.getElementById('metersPerTile').value),
     mapName: chosen,
     settings: readSettings(),
+    shape: selectionShape(),
   };
 
   const btn = document.getElementById('generateBtn');
@@ -419,11 +539,16 @@ let searchTimer = null;
 let searchMarker = null;
 
 function setRectFromBounds(bounds) {
-  drawnItems.clearLayers();
-  currentRect = L.rectangle(bounds, { color: '#a5e266', weight: 2,
-                                    fillOpacity: 0.08, className: 'sel-rect' });
-  drawnItems.addLayer(currentRect);
-  updateBboxFields();
+  setSelection(L.rectangle(bounds, SEL_STYLE));
+}
+
+// A place's own boundary from the search result, as the selection.
+function setOutline(geojson) {
+  const flip = rings => rings.map(ring => ring.map(([lon, lat]) => [lat, lon]));
+  const latlngs = geojson.type === 'Polygon' ? flip(geojson.coordinates)
+                                             : geojson.coordinates.map(flip);
+  setSelection(L.polygon(latlngs, SEL_STYLE));
+  return currentRect.getBounds();
 }
 
 function boundsAround(lat, lon, km) {
@@ -460,10 +585,23 @@ function renderSearchResults(results) {
     return `<li data-i="${i}">
       <span class="r-name">${escapeHtml(r.name)}</span>
       ${kind ? `<span class="r-kind">${escapeHtml(kind.replace(/_/g, ' '))}</span>` : ''}
+      ${r.outline ? `<button type="button" class="r-outline" data-outline="${i}"
+        title="Select its real boundary instead of a box">outline</button>` : ''}
       <span class="r-where">${escapeHtml(rest)}</span>
     </li>`;
   }).join('');
   searchResults.hidden = false;
+
+  searchResults.querySelectorAll('button[data-outline]').forEach(btn => {
+    btn.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const r = results[parseInt(btn.dataset.outline, 10)];
+      const bounds = setOutline(r.outline);
+      map.fitBounds(bounds, { padding: [30, 30] });
+      hideSearchResults();
+      searchInput.value = r.name;
+    });
+  });
 
   searchResults.querySelectorAll('li[data-i]').forEach(li => {
     li.addEventListener('click', () => {

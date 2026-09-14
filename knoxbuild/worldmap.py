@@ -31,7 +31,8 @@ from shapely.geometry import LineString, MultiLineString, Polygon, box
 from shapely.ops import linemerge, unary_union
 
 from generator import osm
-from generator.renderer import _is_polygon, _way_width_m, sea_polygons
+from generator.renderer import (THROUGH_ROADS, _is_polygon, _way_width_m,
+                                sea_polygons, shape_px)
 
 from .world import WORLD_ORIGIN_CELLS
 
@@ -109,6 +110,7 @@ def write(out_dir: str, map_name: str, proj, info: dict,
     wanted = tuple(info["osm_bbox"]) if info.get("osm_bbox") else \
         (bbox.get("south"), bbox.get("west"), bbox.get("north"), bbox.get("east"))
     feats = osm.load_cache(cache, wanted) or []
+    clip = shape_px(info.get("shape"), proj)
     streets: dict[str, list[tuple[LineString, float]]] = {}
     for feat in feats:
         if feat.kind == "node":
@@ -118,6 +120,16 @@ def write(out_dir: str, map_name: str, proj, info: dict,
             line = _line(feat, proj)
             if line is None:
                 continue
+            if clip is not None and cat not in THROUGH_ROADS:
+                # The drawn shape's side streets only, as on the ground.
+                line = line.intersection(clip)
+                if line.is_empty or line.length < 1:
+                    continue
+                if not isinstance(line, LineString):
+                    parts = [g for g in getattr(line, "geoms", []) if isinstance(g, LineString)]
+                    if not parts:
+                        continue
+                    line = max(parts, key=lambda g: g.length)
             width_tiles = _way_width_m(feat, cat) / metres_per_tile
             strip = line.buffer(width_tiles / 2, cap_style=2, join_style=2)
             poly = _clean(strip)

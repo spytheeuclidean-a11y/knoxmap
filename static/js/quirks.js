@@ -319,7 +319,9 @@
     if (existing && !force) return;
     existing?.remove();
     const areaTile = stats.querySelector('.tile [data-count]');
-    const km2 = areaTile ? parseFloat(areaTile.dataset.count) : 0;
+    // A drawn shape is built only inside itself, so count its area, not the box.
+    const shapeKm2 = typeof selectionAreaKm2 === 'function' ? selectionAreaKm2() : null;
+    const km2 = shapeKm2 ?? (areaTile ? parseFloat(areaTile.dataset.count) : 0);
     if (!km2) return;
     const preset = ($('#preset') || {}).value || 'town';
     const perPerson = setting('zombies_per_resident', 1);

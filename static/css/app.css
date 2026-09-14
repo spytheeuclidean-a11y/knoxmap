@@ -977,3 +977,16 @@ body.knox-event .brand-text h1 {
 .setup-list li.ok span { color: var(--acid); }
 .setup-list li.missing span { color: var(--blood); }
 .setup-list li.missing b { color: var(--text); }
+
+/* selection shapes */
+.lasso-control a { font-size: 17px; line-height: 30px; text-align: center; font-weight: 700; }
+.lasso-control a.is-active { background: var(--acid, #a5e266); color: #0b0d0f; }
+.lasso-armed, .lasso-armed .leaflet-interactive { cursor: crosshair !important; }
+#search-results .r-outline {
+  margin-left: auto; font: 600 10.5px/1 var(--mono, monospace); letter-spacing: .5px;
+  text-transform: uppercase; color: var(--acid, #a5e266); background: rgba(165,226,102,.08);
+  border: 1px solid rgba(165,226,102,.35); border-radius: 4px; padding: 3px 6px; cursor: pointer;
+}
+#search-results .r-outline:hover { background: rgba(165,226,102,.2); }
+.stat-note.shape { color: var(--text, #e6e6e6); background: rgba(165,226,102,.06);
+  border-left: 2px solid var(--acid, #a5e266); }

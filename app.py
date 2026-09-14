@@ -129,6 +129,53 @@ def api_landmarks():
     return jsonify({"landmarks": found})
 
 
+# Enough for a town boundary traced in detail; more is a mistake or an abuse.
+MAX_SHAPE_POINTS = 20000
+
+
+def _shape_rings(shape: dict) -> list:
+    polys = shape["coordinates"] if shape["type"] == "MultiPolygon" else [shape["coordinates"]]
+    return [ring for rings in polys for ring in rings]
+
+
+def _clean_shape(raw) -> tuple[dict | None, str | None]:
+    """A drawn selection as GeoJSON Polygon/MultiPolygon, checked and folded.
+
+    The page sends one for a polygon, a circle, a freehand lasso or a place's
+    real outline; a rectangle sends none. Longitudes are folded back into
+    range the same way the bbox is, and the points are counted so a broken
+    page cannot hand the renderer a million-vertex outline.
+    """
+    if not raw:
+        return None, None
+    try:
+        kind = raw["type"]
+        if kind not in ("Polygon", "MultiPolygon"):
+            return None, "The selection must be a polygon."
+        polys = raw["coordinates"] if kind == "MultiPolygon" else [raw["coordinates"]]
+        cleaned, points = [], 0
+        for rings in polys:
+            out_rings = []
+            for ring in rings:
+                pts = [[_wrap_lon(float(lon)), float(lat)] for lon, lat in ring]
+                points += len(pts)
+                if len(pts) >= 3:
+                    if pts[0] != pts[-1]:
+                        pts.append(pts[0])
+                    out_rings.append(pts)
+            if out_rings:
+                cleaned.append(out_rings)
+    except (KeyError, TypeError, ValueError):
+        return None, "The selection shape could not be read."
+    if not cleaned:
+        return None, "The selection shape has no area."
+    if points > MAX_SHAPE_POINTS:
+        return None, f"The selection outline has {points:,} points; the most is {MAX_SHAPE_POINTS:,}."
+    if kind == "Polygon":
+        return {"type": "Polygon", "coordinates": cleaned[0]}, None
+    return {"type": "MultiPolygon", "coordinates": cleaned}, None
+
+
 def _wrap_lon(lon: float) -> float:
     """Fold a longitude back into -180..180."""
     return (lon + 180.0) % 360.0 - 180.0
@@ -167,6 +214,15 @@ def _normalise_bbox(south: float, west: float, north: float,
 @app.route("/api/generate", methods=["POST"])
 def generate():
     data = request.get_json(force=True) or {}
+    shape, problem = _clean_shape(data.get("shape"))
+    if problem:
+        return jsonify({"error": problem}), 400
+    if shape:
+        # A drawn shape decides the box: its own bounds, whatever the page sent.
+        lons = [p[0] for ring in _shape_rings(shape) for p in ring]
+        lats = [p[1] for ring in _shape_rings(shape) for p in ring]
+        data = {**data, "south": min(lats), "north": max(lats),
+                "west": min(lons), "east": max(lons)}
     try:
         south = float(data["south"])
         west = float(data["west"])
@@ -281,6 +337,7 @@ def generate():
         rotation=rotation,
         osm_cache=osm_cache_name,
         osm_bbox=osm_bbox,
+        shape=shape,
     )
 
     _write_readme(map_dir, map_name, result)

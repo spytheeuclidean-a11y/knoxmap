@@ -118,6 +118,106 @@ GRID_ROADS = {"road_minor", "road_medium", "road_service"}
 ALIGN_MIN_STRENGTH = 0.25
 
 
+# Roads that carry on past the edge of a drawn shape. Cutting every road at the
+# line would leave the town an island in a field; the main roads out of it
+# stay, the side streets and driveways of places not chosen do not.
+THROUGH_ROADS = ("road_major", "road_medium")
+
+
+def shape_px(shape: dict | None, proj: Projector):
+    """A drawn selection (GeoJSON Polygon or MultiPolygon, lon/lat) in tile
+    coordinates, or None for a plain rectangle."""
+    if not shape:
+        return None
+    from shapely.geometry import MultiPolygon, Polygon
+
+    polys = shape["coordinates"] if shape.get("type") == "MultiPolygon" else [shape["coordinates"]]
+    parts = []
+    for rings in polys:
+        if not rings or len(rings[0]) < 3:
+            continue
+        outer = [proj.to_px(lat, lon) for lon, lat in rings[0]]
+        holes = [[proj.to_px(lat, lon) for lon, lat in r] for r in rings[1:] if len(r) >= 3]
+        poly = Polygon(outer, holes)
+        parts.append(poly if poly.is_valid else poly.buffer(0))
+    if not parts:
+        return None
+    merged = parts[0] if len(parts) == 1 else MultiPolygon(
+        [g for p in parts for g in (getattr(p, "geoms", None) or [p])])
+    return merged if merged.is_valid else merged.buffer(0)
+
+
+def _inside(feat: OSMFeature, proj: Projector, shape) -> bool:
+    """Whether a feature belongs to the drawn shape: its middle is inside."""
+    from shapely.geometry import LineString, Point, Polygon
+
+    if feat.kind == "relation":
+        rings = [ring for role, ring in feat.role_geoms if role != "inner" and len(ring) >= 3]
+        if not rings:
+            return False
+        geom = Polygon([proj.to_px(la, lo) for la, lo in rings[0]])
+        geom = geom if geom.is_valid else geom.buffer(0)
+        return not geom.is_empty and shape.contains(geom.representative_point())
+    pts = [proj.to_px(la, lo) for la, lo in feat.geometry]
+    if not pts:
+        return False
+    if len(pts) >= 3 and pts[0] == pts[-1]:
+        geom = Polygon(pts)
+        spot = geom.representative_point() if geom.is_valid else Point(pts[0])
+        return shape.contains(spot)
+    if len(pts) >= 2:
+        return shape.intersects(LineString(pts))
+    return shape.contains(Point(pts[0]))
+
+
+def _clip_to_shape(landscape: Image.Image, shape, buckets: dict[str, list[OSMFeature]],
+                   proj: Projector) -> None:
+    """Outside the drawn shape, the ground goes back to countryside.
+
+    Water stays - a river does not stop at a line on the map - and so do the
+    main roads through it, with their pavements. Everything else outside, the
+    yards and car parks and side streets of the neighbourhood next door,
+    becomes grass.
+    """
+    import numpy as np
+
+    w, h = landscape.size
+    inside = Image.new("L", (w, h), 0)
+    d = ImageDraw.Draw(inside)
+    for part in getattr(shape, "geoms", None) or [shape]:
+        d.polygon(list(part.exterior.coords), fill=255)
+        for hole in part.interiors:
+            d.polygon(list(hole.coords), fill=0)
+    keep = inside.copy()
+    kd = ImageDraw.Draw(keep)
+    mpt = proj.meters_per_tile
+    for cat in THROUGH_ROADS:
+        for feat in buckets.get(cat, []):
+            if _is_polygon(feat):
+                continue
+            width = (_way_width_m(feat, cat) + 2 * SIDEWALK_M[cat]) / mpt
+            _draw_line(kd, _feature_coords_px(feat, proj), 255, int(width))
+    for cat in ("water", "pool", "coastline"):
+        for feat in buckets.get(cat, []):
+            if _is_polygon(feat):
+                for ring in _feature_coords_px(feat, proj):
+                    if len(ring) >= 3:
+                        kd.polygon(ring, fill=255)
+    strip = 1024
+    for y0 in range(0, h, strip):
+        y1 = min(h, y0 + strip)
+        outside = np.asarray(keep.crop((0, y0, w, y1))) == 0
+        if not outside.any():
+            continue
+        ground = np.asarray(landscape.crop((0, y0, w, y1)))
+        water = (ground[:, :, 0] == C.WATER[0]) & (ground[:, :, 1] == C.WATER[1]) \
+            & (ground[:, :, 2] == C.WATER[2])
+        outside &= ~water
+        if outside.any():
+            grass = Image.new("RGB", (w, y1 - y0), C.DARK_GRASS)
+            landscape.paste(grass, (0, y0), Image.fromarray(outside.astype(np.uint8) * 255))
+
+
 def dominant_road_angle(features: Iterable[OSMFeature], south: float, west: float,
                         north: float, east: float) -> tuple[float, float]:
     """The main direction of a town's streets, and how strongly they share it.
@@ -402,8 +502,13 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            tree_density: float = 1.0,
            rotation: float = 0.0,
            osm_cache: str | None = None,
-           osm_bbox: tuple[float, float, float, float] | None = None) -> RenderResult:
+           osm_bbox: tuple[float, float, float, float] | None = None,
+           shape: dict | None = None) -> RenderResult:
     proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
+    # A drawn polygon, circle or real outline rather than a rectangle: the map
+    # still covers its bounding box in whole cells, but only what lies inside
+    # the shape is built.
+    clip = shape_px(shape, proj)
     landscape = Image.new("RGB", (proj.width, proj.height), C.DARK_GRASS)
     vegetation = Image.new("RGB", (proj.width, proj.height), C.VEG_NOTHING)
     l_draw = ImageDraw.Draw(landscape)
@@ -436,6 +541,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             if cat in {"forest", "scrub", "tree_single", "hedge"}:
                 continue
         if cat == "building":
+            if clip is not None and not _inside(feat, proj, clip):
+                continue
             building_feats.append(feat)
         buckets.setdefault(cat, []).append(feat)
 
@@ -480,6 +587,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 _draw_line(l_draw, rings, fill, max(1, int(metres / meters_per_tile)))
 
     _pave_dense_ground(landscape, building_feats, buckets, proj)
+    if clip is not None:
+        _clip_to_shape(landscape, clip, buckets, proj)
     _weather_roads(landscape, proj)
 
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
@@ -514,7 +623,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     with open(os.path.join(output_dir, f"{map_name}_areas.geojson"), "w") as f:
         json.dump(_areas_geojson(buckets), f)
     with open(os.path.join(output_dir, f"{map_name}_fences.geojson"), "w") as f:
-        json.dump(_lines_geojson(fence_feats), f)
+        json.dump(_lines_geojson([f for f in fence_feats
+                                  if clip is None or _inside(f, proj, clip)]), f)
     with open(os.path.join(output_dir, f"{map_name}_places.json"), "w",
               encoding="utf-8") as f:
         json.dump(_places(place_feats, proj), f, ensure_ascii=False)
@@ -527,6 +637,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             "rotation": rotation,
             "osm_cache": osm_cache,
             "osm_bbox": list(osm_bbox) if osm_bbox else None,
+            "shape": shape,
             "meters_per_tile": meters_per_tile,
             "width_tiles": proj.width,
             "height_tiles": proj.height,
