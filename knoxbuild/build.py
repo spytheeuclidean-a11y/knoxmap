@@ -388,11 +388,54 @@ def _ring_points(geom: dict) -> list[list[float]]:
     return pts
 
 
+STREET_LOOK_TILES = 40
+
+
+def _street_finder(out_dir: str, map_name: str):
+    """A function giving the side ("N", "S", "W" or "E") of a footprint that
+    faces the nearest pavement or road, or None if none is near."""
+    import numpy as np
+    from PIL import Image
+
+    from generator import pz_colors as PC
+
+    path = os.path.join(out_dir, f"{map_name}_ground_base.bmp")
+    if not os.path.exists(path):
+        path = os.path.join(out_dir, f"{map_name}.bmp")
+    if not os.path.exists(path):
+        return lambda *a: None
+    g = np.array(Image.open(path).convert("RGB"))
+    paved = np.zeros(g.shape[:2], dtype=bool)
+    for c in (PC.PALE_CONCRETE, PC.MEDIUM_ASPHALT, PC.DARKEST_ASPHALT):
+        paved |= np.all(g == c, axis=2)
+    H, W = paved.shape
+
+    def side(x0: int, y0: int, w: int, h: int) -> str | None:
+        best, best_d = None, STREET_LOOK_TILES + 1
+        for name, (dx, dy) in (("N", (0, -1)), ("S", (0, 1)), ("W", (-1, 0)), ("E", (1, 0))):
+            if dx == 0:
+                starts = [(x0 + w * f // 4, y0 if dy < 0 else y0 + h - 1) for f in (1, 2, 3)]
+            else:
+                starts = [(x0 if dx < 0 else x0 + w - 1, y0 + h * f // 4) for f in (1, 2, 3)]
+            for sx, sy in starts:
+                for d in range(1, STREET_LOOK_TILES + 1):
+                    x, y = sx + dx * d, sy + dy * d
+                    if not (0 <= x < W and 0 <= y < H):
+                        break
+                    if paved[y, x]:
+                        if d < best_d:
+                            best, best_d = name, d
+                        break
+        return best
+
+    return side
+
+
 def _make_one(job: tuple) -> tuple[int, int, int]:
     """Lay out one building and write its .tbx. Returns (storeys, rooms, furniture)."""
-    w, h, levels, commercial, seed, kind, mask, settings, style, label, path = job
+    w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street = job
     plan = build_building(w, h, levels=levels, commercial=commercial, seed=seed,
-                          kind=kind, mask=mask, settings=settings)
+                          kind=kind, mask=mask, settings=settings, street=street)
     with open(path, "w", encoding="utf-8") as f:
         f.write(render_tbx(plan, label, style))
     return (len(plan.storeys), len(plan.rooms),
@@ -508,6 +551,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # not be the town hall giving way to the shed behind it.
     order = []
     jobs: list[tuple] = []       # what each building needs to lay itself out
+    street_side = _street_finder(out_dir, map_name)
     decided: list[tuple] = []    # and what the map needs to know about it
     surroundings: list[tuple[float, float, float, int | None]] = []
     for i, feat in enumerate(geo["features"]):
@@ -589,7 +633,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         fname = f"{map_name}_{i:04d}.tbx"
         label = tags.get("name") or f"{map_name} building {i}"
         jobs.append((w, h, levels, commercial, seed + i, special, mask,
-                     settings, style, label, os.path.join(bdir, fname)))
+                     settings, style, label, os.path.join(bdir, fname),
+                     street_side(x0, y0, w, h)))
         decided.append((fname, label, x0, y0, w, h, fp, px, special, measured,
                         commercial, style, mask,
                         (tags.get("name") or "") if is_notable(tags, special) else ""))
@@ -620,6 +665,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             "angle": round(fp.angle, 1),
         })
     rows.sort(key=lambda r: r["file"])
+    from .yards import paint_paths
+    paths = paint_paths(out_dir, map_name, rows, occupied)
 
     fence_placements, fence_tiles = build_fences(out_dir, map_name, proj,
                                                  occupied, areas, bdir)
@@ -691,6 +738,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     n_park = sum(1 for z in zones if z.kind == "ParkingStall")
     n_town = sum(1 for z in zones if z.kind == "TownZone")
     print(f"zones                 : {n_park} parking, {n_town} town")
+    print(f"front paths           : {paths}")
     print(f"fences                : {fence_tiles} fence tiles in "
           f"{len(fence_placements)} lots")
     print(f"paper map             : {paper_map['map_features']} features in "

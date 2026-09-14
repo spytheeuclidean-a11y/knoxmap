@@ -918,7 +918,8 @@ ENTRY_KINDS = ["hall", "lobby", "livingroom", "restaurant", "church",
 
 
 def _exterior_door(plan: Plan, rng: random.Random,
-                   avoid: tuple[int, int] | None = None) -> None:
+                   avoid: tuple[int, int] | None = None,
+                   street: str | None = None) -> None:
     """One way in, into the room a visitor would expect to arrive in.
 
     `avoid` is the foot of the staircase, so the front door does not open
@@ -940,7 +941,9 @@ def _exterior_door(plan: Plan, rng: random.Random,
             far = 0.0
             if avoid is not None:
                 far = abs(mid[0] - avoid[0]) + abs(mid[1] - avoid[1])
-            return (len(wall) >= 3, side == "S", far, len(wall))
+            # Facing the street, as front doors do; without that the door
+            # went on the south wall and half the paths wrapped round houses.
+            return (len(wall) >= 3, side == (street or "S"), far, len(wall))
 
         side, wall = max(runs, key=score)
         plan.doors.append(wall[len(wall) // 2])
@@ -1737,7 +1740,8 @@ def build_building(width: int, height: int, levels: int = 1,
                    commercial: bool = False, seed: int = 0,
                    kind: str | None = None,
                    mask: list[list[bool]] | None = None,
-                   settings: Settings | None = None) -> Building:
+                   settings: Settings | None = None,
+                   street: str | None = None) -> Building:
     """Lay out a building of `levels` storeys.
 
     Each storey is laid out separately rather than copied, because a block of
@@ -1770,7 +1774,8 @@ def build_building(width: int, height: int, levels: int = 1,
         build_plan(width, height, commercial=commercial, seed=seed + 977 * lvl,
                    kind=kind, mask=mask, ground=(lvl == 0), settings=settings,
                    core=core, level=lvl, levels=levels, stairs=stairs,
-                   corridor=corridor, shaft=shaft, shaft_door=shaft_door)
+                   corridor=corridor, shaft=shaft, shaft_door=shaft_door,
+                   street=street)
         for lvl in range(levels)
     ]
     building = Building(width=width, height=height, storeys=storeys)
@@ -1810,7 +1815,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
                stairs: tuple[int, int, str] | None = None,
                corridor: bool = False,
                shaft: tuple[int, int, int, int] | None = None,
-               shaft_door: tuple[int, int, str] | None = None) -> Plan:
+               shaft_door: tuple[int, int, str] | None = None,
+               street: str | None = None) -> Plan:
     """Lay out and furnish one storey of the given tile size.
 
     `ground` gates the exterior door: a door in an upper-floor wall opens onto
@@ -1860,7 +1866,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
 
     _doors(plan, rng)
     if ground:
-        _exterior_door(plan, rng, avoid=_stair_foot(stairs))
+        _exterior_door(plan, rng, avoid=_stair_foot(stairs), street=street)
         if kind in (None, "house"):
             _back_door(plan)
     _furnish(plan, rng, stairs)

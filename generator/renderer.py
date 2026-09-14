@@ -652,6 +652,9 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
 
     landscape.save(landscape_path, format="BMP")
     vegetation.save(veg_path, format="BMP")
+    # The ground as drawn, before knoxbuild paints front paths into it
+    # (knoxbuild/yards.py), so building again starts from clean ground.
+    landscape.save(os.path.join(output_dir, f"{map_name}_ground_base.bmp"), format="BMP")
     spawn_map.save(spawn_path, format="BMP")
     preview.save(preview_path, format="PNG")
 
