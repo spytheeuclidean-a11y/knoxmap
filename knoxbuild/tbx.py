@@ -48,6 +48,9 @@ def render_tbx(plan: Plan | Building, name: str,
     exterior_idx = C.EXTERIOR_WALL
     interior_idx = C.INTERIOR_WALL
     floor_override = None
+    window_idx = C.WINDOW
+    roof_cap_idx = C.ROOF_CAP
+    curtains_idx = C.CURTAINS
 
     if style:
         entries.append(style["exterior"])
@@ -57,6 +60,22 @@ def render_tbx(plan: Plan | Building, name: str,
         if style.get("floor"):
             entries.append(style["floor"])
             floor_override = len(entries)
+        if style.get("window"):
+            entries.append(style["window"])
+            window_idx = len(entries)
+        if style.get("curtains") is False:
+            curtains_idx = 0
+    # A depth-three flat roof walls in its storey with the cap entry's
+    # CapGap tiles, which BuildingTemplates.txt sets to stucco - every top
+    # floor came out stucco whatever the building was made of. Give each
+    # building a cap entry whose gaps are its own exterior wall.
+    ext_tiles = entries[exterior_idx - 1]["tiles"]
+    if ext_tiles.get("West") and ext_tiles.get("North"):
+        cap = dict(entries[C.ROOF_CAP - 1]["tiles"])
+        cap["CapGapE3"], cap["CapGapS3"] = ext_tiles["West"], ext_tiles["North"]
+        entries.append({"category": "roof_caps", "tiles": cap})
+        roof_cap_idx = len(entries)
+
     # Which furniture roles this building actually uses, in first-use order.
     roles: list[str] = []
     for storey in storeys:
@@ -74,11 +93,11 @@ def render_tbx(plan: Plan | Building, name: str,
         ("ExteriorWallTrim", 0),
         ("Door", C.DOOR),
         ("DoorFrame", C.DOOR_FRAME),
-        ("Window", C.WINDOW),
-        ("Curtains", C.CURTAINS),
+        ("Window", window_idx),
+        ("Curtains", curtains_idx),
         ("Shutters", 0),
         ("Stairs", C.STAIRS),
-        ("RoofCap", C.ROOF_CAP),
+        ("RoofCap", roof_cap_idx),
         ("RoofSlope", C.ROOF_SLOPE),
         ("RoofTop", C.ROOF_TOP),
         ("GrimeWall", 0),
@@ -144,9 +163,9 @@ def render_tbx(plan: Plan | Building, name: str,
             out.append(f"  <object{_attrs(attrs)}/>")
 
         for x, y, direction in storey.windows:
-            attrs = [("type", "window"), ("CurtainsTile", C.CURTAINS),
+            attrs = [("type", "window"), ("CurtainsTile", curtains_idx),
                      ("ShuttersTile", 0), ("x", x), ("y", y),
-                     ("dir", direction), ("Tile", C.WINDOW)]
+                     ("dir", direction), ("Tile", window_idx)]
             out.append(f"  <object{_attrs(attrs)}/>")
 
         for role, x, y, orient in storey.furniture:
@@ -170,7 +189,7 @@ def render_tbx(plan: Plan | Building, name: str,
         # rather than its bounding box, so an L-shaped building does not carry
         # a roof over its own back yard.
         if level == len(storeys) - 1:
-            for rx, ry, rw, rh, caps in roof_rects(storey.grid):
+            for rx, ry, rw, rh, _caps in roof_rects(storey.grid):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),
@@ -183,11 +202,14 @@ def render_tbx(plan: Plan | Building, name: str,
                     # floor layer of the floor above (see the empty roof floor
                     # written after the storeys).
                     ("Depth", "Three"),
-                    ("cappedW", str(caps["cappedW"]).lower()),
-                    ("cappedN", str(caps["cappedN"]).lower()),
-                    ("cappedE", str(caps["cappedE"]).lower()),
-                    ("cappedS", str(caps["cappedS"]).lower()),
-                    ("CapTiles", C.ROOF_CAP),
+                    # No caps: at depth three a cap is a storey-high wall of
+                    # brick roof tiles laid over the top storey's own walls,
+                    # which turned every house's top floor into brick.
+                    ("cappedW", "false"),
+                    ("cappedN", "false"),
+                    ("cappedE", "false"),
+                    ("cappedS", "false"),
+                    ("CapTiles", roof_cap_idx),
                     ("SlopeTiles", C.ROOF_SLOPE),
                     ("TopTiles", C.ROOF_TOP),
                     ("x", rx), ("y", ry),

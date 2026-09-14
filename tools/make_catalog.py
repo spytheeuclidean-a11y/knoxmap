@@ -103,6 +103,18 @@ def main(argv: list[str]) -> int:
                          f"The config may have changed - pick a new anchor from "
                          f"tools/make_catalog.py.")
 
+    # BuildingTemplates.txt names only three windows; the editor's full list
+    # is in BuildingTiles.txt, as West/North pairs.
+    tiles_txt = open(os.path.join(cfg_dir, "BuildingTiles.txt"), encoding="utf-8",
+                     errors="replace").read()
+    window_pairs = dict(re.findall(r"West = (fixtures_windows_\w+)\s+North = (\w+)", tiles_txt))
+
+    def window(anchor: str) -> dict:
+        if anchor not in window_pairs:
+            raise SystemExit(f"ERROR: no window {anchor!r} in BuildingTiles.txt.")
+        return {"category": "windows",
+                "tiles": {"West": anchor, "North": window_pairs[anchor]}}
+
     # Order defines the 1-based index the .tbx refers to.
     WANTED = [
         ("exterior_walls", "walls_exterior_house_01_032"),
@@ -198,26 +210,27 @@ def main(argv: list[str]) -> int:
     # coherent while the next one differs), and anything OSM tags as a school,
     # church, shop, diner or works gets its own materials from SPECIAL_STYLES.
     HOUSE_STYLE_SPEC = [
-        ("clapboard", "walls_exterior_house_01_032", "walls_interior_house_01_016"),
-        ("brick", "walls_exterior_house_01_016", "walls_interior_house_02_000"),
-        ("painted", "walls_exterior_house_01_052", "walls_interior_house_03_000"),
-        ("stucco", "walls_exterior_house_02_004", "walls_interior_house_02_032"),
-        ("panel", "walls_exterior_house_02_016", "walls_interior_house_03_020"),
-        ("timber", "walls_exterior_wooden_01_024", "walls_interior_house_01_052"),
-        ("logs", "walls_logs_000", "walls_interior_house_03_032"),
-        ("trailer", "location_trailer_01_000", "location_trailer_01_024"),
+        ("clapboard", "walls_exterior_house_01_032", "walls_interior_house_01_016", "fixtures_windows_01_008"),
+        ("brick", "walls_exterior_house_01_016", "walls_interior_house_02_000", "fixtures_windows_01_016"),
+        ("painted", "walls_exterior_house_01_052", "walls_interior_house_03_000", "fixtures_windows_white_024"),
+        ("stucco", "walls_exterior_house_02_004", "walls_interior_house_02_032", "fixtures_windows_01_024"),
+        ("panel", "walls_exterior_house_02_016", "walls_interior_house_03_020", "fixtures_windows_01_032"),
+        ("timber", "walls_exterior_wooden_01_024", "walls_interior_house_01_052", "fixtures_windows_wood_024"),
+        ("logs", "walls_logs_000", "walls_interior_house_03_032", "fixtures_windows_wood_016"),
+        ("trailer", "location_trailer_01_000", "location_trailer_01_024", "fixtures_windows_01_000"),
         # BuildingTemplates.txt offers 24 exterior wall families and the first
         # eight entries here used a third of them, so a long street ran out of
         # variety and started repeating itself.
-        ("render", "walls_exterior_house_02_064", "walls_interior_house_03_036"),
-        ("plaster", "walls_interior_house_02_032", "walls_interior_bathroom_01_000"),
+        ("render", "walls_exterior_house_02_064", "walls_interior_house_03_036", "fixtures_windows_white_016"),
+        ("plaster", "walls_interior_house_02_032", "walls_interior_bathroom_01_000", "fixtures_windows_01_056"),
     ]
     house_styles = []
-    for style_name, ext, inte in HOUSE_STYLE_SPEC:
+    for style_name, ext, inte, window_name in HOUSE_STYLE_SPEC:
         house_styles.append({
             "name": style_name,
             "exterior": pick("exterior_walls", ext),
             "interior": pick("interior_walls", inte),
+            "window": window(window_name),
         })
 
     # kind -> materials, and the floor that overrides the usual palette.
@@ -242,13 +255,31 @@ def main(argv: list[str]) -> int:
         "apartment":  ("walls_interior_house_03_032", "walls_interior_house_02_048",
                        "floors_interior_carpet_01_032"),
     }
+    # Every building once had the same brown four-pane window. Each style now
+    # names its own, and says whether it hangs curtains: a works, a church or
+    # a shop front has none. Only single-storey sizes are used - the tall
+    # arched metal windows are drawn two floors high.
+    SPECIAL_WINDOWS = {
+        "school": ("fixtures_windows_01_040", False),
+        "church": ("fixtures_windows_church_024", False),
+        "restaurant": ("fixtures_windows_01_048", True),
+        "shop": ("fixtures_windows_metal_028", False),
+        "industrial": ("fixtures_windows_metal_024", False),
+        "barn": ("fixtures_windows_wood_024", False),
+        "medical": ("fixtures_windows_01_048", True),
+        "civic": ("fixtures_windows_white_008", False),
+        "apartment": ("fixtures_windows_01_056", True),
+    }
     special_styles = {}
     for kind, (ext, inte, floor) in SPECIAL_SPEC.items():
+        window_name, curtains = SPECIAL_WINDOWS[kind]
         special_styles[kind] = {
             "name": kind,
             "exterior": pick("exterior_walls", ext),
             "interior": pick("interior_walls", inte),
             "floor": pick("floors", floor) if floor else None,
+            "window": window(window_name),
+            "curtains": curtains,
         }
 
     KINDS = ["livingroom", "kitchen", "bedroom", "bathroom", "dining",

@@ -71,6 +71,40 @@ def assign_converted_maps(pzw: Path) -> int:
     return count
 
 
+def clear_stale(project: Path) -> None:
+    """Delete compiled output that is older than what it was compiled from.
+
+    The patched CLI skips a batch whose cells all have a .lotheader, and skips
+    converting a cell that already has a .tmx, so that a stopped compile picks
+    up where it left off. That also meant a map rebuilt with new buildings or
+    terrain "compiled" in seconds and kept every old lot. Output newer than
+    its inputs is kept, so resuming still works.
+
+    The .pzw is not an input here: assign_converted_maps rewrites it after the
+    first batch, which would make every finished compile look stale.
+    """
+    def newest(paths) -> float:
+        return max((p.stat().st_mtime for p in paths), default=0.0)
+
+    lots, tmx = project / "lots", project / "tmx"
+    terrain = newest(project.glob("*.bmp"))
+    inputs = max(terrain, newest((project / "buildings").glob("*.tbx")))
+    written = [p for p in lots.glob("*") if p.is_file()] if lots.is_dir() else []
+    if written and min(p.stat().st_mtime for p in written) < inputs:
+        for p in written:
+            p.unlink()
+    converted = list(tmx.glob("*.tmx")) if tmx.is_dir() else []
+    if converted and min(p.stat().st_mtime for p in converted) < terrain:
+        for p in converted:
+            p.unlink()
+        # And forget them, or WorldEd stops on "missing assigned TMX".
+        pzw = project / f"{project.name}.pzw"
+        if pzw.exists():
+            text = pzw.read_text(encoding="utf-8", errors="replace")
+            unassigned = re.sub(r'(<cell x="\d+" y="\d+" map=")[^"]*\.tmx"', r'\1"', text)
+            pzw.write_text(unassigned, encoding="utf-8")
+
+
 def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
                 on_progress=None) -> int:
     """Run every batch. Returns the number of compiled cells."""
@@ -82,6 +116,7 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
     if not exe_path.exists():
         raise FileNotFoundError(f"PZWorldEd_cli.exe not found at {exe_path}")
 
+    clear_stale(project)
     lots = project / "lots"
     lots.mkdir(exist_ok=True)
     (project / "tmx").mkdir(exist_ok=True)

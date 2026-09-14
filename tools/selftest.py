@@ -18,10 +18,12 @@ import io
 import json
 import math
 import os
+import re
 import shutil
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -158,6 +160,33 @@ def main(argv: list[str]) -> int:
         check(len(tall) >= 1, "the seven-storey flats have a lift")
         school = [p for p in tbx if 'InternalName="classroom"' in open(p, encoding="utf-8").read()]
         check(len(school) >= 1, "the school has classrooms")
+        texts = [open(p, encoding="utf-8").read() for p in tbx]
+        windows = {m for t in texts for m in re.findall(r'category="windows">\s*<tile enum="West" tile="(\w+)"', t)}
+        check(len(windows) >= 3, f"window styles vary ({len(windows)})")
+
+        def gaps_match(t: str) -> bool:
+            blocks = re.findall(r"<tile_entry[^>]*>(.*?)</tile_entry>", t, re.S)
+            head = re.search(r"<building[^>]*>", t).group(0)
+            ext = int(re.search(r'ExteriorWall="(\d+)"', head).group(1))
+            cap = int(re.search(r'RoofCap="(\d+)"', head).group(1))
+            west = re.search(r'enum="West" tile="(\w+)"', blocks[ext - 1])
+            gap = re.search(r'enum="CapGapE3" tile="(\w+)"', blocks[cap - 1])
+            return bool(west and gap and west.group(1) == gap.group(1))
+        check(all(gaps_match(t) for t in texts), "flat roofs wall in the top floor with its own material")
+
+        print("compile")
+        from compile_map import clear_stale
+        stale = os.path.join(out, "lots")
+        os.makedirs(stale, exist_ok=True)
+        old_lot = os.path.join(stale, "0_0.lotheader")
+        open(old_lot, "wb").write(b"old")
+        os.utime(old_lot, (1, 1))
+        clear_stale(Path(out))
+        check(not os.path.exists(old_lot), "a rebuilt map's old lots are cleared")
+        open(old_lot, "wb").write(b"new")
+        clear_stale(Path(out))
+        check(os.path.exists(old_lot), "lots newer than the map are kept, so compiles resume")
+        os.remove(old_lot)
 
         print("paper map")
         root = ET.parse(os.path.join(out, "worldmap.xml")).getroot()
@@ -174,7 +203,6 @@ def main(argv: list[str]) -> int:
         check(pop.get("residents", 0) > 0, f"people counted ({pop.get('residents')} residents)")
 
         print("app page")
-        import re
 
         import app as knoxmap_app
         client = knoxmap_app.app.test_client()
