@@ -66,7 +66,6 @@
       'You have unlocked: nothing.',
       'That tickles. Please stop.',
     ],
-    splat: ['Splat.', 'Headshot.', 'One less neighbour.', 'Clean-up on aisle map.', 'Thwack.', 'Bonk.'],
     // Only jokes that blame nobody: these sit in front of real error messages,
     // and one suggesting the server is at fault misleads when it is not.
     fail: ['Bitten!', 'Uh oh.', 'Well, that went south.', 'Not today.'],
@@ -124,95 +123,15 @@
 
   // ---- header chips ---------------------------------------------------------------
 
-  let kills = store.get('kills', 0);
   let days = store.get('days', 1);
 
   function paintChips(bump) {
-    const k = $('#killChip'), d = $('#dayChip');
-    if (k) k.textContent = `🧟 ${kills.toLocaleString()}`;
+    const d = $('#dayChip');
     if (d) d.textContent = `DAY ${days}`;
     if (bump && !reduced) {
-      const el = bump === 'kill' ? k : d;
+      const el = d;
       el?.classList.remove('bump'); void el?.offsetWidth; el?.classList.add('bump');
     }
-  }
-
-  // ---- the shambling -------------------------------------------------------------
-
-  const ZOMBIE_SVG = `
-    <svg viewBox="0 0 40 56" aria-hidden="true">
-      <g class="z-body">
-        <ellipse cx="20" cy="54" rx="11" ry="2" fill="rgba(0,0,0,.35)"/>
-        <g class="z-leg z-leg-a"><rect x="14" y="36" width="5" height="16" rx="2" fill="#3d4a5c"/><rect x="12.5" y="50" width="7" height="3.5" rx="1.5" fill="#2a2a2a"/></g>
-        <g class="z-leg z-leg-b"><rect x="21" y="36" width="5" height="16" rx="2" fill="#34404f"/><rect x="20.5" y="50" width="7" height="3.5" rx="1.5" fill="#2a2a2a"/></g>
-        <rect x="12" y="20" width="16" height="18" rx="4" fill="#6b5a45"/>
-        <path d="M13 26 l3 4 M24 24 l2 5" stroke="#8a1c1c" stroke-width="1.6" stroke-linecap="round"/>
-        <g class="z-arm"><rect x="24" y="22" width="15" height="4.5" rx="2" fill="#7fae5a"/><rect x="24" y="28" width="13" height="4.5" rx="2" fill="#739f50"/></g>
-        <circle cx="20" cy="13" r="8.5" fill="#8cbf63"/>
-        <path d="M13 9 q7 -6 14 0" stroke="#4f6b35" stroke-width="2.2" fill="none" stroke-linecap="round"/>
-        <circle cx="23" cy="12" r="2" fill="#fff6c9"/><circle cx="23.5" cy="12.3" r=".9" fill="#b3261e"/>
-        <circle cx="17.5" cy="12.5" r="1.4" fill="#fff6c9"/>
-        <path d="M17 17.5 q3 2 6 0" stroke="#3a1d1d" stroke-width="1.4" fill="none" stroke-linecap="round"/>
-      </g>
-    </svg>`;
-
-  const GROANS = ['Braaains', 'Mrrrgh', 'Hnnngh', '...hungry', 'Uuurgh', 'Have you tried turning it off?'];
-
-  function spawnZombie({ fast = false, quiet = false } = {}) {
-    const lane = $('#shamble-lane');
-    if (!lane || reduced) return;
-    const z = document.createElement('button');
-    z.type = 'button';
-    z.className = 'zombie';
-    z.title = 'Splat me';
-    z.setAttribute('aria-label', 'A zombie. Click to splat it.');
-    const leftToRight = Math.random() < 0.5;
-    const dur = fast ? 7 + Math.random() * 4 : 22 + Math.random() * 14;
-    z.style.setProperty('--dur', `${dur}s`);
-    z.style.setProperty('--bottom', `${40 + Math.random() * 90}px`);
-    z.style.setProperty('--scale', (0.85 + Math.random() * 0.4).toFixed(2));
-    z.classList.add(leftToRight ? 'ltr' : 'rtl');
-    z.innerHTML = ZOMBIE_SVG + `<span class="z-say">${pick(GROANS)}</span>`;
-    lane.appendChild(z);
-    if (!quiet && Math.random() < 0.5) sfx.groan();
-
-    const done = () => z.remove();
-    z.addEventListener('animationend', e => { if (e.animationName.startsWith('walk')) done(); });
-    z.addEventListener('click', e => {
-      e.stopPropagation();
-      if (z.classList.contains('dead')) return;
-      z.classList.add('dead');
-      kills += 1;
-      store.set('kills', kills);
-      paintChips('kill');
-      sfx.splat();
-      const rect = z.getBoundingClientRect();
-      splatAt(rect.left + rect.width / 2, rect.top + rect.height * 0.6);
-      if (kills === 1 || kills % 25 === 0) {
-        fx.toast('ok', kills === 1 ? 'First blood' : `${kills} zombies splatted`,
-                 kills === 1 ? 'The first of many.' : pick(QUIPS.splat));
-      }
-      setTimeout(done, 650);
-    });
-  }
-
-  function splatAt(x, y) {
-    const s = document.createElement('div');
-    s.className = 'splat';
-    s.style.left = `${x}px`;
-    s.style.top = `${y}px`;
-    s.textContent = pick(QUIPS.splat);
-    document.body.appendChild(s);
-    setTimeout(() => s.remove(), 1200);
-  }
-
-  function shambleForever() {
-    if (reduced) return;
-    const next = 25000 + Math.random() * 40000;
-    setTimeout(() => {
-      if (!document.hidden && !$('#gen-overlay:not([hidden])')) spawnZombie();
-      shambleForever();
-    }, next);
   }
 
   // ---- generation overlay quips ---------------------------------------------------
@@ -274,7 +193,6 @@
       days += 1;
       store.set('days', days);
       paintChips('day');
-      if (Math.random() < 0.7) setTimeout(() => spawnZombie({ fast: true }), 1400);
     }
   };
 
@@ -367,31 +285,6 @@
 
   // ---- easter eggs -----------------------------------------------------------------------
 
-  function knoxEvent() {
-    if (document.body.classList.contains('knox-event')) return;
-    document.body.classList.add('knox-event');
-    sfx.siren();
-    // Straight to the original toast: the failure wrapper would prefix it with
-    // "The server got scratched", which reads as a real error.
-    origToast('bad', 'THE KNOX EVENT HAS BEGUN', 'Please remain calm and proceed to the nearest map.', 7000);
-    for (let i = 0; i < 9; i++) setTimeout(() => spawnZombie({ fast: true, quiet: i > 0 }), i * 420);
-    setTimeout(() => document.body.classList.remove('knox-event'), 8500);
-  }
-
-  const KONAMI = ['ArrowUp', 'ArrowUp', 'ArrowDown', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-                  'ArrowLeft', 'ArrowRight', 'b', 'a'];
-  let konami = 0;
-  let typed = '';
-  document.addEventListener('keydown', e => {
-    const tag = (e.target.tagName || '').toLowerCase();
-    if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
-    konami = e.key === KONAMI[konami] ? konami + 1 : (e.key === KONAMI[0] ? 1 : 0);
-    if (konami === KONAMI.length) { konami = 0; knoxEvent(); }
-    typed = (typed + e.key.toLowerCase()).slice(-8);
-    if (typed.endsWith('knox')) knoxEvent();
-    if (typed.endsWith('brains')) { spawnZombie({ fast: true }); fx.toast('info', 'You called?', 'One zombie, delivered.'); }
-  });
-
   let pokes = 0;
   let pokeTimer = null;
   function logoPoke() {
@@ -402,24 +295,6 @@
     clearTimeout(pokeTimer);
     pokeTimer = setTimeout(() => { pokes = 0; }, 1500);
     if (pokes === 5) { fx.toast('info', pick(QUIPS.poke), 'Five pokes. Impressive dedication.'); }
-    if (pokes === 12) { pokes = 0; knoxEvent(); }
-  }
-
-  // Idle for a while? Something peeks in to check on you.
-  let idleTimer = null;
-  function resetIdle() {
-    clearTimeout(idleTimer);
-    idleTimer = setTimeout(peek, 75000);
-  }
-  function peek() {
-    const pane = $('#map-pane');
-    if (!pane || reduced || document.hidden) return;
-    const p = document.createElement('div');
-    p.className = 'peeker';
-    p.innerHTML = ZOMBIE_SVG + '<span class="z-say">still there?</span>';
-    pane.appendChild(p);
-    sfx.groan();
-    setTimeout(() => p.remove(), 5200);
   }
 
   // ---- wire up -----------------------------------------------------------------------------
@@ -431,10 +306,9 @@
     soundOn = !soundOn;
     store.set('sound', soundOn);
     paintSound();
-    if (soundOn) { ctx()?.resume(); sfx.boop(); fx.toast('info', 'Sound on', 'Groans, splats and the occasional siren.'); }
+    if (soundOn) { ctx()?.resume(); sfx.boop(); fx.toast('info', 'Sound on', 'A few quiet clicks and chimes.'); }
   });
   $('.brand-mark')?.addEventListener('click', logoPoke);
-  $('#killChip')?.addEventListener('click', () => spawnZombie({ fast: true }));
 
   document.querySelectorAll('.preset-card[data-quip]').forEach(card => {
     card.addEventListener('mouseenter', () => {
@@ -468,11 +342,4 @@
   typeTip();
   setInterval(typeTip, 11000);
 
-  ['mousemove', 'keydown', 'wheel', 'touchstart'].forEach(ev =>
-    document.addEventListener(ev, resetIdle, { passive: true }));
-  resetIdle();
-
-  // A first visitor gets an early zombie, so they know it is there to be clicked.
-  setTimeout(() => spawnZombie(), store.get('kills', 0) ? 20000 : 6000);
-  shambleForever();
 })();

@@ -819,8 +819,6 @@ ol.pipeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px;
   background: rgba(255,255,255,.04); white-space: nowrap; user-select: none;
 }
 #dayChip { color: var(--amber); border-color: rgba(255,181,71,.3); }
-#killChip { cursor: pointer; }
-#killChip:hover { border-color: var(--line-strong); }
 .chip-btn { cursor: pointer; font-size: 13px; padding: 3px 9px; }
 .chip-btn:hover { border-color: var(--line-strong); }
 .chip.bump { animation: bump .5s var(--ease); }
@@ -833,64 +831,6 @@ ol.pipeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px;
   60% { transform: rotate(-6deg); } 80% { transform: rotate(3deg); }
 }
 
-/* the shambling */
-#shamble-lane { position: absolute; inset: 0; z-index: 690; pointer-events: none; overflow: hidden; }
-.zombie {
-  position: absolute; bottom: var(--bottom, 60px); width: 46px; height: 64px; padding: 0;
-  border: 0; background: none; cursor: crosshair; pointer-events: auto;
-  transform: scale(var(--scale, 1)); transform-origin: bottom center;
-  animation-duration: var(--dur, 26s); animation-timing-function: linear;
-  animation-fill-mode: forwards;
-  filter: drop-shadow(0 4px 6px rgba(0,0,0,.5));
-}
-.zombie svg { width: 100%; height: 100%; overflow: visible; }
-.zombie.ltr { left: -60px; animation-name: walk-ltr; }
-.zombie.rtl { left: 100%; animation-name: walk-rtl; }
-.zombie.rtl svg { transform: scaleX(-1); }
-@keyframes walk-ltr { to { left: calc(100% + 60px); } }
-@keyframes walk-rtl { to { left: -60px; } }
-.z-body { animation: shamble .9s ease-in-out infinite; transform-origin: 20px 54px; }
-@keyframes shamble { 0%, 100% { transform: rotate(-4deg) translateY(0); } 50% { transform: rotate(3deg) translateY(-1.5px); } }
-.z-leg-a { animation: step-a .9s ease-in-out infinite; transform-origin: 16px 38px; }
-.z-leg-b { animation: step-b .9s ease-in-out infinite; transform-origin: 23px 38px; }
-@keyframes step-a { 0%, 100% { transform: rotate(14deg); } 50% { transform: rotate(-12deg); } }
-@keyframes step-b { 0%, 100% { transform: rotate(-12deg); } 50% { transform: rotate(14deg); } }
-.z-arm { animation: reach 1.8s ease-in-out infinite; transform-origin: 24px 25px; }
-@keyframes reach { 50% { transform: rotate(-6deg); } }
-.z-say {
-  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
-  font: 700 10px var(--mono); color: #d9f5b8; white-space: nowrap; letter-spacing: .5px;
-  padding: 2px 6px; border-radius: 6px; background: rgba(10,14,8,.85);
-  border: 1px solid rgba(165,226,102,.3); opacity: 0;
-  animation: say 26s linear infinite;
-}
-@keyframes say { 8%, 22% { opacity: 1; } 0%, 6%, 24%, 100% { opacity: 0; } }
-.zombie:hover .z-say { opacity: 1; animation: none; }
-.zombie.dead { pointer-events: none; animation-play-state: paused; }
-.zombie.dead svg { animation: die .6s var(--ease) forwards; }
-.zombie.dead .z-say { display: none; }
-@keyframes die {
-  30% { transform: scale(1.2, .8) translateY(6px); filter: hue-rotate(-60deg) saturate(2); }
-  100% { transform: scale(1.6, .05) translateY(300px); opacity: 0; }
-}
-.splat {
-  position: fixed; z-index: 9600; pointer-events: none; transform: translate(-50%, -50%);
-  font: 900 20px var(--display); letter-spacing: 1px; color: #ff4b3e;
-  text-shadow: 0 0 12px rgba(255,60,40,.6), 2px 2px 0 #3a0703;
-  animation: splat-up 1.2s var(--ease) forwards;
-}
-@keyframes splat-up {
-  0% { opacity: 0; transform: translate(-50%, -30%) scale(.5) rotate(-12deg); }
-  20% { opacity: 1; transform: translate(-50%, -60%) scale(1.35) rotate(6deg); }
-  100% { opacity: 0; transform: translate(-50%, -160%) scale(1) rotate(0); }
-}
-.peeker {
-  position: absolute; right: -12px; bottom: 140px; width: 60px; height: 84px; z-index: 690;
-  pointer-events: none; animation: peek 5.2s var(--ease) forwards;
-}
-.peeker svg { width: 100%; height: 100%; transform: scaleX(-1) rotate(-18deg); }
-.peeker .z-say { opacity: 1; animation: none; left: -10px; transform: none; }
-@keyframes peek { 0% { transform: translateX(80px); } 18%, 80% { transform: translateX(0); } 100% { transform: translateX(90px); } }
 
 /* generation overlay quip */
 #gen-quip {
@@ -919,7 +859,7 @@ ol.pipeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px;
   animation: pop .45s var(--ease) .2s both;
 }
 .z-estimate b { color: var(--acid-hi); font-family: var(--mono); }
-.z-emoji { font-size: 18px; animation: shamble 1.4s ease-in-out infinite; display: inline-block; }
+.z-emoji { font-size: 18px; display: inline-block; }
 
 /* installing: raining zombies and brains */
 .emoji-rain {
@@ -929,16 +869,6 @@ ol.pipeline { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px;
 @keyframes rain { to { transform: translateY(110vh) rotate(var(--spin, 360deg)); } }
 
 /* the Knox Event */
-body.knox-event::after {
-  content: ""; position: fixed; inset: 0; z-index: 9300; pointer-events: none;
-  background: radial-gradient(circle at center, transparent 40%, rgba(170,0,0,.45));
-  animation: alarm .9s ease-in-out infinite;
-}
-body.knox-event .topbar { animation: shake .35s linear infinite; }
-body.knox-event .brand-text h1 {
-  background: linear-gradient(90deg, #ffd1c9, #ff4b3e 55%, #8a0f08);
-  -webkit-background-clip: text; background-clip: text;
-}
 @keyframes alarm { 50% { opacity: .35; } }
 @keyframes shake {
   25% { transform: translate(1px, -1px); } 50% { transform: translate(-1px, 1px); }
@@ -947,8 +877,7 @@ body.knox-event .brand-text h1 {
 
 @media (max-width: 1180px) { .hud-chips #dayChip { display: none; } }
 @media (prefers-reduced-motion: reduce) {
-  #shamble-lane, .peeker, .emoji-rain { display: none !important; }
-  body.knox-event::after { opacity: .5; }
+  .emoji-rain { display: none !important; }
 }
 
 /* zombie census, under the buildings step */
