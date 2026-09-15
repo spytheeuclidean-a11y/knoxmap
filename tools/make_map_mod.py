@@ -366,7 +366,7 @@ def package(project_dir: str, name: str, mod_id: str,
     for src in cells + extras:
         shutil.copy2(src, os.path.join(map_dir, os.path.basename(src)))
 
-    desc = description or f"{name}, generated from real-world map data."
+    desc = description or f"{name}, generated from real-world map data with KnoxMap by euclid80tr."
     # OpenStreetMap's licence (ODbL) requires attribution wherever the map is
     # used, and a game map may carry it in its menus; the mod list is where
     # players see it. See write_attribution for the rest.

@@ -87,6 +87,7 @@ body { min-height: 100vh; overflow-x: hidden; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+.brand-text .maker { opacity: .7; white-space: nowrap; }
 .brand-text h1 {
   margin: 0; font-family: var(--display); font-weight: 700; font-size: 26px;
   letter-spacing: 3px; line-height: 1;

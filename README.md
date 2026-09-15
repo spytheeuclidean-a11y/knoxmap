@@ -6,6 +6,8 @@
 
 <p align="center"><strong>Draw any place on Earth. Play it in Project Zomboid.</strong></p>
 
+<p align="center">Made by <strong>euclid80tr</strong></p>
+
 <p align="center">
   <img alt="Project Zomboid Build 42" src="https://img.shields.io/badge/Project%20Zomboid-Build%2042-8b0000"/>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d6"/>
@@ -308,6 +310,7 @@ for any damage or loss from using KnoxMap or its maps.
 
 ## Credits and licences
 
+- **KnoxMap** is made by **euclid80tr**.
 - **[Knoxify](https://github.com/arytek/knoxify)** by arytek: the original
   OpenStreetMap-to-Project-Zomboid terrain generator KnoxMap is built on.
 - **[PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools)** by Alree /
