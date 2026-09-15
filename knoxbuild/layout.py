@@ -1003,9 +1003,13 @@ SHOP_FRONT_KINDS = {"shop", "restaurant"}
 # needs. Elsewhere a room takes whatever its stretch of facade offers - an
 # open office along a glazed wall is not limited to one window.
 HOUSE_LIKE_KINDS = {"house", "barn", "shed", None}
+# A house window per this many tiles of a room's outside wall, and the tiles
+# kept clear either side of a shuttered window (its shutters, and a gap).
+HOUSE_WINDOW_EVERY = 3
+WINDOW_CLEARANCE_SHUTTERED = 2
 # Most windows one room may take, whatever the facade offers it.
 ROOM_WINDOW_CAP = {
-    "bathroom": 1, "storage": 0, "hall": 0, "garage": 0, "shed": 1, "elevator": 0,
+    "bathroom": 1, "storage": 1, "hall": 1, "garage": 0, "shed": 1, "elevator": 0,
     "kitchen": 2, "bedroom": 3, "dining": 3, "office": 2, "livingroom": 5,
     "kidsbedroom": 2, "closet": 0, "laundry": 1,
 }
@@ -1165,11 +1169,58 @@ def _place_windows(building: "Building", kind: str | None) -> None:
 
     for level, storey in enumerate(building.storeys):
         blocked = set(getattr(storey, "wall_pieces", set()))
+        # Shuttered windows need the tile either side for their shutters: a
+        # window two tiles from a door or another window had its shutters
+        # jammed against the frame or overlapping the next one's.
+        clear = WINDOW_CLEARANCE_SHUTTERED if house_like else 1
         for x, y, d in storey.doors:
-            for off in (-1, 0, 1):
+            for off in range(-clear, clear + 1):
                 blocked.add((x + off, y, d) if d == "N" else (x, y + off, d))
+        placed: list[tuple[int, int, str]] = []
+
+        def spaced(x, y, d):
+            for px, py, pd in placed:
+                if pd != d:
+                    continue
+                if d == "N" and py == y and abs(px - x) <= clear:
+                    return False
+                if d == "W" and px == x and abs(py - y) <= clear:
+                    return False
+            return True
+
+        def add(edge):
+            storey.windows.append(edge)
+            placed.append(edge)
+
         taken: dict[int, int] = {}
-        for x, y, d, ix, iy in (ground_bays if level == 0 else bays):
+        if house_like:
+            # A house's windows are placed room by room, centred on each
+            # outside wall and evenly spread along it, as Knox County's are.
+            # Bays laid out for the whole facade put two or three windows
+            # side by side in one room and none along the rest of the wall.
+            for idx, room in enumerate(storey.rooms, 1):
+                if room.is_shaft:
+                    continue
+                cap = ROOM_WINDOW_CAP.get(room.kind, DEFAULT_ROOM_WINDOW_CAP)
+                if room.is_core:
+                    cap = 0
+                runs = sorted(_outside_runs(storey, idx), key=lambda r: -len(r[1]))
+                for _side, wall in runs:
+                    if taken.get(idx, 0) >= cap or len(wall) < MIN_WALL_FOR_WINDOW:
+                        continue
+                    n = max(1, min(cap - taken.get(idx, 0),
+                                   (len(wall) + 1) // HOUSE_WINDOW_EVERY))
+                    for k in range(n):
+                        i = int((k + 0.5) * len(wall) / n)
+                        # The nearest spot to the even spacing that is clear
+                        # of doors, corners and the other windows.
+                        for j in sorted(range(1, len(wall) - 1), key=lambda j: abs(j - i)):
+                            edge = wall[j]
+                            if edge not in blocked and spaced(*edge):
+                                add(edge)
+                                taken[idx] = taken.get(idx, 0) + 1
+                                break
+        for x, y, d, ix, iy in ([] if house_like else (ground_bays if level == 0 else bays)):
             if (x, y, d) in blocked:
                 continue
             idx = storey.grid[iy][ix]
@@ -1184,7 +1235,7 @@ def _place_windows(building: "Building", kind: str | None) -> None:
                 cap = 1 if kind == "apartment" else 0
             if taken.get(idx, 0) >= cap:
                 continue
-            storey.windows.append((x, y, d))
+            add((x, y, d))
             taken[idx] = taken.get(idx, 0) + 1
             if level == 0 and kind in SHOP_FRONT_KINDS and (x, y, d, ix, iy) in glass_set:
                 storey.shop_front.add((x, y, d))
@@ -1201,9 +1252,9 @@ def _place_windows(building: "Building", kind: str | None) -> None:
                 inner = wall[1:-1] if len(wall) >= MIN_WALL_FOR_WINDOW else wall
                 candidates = sorted(inner, key=lambda e: abs(
                     wall.index(e) - len(wall) // 2))
-                spot = next((e for e in candidates if e not in blocked), None)
+                spot = next((e for e in candidates if e not in blocked and spaced(*e)), None)
                 if spot is not None:
-                    storey.windows.append(spot)
+                    add(spot)
                     taken[idx] = 1
                     break
 
