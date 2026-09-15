@@ -191,34 +191,106 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied) -> tupl
                 put(bx - px, by - py, C.BIN)
                 break
 
-        # The back yard fence: out from the back corners, round the yard.
-        style = YARD_FENCE_STYLES[(bx0 * 7 + by0 * 13) % len(YARD_FENCE_STYLES)]
-        if dx:
-            back = bx0 - 1 if dx > 0 else bx0 + bw
-            ys = (by0 - YARD_SIDE, by0 + bh + YARD_SIDE)
-            depth = 0
-            for d in range(1, YARD_DEPTH + 1):
-                x = back - dx * d
-                if not all(free(x, y) for y in range(ys[0], ys[1])):
-                    break
-                depth = d
-            if depth >= YARD_MIN_DEPTH:
-                xb = back - dx * depth
-                xf = back + (1 if dx > 0 else 0)
-                fences.append(([(xf, ys[0]), (xb, ys[0]), (xb, ys[1]), (xf, ys[1])], style))
+        # The back yard. Knox County's are lived in: a patio by the back door
+        # with a grill and a table, a washing line, a vegetable bed, all
+        # inside a fence that meets the house with a gap for the gate. A
+        # fenced square of empty lawn standing off the house was no use.
+        bdx, bdy = -dx, -dy                          # away from the street
+        ax, ay = (1, 0) if dy else (0, 1)            # along the back wall
+        if dy:
+            back = by0 - 1 if dy > 0 else by0 + bh  # first row behind the house
+            u0 = bx0 - YARD_SIDE
+            width = bw + 2 * YARD_SIDE
         else:
-            back = by0 - 1 if dy > 0 else by0 + bh
-            xs = (bx0 - YARD_SIDE, bx0 + bw + YARD_SIDE)
-            depth = 0
-            for d in range(1, YARD_DEPTH + 1):
-                y = back - dy * d
-                if not all(free(x, y) for x in range(xs[0], xs[1])):
-                    break
-                depth = d
-            if depth >= YARD_MIN_DEPTH:
-                yb = back - dy * depth
-                yf = back + (1 if dy > 0 else 0)
-                fences.append(([(xs[0], yf), (xs[0], yb), (xs[1], yb), (xs[1], yf)], style))
+            back = bx0 - 1 if dx > 0 else bx0 + bw
+            u0 = by0 - YARD_SIDE
+            width = bh + 2 * YARD_SIDE
+
+        def at(u, v):
+            """World tile u along the back wall, v rows back from it."""
+            return ((u0 + u, back + bdy * v) if dy else (back + bdx * v, u0 + u))
+
+        depth = 0
+        for v in range(YARD_DEPTH):
+            if not all(free(*at(u, v)) for u in range(width)):
+                break
+            depth = v + 1
+        if depth >= YARD_MIN_DEPTH:
+            style = YARD_FENCE_STYLES[(bx0 * 7 + by0 * 13) % len(YARD_FENCE_STYLES)]
+
+            # Fence corners as tile-corner coordinates, far side of row depth-1.
+            if dy:
+                # Edges between rows: the house's back wall, and past the last
+                # yard row.
+                wall_y = back + (0 if bdy > 0 else 1)
+                far_y = back + bdy * depth + (0 if bdy > 0 else 1)
+                a, b = u0, u0 + width
+                house_a, house_b = bx0, bx0 + bw
+                fences.append(([(house_a, wall_y), (a, wall_y), (a, far_y), (b, far_y),
+                                (b, wall_y), (house_b + 1, wall_y)], style))
+            else:
+                wall_x = back + (0 if bdx > 0 else 1)
+                far_x = back + bdx * depth + (0 if bdx > 0 else 1)
+                a, b = u0, u0 + width
+                house_a, house_b = by0, by0 + bh
+                fences.append(([(wall_x, house_a), (wall_x, a), (far_x, a), (far_x, b),
+                                (wall_x, b), (wall_x, house_b + 1)], style))
+            # (The last stretch stops a tile short of the house: the gate.)
+
+            taken = set()
+
+            def place(u, v, colour, ground_colour=None):
+                x, y = at(u, v)
+                if (x, y) in taken or not free(x, y):
+                    return False
+                taken.add((x, y))
+                if ground_colour is not None:
+                    paint(x, y, ground_colour)
+                if colour is not None and veg is not None:
+                    veg[y, x] = colour
+                claimed[y, x] = True
+                return True
+
+            # Patio: stone behind the middle of the house, three deep.
+            mid = width // 2
+            for v in range(min(3, depth - 1)):
+                for u in range(mid - 2, mid + 3):
+                    x, y = at(u, v)
+                    if free(x, y):
+                        paint(x, y, C.PAVING_STONE)
+                        claimed[y, x] = False       # furniture may stand on it
+            place(mid - 2, 1, C.GRILL)
+            if dy:
+                place(mid, 1, C.TABLE_X0); place(mid + 1, 1, C.TABLE_X1)
+                place(mid, 0, C.CHAIR_N); place(mid + 1, 2, C.CHAIR_S)
+            else:
+                place(mid, 1, C.TABLE_Y0); place(mid, 2, C.TABLE_Y1)
+                place(mid - 1, 1, C.CHAIR_W); place(mid + 1, 2, C.CHAIR_E)
+
+            # Washing line along the back fence, if the yard is wide enough.
+            v_line = depth - 2
+            if width >= 9 and v_line >= 3:
+                ends = (C.LINE_X0, C.LINE_XM, C.LINE_X1) if dy else (C.LINE_Y0, C.LINE_YM, C.LINE_Y1)
+                for k in range(5):
+                    place(width - 6 + k, v_line, ends[0] if k == 0 else ends[2] if k == 4 else ends[1])
+
+            # A raised vegetable bed in the far corner, soil to plant in. Its
+            # frame pieces go by map direction (the editor's 3x3 planter,
+            # stretched): west column, middle, east column; north row, middle,
+            # south row.
+            bd_ = min(4, depth - 3)
+            if bd_ >= 3:
+                cells = [at(1 + i, depth - 1 - j) for i in range(3) for j in range(bd_)]
+                if all(free(x, y) for x, y in cells):
+                    xs_ = sorted({x for x, _ in cells}); ys_ = sorted({y for _, y in cells})
+                    frame = {("W", "N"): C.BED_NW, ("W", "M"): C.BED_W, ("W", "S"): C.BED_SW,
+                             ("M", "N"): C.BED_N, ("M", "M"): C.BED_SOIL, ("M", "S"): C.BED_S,
+                             ("E", "N"): C.BED_NE, ("E", "M"): C.BED_E, ("E", "S"): C.BED_SE}
+                    for x, y in cells:
+                        col = "W" if x == xs_[0] else "E" if x == xs_[-1] else "M"
+                        row = "N" if y == ys_[0] else "S" if y == ys_[-1] else "M"
+                        paint(x, y, C.DIRT)
+                        veg[y, x] = frame[(col, row)]
         dressed += 1
 
     Image.fromarray(ground).save(bmp, format="BMP")
