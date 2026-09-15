@@ -79,6 +79,12 @@ def town() -> list[OSMFeature]:
             elif (bx, by) == (3, 1):
                 feats.append(way({"building": "church", "name": "Selftest Church"},
                                  box(x0, y0, x0 + 30, y0 + 50)))
+            elif (bx, by) == (0, 4):
+                # A pizza place and a supermarket, to be fitted out as such.
+                feats.append(way({"building": "yes", "amenity": "restaurant", "cuisine": "pizza",
+                                  "name": "Selftest Pizza"}, box(x0, y0, x0 + 16, y0 + 12)))
+                feats.append(way({"building": "retail", "shop": "supermarket",
+                                  "name": "Selftest Market"}, box(x0 + 22, y0, x0 + 50, y0 + 24)))
             else:
                 for k in range(3):
                     feats.append(way({"building": "house"},
@@ -183,6 +189,12 @@ def main(argv: list[str]) -> int:
                     if c == C.PAVING_STONE)
         check(stone > 50, f"front paths laid ({stone} stone tiles)")
         check(any('RoofType="Peak' in t for t in texts), "houses have pitched roofs")
+        check(any('InternalName="pizzakitchen"' in t and 'InternalName="restaurantdining"' in t
+                  for t in texts), "the pizza place has a dining room and a pizza kitchen")
+        check(any('InternalName="grocery"' in t and "location_shop_generic_01_015" in t for t in texts),
+              "the supermarket has aisles of shelving")
+        check(not any("fixtures_bathroom_01_026" in t and 'InternalName="grocery"' in t for t in texts),
+              "no bath in a shop")
         from knoxbuild.layout import _erika_ready
         if _erika_ready():
             # The town has no shops; lay one out on a street to the south.

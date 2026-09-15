@@ -37,6 +37,15 @@ map.
   landmarks.
 - Zombies spawned from an estimate of who lived and worked in each building,
   with a census and a one-second recount.
+- Buildings are what they really are: the shops, restaurants, banks, offices,
+  hotels and theatres OpenStreetMap maps inside them become the game's own
+  rooms - a pizza place is a dining room and a pizza kitchen, a hotel's floors
+  are guest rooms, a theatre is a foyer and an auditorium - so the loot fits.
+- Shops fitted out like Knox County's: rows of shelving, fridges along the
+  walls, a till by the door and a stockroom behind; offices with desks and
+  filing cabinets; every flat with its own sofa, beds, wardrobes and kitchen.
+- No windows, shop fronts or doors in walls shared with the building next door;
+  stairs at the back of a shop, not in the middle of it.
 - Uses Erika's Tiles when it is installed: glass shop fronts with glass doors
   and shop signs, drinks machines, posters and bookcases in shops, pictures,
   mirrors and plants in homes, and speed limit signs on the streets. Maps made

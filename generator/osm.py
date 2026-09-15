@@ -98,11 +98,23 @@ OVERPASS_FILTERS: Sequence[str] = (
     # population estimate against.
     'node["place"~"^(city|town|village|suburb|quarter|neighbourhood|hamlet)$"]'
     '["population"]',
+    # What the ground floors are: the pizza place, the bank, the pharmacy.
+    # Mapped as points inside the building far more often than as the
+    # building's own tags (knoxbuild/uses.py).
+    'node["shop"]',
+    'node["amenity"~"^(restaurant|fast_food|food_court|cafe|ice_cream|bar|pub|nightclub|'
+    'biergarten|bank|bureau_de_change|post_office|pharmacy|dentist|doctors|clinic|'
+    'veterinary|library|cinema|theatre|arts_centre|police|childcare|kindergarten|fuel|car_repair)$"]',
+    'node["office"]',
+    'node["craft"]',
+    'node["healthcare"]',
+    'node["leisure"~"^(fitness_centre|sports_centre|dance|bowling_alley)$"]',
+    'node["tourism"~"^(hotel|motel|hostel|guest_house|museum|gallery)$"]',
 )
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 7
+FILTERS_VERSION = 8
 
 
 @dataclass

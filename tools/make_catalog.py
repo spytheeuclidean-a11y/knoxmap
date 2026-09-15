@@ -391,6 +391,78 @@ def main(argv: list[str]) -> int:
         "rug": "floors_rugs_01_024",                      # 2x3, E N S W
         "rug_wide": "floors_rugs_01_119",                 # 3x2, E N S W
         "rug_small": "floors_rugs_01_006",                # 2x2, E N S W
+        # Shop fittings, the pieces Knox County's own shops are fitted with
+        # (counted in their rooms): aisle shelving that stands in rows, wall
+        # shelves, open and glass-door fridges, freezers, the till counter and
+        # its register, display cases, clothes rails and mannequins.
+        "shop_aisle": "location_shop_generic_01_015",         # 1x4, W N
+        "shop_aisle_red": "location_shop_zippee_01_015",      # 1x4, W N
+        "shop_shelf_wood": "location_shop_generic_01_047",    # 1x4, W N
+        "shop_shelf": "location_shop_generic_01_075",         # 1x2
+        "shop_shelf_red": "location_shop_zippee_01_027",      # 1x2
+        "shop_shelf_white": "location_shop_generic_01_027",   # 1x2
+        "shop_fridge_open": "location_shop_generic_01_069",   # 1x3, W N
+        "shop_fridge": "appliances_refrigeration_01_023",
+        "shop_fridge_white": "appliances_refrigeration_01_041",
+        "shop_fridge_double": "appliances_refrigeration_01_017",  # 1x2
+        "shop_freezer": "appliances_refrigeration_01_049",
+        "shop_counter": "location_shop_generic_01_019",
+        "shop_counter_red": "location_shop_zippee_01_019",
+        "register": "location_shop_accessories_01_000",
+        "shop_display": "location_shop_generic_01_085",       # 1x3, W N
+        "shop_case": "location_shop_generic_01_099",
+        "clothes_rack": "location_shop_generic_01_037",       # 1x2, W N
+        "clothes_rack_small": "location_shop_generic_01_053",  # W N
+        "mannequin": "location_shop_mall_01_065",
+        "mannequin_male": "location_shop_mall_01_068",
+        "mannequin_dark": "location_shop_mall_01_073",
+        "vending": "location_shop_accessories_01_016",
+        "vending_snacks": "location_shop_accessories_01_018",
+        "shop_bin": "location_shop_generic_01_089",
+        "metal_rack": "furniture_shelving_01_025",            # 1x2, W N
+        # Offices: desks, desk chairs, filing cabinets, a water cooler, boards.
+        "desk": "location_business_office_generic_01_001",        # 1x2
+        "desk_dark": "location_business_office_generic_01_041",   # 1x2
+        "desk_long": "location_business_office_generic_01_074",   # 1x3
+        "desk_long_pale": "location_business_office_generic_01_090",  # 1x3
+        "office_chair": "furniture_seating_indoor_01_049",
+        "filing_cabinet": "location_business_office_generic_01_017",
+        "filing_cabinet_pale": "location_business_office_generic_01_033",
+        "water_cooler": "location_business_office_generic_01_048",
+        "whiteboard": "location_business_office_generic_01_052",  # wall, 1x3
+        "corkboard": "location_business_office_generic_01_015",   # wall
+        # The rest of the vanilla sofas and armchairs, beds, wardrobes,
+        # dressers and counter finishes. A block of flats furnished from one
+        # sofa, one bed and one wardrobe looked the same in every flat; each
+        # flat now picks its own (layout.PALETTES).
+        **{f"sofa_{i}": a for i, a in enumerate((
+            "furniture_seating_indoor_01_019", "furniture_seating_indoor_01_025",
+            "furniture_seating_indoor_02_027", "furniture_seating_indoor_02_033",
+            "furniture_seating_indoor_02_051", "furniture_seating_indoor_03_011",
+            "furniture_seating_indoor_03_019", "furniture_seating_indoor_03_035",
+            "furniture_seating_indoor_03_073", "furniture_seating_indoor_03_089",
+            "furniture_seating_indoor_03_105", "furniture_seating_indoor_03_113",
+            "furniture_seating_indoor_03_137", "furniture_seating_indoor_03_129"), 1)},
+        **{f"armchair_{i}": a for i, a in enumerate((
+            "furniture_seating_indoor_01_008", "furniture_seating_indoor_01_032",
+            "furniture_seating_indoor_02_021", "furniture_seating_indoor_02_040",
+            "furniture_seating_indoor_02_045", "furniture_seating_indoor_03_005",
+            "furniture_seating_indoor_03_029", "furniture_seating_indoor_03_024",
+            "furniture_seating_indoor_03_084", "furniture_seating_indoor_03_080",
+            "furniture_seating_indoor_03_096", "furniture_seating_indoor_03_100",
+            "furniture_seating_indoor_03_124", "furniture_seating_indoor_03_120"), 1)},
+        "double_bed_black": "furniture_bedding_01_014",   # 2x2
+        "bed_plain": "furniture_bedding_01_032",          # 2x1
+        "wardrobe_pale": "furniture_storage_01_017",
+        "wardrobe_black": "furniture_storage_01_025",
+        "wardrobe_oak": "furniture_storage_02_041",
+        "wardrobe_tan": "furniture_storage_01_057",
+        "dresser_black": "furniture_storage_01_032",
+        "dresser_tan": "furniture_storage_01_046",
+        **{f"counter_{i}": a for i, a in enumerate((
+            "fixtures_counters_01_011", "fixtures_counters_01_035", "fixtures_counters_01_043",
+            "fixtures_counters_01_051", "fixtures_counters_01_059", "fixtures_counters_01_075",
+            "fixtures_counters_01_067"), 1)},
     }
 
     def find_furniture(anchor: str) -> dict:
@@ -640,7 +712,19 @@ def main(argv: list[str]) -> int:
              "classroom", "church", "warehouse", "garage", "clinic",
              "bar", "restaurant", "lobby", "gym", "library", "medical", "shed",
              "elevator", "kidsbedroom", "closet", "laundry",
-             "generalstore", "conveniencestore", "clothingstore", "cafe"]
+             "generalstore", "conveniencestore", "clothingstore", "cafe",
+             "grocery", "liquorstore", "pharmacy", "bookstore", "toolstore",
+             "breakroom", "grocerystorage",
+             # What OpenStreetMap says ground floors are (knoxbuild/uses.py).
+             "restaurantdining", "italianrestaurant", "chineserestaurant", "icecream",
+             "restaurantkitchen", "pizzakitchen", "burgerkitchen", "dinerkitchen",
+             "chinesekitchen", "sushikitchen", "mexicankitchen", "seafoodkitchen",
+             "cafekitchen", "bakerykitchen", "icecreamkitchen", "barstorage", "bank", "post",
+             "aesthetic", "dentist", "medicaloffice", "theatre", "policeoffice", "daycare",
+             "mechanic", "motelroom", "bakery", "gasstore", "giftstore", "toystore",
+             "candystore", "butcher", "departmentstore", "jewelrystore", "camerastore",
+             "musicstore", "movierental", "gunstore", "sportstore", "gardenstore",
+             "furniturestore"]
     missing = [k for k in KINDS if k not in room_colors]
     if missing:
         raise SystemExit(f"ERROR: room names absent from RoomNames.txt: {missing}")

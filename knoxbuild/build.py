@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import os
 import sys
 
@@ -27,6 +28,7 @@ from .areas import AreaIndex
 from .fences import build_fences
 from .footprint import place
 from .layout import build_building
+from .uses import USE_KEYS, is_hotel, uses_of
 from .context import Context, style_fits
 from .population import build_spawn_map, official_population, save_footprints
 from .settings import PRESETS, Settings
@@ -91,6 +93,9 @@ def is_notable(tags: dict, kind: str | None) -> bool:
             or "wikidata" in tags or "wikipedia" in tags)
 
 
+# Theatres are a hall a few storeys high.
+THEATRE_MAX_LEVELS = 3
+
 # OSM values that identify a building as something other than a house. Checked
 # against the building/amenity/shop/leisure/tourism/healthcare tags in turn.
 SPECIAL_BY_VALUE = {
@@ -116,6 +121,7 @@ SPECIAL_BY_VALUE = {
     "townhall": "civic", "police": "civic", "fire_station": "civic",
     "hotel": "civic", "office": "civic", "courthouse": "civic",
     "museum": "civic", "bank": "civic", "post_office": "civic",
+    "theatre": "civic", "cinema": "civic", "arts_centre": "civic",
 }
 
 # Last resort when the tags say nothing useful but the name is obvious.
@@ -435,12 +441,78 @@ def _street_finder(out_dir: str, map_name: str):
     return side
 
 
+def _points_of_use(out_dir: str, info: dict, map_name: str, proj) -> dict:
+    """Shops, restaurants, offices and the like mapped as points, from the
+    map's OpenStreetMap download, as {(x // 16, y // 16): [(x, y, tags)]} in
+    tiles. Empty for a download made before they were asked for."""
+    from generator import osm
+    bbox = info.get("bbox") or {}
+    cache = os.path.join(out_dir, info["osm_cache"]) if info.get("osm_cache")         else osm.cache_path(out_dir, map_name)
+    wanted = tuple(info["osm_bbox"]) if info.get("osm_bbox") else         (bbox.get("south"), bbox.get("west"), bbox.get("north"), bbox.get("east"))
+    grid: dict = {}
+    for feat in osm.load_cache(cache, wanted) or []:
+        if feat.kind != "node" or not any(k in feat.tags for k in USE_KEYS):
+            continue
+        lat, lon = feat.geometry[0]
+        x, y = proj.to_px(lat, lon)
+        grid.setdefault((int(x) // 16, int(y) // 16), []).append((x, y, feat.tags))
+    return grid
+
+
+def _points_inside(grid: dict, px: list, taken: set) -> list[dict]:
+    """The tags of the points inside a footprint (or just outside its wall,
+    where a mapper put the shop's entrance), each point used once."""
+    if not grid:
+        return []
+    from shapely.geometry import Point
+    poly = Polygon(px)
+    if not poly.is_valid:
+        poly = poly.buffer(0)
+    zone = poly.buffer(1.0)
+    minx, miny, maxx, maxy = zone.bounds
+    out = []
+    for gx in range(int(minx) // 16, int(maxx) // 16 + 1):
+        for gy in range(int(miny) // 16, int(maxy) // 16 + 1):
+            for x, y, tags in grid.get((gx, gy), ()):
+                key = (x, y)
+                if key not in taken and zone.contains(Point(x, y)):
+                    taken.add(key)
+                    out.append((x, y, tags))
+    return [tags for _x, _y, tags in out]
+
+
+def _party_walls(owner: np.ndarray, me: int, x0: int, y0: int, mask: np.ndarray,
+                 levels: list[int]) -> dict:
+    """{(x, y, "N" or "W"): storeys of the neighbour} for each outside wall
+    of building `me` with another building's tile beyond it, in the
+    building's own coordinates, as doors and windows name wall edges."""
+    out: dict = {}
+    h, w = mask.shape
+    mh, mw = owner.shape
+    for ly in range(h):
+        for lx in range(w):
+            if not mask[ly, lx]:
+                continue
+            for dx, dy, edge in ((0, -1, (lx, ly, "N")), (0, 1, (lx, ly + 1, "N")),
+                                 (-1, 0, (lx, ly, "W")), (1, 0, (lx + 1, ly, "W"))):
+                nx, ny = lx + dx, ly + dy
+                if 0 <= nx < w and 0 <= ny < h and mask[ny, nx]:
+                    continue
+                wx, wy = x0 + nx, y0 + ny
+                if 0 <= wx < mw and 0 <= wy < mh:
+                    other = owner[wy, wx]
+                    if other >= 0 and other != me:
+                        out[edge] = max(out.get(edge, 0), levels[other])
+    return out
+
+
 def _make_one(job: tuple) -> tuple[int, int, int]:
     """Lay out one building and write its .tbx. Returns (storeys, rooms, furniture)."""
-    w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street, retail = job
+    (w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street, retail,
+     uses, hotel, party) = job
     plan = build_building(w, h, levels=levels, commercial=commercial, seed=seed,
                           kind=kind, mask=mask, settings=settings, street=street,
-                          retail=retail)
+                          retail=retail, uses=uses, hotel=hotel, party=party)
     with open(path, "w", encoding="utf-8") as f:
         f.write(render_tbx(plan, label, style))
     return (len(plan.storeys), len(plan.rooms),
@@ -545,6 +617,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     squared = 0    # buildings close enough to the grid to square up
 
     areas = AreaIndex.load(out_dir, map_name, proj)
+    points = _points_of_use(out_dir, info, map_name, proj)
+    points_taken: set = set()
+    with_uses = 0
     # (x0, y0, mask, storeys, kind) for the population estimate.
     peopled: list[tuple[int, int, np.ndarray, int, str]] = []
     # Real outlines of the buildings placed, for the in-game paper map.
@@ -597,6 +672,18 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         cy = y0 + h / 2
         real_m2 = fp.tiles * metres_per_tile * metres_per_tile
         special = classify_building(tags)
+        # What is really in it: its own tags and the shops, restaurants and
+        # offices mapped as points inside it.
+        inside = [tags] + _points_inside(points, px, points_taken)
+        uses = uses_of(inside)
+        hotel = is_hotel(inside)
+        offices_only = bool(uses) and all(u == ("office", "office") for u in uses)
+        if uses:
+            with_uses += 1
+        if offices_only and special in (None, "house"):
+            special = "civic"          # an office building
+        elif uses and not offices_only and special in (None, "house", "shed"):
+            special = "shop"           # flats over it, below, if it is tall
         if special is None and (btag in SHED_VALUES or (
                 btag in ("", "yes") and real_m2 <= SHED_MAX_M2)):
             special = "shed"
@@ -632,7 +719,22 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             levels = max(1, min(top, int(round(nearby)) +
                                 style_rng.choice((-1, 0, 0, 1))))
             from_near += 1
-        style = pick_style(special, x0, y0, style_rng, settings,
+        if hotel:
+            special = "apartment"      # its flats are guest rooms
+        elif any(back == "theatre" for _front, back in uses):
+            # A theatre is its auditorium behind a foyer on the street, and a
+            # few storeys of hall, not a tower.
+            special = "civic"
+            levels = min(levels, THEATRE_MAX_LEVELS)
+        elif special in ("shop", "restaurant") and uses and levels >= 3 and \
+                btag not in ("retail", "commercial", "supermarket", "shop", "kiosk"):
+            # A pizza place in a five-storey building is flats over a pizza
+            # place, not a five-storey pizza place - unless the building is
+            # offices: a company inside it, or a name like "Americas Tower".
+            offices = ("office", "office") in uses or btag == "office" or re.search(
+                r"\b(tower|building|plaza|center|centre|exchange)\b", tags.get("name") or "", re.I)
+            special = "civic" if offices else "apartment"
+        style = pick_style("civic" if hotel else special, x0, y0, style_rng, settings,
                            density=context.density(cx, cy))
 
         fname = f"{map_name}_{i:04d}.tbx"
@@ -641,10 +743,25 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                      settings, style, label, os.path.join(bdir, fname),
                      street_side(x0, y0, w, h),
                      # Shops under flats where the town is built up.
-                     context.density(cx, cy) >= RETAIL_DENSITY))
+                     context.density(cx, cy) >= RETAIL_DENSITY,
+                     # What the ground floor really is, and a hotel's rooms.
+                     uses, hotel))
         decided.append((fname, label, x0, y0, w, h, fp, px, special, measured,
                         commercial, style, mask,
                         (tags.get("name") or "") if is_notable(tags, special) else ""))
+
+    # Walls shared with the building next door, now every building has its
+    # tiles: no window, shop window or door goes in one, up to the height of
+    # the neighbour. Laid out on its own footprint, a terrace of shops had
+    # glass shop fronts and windows looking into the next shop.
+    owner = np.full((proj.height, proj.width), -1, dtype=np.int32)
+    for j, d in enumerate(decided):
+        dx0, dy0, dw, dh, dfp = d[2], d[3], d[4], d[5], d[6]
+        view = owner[dy0:dy0 + dh, dx0:dx0 + dw]
+        view[dfp.mask[:view.shape[0], :view.shape[1]]] = j
+    for j, d in enumerate(decided):
+        jobs[j] = jobs[j] + (_party_walls(owner, j, d[2], d[3], d[6].mask,
+                                          [job[2] for job in jobs]),)
 
     # Every decision above is made in order, from one random stream, so the
     # town comes out the same each time. What is left - laying out rooms and
@@ -717,6 +834,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     total_rooms = sum(r["rooms"] for r in rows)
     total_furn = sum(r["furniture"] for r in rows)
     print(f"footprints in geojson : {len(geo['features'])}")
+    print(f"  shops, food, offices: {with_uses} buildings from the map's points and tags")
     print(f"  too small (<{min_size})     : {skipped['small']}")
     print(f"  too large (>{max_size})   : {skipped['large']}")
     print(f"  outside the map     : {skipped['outside']}")

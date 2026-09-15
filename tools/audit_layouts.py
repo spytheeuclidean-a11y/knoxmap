@@ -18,7 +18,7 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from knoxbuild.layout import ELEVATOR_FROM_LEVELS, STAIR_RUN, build_building, roof_rects  # noqa: E402
+from knoxbuild.layout import ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, STAIR_RUN, build_building, roof_rects  # noqa: E402
 
 KINDS = [None, None, "apartment", "apartment", "shop", "school", "civic",
          "church", "medical", "restaurant", "shed"]
@@ -155,7 +155,8 @@ def audit(building, kind):
                 if 0 in sides or kinds != {True, False}:
                     problems["lift doors not between shaft and landing"] += 1
                     break
-    elif len(building.storeys) >= ELEVATOR_FROM_LEVELS:
+    elif len(building.storeys) >= ELEVATOR_FROM_LEVELS and \
+            min(building.width, building.height) >= ELEVATOR_MIN_SIDE:
         problems["tall building without a lift"] += 1
     for lvl, (x, y, d) in enumerate(building.stairs):
         dx, dy = (0, 1) if d == "N" else (1, 0)

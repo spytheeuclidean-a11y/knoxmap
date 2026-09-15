@@ -18,6 +18,7 @@ import random
 from dataclasses import dataclass, field
 
 from . import catalog as C
+from .uses import FRONT_ROOMS
 from .settings import Settings
 
 MIN_ROOM = 3          # smallest room dimension, in tiles
@@ -89,6 +90,12 @@ class Plan:
     wall_pieces: set = field(default_factory=set)
     # Ground-floor windows that are a shop front, glazed with big panels.
     shop_front: set = field(default_factory=set)
+    # What the building is (build_plan's kind), for rooms furnished by it: an
+    # office in a house is a study, in an office block it is desks.
+    kind: str | None = None
+    # Outside wall edges this storey shares with the building next door:
+    # no window, shop front or door goes in them.
+    party: set = field(default_factory=set)
 
 
 # kind -> (floor tile entry index, display name, furniture wishlist)
@@ -118,14 +125,78 @@ ROOM_STYLE = {
     "closet": (C.FLOOR_WOOD, "Closet", ["wardrobe", "shelf", "crate", "wardrobe2"]),
     "laundry": (C.FLOOR_TILE_PALE, "Laundry", ["washer", "shelf", "crate", "sink"]),
     "generalstore": (C.FLOOR_TILE_CHECK, "General Store",
-                     ["counter", "bookshelf", "bookshelf", "shelf", "crate", "bookshelf",
-                      "plant"]),
+                     ["shop_shelf", "shop_shelf_wood", "shop_counter", "shop_fridge_double"]),
     "conveniencestore": (C.FLOOR_TILE_PALE, "Convenience Store",
-                         ["counter", "fridge", "bookshelf", "bookshelf", "shelf", "crate"]),
+                         ["shop_shelf_red", "shop_fridge", "shop_counter_red", "vending"]),
     "clothingstore": (C.FLOOR_WOOD, "Clothing Store",
-                      ["counter", "wardrobe", "wardrobe2", "mirror", "dresser", "plant"]),
+                      ["clothes_rack", "shop_shelf_wood", "mirror", "shop_counter", "mannequin"]),
     "cafe": (C.FLOOR_WOOD, "Cafe",
              ["counter", "fridge", "stove", "chair", "chair", "plant", "painting"]),
+    # Shops fitted out by interiors.furnish_store; the wishlists are for a
+    # room too small for rows of shelving.
+    "grocery": (C.FLOOR_TILE_CHECK, "Grocery", ["shop_shelf", "shop_fridge_double", "shop_counter"]),
+    "liquorstore": (C.FLOOR_TILE_PALE, "Liquor Store", ["shop_shelf", "shop_fridge", "shop_counter"]),
+    "pharmacy": (C.FLOOR_TILE_PALE, "Pharmacy", ["shop_shelf_white", "shop_counter", "shop_case"]),
+    "bookstore": (C.FLOOR_WOOD, "Bookstore", ["bookshelf", "bookshelf", "shop_counter"]),
+    "toolstore": (C.FLOOR_LINO, "Tool Store", ["metal_rack", "shop_shelf", "shop_counter"]),
+    "grocerystorage": (C.FLOOR_LINO, "Grocery Storage", ["metal_rack", "crate", "crate", "shelf"]),
+    # What OpenStreetMap says a ground floor is (knoxbuild/uses.py), by the
+    # game's own room names so the loot fits: eating places and their
+    # kitchens, and the other shops and services of a high street.
+    "restaurantdining": (C.FLOOR_TILE_CHECK, "Restaurant",
+                         ["counter", "plant", "painting", "chair", "plant"]),
+    "italianrestaurant": (C.FLOOR_WOOD, "Italian Restaurant",
+                          ["counter", "plant", "painting", "bookshelf", "plant"]),
+    "chineserestaurant": (C.FLOOR_CARPET_RED, "Chinese Restaurant",
+                          ["counter", "plant", "painting", "plant"]),
+    "icecream": (C.FLOOR_TILE_PALE, "Ice Cream Parlour",
+                 ["shop_freezer", "shop_counter", "shop_freezer", "plant"]),
+    **{k: (C.FLOOR_TILE_PALE, label,
+           ["stove", "stove_alt", "fridge", "kitchen_sink", "shop_fridge_double", "metal_rack",
+            "crate", "stove"])
+       for k, label in (("restaurantkitchen", "Kitchen"), ("pizzakitchen", "Pizza Kitchen"),
+                        ("burgerkitchen", "Burger Kitchen"), ("dinerkitchen", "Diner Kitchen"),
+                        ("chinesekitchen", "Chinese Kitchen"), ("sushikitchen", "Sushi Kitchen"),
+                        ("mexicankitchen", "Mexican Kitchen"), ("seafoodkitchen", "Seafood Kitchen"),
+                        ("cafekitchen", "Cafe Kitchen"), ("bakerykitchen", "Bakery Kitchen"),
+                        ("icecreamkitchen", "Ice Cream Kitchen"))},
+    "barstorage": (C.FLOOR_LINO, "Bar Storage", ["crate", "crate", "metal_rack", "shop_fridge"]),
+    "bank": (C.FLOOR_TILE_CHECK, "Bank",
+             ["shop_counter", "shop_counter", "desk", "office_chair", "filing_cabinet", "plant",
+              "painting", "water_cooler"]),
+    "post": (C.FLOOR_LINO, "Post Office",
+             ["shop_counter", "shop_counter", "shop_shelf", "crate", "crate", "corkboard"]),
+    "aesthetic": (C.FLOOR_TILE_CHECK, "Salon",
+                  ["chair", "mirror", "sink", "chair", "mirror", "sink", "armchair", "shelf",
+                   "plant"]),
+    "dentist": (C.FLOOR_TILE_PALE, "Dentist",
+                ["bed", "sink", "counter", "shelf", "chair", "filing_cabinet"]),
+    "medicaloffice": (C.FLOOR_TILE_PALE, "Medical Office",
+                      ["bed", "sink", "counter", "desk", "office_chair", "filing_cabinet"]),
+    "theatre": (C.FLOOR_CARPET_RED, "Theatre", ["chair", "chair", "chair", "plant"]),
+    "policeoffice": (C.FLOOR_LINO, "Police Office",
+                     ["desk", "office_chair", "filing_cabinet", "corkboard", "water_cooler"]),
+    "daycare": (C.FLOOR_CARPET_BLUE, "Daycare",
+                ["table", "chair", "chair", "bookshelf", "shag_rug", "plant"]),
+    "mechanic": (C.FLOOR_LINO, "Mechanic", ["metal_rack", "crate", "counter", "metal_rack"]),
+    "motelroom": (C.FLOOR_CARPET_BLUE, "Hotel Room",
+                  ["double_bed", "sidetable", "tv", "armchair", "dresser", "lamp", "painting"]),
+    "bakery": (C.FLOOR_TILE_PALE, "Bakery", ["shop_display", "shop_counter", "shop_shelf"]),
+    **{k: (floor, label, ["shop_shelf", "shop_counter", "shop_shelf_wood"])
+       for k, floor, label in (
+           ("gasstore", C.FLOOR_TILE_PALE, "Gas Station Store"),
+           ("giftstore", C.FLOOR_WOOD, "Gift Store"), ("toystore", C.FLOOR_CARPET_BLUE, "Toy Store"),
+           ("candystore", C.FLOOR_TILE_CHECK, "Candy Store"), ("butcher", C.FLOOR_TILE_PALE, "Butcher"),
+           ("departmentstore", C.FLOOR_TILE_PALE, "Department Store"),
+           ("jewelrystore", C.FLOOR_CARPET_RED, "Jewelry Store"),
+           ("camerastore", C.FLOOR_TILE_PALE, "Electronics Store"),
+           ("musicstore", C.FLOOR_WOOD, "Music Store"), ("movierental", C.FLOOR_CARPET_BLUE, "Video Store"),
+           ("gunstore", C.FLOOR_LINO, "Gun Store"), ("sportstore", C.FLOOR_WOOD, "Sports Store"),
+           ("gardenstore", C.FLOOR_LINO, "Garden Store"),
+           ("furniturestore", C.FLOOR_CARPET_RED, "Furniture Store"))},
+    "breakroom": (C.FLOOR_LINO, "Break Room",
+                  ["fridge", "counter", "counter", "sink", "vending", "water_cooler",
+                   "plant"]),
     "office": (C.FLOOR_WOOD, "Office",
                ["table", "chair", "bookshelf", "painting", "plant"]),
     # Rooms only special buildings use. Every name is in RoomNames.txt, so loot
@@ -201,6 +272,9 @@ SPECIAL_MIXES = {
     "civic":      (["office", "lobby", "office", "storage", "bathroom",
                     "library"],
                    ["office", "storage"]),
+    # The floors above a shop: offices, as in any high street.
+    "offices":    (["office", "office", "breakroom", "bathroom", "storage", "office"],
+                   ["office", "office", "storage"]),
     # A block of flats is not one big house: it is several small dwellings off
     # a shared landing, so the mix repeats a compact bedroom/living/kitchen set
     # rather than laying out one household across the whole floor.
@@ -260,6 +334,8 @@ FLAT_EXTRA = ["bedroom", "storage"]
 # three-room flats, and with the bathroom going to the smallest room, a flat
 # of two big rooms had a bathroom the size of its living room.
 FLAT_FRONTAGE = (8, 11)
+# A hotel room is narrower than a flat: a room and its bathroom.
+HOTEL_FRONTAGE = (4, 6)
 
 
 def _slices(length: int, rng: random.Random,
@@ -296,7 +372,8 @@ def _corridor_axis(plan: Plan) -> str | None:
     return "y" if (y1 - y0) >= (x1 - x0) else "x"
 
 
-def _apartment_rooms(plan: Plan, rng: random.Random, target: int) -> None:
+def _apartment_rooms(plan: Plan, rng: random.Random, target: int,
+                     frontage: tuple[int, int] = FLAT_FRONTAGE) -> None:
     """Lay a floor out as flats either side of a corridor.
 
     The order is what matters. Splitting the whole floor into rooms, grouping
@@ -333,7 +410,7 @@ def _apartment_rooms(plan: Plan, rng: random.Random, target: int) -> None:
             continue
         # Each side sliced independently, so the flats do not line up across
         # the corridor like a spreadsheet.
-        for s0, s1 in _slices(length, rng, *FLAT_FRONTAGE):
+        for s0, s1 in _slices(length, rng, *frontage):
             unit += 1
             box = (a0, s0, a1, s1) if axis == "y" else (s0, a0, s1, a1)
             flat: list[Room] = []
@@ -377,11 +454,12 @@ def _neighbours(plan: Plan) -> dict[int, dict[int, int]]:
     return adj
 
 
-def _assign_flat_kinds(plan: Plan) -> None:
+def _assign_flat_kinds(plan: Plan, hotel: bool = False) -> None:
     """Give every flat its own set of rooms, arranged around its front door.
 
     The room touching the corridor is where you walk in, so it becomes the
     living room; the rest follow by size, with the bathroom on the smallest.
+    In a hotel each "flat" is guest rooms with a bathroom.
     """
     adj = _neighbours(plan)
     corridor = {i for i, r in enumerate(plan.rooms, 1) if r.unit == 0}
@@ -398,7 +476,11 @@ def _assign_flat_kinds(plan: Plan) -> None:
             if entry else by_size[0]
         ordered = [first] + [i for i in by_size if i != first]
         kinds = FLAT_PLANS.get(len(ordered))
-        if kinds is None:
+        if hotel:
+            # A guest room, its bathroom, and a wardrobe closet in a big one.
+            kinds = (["motelroom", "closet"][:max(1, len(ordered) - 1)]
+                     + ["motelroom"] * max(0, len(ordered) - 3) + ["bathroom"])[:len(ordered)]                 if len(ordered) > 1 else ["motelroom"]
+        elif kinds is None:
             extra = [FLAT_EXTRA[k % len(FLAT_EXTRA)]
                      for k in range(len(ordered) - 5)]
             kinds = FLAT_PLANS[5][:-1] + extra + FLAT_PLANS[5][-1:]
@@ -483,6 +565,105 @@ def _assign_house_kinds(plan: Plan, level: int, levels: int) -> None:
 
     for i, kind in kinds.items():
         plan.rooms[i - 1].kind = kind
+SHOP_BACK_ROOMS = ["storage", "office", "storage"]
+# A shop's back rooms take this share of its depth, within these many tiles.
+SHOP_BACK_SHARE = 0.3
+SHOP_BACK_TILES = (3, 7)
+MIN_SALES_DEPTH = 8
+
+
+def _shop_rooms(plan: Plan, rng: random.Random, street: str | None) -> None:
+    """A shop's ground floor as one sales floor the width of the shop front,
+    and a strip of back rooms behind it: stockroom, office, toilet.
+
+    Cut up like a house, a supermarket was eight rooms of 24 tiles, and the
+    one that became the shop was a corridor four tiles wide with nothing but
+    a shelf along each wall.
+    """
+    w, h = plan.width, plan.height
+    side = street if street in ("N", "S", "W", "E") else ("S" if w >= h else "E")
+    total = h if side in ("N", "S") else w
+    back = max(SHOP_BACK_TILES[0], min(SHOP_BACK_TILES[1], round(total * SHOP_BACK_SHARE)))
+    if total - back < MIN_SALES_DEPTH:
+        plan.rooms.append(Room(0, 0, w - 1, h - 1))
+        return
+    if side == "S":
+        sales, strip = (0, back, w - 1, h - 1), (0, 0, w - 1, back - 1)
+    elif side == "N":
+        sales, strip = (0, 0, w - 1, h - 1 - back), (0, h - back, w - 1, h - 1)
+    elif side == "E":
+        sales, strip = (back, 0, w - 1, h - 1), (0, 0, back - 1, h - 1)
+    else:
+        sales, strip = (0, 0, w - 1 - back, h - 1), (w - back, 0, w - 1, h - 1)
+    plan.rooms.append(Room(*sales))
+    _split(*strip, rng, MAX_DEPTH, plan.rooms, target_area=max(16, back * 8), mask=plan.mask)
+MIN_SHOP_ROOM = 16
+
+
+def _assign_shop_floor(plan: Plan, rng: random.Random, street: str | None,
+                       uses: list[tuple[str, str]] | None, several: bool) -> None:
+    """A commercial ground floor: what is on the street in front, what serves
+    it behind.
+
+    The rooms with an outside wall on the street (or on any side, when the
+    street is not known) and floor enough become the fronts, taken along the
+    street. Each takes the next of the building's real uses
+    (knoxbuild/uses.py) - the pizza place's dining room, the bank hall - and
+    a room behind it becomes that use's back room: the pizza kitchen, the
+    stockroom. A block of flats with more shop fronts than known uses fills
+    the rest with shops of the usual kinds; the remaining back rooms are
+    storerooms, an office and a toilet.
+    """
+    from . import interiors
+    rooms = [(i, r) for i, r in enumerate(plan.rooms, 1) if not r.is_core and not r.is_shaft]
+    if not rooms:
+        return
+    uses = list(uses or [])
+
+    def street_wall(i):
+        n = 0
+        for side, wall in _outside_runs(plan, i):
+            if street is None or side == street:
+                n += len(wall)
+        return n
+
+    fronts = [ir for ir in rooms if street_wall(ir[0]) >= 3 and ir[1].area >= MIN_SHOP_ROOM]
+    if not fronts:
+        fronts = [max(rooms, key=lambda ir: ir[1].area)]
+    if not several:
+        fronts = [max(fronts, key=lambda ir: ir[1].area)]
+    # Along the street, so the uses keep the order they were found in.
+    fronts.sort(key=lambda ir: (ir[1].x0, ir[1].y0) if street in ("N", "S", None) else (ir[1].y0, ir[1].x0))
+    adj = _neighbours(plan)
+    taken = {i for i, _ in fronts}
+    backs: list[tuple[int, str]] = []
+    for n, (i, r) in enumerate(fronts):
+        if n < len(uses):
+            front, back = uses[n]
+        elif uses:
+            # More shop fronts than the map has businesses: the last one
+            # along the street takes the room next door as well.
+            front, back = uses[-1][0], "storage"
+        else:
+            front = interiors.store_kind(rng)
+            back = "grocerystorage" if front == "grocery" else "storage"
+        r.kind = front
+        backs.append((i, back))
+    for i, back in backs:
+        # The biggest room behind this front that nobody has yet.
+        near = sorted((j for j in adj.get(i, {}) if j not in taken
+                       and not plan.rooms[j - 1].is_core and not plan.rooms[j - 1].is_shaft),
+                      key=lambda j: -plan.rooms[j - 1].area)
+        if near:
+            plan.rooms[near[0] - 1].kind = back
+            taken.add(near[0])
+    rest = sorted((ir for ir in rooms if ir[0] not in taken), key=lambda ir: -ir[1].area)
+    for n, (i, r) in enumerate(rest):
+        r.kind = SHOP_BACK_ROOMS[n % len(SHOP_BACK_ROOMS)]
+    if len(rest) >= 2:
+        rest[-1][1].kind = "bathroom"
+
+
 def _assign_kinds(rooms: list[Room], mix: list[str], fill: list[str]) -> None:
     order = sorted(rooms, key=lambda r: -r.area)
     for i, room in enumerate(order):
@@ -756,7 +937,7 @@ TOGETHER = [{"livingroom", "kitchen"}, {"kitchen", "dining"},
 # A flat's front door, by the room it opens into.
 FRONT_DOOR_COST = {"livingroom": 0.0, "hall": 0.5, "kitchen": 1.5,
                    "dining": 1.5, "storage": 6.0, "bedroom": 7.0,
-                   "bathroom": 12.0}
+                   "bathroom": 12.0, "motelroom": 0.0}
 
 
 def _door_cost(a: str, b: str) -> float:
@@ -885,6 +1066,13 @@ def _room_at(plan: Plan, x: int, y: int) -> int:
     return 0
 
 
+def _side_edge(side: str, fixed: int, pos: int) -> tuple[int, int, str]:
+    """The wall edge at `pos` along a side line, as _outside_runs keys them."""
+    if side in ("N", "S"):
+        return (pos, fixed, "N")
+    return (fixed, pos, "W")
+
+
 def _outside_runs(plan: Plan, idx: int) -> list[tuple[str, list[tuple[int, int, str]]]]:
     """A room's exterior walls, as (facing, edges) straight runs, longest first.
 
@@ -906,6 +1094,10 @@ def _outside_runs(plan: Plan, idx: int) -> list[tuple[str, list[tuple[int, int, 
                 sides["W"].setdefault(x, []).append(y)
             if not _room_at(plan, x + 1, y):
                 sides["E"].setdefault(x + 1, []).append(y)
+    # A wall shared with the next building is not outside.
+    for side, lines in sides.items():
+        for fixed in list(lines):
+            lines[fixed] = [p for p in lines[fixed] if _side_edge(side, fixed, p) not in plan.party]
     runs: list[tuple[str, list[tuple[int, int, str]]]] = []
     for side, lines in sides.items():
         for fixed, positions in lines.items():
@@ -940,6 +1132,9 @@ def _exterior_door(plan: Plan, rng: random.Random,
     straight onto the bottom step.
     """
     order = {k: i for i, k in enumerate(ENTRY_KINDS)}
+    if plan.kind in ("shop", "restaurant"):
+        # Customers come in through the shop, not the staff stairs.
+        order.update({k: -1 for k in RETAIL_ROOMS | FRONT_ROOMS})
     candidates = sorted((i for i in range(1, len(plan.rooms) + 1)
                          if not plan.rooms[i - 1].is_shaft),
                         key=lambda i: (order.get(plan.rooms[i - 1].kind, 50),
@@ -1013,7 +1208,8 @@ GLASS_TOWER_FROM_LEVELS = 8
 # The ground floor of a shop or restaurant is its shop front: glass across the
 # front, broken only by the door.
 SHOP_FRONT_KINDS = {"shop", "restaurant"}
-RETAIL_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe"}
+RETAIL_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe", "grocery",
+                "liquorstore", "pharmacy", "bookstore", "toolstore"}
 # Buildings laid out like a house, where each room takes only the windows it
 # needs. Elsewhere a room takes whatever its stretch of facade offers - an
 # open office along a glazed wall is not limited to one window.
@@ -1192,12 +1388,19 @@ def _place_windows(building: "Building", kind: str | None,
 
     if kind in SHOP_FRONT_KINDS or shop_ground:
         glass = _bays(by_side, front, 1, far, only=front)
+        # Glass only where there is a shop behind it: a block of flats' long
+        # sides are both "front", and its offices and toilets were glazed
+        # like the shops.
+        g0 = building.storeys[0]
+        sales = RETAIL_ROOMS | FRONT_ROOMS | {"restaurant"}
+        glass = [b for b in glass if g0.grid[b[4]][b[3]]
+                 and g0.rooms[g0.grid[b[4]][b[3]] - 1].kind in sales]
         glass_set = set(glass)
         ground_bays = glass + [b for b in bays if b not in glass_set]
     house_like = kind in HOUSE_LIKE_KINDS
 
     for level, storey in enumerate(building.storeys):
-        blocked = set(getattr(storey, "wall_pieces", set()))
+        blocked = set(getattr(storey, "wall_pieces", set())) | storey.party
         # Shuttered windows need the tile either side for their shutters: a
         # window two tiles from a door or another window had its shutters
         # jammed against the frame or overlapping the next one's.
@@ -1327,8 +1530,9 @@ NORTH_WEST_ONLY = ({"painting", "mirror", "shelf"} | set(getattr(C, "ERIKA_WALL_
 # With Erika's Tiles: shops hang its drinks and magazine posters instead of
 # paintings, and these rooms get a drinks machine.
 SHOP_DECOR_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe", "bar",
+                    "grocery", "liquorstore", "pharmacy", "bookstore", "toolstore",
                     "restaurant", "gym"}
-VENDING_ROOMS = {"conveniencestore", "cafe", "lobby", "gym", "classroom", "clinic"}
+VENDING_ROOMS = {"cafe", "lobby", "gym", "classroom", "clinic", "breakroom"}
 ERIKA_SHELF_SHARE = 0.5
 
 _ERIKA: list[bool] = []
@@ -1376,7 +1580,10 @@ def _wall_edge(x: int, y: int, facing: str) -> tuple[int, int, str]:
 # room keeps an open floor instead. `repeat` is how many a big room may take.
 # FALLBACK_GROUPS are smaller sets tried when the first does not fit.
 CENTRE_GROUPS: dict[str, tuple[list[tuple[str, int, int, str]], int]] = {
-    "livingroom": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "W")], 1),
+    # The sofa facing the television across the coffee table, an armchair at
+    # the side: how every lived-in living room in Knox County is arranged.
+    "livingroom": ([("rug_wide", 0, 1, "W"), ("sofa", 0, 0, "N"), ("armchair", 3, 2, "E"),
+                    ("coffee_table", 0, 2, "N"), ("tv", 1, 4, "S")], 1),
     "lobby": ([("rug_wide", 0, 0, "W"), ("coffee_table", 1, 0, "W")], 2),
     "dining": ([("rug_wide", 0, 0, "W"), ("dining_table", 1, 1, "W"),
                 ("chair", 0, 1, "W"), ("chair", 3, 1, "E"),
@@ -1395,8 +1602,22 @@ CENTRE_GROUPS: dict[str, tuple[list[tuple[str, int, int, str]], int]] = {
                     ("chair", 2, 1, "E"), ("chair", 1, 0, "N"),
                     ("chair", 1, 2, "S")], 6),
 }
+# Every dining room seats people the same way, however it is named; the salon
+# and the ice cream parlour have tables too.
+for _kind in ("restaurantdining", "italianrestaurant", "chineserestaurant"):
+    CENTRE_GROUPS[_kind] = CENTRE_GROUPS["restaurant"]
+for _kind in ("icecream", "bar", "breakroom"):
+    CENTRE_GROUPS[_kind] = CENTRE_GROUPS["cafe"]
+CENTRE_GROUPS["theatre"] = ([("chair", 0, 0, "S"), ("chair", 1, 0, "S"), ("chair", 2, 0, "S"),
+                             ("chair", 3, 0, "S")], 12)
+# Commercial kitchens are fitted with counters wall to wall, like a home's.
+KITCHENS = {"kitchen", "breakroom", "restaurantkitchen", "pizzakitchen", "burgerkitchen",
+            "dinerkitchen", "chinesekitchen", "sushikitchen", "mexicankitchen", "seafoodkitchen",
+            "cafekitchen", "bakerykitchen", "icecreamkitchen"}
 FALLBACK_GROUPS: dict[str, list[list[tuple[str, int, int, str]]]] = {
-    "livingroom": [[("rug_small", 0, 0, "W"), ("coffee_table", 0, 0, "N")]],
+    "livingroom": [[("sofa", 0, 0, "N"), ("coffee_table", 0, 2, "N"), ("tv", 0, 4, "S")],
+                   [("sofa", 0, 0, "N"), ("coffee_table", 0, 2, "N")],
+                   [("rug_small", 0, 0, "W"), ("coffee_table", 0, 0, "N")]],
     "dining": [[("dining_table", 1, 0, "W"), ("chair", 0, 0, "W"), ("chair", 3, 0, "E")],
                [("round_table", 1, 0, "W"), ("chair", 0, 0, "W"), ("chair", 2, 0, "E")]],
     "kitchen": [[("round_table", 0, 0, "W"), ("chair", 1, 0, "E")]],
@@ -1407,18 +1628,34 @@ _TURN = {"W": "N", "N": "W", "E": "S", "S": "E"}
 
 def _furnish_middle(plan: Plan, idx: int, room: Room,
                     occupied: set[tuple[int, int]],
-                    keep_clear: set[tuple[int, int]]) -> int:
+                    keep_clear: set[tuple[int, int]],
+                    palette: dict[str, str] | None = None) -> int:
     """Put the room's centre group(s) in its open middle. Returns how many."""
     spec = CENTRE_GROUPS.get(room.kind)
     if spec is None or room.is_core or room.is_shaft:
         return 0
+    palette = palette or {}
+
+    def own(group):
+        return [(palette.get(role, role), dx, dy, o) for role, dx, dy, o in group]
+
     group, repeat = spec
-    placed = _place_group(plan, idx, room, group, repeat, occupied, keep_clear)
+    placed = _place_group(plan, idx, room, own(group), repeat, occupied, keep_clear)
     for smaller in FALLBACK_GROUPS.get(room.kind, ()):
         if placed:
             break
-        placed = _place_group(plan, idx, room, smaller, 1, occupied, keep_clear)
+        placed = _place_group(plan, idx, room, own(smaller), 1, occupied, keep_clear)
     return placed
+
+
+# Pieces a room has one of, however big it is.
+ONCE = {"sofa", "tv", "double_bed", "bed", "bath", "toilet", "stove", "fridge", "washer",
+        "shower", "kitchen_sink", "sink", "coffee_table", "dining_table", "wardrobe",
+        "water_cooler", "whiteboard", "corkboard", "vending"}
+
+
+def _once(role: str) -> bool:
+    return role in ONCE or role.startswith(("sofa_", "double_bed", "bed_", "wardrobe"))
 
 
 def _place_group(plan: Plan, idx: int, room: Room,
@@ -1467,7 +1704,8 @@ def _place_group(plan: Plan, idx: int, room: Room,
 
 
 def _furnish(plan: Plan, rng: random.Random,
-             stairs: tuple[int, int, str] | None = None) -> None:
+             stairs: tuple[int, int, str] | None = None,
+             street: str | None = None) -> None:
     """Push furniture against room walls, skipping tiles a door needs clear.
 
     Every room, the corridor and stair hall included, first gets a light
@@ -1497,6 +1735,12 @@ def _furnish(plan: Plan, rng: random.Random,
     if plan.shaft_door is not None:
         lx, ly, ld = plan.shaft_door
         plan.furniture.append(("elevator_door", lx, ly, ld))
+
+    from . import interiors
+    # Each home its own furniture: one palette per flat, or per storey of a
+    # house, drawn from a seed of this storey's own.
+    home_seed = rng.random()
+    palettes: dict[int, dict[str, str]] = {}
 
     for idx, r in enumerate(plan.rooms, start=1):
         # A lift car has no switch and no furniture: it is a sealed box.
@@ -1563,7 +1807,24 @@ def _furnish(plan: Plan, rng: random.Random,
                 if n % 3 == 0:
                     hang(("painting", "mirror", "painting")[n % 9 // 3], x, y, facing)
             continue
+        keep_clear = door_tiles | stair_tiles
+        # A shop's sales floor is fitted out as a whole - rows of shelving,
+        # the till by the door - not from a list pushed against its walls.
+        if r.kind in interiors.STORES and interiors.furnish_store(
+                plan, idx, r, rng, door_tiles, stair_tiles, street):
+            continue
+        pal = palettes.get(r.unit)
+        if pal is None:
+            pal = palettes[r.unit] = interiors.palette(random.Random(f"{home_seed}:{r.unit}"))
         _, _, base = ROOM_STYLE[r.kind]
+        occupied: set[tuple[int, int]] = set()
+        office = r.kind == "office" and plan.kind not in HOUSE_LIKE_KINDS
+        if office:
+            base = interiors.furnish_office(plan, idx, r, rng, occupied, keep_clear)
+        elif r.kind == "bathroom" and plan.kind not in HOUSE_LIKE_KINDS | {"apartment"}:
+            # A shop's or an office's toilet, not a family bathroom with a bath.
+            base = ["toilet", "sink", "mirror", "toilet"]
+        base = [pal.get(role, role) for role in base]
         if _erika_ready():
             # With Erika's Tiles installed, pictures and plants come from its
             # far larger range, so no two living rooms hang the same print.
@@ -1579,13 +1840,35 @@ def _furnish(plan: Plan, rng: random.Random,
         # Scale the wishlist with floor area, or a 12x9 living room ends up
         # with four items rattling around in it.
         # Knox County's rooms hold 8-13 pieces per 10 m2 of floor (counting
-        # each tile a piece covers); one piece per 7 tiles gave 3-4.
+        # each tile a piece covers); one piece per 7 tiles gave 3-4. Only the
+        # small things repeat: a big living room got a second sofa and
+        # television, a big bathroom two baths.
         target = max(len(base), min(24, r.area // 4))
-        wishlist = [base[i % len(base)] for i in range(target)]
-        occupied: set[tuple[int, int]] = set()
+        wishlist = []
+        for i in range(target):
+            role = base[i % len(base)]
+            if i >= len(base) and _once(role):
+                continue
+            wishlist.append(role)
         # The middle first, with an aisle round it the wall pieces must leave
         # free; placed after them, it almost never found room.
-        _furnish_middle(plan, idx, r, occupied, door_tiles | stair_tiles)
+        before = len(plan.furniture)
+        if not office:
+            _furnish_middle(plan, idx, r, occupied, keep_clear, pal)
+        # What the middle took is off the list: the living room's sofa, table
+        # and television are the group there.
+        for role, *_ in plan.furniture[before:]:
+            if role in wishlist and _once(role):
+                wishlist.remove(role)
+        # A bed goes head to a wall between its bedside tables.
+        if r.kind in ("bedroom", "kidsbedroom"):
+            bed = next((role for role in wishlist if role in (pal.get("double_bed"), pal.get("bed"))
+                        or role.startswith(("double_bed", "bed"))), None)
+            if bed and interiors.bed_against_wall(plan, idx, r, slots, occupied, door_tiles,
+                                                  bed, "sidetable"):
+                wishlist.remove(bed)
+                if "sidetable" in wishlist:
+                    wishlist.remove("sidetable")
         floor_slots = [s for s in slots]
         rng.shuffle(floor_slots)
         for role in wishlist:
@@ -1607,12 +1890,13 @@ def _furnish(plan: Plan, rng: random.Random,
                 plan.furniture.append((role, x, y, orient))
                 break
 
-        if r.kind == "kitchen":
-            _counter_runs(plan, idx, slots, occupied, door_tiles, stair_tiles)
+        if r.kind in KITCHENS:
+            _counter_runs(plan, idx, slots, occupied, door_tiles, stair_tiles,
+                          pal.get("counter", "counter"))
 
 
 def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
-                  door_tiles: set, stair_tiles: set) -> None:
+                  door_tiles: set, stair_tiles: set, counter: str = "counter") -> None:
     """Fitted counters along a kitchen's two longest walls.
 
     Knox County's kitchens are counters wall to wall with the sink and stove
@@ -1626,22 +1910,22 @@ def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
         by_wall.setdefault(facing, []).append((x, y, facing))
     for facing in sorted(by_wall, key=lambda f: -len(by_wall[f]))[:2]:
         for x, y, _f in by_wall[facing]:
-            orient = _facing("counter", facing)
-            cells = _cells_for("counter", x, y, orient)
+            orient = _facing(counter, facing)
+            cells = _cells_for(counter, x, y, orient)
             if any(c in occupied or c in door_tiles or c in stair_tiles for c in cells):
                 continue
             if any(_room_at(plan, cx, cy) != idx for cx, cy in cells):
                 continue
             # A corner tile is on two walls; one counter is enough.
             occupied.update(cells)
-            plan.furniture.append(("counter", x, y, orient))
+            plan.furniture.append((counter, x, y, orient))
 
     # Cupboards on the wall above the counters, and a microwave on one - the
     # rest of what makes a vanilla kitchen full. North and west walls only, as
     # for everything fixed to a wall; the windows then keep off those tiles.
     microwave = False
     for role, x, y, orient in list(plan.furniture):
-        if role != "counter" or orient not in ("N", "W") or _room_at(plan, x, y) != idx:
+        if role != counter or orient not in ("N", "W") or _room_at(plan, x, y) != idx:
             continue
         edge = _wall_edge(x, y, orient)
         if edge in plan.wall_pieces or _room_at(plan, *((x, y - 1) if orient == "N" else (x - 1, y))) == idx:
@@ -1741,12 +2025,17 @@ def _pick_corridor(width: int, height: int, mask: list[list[bool]] | None,
 
 
 def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
-               rng: random.Random) -> tuple[int, int, int, int] | None:
+               rng: random.Random, street: str | None = None
+               ) -> tuple[int, int, int, int] | None:
     """Reserve a stair shaft: the same rectangle on every storey.
 
     Returned as (x0, y0, x1, y1) inclusive, oriented either way round, and
     always wholly inside the footprint - a shaft half outside an L-shaped
     building would put the flight in the garden.
+
+    With the street known the stairs go at the back against a side wall,
+    where a shop or a restaurant keeps its stairs; in the middle of the floor,
+    a terrace of narrow shops had a flight of stairs in the middle of every one.
     """
     shapes = [(CORE_WIDE, STAIR_RUN + 1), (STAIR_RUN + 1, CORE_WIDE)]
     best: list[tuple[int, int, int, int]] = []
@@ -1764,6 +2053,14 @@ def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
                 # Central, so the flight is not jammed against the windows.
                 score = (abs((x0 + cw / 2) - width / 2)
                          + abs((y0 + ch / 2) - height / 2))
+                if street in STEP_OF:
+                    # Back and side: distance from the wall opposite the
+                    # street, then from the nearer side wall.
+                    back = {"S": y0, "N": height - (y0 + ch), "E": x0,
+                            "W": width - (x0 + cw)}[street]
+                    side = min(x0, width - (x0 + cw)) if street in ("N", "S") \
+                        else min(y0, height - (y0 + ch))
+                    score = back * 2 + side
                 if best_score is None or score < best_score - 1e-9:
                     best_score, best = score, [(x0, y0, x0 + cw - 1,
                                                 y0 + ch - 1)]
@@ -1772,9 +2069,15 @@ def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
     return rng.choice(best) if best else None
 
 
+STEP_OF = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
+
+
 # Buildings this tall get a lift. Four flights is a fair climb; a thirty-storey
 # tower on stairs alone is not something anyone built.
 ELEVATOR_FROM_LEVELS = 5
+# ...if it is more than a townhouse: a lift in a building five tiles wide
+# took half its ground floor.
+ELEVATOR_MIN_SIDE = 10
 SHAFT_SIZE = 2
 
 
@@ -1878,11 +2181,16 @@ def build_building(width: int, height: int, levels: int = 1,
                    mask: list[list[bool]] | None = None,
                    settings: Settings | None = None,
                    street: str | None = None,
-                   retail: bool = False) -> Building:
+                   retail: bool = False,
+                   uses: list[tuple[str, str]] | None = None,
+                   hotel: bool = False,
+                   party: dict | None = None) -> Building:
     """Lay out a building of `levels` storeys.
 
     `retail` puts shops on the ground floor of a block of flats, as on any
-    city street; towers step back above SETBACK_FROM_LEVELS.
+    city street; towers step back above SETBACK_FROM_LEVELS. `uses` are what
+    OpenStreetMap says the ground floor is (knoxbuild/uses.py), as (front
+    room, back room); `hotel` makes a block of flats' flats hotel rooms.
 
     Each storey is laid out separately rather than copied, because a block of
     flats whose every floor is identical reads as a rendering error; only the
@@ -1900,19 +2208,22 @@ def build_building(width: int, height: int, levels: int = 1,
         core = _pick_corridor(width, height, mask, rng)
         corridor = core is not None
     if core is None and levels > 1:
-        core = _pick_core(width, height, mask, rng)
+        core = _pick_core(width, height, mask, rng, street)
     if levels > 1 and core is None:
         levels = 1          # nowhere to put a staircase, so one floor it is
 
     stairs = _stairs_in_core(core) if core is not None and levels > 1 else None
     shaft = shaft_door = None
-    if core is not None and levels >= ELEVATOR_FROM_LEVELS:
+    if core is not None and levels >= ELEVATOR_FROM_LEVELS and min(width, height) >= ELEVATOR_MIN_SIDE:
         found = _pick_shaft(core, width, height, mask, stairs)
         if found:
             shaft, shaft_door = found
     upper_mask, setback_at = _setback(width, height, mask, levels, core, shaft,
                                       corridor)
-    shops = retail and kind == "apartment" and levels >= 3 and core is not None
+    # Shops under flats where the town is dense, and wherever the map puts a
+    # shop, a restaurant or a bank in a building that is more than one.
+    shops = kind in ("apartment", "civic") and core is not None and (
+        (retail and kind == "apartment" and levels >= 3) or (bool(uses) and levels >= 2))
     storeys = [
         build_plan(width, height, commercial=commercial or (shops and lvl == 0),
                    seed=seed + 977 * lvl,
@@ -1921,11 +2232,10 @@ def build_building(width: int, height: int, levels: int = 1,
                    ground=(lvl == 0), settings=settings,
                    core=core, level=lvl, levels=levels, stairs=stairs,
                    corridor=corridor, shaft=shaft, shaft_door=shaft_door,
-                   street=street)
+                   street=street, uses=uses, hotel=hotel,
+                   party={e for e, up in (party or {}).items() if lvl < up})
         for lvl in range(levels)
     ]
-    if shops:
-        _shop_doors(storeys[0], street)
     building = Building(width=width, height=height, storeys=storeys)
     if stairs is not None:
         for lvl in range(levels - 1):
@@ -1986,7 +2296,7 @@ def _setback(width: int, height: int, mask, levels: int, core, shaft,
 def _shop_doors(plan: "Plan", street: str | None) -> None:
     """A street door into each shop on a block of flats' ground floor."""
     for idx, room in enumerate(plan.rooms, 1):
-        if room.is_core or room.is_shaft or room.kind not in RETAIL_ROOMS:
+        if room.is_core or room.is_shaft or room.kind not in RETAIL_ROOMS | FRONT_ROOMS:
             continue
         runs = [(side, wall) for side, wall in _outside_runs(plan, idx) if len(wall) >= 3]
         if not runs:
@@ -2008,7 +2318,10 @@ def _stair_foot(stairs: tuple[int, int, str] | None) -> tuple[int, int] | None:
 # church one nave, a school rooms the size of classrooms.
 KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 5.0, "shed": 8.0, "church": 4.0,
                    "shop": 2.0, "school": 1.6, "civic": 1.5,
-                   "restaurant": 1.5, "medical": 1.3}
+                   "restaurant": 1.5, "medical": 1.3, "offices": 3.0}
+# A shop's ground floor is a sales floor or a few: rooms the size of a house's
+# cut a grocery into cupboards no rows of shelving fit in.
+SHOP_FLOOR_SCALE = 4.0
 MAX_ROOMS_PER_FLOOR = 90
 
 
@@ -2023,8 +2336,14 @@ def build_plan(width: int, height: int, commercial: bool = False,
                corridor: bool = False,
                shaft: tuple[int, int, int, int] | None = None,
                shaft_door: tuple[int, int, str] | None = None,
-               street: str | None = None) -> Plan:
+               street: str | None = None,
+               uses: list[tuple[str, str]] | None = None,
+               hotel: bool = False,
+               party: set | None = None) -> Plan:
     """Lay out and furnish one storey of the given tile size.
+
+    `uses` are what OpenStreetMap says a commercial ground floor holds
+    (build_building); `hotel` turns flats into hotel rooms.
 
     `ground` gates the exterior door: a door in an upper-floor wall opens onto
     a five-metre drop, and the game will happily let a zombie walk through it.
@@ -2032,10 +2351,14 @@ def build_plan(width: int, height: int, commercial: bool = False,
     settings = settings or Settings()
     rng = random.Random(seed)
     plan = Plan(width=width, height=height, mask=mask, core=core,
-                corridor=corridor)
+                corridor=corridor, kind=kind, party=set(party or ()))
+    shop_floor = kind in ("shop", "retail", "restaurant") and ground
+    mix_kind = "offices" if kind in ("shop", "restaurant") and not ground else kind
     # Rooms in a flat are smaller than rooms in a house, and there have to be
     # enough of them per floor to make several dwellings out of.
-    target = settings.room_size * KIND_ROOM_SCALE.get(kind or "", 1.0)
+    target = settings.room_size * KIND_ROOM_SCALE.get(mix_kind or "", 1.0)
+    if shop_floor:
+        target = settings.room_size * SHOP_FLOOR_SCALE
     if kind == "apartment":
         target = max(16, round(settings.room_size * 0.4))
     # A factory floor 160 tiles across split into house-sized rooms would be
@@ -2045,7 +2368,9 @@ def build_plan(width: int, height: int, commercial: bool = False,
     target = max(target, floor_tiles / MAX_ROOMS_PER_FLOOR)
 
     if kind == "apartment":
-        _apartment_rooms(plan, rng, target)
+        _apartment_rooms(plan, rng, target, HOTEL_FRONTAGE if hotel else FLAT_FRONTAGE)
+    elif shop_floor and kind in ("shop", "restaurant"):
+        _shop_rooms(plan, rng, street)
     else:
         _split(0, 0, width - 1, height - 1, rng, MAX_DEPTH, plan.rooms,
                target_area=target, mask=mask)
@@ -2056,9 +2381,13 @@ def build_plan(width: int, height: int, commercial: bool = False,
     # footprint and the shaft have had their say.
     if kind == "apartment":
         _unit_touches_corridor(plan)
-        _assign_flat_kinds(plan)
-    elif kind and kind in SPECIAL_MIXES:
-        mix, fill = SPECIAL_MIXES[kind]
+        _assign_flat_kinds(plan, hotel=hotel)
+    elif shop_floor:
+        if kind == "restaurant" and not uses:
+            uses = [("restaurantdining", "restaurantkitchen")]
+        _assign_shop_floor(plan, rng, street, uses, several=(kind == "retail"))
+    elif mix_kind and mix_kind in SPECIAL_MIXES:
+        mix, fill = SPECIAL_MIXES[mix_kind]
         _assign_kinds([r for r in plan.rooms if not r.is_core], mix, fill)
     elif commercial:
         _assign_kinds([r for r in plan.rooms if not r.is_core],
@@ -2076,7 +2405,11 @@ def build_plan(width: int, height: int, commercial: bool = False,
         _exterior_door(plan, rng, avoid=_stair_foot(stairs), street=street)
         if kind in (None, "house"):
             _back_door(plan, street)
-    _furnish(plan, rng, stairs)
+        if kind == "retail":
+            # Each shop its own street door, before the shop is fitted out
+            # round it.
+            _shop_doors(plan, street)
+    _furnish(plan, rng, stairs, street)
     return plan
 
 

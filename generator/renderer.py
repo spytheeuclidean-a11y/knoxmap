@@ -554,6 +554,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         if feat.kind == "node" and "population" in feat.tags and "place" in feat.tags:
             place_feats.append(feat)
             continue
+        if feat.kind == "node" and "natural" not in feat.tags:
+            continue      # shops and cafes inside buildings: knoxbuild/uses.py
         barrier = feat.tags.get("barrier")
         if barrier in FENCE_BARRIERS and feat.kind == "way":
             fence_feats.append(feat)
@@ -1711,7 +1713,7 @@ BUILDING_TAGS = {
     "building:use", "height", "levels", "roof:levels", "roof:shape",
     "name", "addr:housenumber", "addr:street", "addr:flats",
     "amenity", "shop", "leisure", "tourism", "industrial",
-    "healthcare", "office", "craft", "man_made", "residential",
+    "healthcare", "office", "craft", "man_made", "residential", "cuisine",
 }
 
 

@@ -49,6 +49,10 @@ actually lived, and installs the result as a mod.
 - **Working lifts** in buildings of five storeys or more, when the
   [Elevators](https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632)
   mod is enabled (optional).
+- **Buildings that are what they really are.** The pizza place, the bank, the
+  pharmacy or the hotel OpenStreetMap has in a building becomes the game's own
+  rooms for it, fitted out like vanilla's: a dining room and a pizza kitchen,
+  aisles of shelving and a till, guest rooms upstairs.
 - **Erika's Tiles, if you have it.** With
   [Erika's Tiles](https://steamcommunity.com/workshop/filedetails/?id=3346506593)
   subscribed (and Setup run again), shops get glass shop fronts in painted
