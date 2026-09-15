@@ -739,7 +739,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     n_park = sum(1 for z in zones if z.kind == "ParkingStall")
     n_town = sum(1 for z in zones if z.kind == "TownZone")
     print(f"zones                 : {n_park} parking, {n_town} town")
-    print(f"front paths           : {paths}")
+    print(f"front paths, yards    : {paths} houses, {len(yard_fences)} back yards")
     print(f"fences                : {fence_tiles} fence tiles in "
           f"{len(fence_placements)} lots")
     print(f"paper map             : {paper_map['map_features']} features in "

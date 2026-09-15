@@ -35,16 +35,16 @@ CROSSABLE = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.DIRT)
 YARD_FENCE_STYLES = ("tall_wooden", "short_wooden", "white_picket", "short_chainlink")
 
 
-def _front_door(tbx_path: str) -> tuple[int, int, int, int] | None:
-    """(outside x, y, inside x, y) of the ground floor's first outside door."""
+def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
+    """(outside x, y, inside x, y) of each ground-floor outside door, front first."""
     text = open(tbx_path, encoding="utf-8").read()
     first = text.split("<floor>", 2)
     if len(first) < 2:
-        return None
+        return []
     floor = first[1]
     grid_text = re.search(r"<rooms>(.*?)</rooms>", floor, re.S)
     if not grid_text:
-        return None
+        return []
     grid = [[int(v) for v in row.strip().strip(",").split(",")]
             for row in grid_text.group(1).strip().splitlines() if row.strip()]
     h, w = len(grid), len(grid[0])
@@ -52,13 +52,14 @@ def _front_door(tbx_path: str) -> tuple[int, int, int, int] | None:
     def inside(x, y):
         return 0 <= x < w and 0 <= y < h and grid[y][x] != 0
 
+    found = []
     for m in re.finditer(r'type="door"[^>]*? x="(\d+)" y="(\d+)" dir="([NW])"', floor):
         x, y, d = int(m.group(1)), int(m.group(2)), m.group(3)
         a, b = ((x, y - 1), (x, y)) if d == "N" else ((x - 1, y), (x, y))
         if inside(*a) != inside(*b):
             out, into = (a, b) if inside(*b) else (b, a)
-            return out[0], out[1], into[0], into[1]
-    return None
+            found.append((out[0], out[1], into[0], into[1]))
+    return found
 
 
 def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied) -> tuple[int, list]:
@@ -106,10 +107,10 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied) -> tupl
     for row in rows:
         if row.get("kind") != "house":
             continue
-        door = _front_door(os.path.join(out_dir, "buildings", row["file"]))
-        if door is None:
+        doors = _outside_doors(os.path.join(out_dir, "buildings", row["file"]))
+        if not doors:
             continue
-        ox, oy, ix, iy = door
+        ox, oy, ix, iy = doors[0]
         bx0, by0 = row["tile_x"], row["tile_y"]
         bw, bh = row["width"], row["height"]
         sx, sy = bx0 + ox, by0 + oy
@@ -197,24 +198,24 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied) -> tupl
         # fenced square of empty lawn standing off the house was no use.
         bdx, bdy = -dx, -dy                          # away from the street
         ax, ay = (1, 0) if dy else (0, 1)            # along the back wall
-        if dy:
-            back = by0 - 1 if dy > 0 else by0 + bh  # first row behind the house
-            u0 = bx0 - YARD_SIDE
-            width = bw + 2 * YARD_SIDE
-        else:
-            back = bx0 - 1 if dx > 0 else bx0 + bw
-            u0 = by0 - YARD_SIDE
-            width = bh + 2 * YARD_SIDE
+        back = (by0 - 1 if dy > 0 else by0 + bh) if dy else (bx0 - 1 if dx > 0 else bx0 + bw)
+        # As wide as the house and a little over, narrower where the
+        # neighbours are close; as deep as there is room for.
+        for side in (YARD_SIDE, 1, 0):
+            u0 = (bx0 if dy else by0) - side
+            width = (bw if dy else bh) + 2 * side
 
-        def at(u, v):
-            """World tile u along the back wall, v rows back from it."""
-            return ((u0 + u, back + bdy * v) if dy else (back + bdx * v, u0 + u))
+            def at(u, v, u0=u0):
+                """World tile u along the back wall, v rows back from it."""
+                return ((u0 + u, back + bdy * v) if dy else (back + bdx * v, u0 + u))
 
-        depth = 0
-        for v in range(YARD_DEPTH):
-            if not all(free(*at(u, v)) for u in range(width)):
+            depth = 0
+            for v in range(YARD_DEPTH):
+                if not all(free(*at(u, v)) for u in range(width)):
+                    break
+                depth = v + 1
+            if depth >= YARD_MIN_DEPTH:
                 break
-            depth = v + 1
         if depth >= YARD_MIN_DEPTH:
             style = YARD_FENCE_STYLES[(bx0 * 7 + by0 * 13) % len(YARD_FENCE_STYLES)]
 
@@ -227,15 +228,17 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied) -> tupl
                 a, b = u0, u0 + width
                 house_a, house_b = bx0, bx0 + bw
                 fences.append(([(house_a, wall_y), (a, wall_y), (a, far_y), (b, far_y),
-                                (b, wall_y), (house_b + 1, wall_y)], style))
+                                (b, wall_y), (house_b, wall_y)], style,
+                               [(house_b, wall_y)]))
             else:
                 wall_x = back + (0 if bdx > 0 else 1)
                 far_x = back + bdx * depth + (0 if bdx > 0 else 1)
                 a, b = u0, u0 + width
                 house_a, house_b = by0, by0 + bh
                 fences.append(([(wall_x, house_a), (wall_x, a), (far_x, a), (far_x, b),
-                                (wall_x, b), (wall_x, house_b + 1)], style))
-            # (The last stretch stops a tile short of the house: the gate.)
+                                (wall_x, b), (wall_x, house_b)], style,
+                               [(wall_x, house_b)]))
+            # The gate is beside the house, at the end of the last stretch.
 
             taken = set()
 
@@ -251,13 +254,24 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied) -> tupl
                 claimed[y, x] = True
                 return True
 
-            # Patio: stone behind the middle of the house, three deep.
+            # Patio: stone outside the back door, three deep; behind the middle
+            # of the house if the back door is not on the yard side.
             mid = width // 2
+            for bxo, byo, _bxi, _byi in doors[1:]:
+                wx, wy = bx0 + bxo, by0 + byo
+                u, v = ((wx - u0, (wy - back) * bdy) if dy else (wy - u0, (wx - back) * bdx))
+                if v == 0 and 2 <= u < width - 3:
+                    mid = u
+                    break
             for v in range(min(3, depth - 1)):
                 for u in range(mid - 2, mid + 3):
                     x, y = at(u, v)
-                    if free(x, y):
-                        paint(x, y, C.PAVING_STONE)
+                    if 0 <= x < w and 0 <= y < h and crossable[y, x]:
+                        # A shrub or tuft on the patio goes; so does anything
+                        # a neighbour's drive claimed only by overlap.
+                        ground[y, x] = C.PAVING_STONE
+                        if veg is not None:
+                            veg[y, x] = 0
                         claimed[y, x] = False       # furniture may stand on it
             place(mid - 2, 1, C.GRILL)
             if dy:

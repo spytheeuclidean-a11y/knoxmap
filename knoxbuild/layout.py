@@ -950,25 +950,33 @@ def _exterior_door(plan: Plan, rng: random.Random,
         return
 
 
-def _back_door(plan: Plan) -> None:
-    """A second way out, from the kitchen side, away from the front door.
+OPPOSITE_SIDE = {"N": "S", "S": "N", "W": "E", "E": "W"}
+
+
+def _back_door(plan: Plan, street: str | None = None) -> None:
+    """A second way out, into the back yard: on the wall facing away from the
+    street, from the kitchen if it has that wall, else the room nearest it.
 
     Knox County's houses have two outside doors as a rule (the median of 546);
-    ours had one.
+    ours had one, and the second one picked any far wall, so it could open
+    onto the side of the house instead of the yard behind it.
     """
     if not plan.doors:
         return
     fx, fy, _fd = plan.doors[-1]
-    for kind in ("kitchen", "dining", "hall", "livingroom"):
-        for idx, room in enumerate(plan.rooms, 1):
-            if room.kind != kind or room.is_shaft:
-                continue
-            far = [wall for _side, wall in _outside_runs(plan, idx) if len(wall) >= 3
-                   and abs(wall[len(wall) // 2][0] - fx) + abs(wall[len(wall) // 2][1] - fy) > 6]
-            if far:
-                wall = max(far, key=len)
-                plan.doors.append(wall[len(wall) // 2])
-                return
+    back = OPPOSITE_SIDE.get(street or "S", "N")
+    for wanted in (back, None):
+        for kind in ("kitchen", "dining", "hall", "livingroom", "laundry", "bedroom"):
+            for idx, room in enumerate(plan.rooms, 1):
+                if room.kind != kind or room.is_shaft:
+                    continue
+                runs = [wall for side, wall in _outside_runs(plan, idx)
+                        if len(wall) >= 3 and (side == wanted if wanted else
+                        abs(wall[len(wall) // 2][0] - fx) + abs(wall[len(wall) // 2][1] - fy) > 6)]
+                if runs:
+                    wall = max(runs, key=len)
+                    plan.doors.append(wall[len(wall) // 2])
+                    return
 
 
 # Tiles of wall per window bay, by what the building is, on its front and on
@@ -1868,7 +1876,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
     if ground:
         _exterior_door(plan, rng, avoid=_stair_foot(stairs), street=street)
         if kind in (None, "house"):
-            _back_door(plan)
+            _back_door(plan, street)
     _furnish(plan, rng, stairs)
     return plan
 

@@ -35,6 +35,15 @@ STYLES = {
 }
 
 
+# Gates, for the fences drawn round back yards: (west-edge tile, north-edge tile).
+GATES = {
+    "short_wooden": ("fixtures_doors_fences_01_004", "fixtures_doors_fences_01_005"),
+    "tall_wooden": ("fixtures_doors_fences_01_012", "fixtures_doors_fences_01_013"),
+    "white_picket": ("fixtures_doors_fences_01_008", "fixtures_doors_fences_01_009"),
+    "short_chainlink": ("fixtures_doors_fences_01_016", "fixtures_doors_fences_01_017"),
+}
+
+
 def _tile(n: int) -> str:
     return f"fencing_01_{n:03d}"
 
@@ -163,7 +172,12 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
         mid = pts[len(pts) // 2]
         todo.append((pts, style_for(feat.get("properties") or {},
                                     areas.category_at(*mid) if areas else None)))
-    todo.extend(extra or ())
+    gates: dict[tuple[int, int], str] = {}
+    for item in extra or ():
+        pts, style = item[0], item[1]
+        todo.append((pts, style))
+        for gx, gy in (item[2] if len(item) > 2 else ()):
+            gates[(gx, gy)] = style
     for pts, style in todo:
         walk = _grid_path(pts)
         for (x1, y1), (x2, y2) in zip(walk, walk[1:]):
@@ -209,6 +223,12 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
                        if side in edges.get(key, {}))
         if touching == 1:
             pieces[(x, y)] = _tile(STYLES[style]["post"])
+
+    # A gate replaces the fence piece on its square, facing the same way.
+    for (x, y), style in gates.items():
+        sides = edges.get((x, y), {})
+        if style in GATES and len(sides) == 1:
+            pieces[(x, y)] = GATES[style][0 if "W" in sides else 1]
 
     by_cell: dict[tuple[int, int], dict[tuple[int, int], str]] = {}
     for (x, y), tile in pieces.items():
