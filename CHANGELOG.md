@@ -37,6 +37,8 @@ map.
   landmarks.
 - Zombies spawned from an estimate of who lived and worked in each building,
   with a census and a one-second recount.
+- Uses Erika's Tiles for pictures, posters, mirrors and plants when it is
+  installed; maps made with it require it.
 - Spawn points inside homes across the town, and the map's landmarks as
   starting points in the Spawn Selector mod when it is installed.
 

@@ -49,6 +49,11 @@ actually lived, and installs the result as a mod.
 - **Working lifts** in buildings of five storeys or more, when the
   [Elevators](https://steamcommunity.com/sharedfiles/filedetails/?id=3780306632)
   mod is enabled (optional).
+- **Erika's Tiles, if you have it.** With
+  [Erika's Tiles](https://steamcommunity.com/workshop/filedetails/?id=3346506593)
+  subscribed (and Setup run again), buildings hang its far larger range of
+  paintings, posters and mirrors and pot its plants. Maps made that way list it
+  as a requirement.
 - **Start where you like.** With the optional
   [Spawn Selector](https://steamcommunity.com/sharedfiles/filedetails/?id=3772052709) mod, the map's
   named buildings and places appear as starting points.

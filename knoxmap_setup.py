@@ -233,12 +233,42 @@ def configure_tools(tools: Path, game: Path | None) -> None:
     with contextlib.redirect_stdout(io.StringIO()):
         prune_tilesets.main(["prune_tilesets", str(tilesets), str(two_x)])
 
+    add_erikas_tiles(tools, tilesets, two_x)
+
     for script, what in (("patch_rules_b42_trees.py", "Build 42 trees and flowers"),
                          ("patch_rules_roads.py", "Kerbs and road markings")):
         rules = subprocess.run([sys.executable, str(BASE_DIR / "worlded" / script), str(tools)],
                                capture_output=True, text=True, check=False)
         say(f"      {what} " +
             ("set up" if rules.returncode == 0 else f"not set up: {rules.stderr.strip()[-200:]}"))
+
+
+def add_erikas_tiles(tools: Path, tilesets: Path, two_x: Path) -> None:
+    """Erika's Tiles, if subscribed: its sheets into the map tools, so maps
+    can use its pictures and plants (and then require the mod)."""
+    import re
+
+    from tools import extract_tiles
+
+    media = knoxpaths.erikas_tiles_media()
+    if media is None:
+        say("      Erika's Tiles not installed - buildings use vanilla decor only")
+        return
+    defs = media / "Erikas_Tiles.tiles.txt"
+    txt = defs.read_text(encoding="utf-8", errors="replace") if defs.exists() else ""
+    catalog = {name: (int(c), int(r)) for name, c, r in
+               re.findall(r"file\s*=\s*(\S+)\s*\n\s*size\s*=\s*(\d+),(\d+)", txt)}
+    missing = {n for n in catalog if not (two_x / f"{n}.png").exists()}
+    if missing:
+        with contextlib.redirect_stdout(io.StringIO()):
+            extract_tiles.extract_pack(str(media / "texturepacks" / "Erikas_Tiles.pack"),
+                                       catalog, missing, str(two_x))
+    text = tilesets.read_text(encoding="utf-8", errors="replace")
+    add = "".join(f"tileset\n{{\n    file = Erikas_Tiles.pack/{n}\n    size = {c},{r}\n}}\n"
+                  for n, (c, r) in catalog.items() if f"/{n}\n" not in text)
+    if add:
+        tilesets.write_text(text.rstrip("\n") + "\n" + add, encoding="utf-8")
+    say(f"      Erika's Tiles set up ({len(catalog)} sheets)")
 
 
 # ---- 5. where the game keeps mods ---------------------------------------------------

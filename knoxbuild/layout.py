@@ -1322,7 +1322,22 @@ SWITCH = "switch"
 # and mirrors on those walls rendered as planks floating over the floor. They
 # go on north and west walls only. (The switch has true east and south
 # sprites, and every room needs one, so it may go anywhere.)
-NORTH_WEST_ONLY = {"painting", "mirror", "shelf"}
+NORTH_WEST_ONLY = {"painting", "mirror", "shelf"} | set(getattr(C, "ERIKA_WALL_ART", ()))
+
+_ERIKA: list[bool] = []
+
+
+def _erika_ready() -> bool:
+    """Whether buildings may use Erika's Tiles; asked once per process."""
+    if not _ERIKA:
+        import os
+        try:
+            import knoxpaths
+            _ERIKA.append(os.environ.get("KNOXMAP_NO_MOD_TILES") != "1"
+                          and knoxpaths.erikas_tiles_ready())
+        except Exception:      # noqa: BLE001 - no tools, no mod tiles
+            _ERIKA.append(False)
+    return _ERIKA[0]
 
 
 def _is_wall_piece(role: str) -> bool:
@@ -1542,6 +1557,12 @@ def _furnish(plan: Plan, rng: random.Random,
                     hang(("painting", "mirror", "painting")[n % 9 // 3], x, y, facing)
             continue
         _, _, base = ROOM_STYLE[r.kind]
+        if _erika_ready():
+            # With Erika's Tiles installed, pictures and plants come from its
+            # far larger range, so no two living rooms hang the same print.
+            base = [rng.choice(C.ERIKA_WALL_ART) if role in ("painting", "mirror") and C.ERIKA_WALL_ART
+                    else rng.choice(C.ERIKA_PLANTS) if role == "plant" and C.ERIKA_PLANTS
+                    else role for role in base]
         # Scale the wishlist with floor area, or a 12x9 living room ends up
         # with four items rattling around in it.
         # Knox County's rooms hold 8-13 pieces per 10 m2 of floor (counting

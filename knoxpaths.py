@@ -147,6 +147,28 @@ def workshop_mod_installed(workshop_id: str, folder: str) -> bool:
     return (zomboid_user_dir() / "mods" / folder).is_dir()
 
 
+ERIKAS_TILES_WORKSHOP_ID = "3346506593"
+ERIKAS_TILES_MOD_ID = "Erikas_Tiles"
+
+
+def erikas_tiles_media() -> Path | None:
+    """The media folder of Erika's Tiles, if the mod is on this PC."""
+    for lib in _steam_libraries():
+        base = lib / "steamapps" / "workshop" / "content" / "108600" / ERIKAS_TILES_WORKSHOP_ID
+        for media in base.glob("mods/*/common/media"):
+            if (media / "texturepacks" / "Erikas_Tiles.pack").exists():
+                return media
+    return None
+
+
+def erikas_tiles_ready() -> bool:
+    """Erika's Tiles is installed and its sheets are in the map tools, so
+    buildings may use them (Setup extracts them)."""
+    tools = mapping_tools_dir()
+    return bool(erikas_tiles_media() and tools and
+                (tools / "Tiles" / "2x" / "walls_decoration_paintings_erika_01.png").exists())
+
+
 def elevators_mod_installed() -> bool:
     """Whether the Elevators mod, which runs KnoxMap's lifts, is installed."""
     return workshop_mod_installed(ELEVATORS_WORKSHOP_ID, "Elevators")

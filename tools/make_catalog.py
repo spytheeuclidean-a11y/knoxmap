@@ -71,6 +71,53 @@ def parse_room_names(path: str) -> dict[str, str]:
     return out
 
 
+ERIKA_TILES_TXT = ("D:/SteamLibrary/steamapps/workshop/content/108600/3346506593/"
+                   "mods/Erikas Tiles/common/media/Erikas_Tiles.tiles.txt")
+# The object's Facing in a tile definition is the way it looks; the tbx orient
+# is the wall it stands against. A picture facing south hangs on a north wall.
+FACING_TO_ORIENT = {"S": "N", "E": "W", "N": "S", "W": "E"}
+
+
+def erika_roles(furniture: dict, layers: dict) -> tuple[list[str], list[str]]:
+    """Single-tile wall art (paintings, posters, mirrors) and potted plants
+    from Erika's Tiles, added to `furniture` as roles erika_art_N and
+    erika_plant_N. Pieces are grouped by their names in the tile definitions,
+    with one tile per facing."""
+    import os as _os
+    path = _os.environ.get("ERIKAS_TILES_TXT") or ERIKA_TILES_TXT
+    if not _os.path.exists(path):
+        return [], []
+    txt = open(path, encoding="utf-8", errors="replace").read()
+    art, plants = [], []
+    for block in re.split(r"\ntileset\s*\n", txt)[1:]:
+        sheet = re.search(r"file\s*=\s*(\S+)", block).group(1)
+        wall = sheet.startswith(("walls_decoration_paintings_erika", "walls_decoration_posters_erika",
+                                 "walls_decoration_mirrors_erika"))
+        plant = sheet.startswith("vegetation_indoor_erika")
+        if not (wall or plant):
+            continue
+        pieces: dict[tuple, dict] = {}
+        for idx, body in re.findall(r"// \S+_(\d+)\s*\n\s*tile\s*\{(.*?)\n\s*\}", block, re.S):
+            props = dict(re.findall(r"^\s*(\w+)\s*=\s*(.*?)\s*$", body, re.M))
+            facing = props.get("Facing")
+            if facing not in FACING_TO_ORIENT or "SpriteGridPos" in props:
+                continue                        # multi-tile pieces are left out
+            key = (props.get("GroupName", ""), props.get("CustomName", ""))
+            pieces.setdefault(key, {})[FACING_TO_ORIENT[facing]] = f"{sheet}_{int(idx):03d}"
+        for key, by_orient in pieces.items():
+            if wall and {"N", "W"} <= set(by_orient):
+                role = f"erika_art_{len(art)}"
+                furniture[role] = {o: {"0,0": t} for o, t in by_orient.items() if o in ("N", "W")}
+                layers[role] = "WallFurniture"
+                art.append(role)
+            elif plant and len(by_orient) == 4:
+                role = f"erika_plant_{len(plants)}"
+                furniture[role] = {o: {"0,0": t} for o, t in by_orient.items()}
+                layers[role] = "Furniture"
+                plants.append(role)
+    return art, plants
+
+
 def main(argv: list[str]) -> int:
     cfg_dir, out_path = argv[1], argv[2]
     entries = parse_tile_entries(os.path.join(cfg_dir, "BuildingTemplates.txt"))
@@ -291,6 +338,7 @@ def main(argv: list[str]) -> int:
     # belongs on the WallFurniture layer; written without a layer it becomes
     # floor furniture standing in the middle of the tile.
     furniture_layers = {role: layers[a] for role, a in ROLES.items()}
+    erika_art, erika_plants = erika_roles(furniture, furniture_layers)
 
     # Wall and floor palettes. Every building used to share one exterior wall
     # and one interior wall, so a whole town came out identical. Houses now draw
@@ -546,6 +594,10 @@ def main(argv: list[str]) -> int:
         f.write("FURNITURE = " + pprint.pformat(furniture, width=100, sort_dicts=False) + "\n\n")
         f.write("# Furniture layer per role; anything but Furniture sits on a wall.\n")
         f.write("FURNITURE_LAYERS = " + pprint.pformat(furniture_layers, width=100) + "\n\n")
+        f.write("# Roles from Erika's Tiles (workshop 3346506593), used only when that mod\n"
+                "# is installed; see knoxpaths.erikas_tiles_ready.\n")
+        f.write("ERIKA_WALL_ART = " + pprint.pformat(erika_art, width=100) + "\n")
+        f.write("ERIKA_PLANTS = " + pprint.pformat(erika_plants, width=100) + "\n\n")
         f.write("# Official room colours, straight from the tools' RoomNames.txt.\n")
         f.write("ROOM_COLORS = " + pprint.pformat(colors, width=100, sort_dicts=False) + "\n\n")
         f.write("# Houses draw from these, picked per neighbourhood block so a\n"
