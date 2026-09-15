@@ -159,14 +159,18 @@ def main(argv: list[str]) -> int:
                 cols = max(1, sheet.width // 128)
                 cx, cy = (idx % cols) * 128, (idx // cols) * 256
                 if cy + 256 <= sheet.height:
-                    img = sheet.crop((cx, cy, cx + 128, cy + 256)).resize((64, 128), Image.LANCZOS)
+                    img = sheet.crop((cx, cy, cx + 128, cy + 256)).resize((TW, TW * 2), Image.LANCZOS)
         cache[name] = img
         return img
 
-    width = (W + H) * 32 + 64
-    height = (W + H) * 16 + 128 + (top + 1) * LEVEL_PX
+    # Sprites are shrunk before they are stacked, so a whole district can be
+    # drawn: at full size two square kilometres is a 96,000-pixel-wide image.
+    TW = max(4, round(64 * scale))
+    half, quarter, level_px = TW // 2, TW // 4, round(LEVEL_PX * TW / 64)
+    width = (W + H) * half + TW
+    height = (W + H) * quarter + 2 * TW + (top + 1) * level_px
     canvas = Image.new("RGBA", (width, height), (24, 26, 28, 255))
-    lift = (top + 1) * LEVEL_PX
+    lift = (top + 1) * level_px
     # The game draws a storey at a time, bottom up, each back to front.
     for z in range(0, top + 1):
         for s in range(W + H - 1):
@@ -175,11 +179,10 @@ def main(argv: list[str]) -> int:
                 for name in squares.get((dx, dy, z), ()):
                     img = image(name)
                     if img is not None:
-                        canvas.alpha_composite(img, ((dx - dy) * 32 + H * 32 - 32 + 32,
-                                                     (dx + dy) * 16 + lift - z * LEVEL_PX - 96))
+                        canvas.alpha_composite(img, ((dx - dy) * half + H * half,
+                                                     (dx + dy) * quarter + lift - z * level_px
+                                                     - TW * 3 // 2))
     result = canvas.convert("RGB")
-    if scale != 1:
-        result = result.resize((round(result.width * scale), round(result.height * scale)), Image.LANCZOS)
     result.save(out_png)
     print(f"wrote {out_png} {result.size}, levels 0-{top}, {len(squares)} squares")
     return 0
