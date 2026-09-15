@@ -11,10 +11,13 @@ it. These files come from it (most have since been modified here):
 
 `README.md` · `app.py` · `generator/__init__.py` · `generator/osm.py` ·
 `generator/pz_colors.py` · `generator/renderer.py` · `requirements.txt` ·
-`static/css/app.css` · `static/js/app.js` · `static/logo.svg` ·
-`templates/index.html` · `test_pipeline.py` · `.gitignore` · `branding/*`
+`static/css/app.css` · `static/js/app.js` ·
+`templates/index.html` · `test_pipeline.py` · `.gitignore`
 
-This fork is published through GitHub's fork feature. If you want to reuse
+The KnoxMap logo and cover (`branding/*`, `static/logo.svg`) are new to this
+fork and replace Knoxify's own artwork; they are under the MIT licence below.
+
+If you want to reuse
 these files beyond that, ask arytek.
 
 ## Added in this fork — MIT
