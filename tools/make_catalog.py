@@ -445,7 +445,25 @@ def main(argv: list[str]) -> int:
         "shop": ("fixtures_windows_metal_014", None),
         "restaurant": ("fixtures_windows_metal_008", None),
     }
+    # Every block of flats was cream render and every office the same school
+    # wall, so a city centre came out one colour from end to end. Knox County's
+    # big buildings are brick in several colours, stone and pale commercial
+    # block; each building now takes one of these by where it stands.
+    SPECIAL_WALLS = {
+        "apartment": ["walls_exterior_house_02_064", "walls_exterior_house_01_016",
+                      "walls_exterior_house_01_052", "walls_exterior_house_02_036",
+                      "walls_exterior_house_02_048", "walls_exterior_house_02_016"],
+        "civic": ["walls_commercial_03_000", "walls_commercial_03_016",
+                  "walls_commercial_03_032", "walls_exterior_house_02_004",
+                  "walls_exterior_house_02_048", "walls_exterior_house_02_064"],
+        "medical": ["walls_commercial_03_032", "walls_exterior_house_02_048"],
+        "school": ["walls_exterior_house_01_016", "walls_exterior_house_02_064"],
+        "shop": ["walls_commercial_03_000", "walls_exterior_house_02_064",
+                 "walls_exterior_house_01_016", "walls_commercial_03_048"],
+        "restaurant": ["walls_exterior_house_02_064", "walls_commercial_03_016"],
+    }
     special_styles = {}
+    special_variants = {}
     for kind, (ext, inte, floor) in SPECIAL_SPEC.items():
         by_height = SPECIAL_WINDOWS[kind]
         style = {
@@ -468,6 +486,15 @@ def main(argv: list[str]) -> int:
             name, cur = SHOP_FRONTS[kind]
             style["shop_front"] = [window(name), curtains(cur)]
         special_styles[kind] = style
+        # The same building in other materials, so a city is not one colour.
+        variants = []
+        for wall in [ext] + [w for w in SPECIAL_WALLS.get(kind, ()) if w != ext]:
+            v = dict(style)
+            v["exterior"] = wall_entry(wall)
+            v["roof"] = dict(style["roof"])
+            v["roof"]["caps"] = caps_for(wall, ROOF_CAPS.get(kind))
+            variants.append(v)
+        special_variants[kind] = variants
 
     KINDS = ["livingroom", "kitchen", "bedroom", "bathroom", "dining",
              "hall", "storage", "office",
@@ -518,6 +545,8 @@ def main(argv: list[str]) -> int:
         f.write("HOUSE_STYLES = " + pprint.pformat(house_styles, width=100, sort_dicts=False) + "\n\n")
         f.write("# Materials for buildings OSM tags as something particular.\n")
         f.write("SPECIAL_STYLES = " + pprint.pformat(special_styles, width=100, sort_dicts=False) + "\n")
+        f.write("\nSPECIAL_STYLE_VARIANTS = "
+                + pprint.pformat(special_variants, width=100, sort_dicts=False) + "\n")
 
     print(f"wrote {out_path}: {len(tile_entries)} tile entries, "
           f"{len(furniture)} furniture roles, {len(colors)} room colours")

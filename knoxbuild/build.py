@@ -275,7 +275,10 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
     from . import catalog as C
 
     if kind and kind in C.SPECIAL_STYLES:
-        return C.SPECIAL_STYLES[kind]
+        variants = getattr(C, "SPECIAL_STYLE_VARIANTS", {}).get(kind) or [C.SPECIAL_STYLES[kind]]
+        # By the building's own position, so neighbours differ and a rebuild
+        # picks the same again.
+        return variants[(tile_x * 73856093 ^ tile_y * 19349663) % len(variants)]
 
     styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
         or C.HOUSE_STYLES

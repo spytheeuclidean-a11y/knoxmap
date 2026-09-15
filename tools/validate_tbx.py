@@ -41,7 +41,8 @@ def _collect(node) -> None:
             _collect(v)
 
 
-_collect([_C.TILE_ENTRIES, _C.HOUSE_STYLES, _C.SPECIAL_STYLES])
+_collect([_C.TILE_ENTRIES, _C.HOUSE_STYLES, _C.SPECIAL_STYLES,
+          getattr(_C, "SPECIAL_STYLE_VARIANTS", {})])
 
 # BuildingReader rejects anything outside this, and accepts versions 1..7.
 MAX_BUILDING_DIMENSION = 300
