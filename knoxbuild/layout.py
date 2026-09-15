@@ -1260,8 +1260,11 @@ def _place_windows(building: "Building", kind: str | None,
                 cap = ROOM_WINDOW_CAP.get(room.kind, DEFAULT_ROOM_WINDOW_CAP)
             else:
                 cap = SERVICE_WINDOW_CAP.get(room.kind, 1 << 30)
-            if room.is_core:
-                cap = 1 if kind == "apartment" else 0
+            if room.is_shaft:
+                continue
+            # A corridor or stair hall along an outside wall gets that wall's
+            # windows like any room: capped at one, a corridor running the
+            # length of a tower's side left sixty tiles of blank brick.
             if taken.get(idx, 0) >= cap:
                 continue
             add((x, y, d))
@@ -1323,7 +1326,11 @@ NORTH_WEST_ONLY = {"painting", "mirror", "shelf"}
 
 
 def _is_wall_piece(role: str) -> bool:
-    return C.FURNITURE_LAYERS.get(role, "Furniture") != "Furniture"
+    """Hung on a wall rather than standing on the floor. Rugs are on their own
+    floor layer but are floor pieces: placed as wall pieces, their 2x2
+    footprint was never checked against the room and hung out through the
+    outside wall, floating beside the building."""
+    return C.FURNITURE_LAYERS.get(role, "Furniture") not in ("Furniture", "FloorFurniture")
 
 
 def _wall_edge(x: int, y: int, facing: str) -> tuple[int, int, str]:
@@ -1502,6 +1509,10 @@ def _furnish(plan: Plan, rng: random.Random,
             if edge in door_edges or edge in used_walls:
                 return False
             orient = _facing(role, facing)
+            # Every tile of the piece in this room: a two-tile mirror hung at
+            # the end of a wall reached through the outside wall.
+            if any(_room_at(plan, cx, cy) != idx for cx, cy in _cells_for(role, x, y, orient)):
+                return False
             plan.furniture.append((role, x, y, orient))
             used_walls.add(edge)
             plan.wall_pieces.add(edge)

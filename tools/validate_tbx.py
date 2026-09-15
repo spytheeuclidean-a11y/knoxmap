@@ -208,6 +208,28 @@ def check(path: str) -> list[str]:
                 errs.append(f"{where}: <rooms> index {n} out of range "
                             f"(have {len(rooms)} rooms)")
                 break
+        # Furniture standing in a room must stay in it. Placed without this, a
+        # two-tile mirror or a rug reached through the outside wall and hung
+        # in the air beside the building.
+        if len(vals) == w * h:
+            cells = [int(v) for v in vals]
+            for o in floor.findall("object"):
+                if o.get("type") != "furniture":
+                    continue
+                fx, fy = int(o.get("x", -1)), int(o.get("y", -1))
+                idx = int(o.get("FurnitureTiles", -1))
+                if not (0 <= fx < w and 0 <= fy < h) or not (0 <= idx < len(furniture)):
+                    continue
+                room = cells[fy * w + fx]
+                if room == 0:
+                    continue                  # rooftop plant, fences
+                entry = furniture[idx].find(f"entry[@orient='{o.get('orient')}']")
+                for t in (entry.findall("tile") if entry is not None else ()):
+                    tx, ty = fx + int(t.get("x")), fy + int(t.get("y"))
+                    if not (0 <= tx < w and 0 <= ty < h) or cells[ty * w + tx] != room:
+                        errs.append(f"{where}: furniture {t.get('name')} at ({fx},{fy}) "
+                                    f"reaches outside its room")
+                        break
     return errs
 
 
