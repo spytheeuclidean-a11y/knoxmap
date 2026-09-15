@@ -165,10 +165,17 @@ def check(path: str) -> list[str]:
                 pitched = any(r.get("RoofType") != "FlatTop" for r in floors[-2].iter("object")
                               if r.get("type") == "roof") if len(floors) >= 2 else False
                 top = len(floors) - (3 if pitched else 2)
-                want = top if o.get("RoofType") == "FlatTop" else top + 1
-                if level != want:
-                    errs.append(f"{where}: {o.get('RoofType')} roof on floor {level}, expected {want}")
-                if o.get("RoofType") == "FlatTop" and o.get("Depth") != "Three":
+                # A flat roof may also cover the ledge where a tower steps back.
+                parapet = o.get("RoofType") == "FlatTop" and o.get("Depth") == "Point5"
+                if parapet:
+                    if level != top + 1:
+                        errs.append(f"{where}: parapet on floor {level}, expected the roof floor {top + 1}")
+                elif o.get("RoofType") == "FlatTop":
+                    if level > top:
+                        errs.append(f"{where}: flat roof on floor {level}, above the top storey {top}")
+                elif level != top + 1:
+                    errs.append(f"{where}: {o.get('RoofType')} roof on floor {level}, expected {top + 1}")
+                if o.get("RoofType") == "FlatTop" and o.get("Depth") not in ("Three", "Point5"):
                     errs.append(f"{where}: flat roof Depth {o.get('Depth')!r} compiles to no roof - use Three")
                 if o.get("RoofType") not in VALID_ROOF_TYPES:
                     errs.append(f"{where}: roof bad RoofType {o.get('RoofType')!r}")

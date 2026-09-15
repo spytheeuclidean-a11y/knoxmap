@@ -117,6 +117,15 @@ ROOM_STYLE = {
                      "painting", "sidetable"]),
     "closet": (C.FLOOR_WOOD, "Closet", ["wardrobe", "shelf", "crate", "wardrobe2"]),
     "laundry": (C.FLOOR_TILE_PALE, "Laundry", ["washer", "shelf", "crate", "sink"]),
+    "generalstore": (C.FLOOR_TILE_CHECK, "General Store",
+                     ["counter", "bookshelf", "bookshelf", "shelf", "crate", "bookshelf",
+                      "plant"]),
+    "conveniencestore": (C.FLOOR_TILE_PALE, "Convenience Store",
+                         ["counter", "fridge", "bookshelf", "bookshelf", "shelf", "crate"]),
+    "clothingstore": (C.FLOOR_WOOD, "Clothing Store",
+                      ["counter", "wardrobe", "wardrobe2", "mirror", "dresser", "plant"]),
+    "cafe": (C.FLOOR_WOOD, "Cafe",
+             ["counter", "fridge", "stove", "chair", "chair", "plant", "painting"]),
     "office": (C.FLOOR_WOOD, "Office",
                ["table", "chair", "bookshelf", "painting", "plant"]),
     # Rooms only special buildings use. Every name is in RoomNames.txt, so loot
@@ -176,6 +185,11 @@ SPECIAL_MIXES = {
                    ["restaurant", "storage"]),
     "shop":       (["storage", "office", "storage", "bathroom", "lobby"],
                    ["storage", "office"]),
+    # The shops under a block of flats: the game's own shop rooms, with a
+    # stockroom behind.
+    "retail":     (["generalstore", "conveniencestore", "clothingstore", "cafe",
+                    "storage"],
+                   ["generalstore", "cafe", "storage"]),
     "industrial": (["warehouse", "warehouse", "office", "storage", "bathroom",
                     "garage"],
                    ["warehouse", "storage"]),
@@ -999,6 +1013,7 @@ GLASS_TOWER_FROM_LEVELS = 8
 # The ground floor of a shop or restaurant is its shop front: glass across the
 # front, broken only by the door.
 SHOP_FRONT_KINDS = {"shop", "restaurant"}
+RETAIL_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe"}
 # Buildings laid out like a house, where each room takes only the windows it
 # needs. Elsewhere a room takes whatever its stretch of facade offers - an
 # open office along a glazed wall is not limited to one window.
@@ -1012,6 +1027,7 @@ ROOM_WINDOW_CAP = {
     "bathroom": 1, "storage": 1, "hall": 1, "garage": 0, "shed": 1, "elevator": 0,
     "kitchen": 2, "bedroom": 3, "dining": 3, "office": 2, "livingroom": 5,
     "kidsbedroom": 2, "closet": 0, "laundry": 1,
+    "generalstore": 6, "conveniencestore": 6, "clothingstore": 6, "cafe": 6,
 }
 DEFAULT_ROOM_WINDOW_CAP = 4
 # Outside house-like buildings a facade keeps its rhythm whatever is behind
@@ -1126,7 +1142,8 @@ def _bays(by_side: dict, front: set[str], near: int, far: int,
     return bays
 
 
-def _place_windows(building: "Building", kind: str | None) -> None:
+def _place_windows(building: "Building", kind: str | None,
+                   shop_ground: bool = False) -> None:
     """Windows in bays down the facade, the same bays on every storey.
 
     Two things made the buildings look wrong. Windows were spaced along every
@@ -1161,7 +1178,19 @@ def _place_windows(building: "Building", kind: str | None) -> None:
     ground_bays = bays
     glass: list[tuple[int, int, str, int, int]] = []
     glass_set: set = set()
-    if kind in SHOP_FRONT_KINDS:
+    # A storey stepped back from the ones below has its own outside walls.
+    bays_by_grid: dict = {}
+
+    def bays_for(grid):
+        key = tuple(tuple(bool(v) for v in row) for row in grid)
+        if key not in bays_by_grid:
+            sides: dict[str, list] = {}
+            for side, wall in _facade_runs(grid):
+                sides.setdefault(side, []).extend(wall)
+            bays_by_grid[key] = _bays(sides, front, near, far)
+        return bays_by_grid[key]
+
+    if kind in SHOP_FRONT_KINDS or shop_ground:
         glass = _bays(by_side, front, 1, far, only=front)
         glass_set = set(glass)
         ground_bays = glass + [b for b in bays if b not in glass_set]
@@ -1220,7 +1249,7 @@ def _place_windows(building: "Building", kind: str | None) -> None:
                                 add(edge)
                                 taken[idx] = taken.get(idx, 0) + 1
                                 break
-        for x, y, d, ix, iy in ([] if house_like else (ground_bays if level == 0 else bays)):
+        for x, y, d, ix, iy in ([] if house_like else (ground_bays if level == 0 else bays_for(storey.grid))):
             if (x, y, d) in blocked:
                 continue
             idx = storey.grid[iy][ix]
@@ -1237,7 +1266,8 @@ def _place_windows(building: "Building", kind: str | None) -> None:
                 continue
             add((x, y, d))
             taken[idx] = taken.get(idx, 0) + 1
-            if level == 0 and kind in SHOP_FRONT_KINDS and (x, y, d, ix, iy) in glass_set:
+            if level == 0 and (kind in SHOP_FRONT_KINDS or shop_ground) \
+                    and (x, y, d, ix, iy) in glass_set:
                 storey.shop_front.add((x, y, d))
 
         # The bays keep windows in columns, but a room they miss would have no
@@ -1330,6 +1360,8 @@ CENTRE_GROUPS: dict[str, tuple[list[tuple[str, int, int, str]], int]] = {
                  ("chair", 3, 1, "E")], 3),
     "classroom": ([("dining_table", 0, 1, "W"), ("chair", 0, 0, "N"),
                    ("chair", 1, 0, "N")], 6),
+    "cafe": ([("round_table", 1, 0, "W"), ("chair", 0, 0, "W"),
+              ("chair", 2, 0, "E")], 3),
     "restaurant": ([("round_table", 1, 1, "W"), ("chair", 0, 1, "W"),
                     ("chair", 2, 1, "E"), ("chair", 1, 0, "N"),
                     ("chair", 1, 2, "S")], 6),
@@ -1800,8 +1832,12 @@ def build_building(width: int, height: int, levels: int = 1,
                    kind: str | None = None,
                    mask: list[list[bool]] | None = None,
                    settings: Settings | None = None,
-                   street: str | None = None) -> Building:
+                   street: str | None = None,
+                   retail: bool = False) -> Building:
     """Lay out a building of `levels` storeys.
+
+    `retail` puts shops on the ground floor of a block of flats, as on any
+    city street; towers step back above SETBACK_FROM_LEVELS.
 
     Each storey is laid out separately rather than copied, because a block of
     flats whose every floor is identical reads as a rendering error; only the
@@ -1829,14 +1865,22 @@ def build_building(width: int, height: int, levels: int = 1,
         found = _pick_shaft(core, width, height, mask, stairs)
         if found:
             shaft, shaft_door = found
+    upper_mask, setback_at = _setback(width, height, mask, levels, core, shaft,
+                                      corridor)
+    shops = retail and kind == "apartment" and levels >= 3 and core is not None
     storeys = [
-        build_plan(width, height, commercial=commercial, seed=seed + 977 * lvl,
-                   kind=kind, mask=mask, ground=(lvl == 0), settings=settings,
+        build_plan(width, height, commercial=commercial or (shops and lvl == 0),
+                   seed=seed + 977 * lvl,
+                   kind="retail" if shops and lvl == 0 else kind,
+                   mask=upper_mask if setback_at and lvl >= setback_at else mask,
+                   ground=(lvl == 0), settings=settings,
                    core=core, level=lvl, levels=levels, stairs=stairs,
                    corridor=corridor, shaft=shaft, shaft_door=shaft_door,
                    street=street)
         for lvl in range(levels)
     ]
+    if shops:
+        _shop_doors(storeys[0], street)
     building = Building(width=width, height=height, storeys=storeys)
     if stairs is not None:
         for lvl in range(levels - 1):
@@ -1845,8 +1889,67 @@ def build_building(width: int, height: int, levels: int = 1,
             _clear_for_stairs(storeys[lvl + 1], *stairs)
     # Windows last and for the whole building at once, so they stack in
     # columns instead of each floor scattering its own.
-    _place_windows(building, kind)
+    _place_windows(building, kind, shop_ground=shops)
     return building
+
+
+# Towers step back: from this many storeys the top part is set in from the
+# edges, the way tall buildings are built for light and wind. A 30-storey
+# block that went straight up from its footprint was a featureless box.
+SETBACK_FROM_LEVELS = 12
+SETBACK_SHARE = 0.65          # the step comes this far up
+SETBACK_TILES = 2
+SETBACK_MIN_KEEP = 0.5        # the upper part keeps at least this much floor
+
+
+def _setback(width: int, height: int, mask, levels: int, core, shaft,
+             corridor: bool):
+    """(the upper storeys' mask, the storey the step is at) or (None, 0)."""
+    if levels < SETBACK_FROM_LEVELS or core is None:
+        return None, 0
+    base = mask or [[True] * width for _ in range(height)]
+    k = SETBACK_TILES
+    # A block of flats has a corridor end to end: it steps in along its long
+    # sides only, so the corridor still reaches both ends.
+    x0, y0, x1, y1 = core
+    along_x = corridor and (x1 - x0) >= (y1 - y0)
+    along_y = corridor and not along_x
+
+    def kept(x, y):
+        for dx in range(-k, k + 1):
+            for dy in range(-k, k + 1):
+                if along_x and dx:
+                    continue
+                if along_y and dy:
+                    continue
+                nx, ny = x + dx, y + dy
+                if not (0 <= nx < width and 0 <= ny < height and base[ny][nx]):
+                    return False
+        return True
+
+    upper = [[base[y][x] and kept(x, y) for x in range(width)] for y in range(height)]
+    for rx0, ry0, rx1, ry1 in [core] + ([shaft] if shaft else []):
+        for y in range(ry0, ry1 + 1):
+            for x in range(rx0, rx1 + 1):
+                if not upper[y][x]:
+                    return None, 0
+    if sum(map(sum, upper)) < SETBACK_MIN_KEEP * sum(map(sum, base)):
+        return None, 0
+    return upper, round(levels * SETBACK_SHARE)
+
+
+def _shop_doors(plan: "Plan", street: str | None) -> None:
+    """A street door into each shop on a block of flats' ground floor."""
+    for idx, room in enumerate(plan.rooms, 1):
+        if room.is_core or room.is_shaft or room.kind not in RETAIL_ROOMS:
+            continue
+        runs = [(side, wall) for side, wall in _outside_runs(plan, idx) if len(wall) >= 3]
+        if not runs:
+            continue
+        side, wall = max(runs, key=lambda r: (r[0] == street, len(r[1])))
+        door = wall[len(wall) // 2]
+        if door not in plan.doors:
+            plan.doors.append(door)
 
 
 def _stair_foot(stairs: tuple[int, int, str] | None) -> tuple[int, int] | None:

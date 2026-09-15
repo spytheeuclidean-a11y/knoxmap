@@ -336,9 +336,15 @@ def render_tbx(plan: Plan | Building, name: str,
         # below under a ceiling of roof tiles - and shaped to the footprint
         # rather than its bounding box, so an L-shaped building does not carry
         # a roof over its own back yard.
-        if level == len(storeys) - 1:
-            rects = roof_rects(storey.grid)
-            for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(rects, peaked, roof30):
+        # A roof over whatever of this storey has no storey above it: the
+        # whole top floor, and the ledge where a tower steps back.
+        above = storeys[level + 1].grid if level + 1 < len(storeys) else None
+        exposed = [[v if above is None or not above[y][x] else 0
+                    for x, v in enumerate(row)] for y, row in enumerate(storey.grid)]
+        if any(any(row) for row in exposed):
+            rects = roof_rects(exposed)
+            for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(
+                    rects, peaked and above is None, roof30):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),

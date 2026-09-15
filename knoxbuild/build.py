@@ -392,6 +392,7 @@ def _ring_points(geom: dict) -> list[list[float]]:
 
 
 STREET_LOOK_TILES = 40
+RETAIL_DENSITY = 0.28
 
 
 def _street_finder(out_dir: str, map_name: str):
@@ -436,9 +437,10 @@ def _street_finder(out_dir: str, map_name: str):
 
 def _make_one(job: tuple) -> tuple[int, int, int]:
     """Lay out one building and write its .tbx. Returns (storeys, rooms, furniture)."""
-    w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street = job
+    w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street, retail = job
     plan = build_building(w, h, levels=levels, commercial=commercial, seed=seed,
-                          kind=kind, mask=mask, settings=settings, street=street)
+                          kind=kind, mask=mask, settings=settings, street=street,
+                          retail=retail)
     with open(path, "w", encoding="utf-8") as f:
         f.write(render_tbx(plan, label, style))
     return (len(plan.storeys), len(plan.rooms),
@@ -637,7 +639,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         label = tags.get("name") or f"{map_name} building {i}"
         jobs.append((w, h, levels, commercial, seed + i, special, mask,
                      settings, style, label, os.path.join(bdir, fname),
-                     street_side(x0, y0, w, h)))
+                     street_side(x0, y0, w, h),
+                     # Shops under flats where the town is built up.
+                     context.density(cx, cy) >= RETAIL_DENSITY))
         decided.append((fname, label, x0, y0, w, h, fp, px, special, measured,
                         commercial, style, mask,
                         (tags.get("name") or "") if is_notable(tags, special) else ""))

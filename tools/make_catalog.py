@@ -349,6 +349,7 @@ def main(argv: list[str]) -> int:
     # What makes a Knox County house read as a house from outside, besides its
     # roof: a trim board or foundation along the bottom of each storey and
     # shutters either side of the windows. (trim, shutters) per style.
+    CAP_BAND = "walls_detailing_01_029"
     WHITE_BASE, FOUNDATION, BASE = ("walls_detailing_01_013", "walls_detailing_01_005",
                                     "walls_detailing_01_021")
     WHITE_S, BLUE_S, BROWN_S, DARK_S = ("fixtures_windows_detailing_01_016",
@@ -476,14 +477,20 @@ def main(argv: list[str]) -> int:
             "windows_by_levels": [[levels, window(name), curtains(cur)]
                                   for levels, name, cur in by_height],
             "roof": roof(*SPECIAL_ROOFS.get(kind, FLAT_GREY)),
+            # Big buildings get the wall-top cap strip as their trim: a band
+            # at each floor and a cornice along the top, the lines that break
+            # up a tall facade; smaller special buildings keep a foundation.
             "trim": bt_entry("exterior_wall_trim",
-                             None if kind in ("church", "barn", "industrial") else FOUNDATION),
+                             None if kind in ("church", "barn", "industrial")
+                             else CAP_BAND if kind in ("apartment", "civic", "medical")
+                             else FOUNDATION),
             "shutters": None,
             "grime": GRIME,
         }
         style["roof"]["caps"] = caps_for(ext, ROOF_CAPS.get(kind))
-        if kind in SHOP_FRONTS:
-            name, cur = SHOP_FRONTS[kind]
+        if kind in SHOP_FRONTS or kind == "apartment":
+            # Flats may have shops on the ground floor (layout.build_building).
+            name, cur = SHOP_FRONTS.get(kind, SHOP_FRONTS["shop"])
             style["shop_front"] = [window(name), curtains(cur)]
         special_styles[kind] = style
         # The same building in other materials, so a city is not one colour.
@@ -501,7 +508,8 @@ def main(argv: list[str]) -> int:
              # Rooms only special buildings use; all present in RoomNames.txt.
              "classroom", "church", "warehouse", "garage", "clinic",
              "bar", "restaurant", "lobby", "gym", "library", "medical", "shed",
-             "elevator", "kidsbedroom", "closet", "laundry"]
+             "elevator", "kidsbedroom", "closet", "laundry",
+             "generalstore", "conveniencestore", "clothingstore", "cafe"]
     missing = [k for k in KINDS if k not in room_colors]
     if missing:
         raise SystemExit(f"ERROR: room names absent from RoomNames.txt: {missing}")
