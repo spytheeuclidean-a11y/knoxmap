@@ -177,9 +177,16 @@ def configure_tools(tools: Path, game: Path | None) -> None:
     settings = tools / "settings"
     settings.mkdir(exist_ok=True)
     ini = settings / "PZTools.ini"
+    # The game folder too: the editor reads the game's tile definitions from
+    # it, and without them every window - a floor-to-ceiling glass panel as
+    # much as a small sash - got a small house-window hole cut in the wall, so
+    # tall windows showed wall behind the glass. A Steam library off the
+    # default drive is not found by the editor's own search.
+    game_line = f"ProjectZomboidDirectory={game.as_posix()}\n" if game else ""
     ini.write_text("[%General]\nSettingsSchema=2\n\n[Paths]\n"
                    f"ConfigDirectory={config_dir.as_posix()}\n"
-                   f"TilesDirectory={tiles_dir.as_posix()}\n", encoding="utf-8")
+                   f"TilesDirectory={tiles_dir.as_posix()}\n" + game_line,
+                   encoding="utf-8")
     say("      editor paths written")
 
     if game is None:
