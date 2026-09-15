@@ -190,8 +190,35 @@ def check(path: str) -> list[str]:
                 if rw <= 0 or rh <= 0 or x + rw > w or y + rh > h:
                     errs.append(f"{where}: roof {rw}x{rh} at ({x},{y}) "
                                 f"does not fit {w}x{h}")
+            elif typ == "wall":
+                # A run of wall in another material (the shop glass). The
+                # reader wants a length of 1..MAX and quietly swaps a tile of
+                # the wrong category for "none", which leaves a gap in the wall.
+                length = int(o.get("length", 0))
+                if o.get("dir") not in VALID_DIRS:
+                    errs.append(f"{where}: wall bad dir {o.get('dir')!r}")
+                if not 1 <= length <= MAX_BUILDING_DIMENSION:
+                    errs.append(f"{where}: wall length {length}")
+                elif (x + length if o.get("dir") == "W" else y + length) > (w if o.get("dir") == "W" else h) + 1:
+                    errs.append(f"{where}: wall of {length} at ({x},{y}) runs off the building")
+                for attr, cat in (("Tile", "exterior_walls"), ("InteriorTile", "interior_walls")):
+                    check_ref(f"{where} wall/{attr}", o.get(attr))
+                    n = int(o.get(attr) or 0)
+                    if 0 < n <= len(entries) and entries[n - 1].get("category") != cat:
+                        errs.append(f"{where}: wall {attr} is {entries[n - 1].get('category')}, not {cat}")
             elif typ not in ("door", "window", "stairs"):
                 errs.append(f"{where}: unknown object type {typ!r}")
+
+        # User tiles: a grid one wider and one taller than the building, of
+        # 1-based indices into <user_tiles>.
+        names = root.findall("user_tiles/tile")
+        for layer in floor.findall("tiles"):
+            vals = [v for v in (layer.text or "").replace("\n", ",").split(",") if v.strip()]
+            if len(vals) != (w + 1) * (h + 1):
+                errs.append(f"{where}: <tiles {layer.get('layer')}> has {len(vals)} values, "
+                            f"expected {(w + 1) * (h + 1)}")
+            if any(not 0 <= int(v) <= len(names) for v in vals):
+                errs.append(f"{where}: <tiles {layer.get('layer')}> index out of range")
 
         grid = floor.find("rooms")
         if grid is None or not (grid.text or "").strip():

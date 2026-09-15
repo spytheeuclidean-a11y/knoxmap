@@ -1322,7 +1322,14 @@ SWITCH = "switch"
 # and mirrors on those walls rendered as planks floating over the floor. They
 # go on north and west walls only. (The switch has true east and south
 # sprites, and every room needs one, so it may go anywhere.)
-NORTH_WEST_ONLY = {"painting", "mirror", "shelf"} | set(getattr(C, "ERIKA_WALL_ART", ()))
+NORTH_WEST_ONLY = ({"painting", "mirror", "shelf"} | set(getattr(C, "ERIKA_WALL_ART", ()))
+                   | set(getattr(C, "ERIKA_SHOP_ADS", ())))
+# With Erika's Tiles: shops hang its drinks and magazine posters instead of
+# paintings, and these rooms get a drinks machine.
+SHOP_DECOR_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe", "bar",
+                    "restaurant", "gym"}
+VENDING_ROOMS = {"conveniencestore", "cafe", "lobby", "gym", "classroom", "clinic"}
+ERIKA_SHELF_SHARE = 0.5
 
 _ERIKA: list[bool] = []
 
@@ -1560,9 +1567,15 @@ def _furnish(plan: Plan, rng: random.Random,
         if _erika_ready():
             # With Erika's Tiles installed, pictures and plants come from its
             # far larger range, so no two living rooms hang the same print.
-            base = [rng.choice(C.ERIKA_WALL_ART) if role in ("painting", "mirror") and C.ERIKA_WALL_ART
+            shop = r.kind in SHOP_DECOR_ROOMS
+            base = [rng.choice(C.ERIKA_SHOP_ADS) if role == "painting" and shop and C.ERIKA_SHOP_ADS
+                    else rng.choice(C.ERIKA_WALL_ART) if role in ("painting", "mirror") and C.ERIKA_WALL_ART
                     else rng.choice(C.ERIKA_PLANTS) if role == "plant" and C.ERIKA_PLANTS
+                    else rng.choice(C.ERIKA_SHELVES)
+                    if role == "bookshelf" and C.ERIKA_SHELVES and rng.random() < ERIKA_SHELF_SHARE
                     else role for role in base]
+            if r.kind in VENDING_ROOMS and C.ERIKA_VENDING:
+                base = base + [rng.choice(C.ERIKA_VENDING)]
         # Scale the wishlist with floor area, or a 12x9 living room ends up
         # with four items rattling around in it.
         # Knox County's rooms hold 8-13 pieces per 10 m2 of floor (counting

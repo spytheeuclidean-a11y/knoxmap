@@ -78,44 +78,127 @@ ERIKA_TILES_TXT = ("D:/SteamLibrary/steamapps/workshop/content/108600/3346506593
 FACING_TO_ORIENT = {"S": "N", "E": "W", "N": "S", "W": "E"}
 
 
-def erika_roles(furniture: dict, layers: dict) -> tuple[list[str], list[str]]:
-    """Single-tile wall art (paintings, posters, mirrors) and potted plants
-    from Erika's Tiles, added to `furniture` as roles erika_art_N and
-    erika_plant_N. Pieces are grouped by their names in the tile definitions,
-    with one tile per facing."""
+# Shop fronts: Erika's glass shop walls, nine frame colours. Each design is a
+# block of four tiles - west pane, north pane, the corner, the south-east post -
+# starting at one of these. (The rest of each sheet is the same panes smashed
+# or with the glass out, frosted glass, and door frames: 4 and 5 hold a door
+# under a glass transom.)
+STOREFRONT_SHEETS = [f"walls_commercial_erika_{n:02d}" for n in range(1, 10)]
+STOREFRONT_DESIGNS = (24, 48, 64, 72, 96, 112)
+# The glass shop door (fixtures_doors_erika_01) nearest each frame colour:
+# black, maroon, grey, white, green, red, blue, rust, brown.
+DOOR_SHEET = "fixtures_doors_erika_01"
+STOREFRONT_DOORS = [116, 112, 116, 120, 124, 112, 116, 112, 112]
+# Shop signs, strips of tiles hung along a wall: (sheet, wall, tiles). Tiles
+# run east along a north wall and south along a west one, the order the
+# lettering needs.
+SHOP_SIGNS = [
+    ("signs_erika_01", "N", [0, 1, 2, 3, 4]),        # Zac's Hardware
+    ("signs_erika_01", "N", [5, 6, 7]),              # Coin-op Laundromat
+    ("signs_erika_01", "N", [10, 11, 12]),           # Legal Services
+    ("signs_erika_01", "N", [13, 14, 15]),           # Discount Account
+    ("signs_erika_01", "N", [16, 17, 18]),           # Value Insurance
+    ("signs_erika_01", "N", [24, 25, 26]),           # Bail Bonds
+    ("signs_erika_01", "N", [48, 49, 50]),           # Evan Philips Tax & Accounting
+    ("signs_erika_02", "N", [8, 9, 10, 11]),         # Farming Supply
+    ("signs_erika_02", "N", [20, 21, 22, 23]),       # Dog Grooming
+    ("signs_erika_01", "W", [58, 57, 56]),           # Value Insurance
+    ("signs_erika_02", "W", [19, 18, 17, 16]),       # Dog Grooming
+    ("signs_erika_02", "W", [27, 26, 25, 24]),       # Sure Fitness
+]
+
+
+def _tile_props(body: str) -> dict:
+    # [ \t], not \s: a property with no value would swallow the next line.
+    return dict(re.findall(r"^[ \t]*(\w+)[ \t]*=[ \t]*(.*?)[ \t]*$", body, re.M))
+
+
+def erika_roles(furniture: dict, layers: dict) -> dict:
+    """Pieces from Erika's Tiles, added to `furniture` as roles, by group:
+    "art" (paintings, posters, mirrors), "plants", "shop_ads" (posters for
+    shop walls), "vending" (drinks machines), "shelves" (bookcases), plus
+    "storefronts" (exterior/interior wall entries of shop glass) and "signs"
+    ({"N": [...], "W": [...]} strips of shop sign tiles). Empty when the mod's
+    tile definitions are not on this PC."""
     import os as _os
     path = _os.environ.get("ERIKAS_TILES_TXT") or ERIKA_TILES_TXT
+    out: dict = {"art": [], "plants": [], "shop_ads": [], "vending": [],
+                 "shelves": [], "storefronts": [], "signs": {"N": [], "W": []}}
     if not _os.path.exists(path):
-        return [], []
+        return out
     txt = open(path, encoding="utf-8", errors="replace").read()
-    art, plants = [], []
     for block in re.split(r"\ntileset\s*\n", txt)[1:]:
         sheet = re.search(r"file\s*=\s*(\S+)", block).group(1)
-        wall = sheet.startswith(("walls_decoration_paintings_erika", "walls_decoration_posters_erika",
-                                 "walls_decoration_mirrors_erika"))
-        plant = sheet.startswith("vegetation_indoor_erika")
-        if not (wall or plant):
+        if sheet.startswith(("walls_decoration_paintings_erika", "walls_decoration_posters_erika",
+                             "walls_decoration_mirrors_erika")):
+            group = "art"
+        elif sheet.startswith("vegetation_indoor_erika"):
+            group = "plants"
+        elif sheet == "location_shop_accessories_erika_01":
+            group = "shop"
+        elif sheet == "furniture_shelving_erika_01":
+            group = "shelves"
+        else:
             continue
         pieces: dict[tuple, dict] = {}
         for idx, body in re.findall(r"// \S+_(\d+)\s*\n\s*tile\s*\{(.*?)\n\s*\}", block, re.S):
-            props = dict(re.findall(r"^\s*(\w+)\s*=\s*(.*?)\s*$", body, re.M))
+            props = _tile_props(body)
+            n = int(idx)
             facing = props.get("Facing")
             if facing not in FACING_TO_ORIENT or "SpriteGridPos" in props:
                 continue                        # multi-tile pieces are left out
-            key = (props.get("GroupName", ""), props.get("CustomName", ""))
-            pieces.setdefault(key, {})[FACING_TO_ORIENT[facing]] = f"{sheet}_{int(idx):03d}"
+            if group == "shelves" and not (n < 16 or 104 <= n < 128):
+                continue                        # tall bookcases only
+            kind = group
+            if group == "shop":
+                # Drinks machines come in blocks of four facings, the posters
+                # that go with them in pairs for a north and a west wall.
+                if "container" in props:
+                    kind = "vending"
+                elif props.get("MoveType") == "WallObject":
+                    kind = "shop_ads"
+                else:
+                    continue                    # standing signs
+            if kind in ("vending", "shelves"):
+                key = (kind, n // 4)
+            elif kind == "shop_ads":
+                key = (kind, n // 2)
+            else:
+                key = (kind, props.get("GroupName", ""), props.get("CustomName", ""))
+            pieces.setdefault(key, {})[FACING_TO_ORIENT[facing]] = f"{sheet}_{n:03d}"
         for key, by_orient in pieces.items():
-            if wall and {"N", "W"} <= set(by_orient):
-                role = f"erika_art_{len(art)}"
+            kind = key[0]
+            prefix = {"art": "erika_art", "plants": "erika_plant", "shop_ads": "erika_ad",
+                      "vending": "erika_vending", "shelves": "erika_shelves"}[kind]
+            role = f"{prefix}_{len(out[kind])}"
+            if kind in ("art", "shop_ads") and {"N", "W"} <= set(by_orient):
                 furniture[role] = {o: {"0,0": t} for o, t in by_orient.items() if o in ("N", "W")}
                 layers[role] = "WallFurniture"
-                art.append(role)
-            elif plant and len(by_orient) == 4:
-                role = f"erika_plant_{len(plants)}"
+            elif kind in ("plants", "vending", "shelves") and len(by_orient) == 4:
                 furniture[role] = {o: {"0,0": t} for o, t in by_orient.items()}
                 layers[role] = "Furniture"
-                plants.append(role)
-    return art, plants
+            else:
+                continue
+            out[kind].append(role)
+    for sheet, door in zip(STOREFRONT_SHEETS, STOREFRONT_DOORS):
+        if not re.search(rf"file\s*=\s*{sheet}\s*\n", txt):
+            continue
+        doors = {"category": "doors",
+                 "tiles": {"West": f"{DOOR_SHEET}_{door:03d}", "North": f"{DOOR_SHEET}_{door + 1:03d}",
+                           "WestOpen": f"{DOOR_SHEET}_{door + 2:03d}",
+                           "NorthOpen": f"{DOOR_SHEET}_{door + 3:03d}"}}
+        for base in STOREFRONT_DESIGNS:
+            tiles = {"West": f"{sheet}_{base:03d}", "North": f"{sheet}_{base + 1:03d}",
+                     "NorthWest": f"{sheet}_{base + 2:03d}", "SouthEast": f"{sheet}_{base + 3:03d}",
+                     "WestWindow": f"{sheet}_{base:03d}", "NorthWindow": f"{sheet}_{base + 1:03d}",
+                     "WestDoor": f"{sheet}_004", "NorthDoor": f"{sheet}_005"}
+            out["storefronts"].append([{"category": "exterior_walls", "tiles": tiles},
+                                       {"category": "interior_walls", "tiles": dict(tiles)},
+                                       doors])
+    for sheet, wall, idx in SHOP_SIGNS:
+        if re.search(rf"file\s*=\s*{sheet}\s*\n", txt):
+            out["signs"][wall].append([f"{sheet}_{i:03d}" for i in idx])
+    return out
 
 
 def main(argv: list[str]) -> int:
@@ -338,7 +421,7 @@ def main(argv: list[str]) -> int:
     # belongs on the WallFurniture layer; written without a layer it becomes
     # floor furniture standing in the middle of the tile.
     furniture_layers = {role: layers[a] for role, a in ROLES.items()}
-    erika_art, erika_plants = erika_roles(furniture, furniture_layers)
+    erika = erika_roles(furniture, furniture_layers)
 
     # Wall and floor palettes. Every building used to share one exterior wall
     # and one interior wall, so a whole town came out identical. Houses now draw
@@ -596,8 +679,15 @@ def main(argv: list[str]) -> int:
         f.write("FURNITURE_LAYERS = " + pprint.pformat(furniture_layers, width=100) + "\n\n")
         f.write("# Roles from Erika's Tiles (workshop 3346506593), used only when that mod\n"
                 "# is installed; see knoxpaths.erikas_tiles_ready.\n")
-        f.write("ERIKA_WALL_ART = " + pprint.pformat(erika_art, width=100) + "\n")
-        f.write("ERIKA_PLANTS = " + pprint.pformat(erika_plants, width=100) + "\n\n")
+        f.write("ERIKA_WALL_ART = " + pprint.pformat(erika["art"], width=100) + "\n")
+        f.write("ERIKA_PLANTS = " + pprint.pformat(erika["plants"], width=100) + "\n")
+        f.write("ERIKA_SHOP_ADS = " + pprint.pformat(erika["shop_ads"], width=100) + "\n")
+        f.write("ERIKA_VENDING = " + pprint.pformat(erika["vending"], width=100) + "\n")
+        f.write("ERIKA_SHELVES = " + pprint.pformat(erika["shelves"], width=100) + "\n")
+        f.write("# Shop glass: [exterior wall, interior wall, glass door] entries per design.\n")
+        f.write("ERIKA_STOREFRONTS = " + pprint.pformat(erika["storefronts"], width=100) + "\n")
+        f.write("# Shop signs by the wall they hang on, as strips of tiles.\n")
+        f.write("ERIKA_SIGNS = " + pprint.pformat(erika["signs"], width=100) + "\n\n")
         f.write("# Official room colours, straight from the tools' RoomNames.txt.\n")
         f.write("ROOM_COLORS = " + pprint.pformat(colors, width=100, sort_dicts=False) + "\n\n")
         f.write("# Houses draw from these, picked per neighbourhood block so a\n"

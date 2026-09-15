@@ -7,14 +7,15 @@ differ and are easy to get backwards:
     furniture      0-based, no null form         (furnitureIndex)
 
 Element order inside <building> follows the writer: tile entries, furniture,
-used_tiles, used_furniture, the <room> list, then <floor>.
+user_tiles, used_tiles, used_furniture, the <room> list, then <floor>.
 """
 from __future__ import annotations
 
+import random
 from xml.sax.saxutils import escape, quoteattr
 
 from . import catalog as C
-from .layout import ROOM_STYLE, Building, Plan, roof_rects
+from .layout import ROOM_STYLE, Building, Plan, _erika_ready, roof_rects
 
 # Version 4 is the first that carries a per-room Ceiling tile. Writing 3 still
 # loads - the reader accepts 1..7 - but then it silently back-fills ceilings
@@ -133,6 +134,48 @@ def _rooftop(grid: list[list[int]], width: int, height: int) -> list[tuple[str, 
     return out
 
 
+def _storefront_runs(storey, doors) -> list[tuple[str, int, int, int]]:
+    """The ground floor's shop glass as straight runs of wall: (edge dir,
+    fixed coordinate, first tile along, length). A run spans from its first
+    glazed tile to its last, taking in the doors and the bits of wall beside
+    them, and stops wherever the line is no longer an outside wall."""
+    grid = storey.grid
+    h, w = len(grid), len(grid[0])
+
+    def cell(x, y):
+        return grid[y][x] if 0 <= x < w and 0 <= y < h else 0
+
+    def outside(d, fixed, t):
+        x, y = (fixed, t) if d == "W" else (t, fixed)
+        a, b = (cell(x - 1, y), cell(x, y)) if d == "W" else (cell(x, y - 1), cell(x, y))
+        return bool(a) != bool(b)
+
+    lines: dict[tuple[str, int], list[int]] = {}
+    for x, y, d in storey.shop_front:
+        lines.setdefault((d, x if d == "W" else y), []).append(y if d == "W" else x)
+    door_at = {(d, x if d == "W" else y, y if d == "W" else x) for x, y, d in doors}
+    runs = []
+    for (d, fixed), along in sorted(lines.items()):
+        lo, hi = min(along), max(along)
+        # A shop door just past the last pane belongs to the shop front too.
+        for step in (-1, 1):
+            end = lo if step < 0 else hi
+            for k in (1, 2):
+                if (d, fixed, end + k * step) in door_at and all(
+                        outside(d, fixed, end + i * step) for i in range(1, k + 1)):
+                    end += k * step
+                    break
+            lo, hi = (end, hi) if step < 0 else (lo, end)
+        start = None
+        for t in range(lo, hi + 2):
+            if t <= hi and outside(d, fixed, t):
+                start = t if start is None else start
+            elif start is not None:
+                runs.append((d, fixed, start, t - start))
+                start = None
+    return runs
+
+
 def _add(entries: list[dict], entry: dict | None) -> int:
     """The 1-based index of `entry` in the tile-entry table, appending it if it
     is not there yet; 0, BuildingEd's "none", for no entry."""
@@ -203,6 +246,36 @@ def render_tbx(plan: Plan | Building, name: str,
             entry, curtains = style["shop_front"]
             front_idx = _add(entries, entry)
             front_curtains = _add(entries, curtains)
+    # With Erika's Tiles, a shop front is a wall of glass in a painted frame,
+    # not windows set in brick, and a sign hangs over it.
+    runs: list[tuple[str, int, int, int]] = []
+    glazed: set[tuple[int, int, str]] = set()
+    user_tiles: dict[int, dict[tuple[int, int], str]] = {}
+    store_ext = store_int = store_door = 0
+    if front_idx and C.ERIKA_STOREFRONTS and storeys[0].shop_front and _erika_ready():
+        rng = random.Random(name)
+        ext, inte, door = rng.choice(C.ERIKA_STOREFRONTS)
+        store_ext, store_int, store_door = _add(entries, ext), _add(entries, inte), _add(entries, door)
+        # A one-tile run is a step in a slanted wall, not a shop window.
+        runs = [r for r in _storefront_runs(storeys[0], storeys[0].doors) if r[3] >= 2]
+        for d, fixed, start, length in runs:
+            glazed.update((fixed, t, d) if d == "W" else (t, fixed, d)
+                          for t in range(start, start + length))
+        # The sign goes on the longest run the street can see, one storey up
+        # so it hangs above the glass. Only the south and east faces are
+        # seen: a sign on a north or west wall is drawn on its inner side.
+        grid = storeys[0].grid
+        seen = [r for r in runs
+                if (r[0] == "N" and (r[1] >= len(grid) or not grid[r[1]][r[2]]))
+                or (r[0] == "W" and (r[1] >= len(grid[0]) or not grid[r[2]][r[1]]))]
+        if seen:
+            d, fixed, start, length = max(seen, key=lambda r: r[3])
+            fits = [s for s in C.ERIKA_SIGNS.get(d, ()) if len(s) <= length]
+            if fits:
+                sign = rng.choice(fits)
+                first = start + (length - len(sign)) // 2
+                user_tiles[1] = {((fixed, first + j) if d == "W" else (first + j, fixed)): tile
+                                 for j, tile in enumerate(sign)}
     # A depth-three flat roof walls in its storey with the cap entry's
     # CapGap tiles, which BuildingTemplates.txt sets to stucco - every top
     # floor came out stucco whatever the building was made of. Give each
@@ -274,6 +347,24 @@ def render_tbx(plan: Plan | Building, name: str,
             out.append("  </entry>")
         out.append(" </furniture>")
 
+    names = sorted({t for tiles in user_tiles.values() for t in tiles.values()})
+    if names:
+        out.append(" <user_tiles>")
+        out.extend(f"  <tile tile={quoteattr(t)}/>" for t in names)
+        out.append(" </user_tiles>")
+
+    def user_tile_layer(level: int) -> str | None:
+        tiles = user_tiles.get(level)
+        if not tiles:
+            return None
+        cols, rows = building.width + 1, building.height + 1
+        text = ["\n"]
+        for y in range(rows):
+            row = [str(names.index(tiles[(x, y)]) + 1) if (x, y) in tiles else "0"
+                   for x in range(cols)]
+            text.append(",".join(row) + ("," if y < rows - 1 else "") + "\n")
+        return '  <tiles layer="WallFurniture">' + escape("".join(text)) + "</tiles>"
+
     used = " ".join(str(i) for i in range(1, len(entries) + 1))
     out.append(f" <used_tiles>{used}</used_tiles>")
     used_f = " ".join(str(i) for i in range(len(roles)))
@@ -302,11 +393,26 @@ def render_tbx(plan: Plan | Building, name: str,
         out.append(" <floor>")
 
         for x, y, direction in storey.doors:
-            attrs = [("type", "door"), ("FrameTile", C.DOOR_FRAME),
-                     ("x", x), ("y", y), ("dir", direction), ("Tile", C.DOOR)]
+            # In the shop glass: a glass door, framed by the glass wall itself.
+            shop_door = level == 0 and (x, y, direction) in glazed
+            attrs = [("type", "door"), ("FrameTile", 0 if shop_door else C.DOOR_FRAME),
+                     ("x", x), ("y", y), ("dir", direction),
+                     ("Tile", store_door if shop_door else C.DOOR)]
             out.append(f"  <object{_attrs(attrs)}/>")
 
+        if level == 0:
+            for d, fixed, start, length in runs:
+                x, y = (fixed, start) if d == "W" else (start, fixed)
+                # A wall object runs along y when its dir is N, placing west
+                # walls, and along x when it is W.
+                attrs = [("type", "wall"), ("length", length), ("InteriorTile", store_int),
+                         ("ExteriorTrim", 0), ("InteriorTrim", 0), ("x", x), ("y", y),
+                         ("dir", "N" if d == "W" else "W"), ("Tile", store_ext)]
+                out.append(f"  <object{_attrs(attrs)}/>")
+
         for x, y, direction in storey.windows:
+            if level == 0 and (x, y, direction) in glazed:
+                continue                        # the glass wall is the window
             tile, curtains = window_idx, curtains_idx
             if front_idx and (x, y, direction) in getattr(storey, "shop_front", ()):
                 tile, curtains = front_idx, front_curtains
@@ -381,6 +487,8 @@ def render_tbx(plan: Plan | Building, name: str,
                     text.append(",")
             text.append("\n")
         out.append("  <rooms>" + escape("".join(text)) + "</rooms>")
+        if (layer := user_tile_layer(level)):
+            out.append(layer)
 
         out.append(" </floor>")
 
@@ -402,6 +510,8 @@ def render_tbx(plan: Plan | Building, name: str,
                  ("orient", orient), ("x", x), ("y", y)]
         out.append(f"  <object{_attrs(attrs)}/>")
     out.append("  <rooms>" + escape("".join(empty)) + "</rooms>")
+    if (layer := user_tile_layer(len(storeys))):
+        out.append(layer)
     out.append(" </floor>")
     if attic:
         # A pitched roof's top rises a full storey above the roof floor, and

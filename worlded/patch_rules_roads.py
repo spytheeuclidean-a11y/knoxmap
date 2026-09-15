@@ -103,6 +103,18 @@ RULES = [
     ("Yard bed_soil", (12, 37, 223), "floors_exterior_natural_01_018", "0_FloorOverlay6"),
 ]
 
+# Rules for Erika's Tiles (workshop 3346506593), written only once Setup has
+# registered its sheets: a rule naming a tileset WorldEd does not know breaks
+# the conversion. Speed limit signs, by limit and the way the sign faces.
+ERIKA_RULES = [
+    ("Speed limit 25 S", (12, 38, 200), "street_roadsigns_erika_01_18", "0_Furniture"),
+    ("Speed limit 25 E", (12, 38, 201), "street_roadsigns_erika_01_19", "0_Furniture"),
+    ("Speed limit 35 S", (12, 38, 202), "street_roadsigns_erika_01_20", "0_Furniture"),
+    ("Speed limit 35 E", (12, 38, 203), "street_roadsigns_erika_01_21", "0_Furniture"),
+    ("Speed limit 45 S", (12, 38, 204), "street_roadsigns_erika_01_24", "0_Furniture"),
+    ("Speed limit 45 E", (12, 38, 205), "street_roadsigns_erika_01_25", "0_Furniture"),
+]
+
 
 def main(argv: list[str]) -> int:
     if len(argv) < 2:
@@ -115,7 +127,12 @@ def main(argv: list[str]) -> int:
     old = len(re.findall(rf"label = {MARKER} ", text))
     text = re.sub(rf"\n?rule\n\{{\n    label = {MARKER} .*?\n\}}\n?", "\n", text, flags=re.S)
     blocks = []
-    for label, (r, g, b), tile, layer in RULES:
+    tilesets = Path(argv[1]) / "config" / "Tilesets.txt"
+    rules = list(RULES)
+    if tilesets.exists() and "Erikas_Tiles.pack/street_roadsigns_erika_01\n" in \
+            tilesets.read_text(encoding="utf-8", errors="replace"):
+        rules += ERIKA_RULES
+    for label, (r, g, b), tile, layer in rules:
         if isinstance(tile, list):
             tile = "[\n" + "".join(f"        {t}\n" for t in tile) + "    ]"
         blocks.append(

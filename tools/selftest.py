@@ -183,6 +183,25 @@ def main(argv: list[str]) -> int:
                     if c == C.PAVING_STONE)
         check(stone > 50, f"front paths laid ({stone} stone tiles)")
         check(any('RoofType="Peak' in t for t in texts), "houses have pitched roofs")
+        from knoxbuild.layout import _erika_ready
+        if _erika_ready():
+            # The town has no shops; lay one out on a street to the south.
+            from knoxbuild.layout import build_building
+            from knoxbuild import catalog as KC
+            from knoxbuild.tbx import render_tbx
+            shop_path = os.path.join(out, "buildings", "selftest_shop.tbx")
+            shop = render_tbx(build_building(18, 12, levels=2, commercial=True, kind="shop",
+                                             seed=3, street="S"),
+                              "selftest_shop", KC.SPECIAL_STYLES["shop"])
+            open(shop_path, "w", encoding="utf-8").write(shop)
+            check('type="wall"' in shop and "walls_commercial_erika" in shop,
+                  "a shop gets Erika's glass shop front")
+            check('<tiles layer="WallFurniture">' in shop, "a sign hangs over it")
+            check(not validate_tbx.check(shop_path), "and still passes the editor's rules")
+            speed = sum(1 for c in pixels if c in C.SPEED_SIGNS.values())
+            check(speed > 0, f"speed limit signs on the streets ({speed})")
+        else:
+            check(not any("_erika_" in t for t in texts), "no mod tiles without Erika's Tiles")
 
         print("compile")
         from compile_map import clear_stale
@@ -235,6 +254,12 @@ def main(argv: list[str]) -> int:
         check(os.path.exists(os.path.join(mod_root, "ATTRIBUTION.txt")), "ATTRIBUTION.txt in the mod")
         info = open(os.path.join(mod_root, "mod.info"), encoding="utf-8").read()
         check("OpenStreetMap" in info, "OpenStreetMap credit in the mod description")
+        check("require=" not in info, "a map without mod tiles requires no mods")
+        open(os.path.join(lots, "0_0.lotheader"), "wb").write(b"LOTH\x01\x00\x00\x00signs_erika_01_000\n")
+        with contextlib.redirect_stdout(io.StringIO()):
+            mod_root, cells, extras = package(out, "Selftest: Town", "selftest", mods_dir=mods)
+        info_erika = open(os.path.join(mod_root, "mod.info"), encoding="utf-8").read()
+        check("require=\\Erikas_Tiles" in info_erika, "a map using Erika's tiles requires Erika's Tiles")
         check(os.path.isdir(os.path.join(mod_root, "common", "media", "maps", "Selftest Town")),
               "map folder name is safe for Windows")
         lua_dir = os.path.join(mod_root, "common", "media", "lua", "shared", "KnoxMap")

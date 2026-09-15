@@ -1003,6 +1003,27 @@ EDGE_LINE_MIN_WIDTH = 5
 CRACK_SHARE = 0.012
 LITTER_SHARE = 0.002
 LAMP_EVERY = 26
+# A speed limit sign every so many tiles along a main street's kerb (Erika's
+# Tiles only), with the limit going by how wide the carriageway is.
+SPEED_SIGN_EVERY = 90
+SPEED_BY_WIDTH = ((12, 45), (8, 35), (0, 25))
+
+
+def _mod_tiles_ready() -> bool:
+    """Whether maps may use Erika's Tiles: installed and set up, and not
+    turned off with KNOXMAP_NO_MOD_TILES=1."""
+    if os.environ.get("KNOXMAP_NO_MOD_TILES") == "1":
+        return False
+    try:
+        import knoxpaths
+        if not knoxpaths.erikas_tiles_ready():
+            return False
+        # Tools set up before the signs existed have no rule for them, and a
+        # colour without a rule is dropped with a warning: run Setup again.
+        rules = knoxpaths.mapping_tools_dir() / "config" / "Rules.txt"
+        return "KnoxMap road Speed limit 25 S" in rules.read_text(encoding="utf-8", errors="replace")
+    except Exception:      # noqa: BLE001 - no tools, no mod tiles
+        return False
 HYDRANT_EVERY = 70
 DRAIN_EVERY = 34
 
@@ -1082,8 +1103,20 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image) -> dict:
     # (edge colour just painted, step away from the road, lamp colour)
     straight = [(C.EDGE_LINE_W, (-1, 0), C.LAMP_E), (C.EDGE_LINE_E, (1, 0), C.LAMP_W),
                 (C.EDGE_LINE_N, (0, -1), C.LAMP_S), (C.EDGE_LINE_S, (0, 1), C.LAMP_N)]
-    taken: dict[str, set] = {"lamp": set(), "hydrant": set(), "drain": set()}
+    taken: dict[str, set] = {"lamp": set(), "hydrant": set(), "drain": set(), "speed": set()}
     out = vp.copy()
+    # Speed signs stand where drivers keeping right see their faces: on the
+    # east kerb of a north-south road facing south, the north kerb of an
+    # east-west one facing east. Erika's signs only face those two ways.
+    speed_side = {C.EDGE_LINE_E: "S", C.EDGE_LINE_N: "E"} if _mod_tiles_ready() else {}
+
+    def carriageway(gx, gy, sx, sy):
+        n = 0
+        while n < 24 and 0 <= gx - n * sx < w and 0 <= gy - n * sy < h \
+                and asphalt[gy - n * sy, gx - n * sx]:
+            n += 1
+        return n
+
     for edge, (sx, sy), lamp in straight:
         ys, xs = np.nonzero(np.all(vp == edge, axis=2))
         order = rng.permutation(len(xs))
@@ -1092,12 +1125,23 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image) -> dict:
             bx, by = gx + 2 * sx, gy + 2 * sy   # past the kerb or the verge
             if not (0 <= bx < w and 0 <= by < h):
                 continue
+            facing = speed_side.get(edge)
+            speed = None
+            if facing:
+                across = carriageway(gx, gy, sx, sy)
+                limit = next(v for width, v in SPEED_BY_WIDTH if across >= width)
+                speed = C.SPEED_SIGNS[(limit, facing)]
             for what, every, colour, at, need in (
+                    ("speed", SPEED_SIGN_EVERY, speed, (bx, by), None),
                     ("lamp", LAMP_EVERY, lamp, (bx, by), None),
                     ("hydrant", HYDRANT_EVERY, C.HYDRANT, (bx, by), None),
                     ("drain", DRAIN_EVERY, C.STORM_DRAIN, (gx, gy), None)):
                 px, py = at
-                cell = (px // every, py // every)
+                if colour is None or not (0 <= px < w and 0 <= py < h):
+                    continue
+                # Speed signs keep a spacing per facing: the north-south roads,
+                # met first, took every cell and left east-west ones none.
+                cell = (px // every, py // every, facing if what == "speed" else None)
                 if cell in taken[what]:
                     continue
                 # A drain takes the gutter square from its edge line; a lamp

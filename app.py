@@ -626,8 +626,9 @@ def api_setup_status():
          "fix": "Subscribe to it on the Steam Workshop to start at any landmark of your map."},
         {"id": "erikas_tiles", "ok": knoxpaths.erikas_tiles_ready(),
          "label": "Erika's Tiles (optional)",
-         "fix": "Subscribe to it on the Steam Workshop and run Setup.bat again for far more "
-                "varied pictures, posters and plants. Maps made with it require it."},
+         "fix": "Subscribe to it on the Steam Workshop and run Setup.bat again for glass shop "
+                "fronts and signs, street signs, and far more varied pictures, posters and "
+                "plants. Maps made with it require it."},
     ]
     return jsonify({"ready": all(c["ok"] for c in checks), "checks": checks,
                     "optional": optional,

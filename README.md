@@ -51,9 +51,11 @@ actually lived, and installs the result as a mod.
   mod is enabled (optional).
 - **Erika's Tiles, if you have it.** With
   [Erika's Tiles](https://steamcommunity.com/workshop/filedetails/?id=3346506593)
-  subscribed (and Setup run again), buildings hang its far larger range of
-  paintings, posters and mirrors and pot its plants. Maps made that way list it
-  as a requirement.
+  subscribed (and Setup run again), shops get glass shop fronts in painted
+  frames with glass doors and a sign over them, drinks machines, posters and
+  bookcases inside; homes hang its far larger range of paintings, posters and
+  mirrors and pot its plants; main streets get speed limit signs. Maps made
+  that way list it as a requirement.
 - **Start where you like.** With the optional
   [Spawn Selector](https://steamcommunity.com/sharedfiles/filedetails/?id=3772052709) mod, the map's
   named buildings and places appear as starting points.

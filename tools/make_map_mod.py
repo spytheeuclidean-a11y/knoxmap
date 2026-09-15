@@ -402,6 +402,11 @@ def package(project_dir: str, name: str, mod_id: str,
     info = (f"name={name}\n"
             f"id={mod_id}\n"
             f"description={desc}\n")
+    # A map built with Erika's Tiles cannot load without it. The compiled
+    # headers list every tile the map uses - buildings, shop signs and the
+    # street signs alike.
+    if any(f.endswith(".lotheader") and b"_erika_" in open(f, "rb").read() for f in cells):
+        info += "require=\\Erikas_Tiles\n"
     os.makedirs(os.path.join(mod_root, "42"), exist_ok=True)
     for where in ("", "common", "42"):
         with open(os.path.join(mod_root, where, "mod.info"), "w",

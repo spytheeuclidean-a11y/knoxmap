@@ -78,6 +78,11 @@ STORM_DRAIN = (12, 36, 207)
 LITTER = (12, 36, 208)
 MAILBOX = (12, 36, 209)
 BIN = (12, 36, 210)
+# Speed limit signs from Erika's Tiles, painted only when that mod is set up:
+# (limit, facing) -> colour. A sign faces the traffic that drives past it.
+SPEED_SIGNS = {(25, "S"): (12, 38, 200), (25, "E"): (12, 38, 201),
+               (35, "S"): (12, 38, 202), (35, "E"): (12, 38, 203),
+               (45, "S"): (12, 38, 204), (45, "E"): (12, 38, 205)}
 # Back yards (knoxbuild/yards.py): a grill, patio table and chairs, a
 # clothesline and a raised planting bed, each tile of each its own colour.
 GRILL = (12, 37, 200)
