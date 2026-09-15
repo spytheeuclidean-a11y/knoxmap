@@ -175,7 +175,13 @@ def main(argv: list[str]) -> int:
             west = re.search(r'enum="West" tile="(\w+)"', blocks[ext - 1])
             gap = re.search(r'enum="CapGapE3" tile="(\w+)"', blocks[cap - 1])
             return bool(west and gap and west.group(1) == gap.group(1))
-        check(all(gaps_match(t) for t in texts), "flat roofs wall in the top floor with its own material")
+        houses_tbx = [t for p, t in zip(tbx, texts) if "_fences_" not in p]
+        check(all(gaps_match(t) for t in houses_tbx), "flat roofs wall in the top floor with its own material")
+        check(any("_fences_" in p for p in tbx), "back yards are fenced")
+        yard = Image.open(os.path.join(out, "selftest.bmp")).convert("RGB")
+        stone = sum(1 for c in (yard.get_flattened_data() if hasattr(yard, "get_flattened_data") else yard.getdata())
+                    if c == C.PAVING_STONE)
+        check(stone > 50, f"front paths laid ({stone} stone tiles)")
         check(any('RoofType="Peak' in t for t in texts), "houses have pitched roofs")
 
         print("compile")
