@@ -312,7 +312,7 @@ HEADER_ADD = """    QString errorString() const { return mError; }
 # code moves.
 MODIFIED_NOTICE = """
 /*
- * Modified by KnoxMap (https://github.com/spytheeuclidean-a11y/knoxify),
+ * Modified by KnoxMap (https://github.com/spytheeuclidean-a11y/knoxmap),
  * 2026-09: {what}
  * These modifications are distributed under the same GNU General Public
  * License as the rest of this file.

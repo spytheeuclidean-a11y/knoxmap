@@ -20,7 +20,7 @@ import time
 import requests
 
 HEADERS = {
-    "User-Agent": "KnoxMap/1.0 (+https://github.com/spytheeuclidean-a11y/knoxify) local map generator",
+    "User-Agent": "KnoxMap/1.0 (+https://github.com/spytheeuclidean-a11y/knoxmap) local map generator",
     "Accept-Language": "en",
 }
 

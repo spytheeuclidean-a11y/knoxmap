@@ -271,7 +271,7 @@ Events.OnGameBoot.Add(addToSpawnSelector)
     return len(pois)
 
 
-KNOXMAP_URL = "https://github.com/spytheeuclidean-a11y/knoxify"
+KNOXMAP_URL = "https://github.com/spytheeuclidean-a11y/knoxmap"
 
 
 def write_attribution(project_dir: str, mod_root: str, name: str) -> None:

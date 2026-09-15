@@ -40,7 +40,7 @@ TOOLS_RELEASE = "43.00B260909"
 TOOLS_URL = ("https://github.com/Unjammer/PZ_Mapping_Tools/releases/download/"
              "43.00B260909/PZ_Mapping_Tools_build20260909f.zip")
 
-REPO = "spytheeuclidean-a11y/knoxify"
+REPO = "spytheeuclidean-a11y/knoxmap"
 CLI_URL = (f"https://github.com/{REPO}/releases/download/"
            "worlded-cli-20260909f/PZWorldEd_cli.exe")
 CLI_SHA256 = "dbae186f1f1f541decd123604ec9fc822d930f8f7c1ec8b17c1b89874628f3e2"

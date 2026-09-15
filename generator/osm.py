@@ -27,7 +27,7 @@ OVERPASS_ENDPOINTS = [
 
 # OSM's usage policy requires a real identifying User-Agent; the mirrors return
 # 403 for the default "python-requests/x.y" string.
-HEADERS = {"User-Agent": "KnoxMap/1.0 (+https://github.com/spytheeuclidean-a11y/knoxify) local map generator"}
+HEADERS = {"User-Agent": "KnoxMap/1.0 (+https://github.com/spytheeuclidean-a11y/knoxmap) local map generator"}
 
 # Tag filters — each line becomes one part of the Overpass union query.
 # Order doesn't matter here; the rasterizer picks priority at paint time.

@@ -94,7 +94,7 @@ Build Tools (C++) and Qt 5.14.2 msvc2017_64, then run
 knoxmap-worlded\\build_worlded.bat.
 
 If this release's source archive is ever unavailable, open an issue at
-https://github.com/spytheeuclidean-a11y/knoxify/issues and the source will be
+https://github.com/spytheeuclidean-a11y/knoxmap/issues and the source will be
 provided, for at least three years from this release.
 
 Not affiliated with The Indie Stone or the PZ Mapping Tools authors.
