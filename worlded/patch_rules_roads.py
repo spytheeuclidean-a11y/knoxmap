@@ -71,6 +71,11 @@ RULES = [
     ("Storm drain", (12, 36, 207), ["street_decoration_01_13", "street_decoration_01_14"],
      "0_FloorOverlay6"),
     ("Litter", (12, 36, 208), [f"trash_01_{i}" for i in range(15)], "0_FloorOverlay6"),
+    # By each house (knoxbuild/yards.py): a mailbox where the front path meets
+    # the pavement, a dustbin at the top of the drive.
+    ("Mailbox", (12, 36, 209), ["street_decoration_01_17", "street_decoration_01_18",
+                                "street_decoration_01_19"], "0_Furniture"),
+    ("Dustbin", (12, 36, 210), "trashcontainers_01_16", "0_Furniture"),
 ]
 
 

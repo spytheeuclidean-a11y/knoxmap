@@ -76,6 +76,10 @@ LAMP_W = (12, 36, 205)
 HYDRANT = (12, 36, 206)
 STORM_DRAIN = (12, 36, 207)
 LITTER = (12, 36, 208)
+MAILBOX = (12, 36, 209)
+BIN = (12, 36, 210)
+# Ground: the stone slabs of a front path or a stoop (Rules.txt "Paving Stone 4").
+PAVING_STONE = (190, 180, 180)
 
 # Zombie spawn map: grayscale, 10x smaller than landscape/vegetation.
 # (0,0,0) = no spawns, (255,255,255) = max spawn density.

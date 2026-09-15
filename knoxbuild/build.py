@@ -666,10 +666,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         })
     rows.sort(key=lambda r: r["file"])
     from .yards import paint_paths
-    paths = paint_paths(out_dir, map_name, rows, occupied)
+    paths, yard_fences = paint_paths(out_dir, map_name, rows, occupied)
 
     fence_placements, fence_tiles = build_fences(out_dir, map_name, proj,
-                                                 occupied, areas, bdir)
+                                                 occupied, areas, bdir,
+                                                 extra=yard_fences)
 
     # The zombie spawn map, redrawn from the people in the buildings just
     # placed. It replaces the ground-colour one the renderer wrote, at the

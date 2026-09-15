@@ -637,7 +637,7 @@ def _has_road_rules(tools) -> bool:
     try:
         # The newest rule, so tools patched before street furniture existed
         # are sent back through Setup.
-        return "KnoxMap road Litter" in rules.read_text(encoding="utf-8", errors="replace")
+        return "KnoxMap road Dustbin" in rules.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
 

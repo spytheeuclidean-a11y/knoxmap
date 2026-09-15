@@ -118,15 +118,17 @@ def _tarmac_mask(bmp_path: str, width: int, height: int):
 
 
 def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
-                 bdir: str) -> tuple[list, int]:
+                 bdir: str, extra: list | None = None) -> tuple[list, int]:
     """Write one fence .tbx per map cell that has fences. Returns placements."""
     from .world import Placement
 
     path = os.path.join(out_dir, f"{map_name}_fences.geojson")
-    if not os.path.exists(path):
+    lines = []
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            lines = json.load(f).get("features", [])
+    if not lines and not extra:
         return [], 0
-    with open(path, encoding="utf-8") as f:
-        lines = json.load(f).get("features", [])
 
     map_h, map_w = occupied.shape
 
@@ -150,14 +152,19 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
     # (x, y) -> {"W": style, "N": style}
     edges: dict[tuple[int, int], dict[str, str]] = {}
     ends: dict[tuple[int, int], str] = {}
+    # Mapped fences, then the ones drawn round back yards (knoxbuild/yards.py),
+    # which come as tile points with their style.
+    todo = []
     for feat in lines:
         coords = feat.get("geometry", {}).get("coordinates") or []
         if len(coords) < 2:
             continue
         pts = [proj.to_px(lat, lon) for lon, lat in coords]
         mid = pts[len(pts) // 2]
-        style = style_for(feat.get("properties") or {},
-                          areas.category_at(*mid) if areas else None)
+        todo.append((pts, style_for(feat.get("properties") or {},
+                                    areas.category_at(*mid) if areas else None)))
+    todo.extend(extra or ())
+    for pts, style in todo:
         walk = _grid_path(pts)
         for (x1, y1), (x2, y2) in zip(walk, walk[1:]):
             if y1 == y2:                      # along a north edge
