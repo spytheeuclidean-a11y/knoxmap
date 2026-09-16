@@ -110,7 +110,8 @@ class Footprint:
 
 
 def place(px: list[tuple[float, float]], occupied: np.ndarray,
-          min_side: float = 0, max_side: float = 1e9
+          min_side: float = 0, max_side: float = 1e9,
+          snap_degrees: float = SNAP_DEGREES
           ) -> tuple[Footprint | None, str]:
     """Rasterise a projected footprint, claiming its tiles in `occupied`.
 
@@ -140,7 +141,10 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
     angle = grid_angle(poly)
     rectangular = rect.area > 0 and poly.area / rect.area >= RECTANGULAR_ENOUGH
 
-    if angle <= SNAP_DEGREES and rectangular:
+    # Past 30 degrees a turned outline squared up would stand far out of its
+    # real footprint, so from there any shape is squared (the user asked for
+    # every building on the grid), not just near-rectangles.
+    if angle <= snap_degrees and (rectangular or snap_degrees >= 30):
         # Square it up: an upright rectangle of the true side lengths, centred.
         cx, cy = poly.centroid.x, poly.centroid.y
         horizontal = (angle == 0.0 and (poly.bounds[2] - poly.bounds[0])

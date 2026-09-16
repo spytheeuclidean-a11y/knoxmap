@@ -25,7 +25,7 @@ KIND_FOR_AREA = {
     "commercial": "shop",
     "schoolyard": "school",
     "hospital_grounds": "medical",
-    "military": "civic",
+    "military": "military",
     "worship_grounds": "church",
     "cemetery": "church",
     "sports": "civic",

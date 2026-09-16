@@ -52,6 +52,10 @@ class Settings:
     apartment_footprint: int = 150
     apartment_chance: float = 0.55
     max_levels: int = 6
+    # Buildings turned less than this many degrees from the tile grid are
+    # squared up into upright rectangles; the rest keep their real angle as
+    # stepped walls. 45 squares up every building.
+    square_buildings: int = 15
     # Target room area in tiles before splitting. Knox County's rooms are 16 m2
     # at the median; 56 made them twice that, big bare halls.
     room_size: int = 24
@@ -112,6 +116,7 @@ LIMITS = {
     # and compile time - the presets stay low and this is the ceiling.
     "max_levels": (1, 30),
     "room_size": (16, 400),
+    "square_buildings": (0, 45),
     "neighbourhood_tiles": (20, 2000),
     "style_oddity": (0.0, 1.0),
     "parking_density": (0.0, 4.0),

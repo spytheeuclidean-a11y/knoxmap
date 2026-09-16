@@ -122,6 +122,8 @@ SPECIAL_BY_VALUE = {
     "hotel": "civic", "office": "civic", "courthouse": "civic",
     "museum": "civic", "bank": "civic", "post_office": "civic",
     "theatre": "civic", "cinema": "civic", "arts_centre": "civic",
+    # Bases: barracks, armouries, the offices and stores of a military site.
+    "military": "military", "barracks": "military", "bunker": "military",
 }
 
 # Last resort when the tags say nothing useful but the name is obvious.
@@ -154,6 +156,7 @@ DEFAULT_LEVELS = {
     "medical": (2, 4),
     "shop": (1, 2),
     "restaurant": (1, 2),
+    "military": (1, 2),
 }
 
 
@@ -657,7 +660,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     for _neg_area, i, px in order:
         feat = geo["features"][i]
-        fp, reason = place(px, occupied, min_side=min_size, max_side=max_size)
+        fp, reason = place(px, occupied, min_side=min_size, max_side=max_size,
+                           snap_degrees=settings.square_buildings)
         if fp is None:
             skipped[reason] += 1
             continue
@@ -734,7 +738,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             offices = ("office", "office") in uses or btag == "office" or re.search(
                 r"\b(tower|building|plaza|center|centre|exchange)\b", tags.get("name") or "", re.I)
             special = "civic" if offices else "apartment"
-        style = pick_style("civic" if hotel else special, x0, y0, style_rng, settings,
+        # Hotels are dressed as the city's big buildings, army bases as works.
+        style = pick_style("civic" if hotel else "industrial" if special == "military" else special,
+                           x0, y0, style_rng, settings,
                            density=context.density(cx, cy))
 
         fname = f"{map_name}_{i:04d}.tbx"

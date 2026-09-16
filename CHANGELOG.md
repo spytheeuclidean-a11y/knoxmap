@@ -44,6 +44,13 @@ map.
 - Shops fitted out like Knox County's: rows of shelving, fridges along the
   walls, a till by the door and a stockroom behind; offices with desks and
   filing cabinets; every flat with its own sofa, beds, wardrobes and kitchen.
+- Restaurants, cafés and bars fitted out like the game's own: diner and pizzeria
+  booth sets, tables with their chairs (against the wall in a narrow place), a
+  counter across the back, and kitchens of steel counters, commercial ovens, a
+  griddle and fryers. Narrow shops mix fridges with shelving; theatres have rows
+  of seats. Army bases get the game's army storage rooms.
+- *Square up buildings* setting: how far off the grid a building may be and
+  still stand upright (15 degrees by default, 45 for every building).
 - No windows, shop fronts or doors in walls shared with the building next door;
   stairs at the back of a shop, not in the middle of it.
 - Uses Erika's Tiles when it is installed: glass shop fronts with glass doors

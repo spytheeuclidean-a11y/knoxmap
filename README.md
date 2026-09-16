@@ -202,6 +202,11 @@ playing. Help is very welcome here, especially screenshots from the game.
 - **Winding old towns** have no single street grid, so their streets still step
   across the tiles where they turn.
 - **Very large buildings** (over 200 tiles across by default) are skipped.
+- **Stacked roads:** motorway interchanges and overpasses are laid at ground
+  level, so roads that pass over each other meet there; tunnels are left out.
+- **Turned buildings** keep their real angle with stepped walls unless they are
+  within *Square up buildings* degrees of the grid (15 by default; 45 stands
+  every building upright).
 - **Interiors are generic:** rooms suit what a building is, but they are not the
   real layout of any real building.
 - **Big maps take time.** Downloading, and above all compiling, a large or tall

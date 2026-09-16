@@ -299,6 +299,7 @@ const SETTING_LABELS = {
   apartment_chance:    ['Flats chance', 'How often such a footprint really becomes flats.'],
   max_levels:          ['Tallest building', 'Storeys, up to 30 - as tall as the base game gets. OSM heights are capped to this. Tall cities take longer to compile.'],
   room_size:           ['Room size', 'Target room area in tiles before it gets split.'],
+  square_buildings:    ['Square up buildings', 'Buildings turned less than this many degrees stand upright on the grid; the rest keep their real angle with stepped walls. 45 = every building upright.'],
   neighbourhood_tiles: ['Neighbourhood', 'How far one set of materials reaches.'],
   style_oddity:        ['Odd one out', 'How often a building breaks from its block.'],
   parking_density:     ['Parking', 'Vehicles only ever spawn in a parking stall.'],

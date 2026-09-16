@@ -34,7 +34,7 @@ STORES = {
     "grocery": {"rows": "shop_aisle", "wall": ["shop_shelf", "shop_shelf_white"],
                 "back": ["shop_fridge_open", "shop_fridge_double", "shop_freezer"],
                 "counter": "shop_counter", "front": ["shop_bin"]},
-    "conveniencestore": {"rows": "shop_aisle_red", "wall": ["shop_shelf_red"],
+    "conveniencestore": {"rows": "shop_aisle", "wall": ["shop_shelf_red", "shop_fridge"],
                          "back": ["shop_fridge", "shop_fridge", "shop_fridge_double"],
                          "counter": "shop_counter_red", "front": ["vending", "vending_snacks"]},
     "generalstore": {"rows": "shop_aisle", "wall": ["shop_shelf_wood", "shop_shelf"],
@@ -256,10 +256,20 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
             else:
                 i += 1
 
+    # A shop too narrow for rows keeps its fridges along a side wall as well,
+    # or it is one kind of shelf from the door to the back.
+    narrow = frame.length < 2 + ROW_EVERY + 2
+    sides = [s for s in STEP if s not in (front, back_to)]
     for side in STEP:
         if side == front:
             continue
-        fill_wall(side, spec["back"] if side == back_to else spec["wall"])
+        if side == back_to:
+            fill_wall(side, spec["back"])
+        elif narrow and sides and side == sides[0]:
+            # A few fridges and then shelves, not one fridge the whole length.
+            fill_wall(side, spec["back"][:2] + spec["wall"] * 3)
+        else:
+            fill_wall(side, spec["wall"])
 
     # Rows back from the front, starting two tiles in from each side wall and
     # leaving the front and back free to walk along.
@@ -398,3 +408,156 @@ def bed_against_wall(plan, idx: int, room, slots, occupied: set, door_tiles: set
                         occupied.update(tc)
             return True
     return False
+
+
+# Eating places. A dining room was chairs pushed against its walls - in a
+# narrow shop, a corridor of chairs - and the kitchen behind a pizzeria a
+# home kitchen. Knox County's own are booth sets and tables with their chairs,
+# a counter across the back, and a kitchen of steel counters, commercial
+# ovens, a griddle and fryers.
+DINING_ROOMS = {"restaurantdining", "italianrestaurant", "chineserestaurant", "restaurant",
+                "cafe", "icecream", "bar"}
+# A booth, its table and the facing booth, as the game's own set lays them.
+BOOTH_SETS = {
+    "diner": [("diner_booth", 0, 0, "W"), ("diner_table", 0, 1, "W"), ("diner_booth", 0, 2, "E")],
+    "pizza": [("pizza_booth", 0, 0, "W"), ("pizza_table", 0, 1, "W"), ("pizza_booth", 0, 2, "E")],
+}
+TABLE_SET = [("dining_table", 1, 1, "W"), ("chair", 0, 1, "W"), ("chair", 3, 1, "E"),
+             ("chair", 1, 0, "N"), ("chair", 2, 2, "S")]
+SMALL_TABLE_SET = [("round_table", 1, 0, "W"), ("chair", 0, 0, "W"), ("chair", 2, 0, "E")]
+# The counter across the back of the room, by style: (pieces left to right).
+BACK_COUNTERS = {
+    "diner": ["diner_counter", "diner_counter", "diner_counter", "diner_counter"],
+    "pizza": ["pizza_display", "pizza_counter", "pizza_counter"],
+    "tables": ["counter_2", "counter_2", "counter_2"],
+    "cafe": ["shop_display", "counter_1", "counter_1"],
+    "bar": ["counter_4", "counter_4", "counter_4", "counter_4", "counter_4"],
+    "icecream": ["shop_freezer", "shop_counter", "shop_counter", "shop_freezer"],
+}
+# What a commercial kitchen is fitted with, set into steel counters.
+KITCHEN_KIT = {
+    "pizzakitchen": ["oven_commercial", "oven_commercial", "hot_counter", "shop_fridge_double",
+                     "kitchen_sink", "dishwasher", "metal_rack"],
+    "burgerkitchen": ["griddle", "fryer", "fryer", "oven_steel", "shop_fridge_double",
+                      "kitchen_sink", "dishwasher", "metal_rack"],
+    "dinerkitchen": ["griddle", "fryer", "oven_steel", "oven_steel_alt", "shop_fridge_double",
+                     "kitchen_sink", "dishwasher", "metal_rack"],
+    "cafekitchen": ["oven_steel", "shop_fridge_double", "kitchen_sink", "dishwasher", "metal_rack"],
+    "bakerykitchen": ["oven_commercial", "oven_commercial", "hot_counter", "kitchen_sink",
+                      "metal_rack", "crate"],
+    "icecreamkitchen": ["shop_freezer", "shop_freezer", "kitchen_sink", "metal_rack"],
+}
+DEFAULT_KITCHEN_KIT = ["oven_steel", "oven_steel_alt", "griddle", "fryer", "shop_fridge_double",
+                       "kitchen_sink", "dishwasher", "metal_rack"]
+COMMERCIAL_KITCHENS = {"restaurantkitchen", "pizzakitchen", "burgerkitchen", "dinerkitchen",
+                       "chinesekitchen", "sushikitchen", "mexicankitchen", "seafoodkitchen",
+                       "cafekitchen", "bakerykitchen", "icecreamkitchen"}
+# Tiles along a wall per booth set or table set, with the gap to the next.
+WALL_SET_EVERY = 4
+MIN_CENTRE_SIDE = 6
+
+
+def eatery_style(plan, idx: int, room) -> str:
+    """How a dining room is fitted: from the kitchen it serves."""
+    if room.kind in ("cafe", "bar", "icecream"):
+        return room.kind
+    L = _layout()
+    near = {plan.rooms[j - 1].kind for j in L._neighbours(plan).get(idx, {})}
+    if "pizzakitchen" in near:
+        return "pizza"
+    if near & {"dinerkitchen", "burgerkitchen"}:
+        return "diner"
+    return "tables"
+
+
+def _wall_sets(plan, idx: int, room, group, placed_cells: set, blocked: set) -> int:
+    """Sets stood against a long wall one after another, leaving the rest of a
+    narrow room as the aisle."""
+    L = _layout()
+    along_x = room.w >= room.h
+    # Laid along x the set is turned so its length runs along the wall.
+    pieces = group if not along_x else [(r, dy, dx, L._TURN[o]) for r, dx, dy, o in group]
+    pieces = [(r, dx, dy, L._facing(r, o)) for r, dx, dy, o in pieces]
+    cells_of = [(dx + cx, dy + cy) for r, dx, dy, o in pieces for cx, cy in L._cells_for(r, 0, 0, o)]
+    span = max(x for x, _ in cells_of) + 1 if along_x else max(y for _, y in cells_of) + 1
+    n = 0
+    start = room.x0 if along_x else room.y0
+    end = room.x1 if along_x else room.y1
+    depth = max(y for _, y in cells_of) + 1 if along_x else max(x for x, _ in cells_of) + 1
+    # Against one long wall, then the other if the room is wide enough to
+    # keep an aisle between them.
+    across = room.h if along_x else room.w
+    walls = [room.y0 if along_x else room.x0]
+    if across >= 2 * depth + 2:
+        walls.append((room.y1 if along_x else room.x1) - depth + 1)
+    for wall in walls:
+        t = start
+        while t + span - 1 <= end:
+            ox, oy = (t, wall) if along_x else (wall, t)
+            cells = [(ox + x, oy + y) for x, y in cells_of]
+            if all(L._room_at(plan, *c) == idx and c not in placed_cells and c not in blocked
+                   for c in cells):
+                for r, dx, dy, o in pieces:
+                    plan.furniture.append((r, ox + dx, oy + dy, o))
+                placed_cells.update(cells)
+                n += 1
+                t += WALL_SET_EVERY
+            else:
+                t += 1
+    return n
+
+
+def furnish_dining(plan, idx: int, room, rng: random.Random, occupied: set,
+                   keep_clear: set, door_tiles: set, street: str | None) -> list[str]:
+    """Fit out a dining room, café or bar. Returns what is left for the walls."""
+    L = _layout()
+    style = eatery_style(plan, idx, room)
+    cells = _cells(plan, idx, room)
+    # The doorways and the tile either side of each: a small café cannot give
+    # a whole ring of floor to every door.
+    blocked = set(keep_clear) | set(door_tiles)
+    for x, y, d in plan.doors:
+        blocked |= {(x - 1, y), (x + 1, y)} if d == "N" else {(x, y - 1), (x, y + 1)}
+
+    # The counter across the back, away from the street door.
+    front = _front_side(plan, idx, cells, street)
+    frame = Frame(cells, front)
+    counter = BACK_COUNTERS.get(style, BACK_COUNTERS["tables"])
+    counter = [c for c in counter if c in C.FURNITURE]
+    back = OPPOSITE[front]
+    depth = frame.depth - 1
+    if counter and frame.depth >= 5:
+        start = max(0, (frame.length - len(counter)) // 2)
+        a = start
+        for role in counter:
+            x, y = frame.xy(a, depth)
+            orient = L._facing(role, back)
+            got = _fits(plan, idx, role, x, y, orient, blocked | occupied)
+            if got is None:
+                a += 1
+                continue
+            plan.furniture.append((role, x, y, orient))
+            occupied.update(got)
+            a += len(got)
+        # Room behind the counter to stand, and in front to queue.
+        occupied.update(frame.xy(a2, depth - k) for a2 in range(start - 1, a + 1) for k in (1,))
+
+    # Seating: sets out in the floor where there is room for an aisle all
+    # round, else against the long wall.
+    if style in BOOTH_SETS:
+        group = BOOTH_SETS[style]
+    elif style in ("cafe", "icecream", "bar"):
+        group = SMALL_TABLE_SET
+    else:
+        group = TABLE_SET
+    group = [g for g in group if g[0] in C.FURNITURE]
+    placed = 0
+    if min(room.w, room.h) >= MIN_CENTRE_SIDE:
+        placed = L._place_group(plan, idx, room, group, max(1, room.area // 12), occupied, blocked)
+    if not placed:
+        placed = _wall_sets(plan, idx, room, group, occupied, blocked)
+    if not placed:
+        # Too small even for that: one small table and its chairs.
+        L._place_group(plan, idx, room, [g for g in SMALL_TABLE_SET if g[0] in C.FURNITURE],
+                       1, occupied, set(door_tiles))
+    return ["plant", "painting", "plant"]

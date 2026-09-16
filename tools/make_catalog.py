@@ -420,6 +420,25 @@ def main(argv: list[str]) -> int:
         "vending_snacks": "location_shop_accessories_01_018",
         "shop_bin": "location_shop_generic_01_089",
         "metal_rack": "furniture_shelving_01_025",            # 1x2, W N
+        # Eating places: diner and pizzeria booths with their tables, their
+        # counters, a pizza display case, picnic tables, a steel hot counter;
+        # and the kitchens behind them - a griddle, commercial ovens, a fryer
+        # and a dishwasher, not a home cooker.
+        "diner_booth": "location_restaurant_diner_01_032",      # 2x1
+        "diner_table": "location_restaurant_diner_01_006",      # 2x1, W N
+        "diner_counter": "location_restaurant_diner_01_027",
+        "pizza_booth": "location_restaurant_pizzawhirled_01_044",  # 2x1
+        "pizza_table": "location_restaurant_pizzawhirled_01_050",  # 2x1, W N
+        "pizza_counter": "location_restaurant_pizzawhirled_01_035",
+        "pizza_display": "location_restaurant_pizzawhirled_01_065",  # 1x2
+        "picnic_table": "location_restaurant_generic_01_001",   # 2x2
+        "hot_counter": "location_restaurant_generic_01_029",    # 1x3
+        "griddle": "appliances_cooking_01_045",
+        "oven_commercial": "appliances_cooking_01_041",         # 1x2
+        "fryer": "appliances_cooking_01_052",
+        "dishwasher": "appliances_cooking_01_064",
+        "oven_steel": "appliances_cooking_01_072",
+        "oven_steel_alt": "appliances_cooking_01_076",
         # Offices: desks, desk chairs, filing cabinets, a water cooler, boards.
         "desk": "location_business_office_generic_01_001",        # 1x2
         "desk_dark": "location_business_office_generic_01_041",   # 1x2
@@ -724,7 +743,7 @@ def main(argv: list[str]) -> int:
              "mechanic", "motelroom", "bakery", "gasstore", "giftstore", "toystore",
              "candystore", "butcher", "departmentstore", "jewelrystore", "camerastore",
              "musicstore", "movierental", "gunstore", "sportstore", "gardenstore",
-             "furniturestore"]
+             "furniturestore", "armystorage"]
     missing = [k for k in KINDS if k not in room_colors]
     if missing:
         raise SystemExit(f"ERROR: room names absent from RoomNames.txt: {missing}")

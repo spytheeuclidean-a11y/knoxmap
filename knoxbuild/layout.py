@@ -144,11 +144,11 @@ ROOM_STYLE = {
     # game's own room names so the loot fits: eating places and their
     # kitchens, and the other shops and services of a high street.
     "restaurantdining": (C.FLOOR_TILE_CHECK, "Restaurant",
-                         ["counter", "plant", "painting", "chair", "plant"]),
+                         ["plant", "painting", "plant"]),
     "italianrestaurant": (C.FLOOR_WOOD, "Italian Restaurant",
-                          ["counter", "plant", "painting", "bookshelf", "plant"]),
+                          ["plant", "painting", "bookshelf", "plant"]),
     "chineserestaurant": (C.FLOOR_CARPET_RED, "Chinese Restaurant",
-                          ["counter", "plant", "painting", "plant"]),
+                          ["plant", "painting", "plant"]),
     "icecream": (C.FLOOR_TILE_PALE, "Ice Cream Parlour",
                  ["shop_freezer", "shop_counter", "shop_freezer", "plant"]),
     **{k: (C.FLOOR_TILE_PALE, label,
@@ -173,7 +173,8 @@ ROOM_STYLE = {
                 ["bed", "sink", "counter", "shelf", "chair", "filing_cabinet"]),
     "medicaloffice": (C.FLOOR_TILE_PALE, "Medical Office",
                       ["bed", "sink", "counter", "desk", "office_chair", "filing_cabinet"]),
-    "theatre": (C.FLOOR_CARPET_RED, "Theatre", ["chair", "chair", "chair", "plant"]),
+    # Seats come in rows (CENTRE_GROUPS); along the walls only a plant.
+    "theatre": (C.FLOOR_CARPET_RED, "Theatre", ["plant", "painting"]),
     "policeoffice": (C.FLOOR_LINO, "Police Office",
                      ["desk", "office_chair", "filing_cabinet", "corkboard", "water_cooler"]),
     "daycare": (C.FLOOR_CARPET_BLUE, "Daycare",
@@ -194,6 +195,8 @@ ROOM_STYLE = {
            ("gunstore", C.FLOOR_LINO, "Gun Store"), ("sportstore", C.FLOOR_WOOD, "Sports Store"),
            ("gardenstore", C.FLOOR_LINO, "Garden Store"),
            ("furniturestore", C.FLOOR_CARPET_RED, "Furniture Store"))},
+    "armystorage": (C.FLOOR_LINO, "Army Storage",
+                    ["metal_rack", "crate", "metal_rack", "crate", "filing_cabinet", "shelf"]),
     "breakroom": (C.FLOOR_LINO, "Break Room",
                   ["fridge", "counter", "counter", "sink", "vending", "water_cooler",
                    "plant"]),
@@ -212,8 +215,7 @@ ROOM_STYLE = {
                ["chair", "chair", "table", "painting", "plant"]),
     "restaurant": (C.FLOOR_TILE_CHECK, "Restaurant",
                    ["table", "chair", "chair", "counter", "plant"]),
-    "bar": (C.FLOOR_WOOD, "Bar",
-            ["counter", "chair", "chair", "table", "shelf"]),
+    "bar": (C.FLOOR_WOOD, "Bar", ["shelf", "painting", "plant"]),
     "clinic": (C.FLOOR_TILE_PALE, "Clinic",
                ["bed", "sink", "shelf", "counter", "chair"]),
     "medical": (C.FLOOR_TILE_PALE, "Medical",
@@ -265,6 +267,11 @@ SPECIAL_MIXES = {
                     "garage"],
                    ["warehouse", "storage"]),
     "barn":       (["warehouse", "storage", "garage"], ["warehouse", "storage"]),
+    # A base's buildings: army stores (the game's army loot), offices,
+    # dormitory rooms, a mess kitchen.
+    "military":   (["armystorage", "office", "armystorage", "bedroom", "bathroom", "kitchen",
+                    "policeoffice"],
+                   ["armystorage", "bedroom", "office"]),
     "shed":       (["shed"], ["shed"]),
     "medical":    (["clinic", "medical", "lobby", "office", "bathroom",
                     "storage"],
@@ -1604,12 +1611,10 @@ CENTRE_GROUPS: dict[str, tuple[list[tuple[str, int, int, str]], int]] = {
 }
 # Every dining room seats people the same way, however it is named; the salon
 # and the ice cream parlour have tables too.
-for _kind in ("restaurantdining", "italianrestaurant", "chineserestaurant"):
-    CENTRE_GROUPS[_kind] = CENTRE_GROUPS["restaurant"]
-for _kind in ("icecream", "bar", "breakroom"):
-    CENTRE_GROUPS[_kind] = CENTRE_GROUPS["cafe"]
+# (Dining rooms, cafés and bars are fitted out by interiors.furnish_dining.)
+CENTRE_GROUPS["breakroom"] = CENTRE_GROUPS["cafe"]
 CENTRE_GROUPS["theatre"] = ([("chair", 0, 0, "S"), ("chair", 1, 0, "S"), ("chair", 2, 0, "S"),
-                             ("chair", 3, 0, "S")], 12)
+                             ("chair", 3, 0, "S"), ("chair", 4, 0, "S"), ("chair", 5, 0, "S")], 40)
 # Commercial kitchens are fitted with counters wall to wall, like a home's.
 KITCHENS = {"kitchen", "breakroom", "restaurantkitchen", "pizzakitchen", "burgerkitchen",
             "dinerkitchen", "chinesekitchen", "sushikitchen", "mexicankitchen", "seafoodkitchen",
@@ -1655,7 +1660,7 @@ ONCE = {"sofa", "tv", "double_bed", "bed", "bath", "toilet", "stove", "fridge", 
 
 
 def _once(role: str) -> bool:
-    return role in ONCE or role.startswith(("sofa_", "double_bed", "bed_", "wardrobe"))
+    return role in ONCE or role.startswith(("sofa_", "double_bed", "bed_", "wardrobe", "erika_vending"))
 
 
 def _place_group(plan: Plan, idx: int, room: Room,
@@ -1819,8 +1824,15 @@ def _furnish(plan: Plan, rng: random.Random,
         _, _, base = ROOM_STYLE[r.kind]
         occupied: set[tuple[int, int]] = set()
         office = r.kind == "office" and plan.kind not in HOUSE_LIKE_KINDS
+        eatery = r.kind in interiors.DINING_ROOMS
+        commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
         if office:
             base = interiors.furnish_office(plan, idx, r, rng, occupied, keep_clear)
+        elif eatery:
+            base = interiors.furnish_dining(plan, idx, r, rng, occupied, stair_tiles,
+                                            door_tiles, street)
+        elif commercial_kitchen:
+            base = interiors.KITCHEN_KIT.get(r.kind, interiors.DEFAULT_KITCHEN_KIT)
         elif r.kind == "bathroom" and plan.kind not in HOUSE_LIKE_KINDS | {"apartment"}:
             # A shop's or an office's toilet, not a family bathroom with a bath.
             base = ["toilet", "sink", "mirror", "toilet"]
@@ -1844,6 +1856,8 @@ def _furnish(plan: Plan, rng: random.Random,
         # small things repeat: a big living room got a second sofa and
         # television, a big bathroom two baths.
         target = max(len(base), min(24, r.area // 4))
+        if eatery or commercial_kitchen or r.kind == "theatre":
+            target = len(base)       # fitted out; nothing more to scatter
         wishlist = []
         for i in range(target):
             role = base[i % len(base)]
@@ -1853,7 +1867,7 @@ def _furnish(plan: Plan, rng: random.Random,
         # The middle first, with an aisle round it the wall pieces must leave
         # free; placed after them, it almost never found room.
         before = len(plan.furniture)
-        if not office:
+        if not office and not eatery:
             _furnish_middle(plan, idx, r, occupied, keep_clear, pal)
         # What the middle took is off the list: the living room's sofa, table
         # and television are the group there.
@@ -1890,13 +1904,18 @@ def _furnish(plan: Plan, rng: random.Random,
                 plan.furniture.append((role, x, y, orient))
                 break
 
-        if r.kind in KITCHENS:
+        if commercial_kitchen:
+            # Steel counters, and no wall cupboards or microwave.
+            _counter_runs(plan, idx, slots, occupied, door_tiles, stair_tiles,
+                          "counter_2", cabinets=False)
+        elif r.kind in KITCHENS:
             _counter_runs(plan, idx, slots, occupied, door_tiles, stair_tiles,
                           pal.get("counter", "counter"))
 
 
 def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
-                  door_tiles: set, stair_tiles: set, counter: str = "counter") -> None:
+                  door_tiles: set, stair_tiles: set, counter: str = "counter",
+                  cabinets: bool = True) -> None:
     """Fitted counters along a kitchen's two longest walls.
 
     Knox County's kitchens are counters wall to wall with the sink and stove
@@ -1923,6 +1942,8 @@ def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
     # Cupboards on the wall above the counters, and a microwave on one - the
     # rest of what makes a vanilla kitchen full. North and west walls only, as
     # for everything fixed to a wall; the windows then keep off those tiles.
+    if not cabinets:
+        return
     microwave = False
     for role, x, y, orient in list(plan.furniture):
         if role != counter or orient not in ("N", "W") or _room_at(plan, x, y) != idx:
