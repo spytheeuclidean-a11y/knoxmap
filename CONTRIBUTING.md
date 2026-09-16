@@ -44,3 +44,13 @@ the app, cache what you fetch, and never bulk-download tiles.
 By contributing you agree your work is released under the licence of the part
 of the project it goes into: MIT for most files, GPL for `worlded/` (see
 [LICENSES.md](LICENSES.md)).
+
+## Releasing
+
+Add a `## <version>` section to CHANGELOG.md, then push a tag:
+
+    git tag v1.1
+    git push origin v1.1
+
+GitHub Actions runs the checks, zips the repository as `KnoxMap-v1.1.zip` and
+publishes a release with that CHANGELOG section as its notes.

@@ -90,13 +90,16 @@ actually lived, and installs the result as a mod.
 
 ## Quick start
 
-**You need:** Windows 10 or 11 · [Python 3.10 or newer](https://www.python.org/downloads/)
-(tick *Add python.exe to PATH* when installing) · **Project Zomboid Build 42**
-installed through Steam · an internet connection.
+**You need:** Windows 10 or 11 · **Project Zomboid Build 42** installed through
+Steam · an internet connection. Python is optional: if your PC doesn't have it,
+setup downloads a private copy into the KnoxMap folder.
 
-1. **Download KnoxMap**: the green **Code** button above → **Download ZIP**, then
-   unzip it anywhere. (Or `git clone` it.)
+1. **Download KnoxMap**: the newest `KnoxMap-v….zip` from
+   [Releases](https://github.com/spytheeuclidean-a11y/knoxmap/releases/latest),
+   then unzip it anywhere. (Or `git clone` it for the latest changes.)
 2. **Double-click `KnoxMap.bat`.** The first time, it runs setup for you, which:
+   - uses your Python 3.10+ if you have one, or downloads the official python.org
+     build (checked against its fingerprint) into the folder if not,
    - creates a private Python environment inside the KnoxMap folder,
    - downloads the free [PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools),
    - downloads the map compiler from this repository's releases and checks its fingerprint,

@@ -35,3 +35,7 @@ knoxmap_error.log
 
 # Map tiles cached by the app, per the OSM tile policy
 cache/
+
+# A private Python that Setup.bat downloads when the PC has none
+.python/
+.python.zip

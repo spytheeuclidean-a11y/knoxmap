@@ -4,3 +4,7 @@
 
 # Third-party files bundled as published: keep their bytes exactly.
 static/vendor/** -text
+
+# Left out of release zips
+.github export-ignore
+.gitattributes export-ignore

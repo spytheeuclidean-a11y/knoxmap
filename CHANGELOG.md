@@ -63,6 +63,9 @@ map.
 **The app**
 - One window: search, generate, build, compile, install. Setup.bat downloads
   the tools, extracts tiles from your own game and checks everything.
+- No Python needed beforehand: setup fetches the official python.org build into
+  the KnoxMap folder when the PC has none.
+- A dark, plain window with a link to the Discord.
 - Presets and fine tuning for zombies, living space, heights,
   woodland, parking and more.
 - A patched, headless map compiler so compiling needs no clicks in WorldEd.

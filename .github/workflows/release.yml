@@ -1,0 +1,40 @@
+name: release
+
+# Push a tag like v1.1 and this makes the GitHub release players download:
+# the same checks as every push, then a KnoxMap-v1.1.zip of the repository
+# with that version's CHANGELOG section as the notes.
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip the app
+        run: |
+          git archive --format=zip --prefix=KnoxMap/ -o "KnoxMap-${GITHUB_REF_NAME}.zip" HEAD
+
+      - name: Notes from CHANGELOG.md
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            /^## / { on = (index($0, "## " v " ") == 1 || $0 == "## " v) ; next }
+            on' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then echo "See CHANGELOG.md." > notes.md; fi
+          printf '\n---\n**Install:** download `KnoxMap-%s.zip` below, unzip it and double-click `KnoxMap.bat`.\n' "$GITHUB_REF_NAME" >> notes.md
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "KnoxMap-${GITHUB_REF_NAME}.zip" \
+            --title "KnoxMap ${GITHUB_REF_NAME#v}" --notes-file notes.md --latest
