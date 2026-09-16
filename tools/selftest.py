@@ -252,7 +252,8 @@ def main(argv: list[str]) -> int:
         missing = [a for a in assets if client.get(a).status_code != 200]
         check(page.status_code == 200 and len(assets) >= 8 and not missing,
               f"page and all {len(assets)} of its files are served" + (f" - missing {missing}" if missing else ""))
-        check(not re.search(r'(?:href|src)="https?://', page.get_data(as_text=True)),
+        # Scripts, images and stylesheets only; a plain <a> link loads nothing.
+        check(not re.search(r'(?:src="|<link[^>]*href=")https?://', page.get_data(as_text=True)),
               "page loads nothing from other sites")
 
         print("install")
