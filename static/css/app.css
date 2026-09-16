@@ -42,6 +42,8 @@ h1, h2, h3 { margin: 0; font-weight: 600; }
 .topbar .logo { width: 26px; height: 26px; border-radius: 5px; }
 .topbar h1 { font-size: 17px; }
 .byline { color: var(--muted); font-size: 13px; }
+.byline a { color: var(--accent); text-decoration: none; }
+.byline a:hover { text-decoration: underline; }
 
 /* ---- layout ------------------------------------------------------------------ */
 main {

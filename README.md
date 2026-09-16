@@ -6,7 +6,7 @@
 
 <p align="center"><strong>Draw any place on Earth. Play it in Project Zomboid.</strong></p>
 
-<p align="center">Made by <strong>euclid80tr</strong></p>
+<p align="center">Made by <strong>euclid80tr</strong> · <a href="https://discord.gg/ePM8dSxPm7">Discord</a></p>
 
 <p align="center">
   <img alt="Project Zomboid Build 42" src="https://img.shields.io/badge/Project%20Zomboid-Build%2042-8b0000"/>
