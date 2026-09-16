@@ -27,7 +27,7 @@ two sections, including:
 
 `knoxbuild/` · `tools/` · `knoxmap.py` · `knoxmap_setup.py` · `knoxpaths.py` ·
 `KnoxMap.bat` · `Setup.bat` · `generator/places.py` · `static/js/fx.js` ·
-`static/js/quirks.js` · `KNOXBUILD.md` · `LICENSES.md` · `CHANGELOG.md` ·
+`KNOXBUILD.md` · `LICENSES.md` · `CHANGELOG.md` ·
 `CONTRIBUTING.md` · `.github/` · `docs/`
 
 ## The map compiler patch — GPL-2.0-or-later
@@ -74,9 +74,7 @@ and tiles, © OpenStreetMap contributors.
   (There is no satellite view: Esri's imagery terms do not cover this use.)
 - **Bundled in `static/vendor/`**, each with its licence text beside it:
   **Leaflet** 1.9.4 (BSD-2-Clause, © Volodymyr Agafonkin), **Leaflet.draw**
-  1.0.4 (MIT, © Jon West, Jacob Toye and Leaflet), and the fonts **Oswald**,
-  **Inter** and **JetBrains Mono** (SIL Open Font License 1.1, latin and
-  latin-ext subsets).
+  1.0.4 (MIT, © Jon West, Jacob Toye and Leaflet).
 
 ## Not affiliated
 

@@ -21,7 +21,7 @@ L.tileLayer('/tiles/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const drawnItems = new L.FeatureGroup().addTo(map);
-const SEL_STYLE = { color: '#a5e266', weight: 2, fillOpacity: 0.08, className: 'sel-rect' };
+const SEL_STYLE = { color: '#a5e266', weight: 2, fillOpacity: 0.1, className: 'sel-rect' };
 const drawControl = new L.Control.Draw({
   draw: {
     polyline: false, marker: false, circlemarker: false,
@@ -253,7 +253,6 @@ function clearBboxFields() {
   const stats = document.getElementById('area-stats');
   stats.className = 'empty';
   stats.innerHTML = `<div class="empty-state">
-    <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="12" width="32" height="24" rx="2"/><path d="M8 20h32M16 12v24"/></svg>
     Draw an area on the map - rectangle, polygon, circle or freehand - to see what you'll get.</div>`;
   document.getElementById('generateBtn').disabled = true;
   document.getElementById('landmarksBtn').disabled = true;
@@ -329,7 +328,7 @@ function buildSettingsForm(values) {
     const control = key === 'seed'
       ? `<div class="seed-row"><input type="number" data-key="${key}" min="${lo}"
            max="${hi}" step="1" value="${values[key]}"><button type="button"
-           class="dice" title="Random seed">🎲</button></div>`
+           class="dice" title="Random seed">random</button></div>`
       : `<input type="range" data-key="${key}" min="${lo}" max="${hi}"
            step="${isInt ? 1 : 0.05}" value="${values[key]}">`;
     wrap.innerHTML = `
@@ -668,7 +667,7 @@ document.getElementById('landmarksBtn').addEventListener('click', async () => {
   const btn = document.getElementById('landmarksBtn');
   const out = document.getElementById('landmark-results');
   btn.disabled = true;
-  out.innerHTML = '<div class="hint">Asking Overpass…</div>';
+  out.innerHTML = '<div class="hint">Looking…</div>';
 
   try {
     const res = await fetch('/api/landmarks', {
@@ -878,7 +877,7 @@ function renderCensus(pop) {
     ${fx.tile(pop.residents, '', 'residents')}
     ${fx.tile(pop.daytime_occupants, '', 'at work or school')}
     ${fx.tile(pop.zombie_estimate, '', 'zombies, roughly')}
-    ${fx.tile(pop.share_with_zombies * 100, '%', 'of the map infested', 0)}`;
+    ${fx.tile(pop.share_with_zombies * 100, '%', 'of the map has zombies', 0)}`;
   fx.countUp(tiles);
   const official = document.getElementById('censusOfficial');
   official.innerHTML = (pop.official || []).length

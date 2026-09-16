@@ -3,111 +3,67 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>KnoxMap — real places into Project Zomboid maps</title>
+<title>KnoxMap</title>
 <link rel="icon" type="image/svg+xml" href="/static/logo.svg"/>
-<!-- Fonts and the map library are bundled in static/vendor (see LICENSES.md), so the
+<!-- The map library is bundled in static/vendor (see LICENSES.md), so the
      window works offline and contacts no third party but OpenStreetMap. -->
-<link rel="stylesheet" href="/static/vendor/fonts/fonts.css">
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css"/>
 <link rel="stylesheet" href="/static/vendor/leaflet-draw/leaflet.draw.css"/>
 <link rel="stylesheet" href="/static/css/app.css"/>
 </head>
 <body>
-<div class="fx-backdrop" aria-hidden="true"></div>
-<div class="fx-grain" aria-hidden="true"></div>
 
 <header class="topbar">
-  <div class="brand">
-    <div class="brand-mark">
-      <img src="/static/logo.svg" alt="" class="brand-logo"/>
-    </div>
-    <div class="brand-text">
-      <h1 class="glitch" data-text="KNOXMAP">KNOXMAP</h1>
-      <p class="subtitle">Any place on Earth &rarr; a Project Zomboid map <span class="maker">&middot; by euclid80tr</span></p>
-    </div>
-  </div>
-
-  <ol class="stepper" id="stepper" aria-label="Progress">
-    <li data-step="area" class="is-active"><span class="dot">1</span><span class="lbl">Area</span></li>
-    <li data-step="style"><span class="dot">2</span><span class="lbl">Style</span></li>
-    <li data-step="terrain"><span class="dot">3</span><span class="lbl">Terrain</span></li>
-    <li data-step="buildings"><span class="dot">4</span><span class="lbl">Buildings</span></li>
-    <li data-step="compile"><span class="dot">5</span><span class="lbl">Compile</span></li>
-    <li data-step="install"><span class="dot">6</span><span class="lbl">Install</span></li>
-  </ol>
-
-  <div class="hud-chips">
-    <span class="chip" id="dayChip" title="Maps made. Each one is another day survived.">DAY 1</span>
-    <button type="button" class="chip chip-btn" id="soundBtn" aria-pressed="false"
-            title="Sound effects (off by default)">🔇</button>
-  </div>
-  <div class="status-pill" id="serverPill" title="Local generator">
-    <span class="pulse"></span><span class="txt">ONLINE</span>
-  </div>
+  <img src="/static/logo.svg" alt="" class="logo"/>
+  <h1>KnoxMap</h1>
+  <span class="byline">real places as Project Zomboid maps &middot; by euclid80tr</span>
 </header>
 
 <main>
   <section id="map-pane">
-    <div id="search-box" class="glass">
-      <svg class="search-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <div id="search-box">
       <input id="searchInput" type="search" autocomplete="off"
-             placeholder="Search a place, then press Enter — e.g. Lexington High School" />
+             placeholder="Search for a place and press Enter" />
       <label class="search-scope">
-        <input type="checkbox" id="searchHere" /> only this view
+        <input type="checkbox" id="searchHere" /> in this view
       </label>
       <ul id="search-results" hidden></ul>
     </div>
 
-    <div id="basemaps" class="glass segmented" role="radiogroup" aria-label="Basemap">
+    <div id="basemaps" role="radiogroup" aria-label="Basemap">
       <button type="button" data-base="dark" class="is-on">Dark</button>
-      <button type="button" data-base="streets">Streets</button>
-
+      <button type="button" data-base="streets">Light</button>
     </div>
 
     <div id="map"></div>
 
-    <div id="map-hint" class="glass">
-      <span class="hint-kicker">START HERE</span>
-      Search above (pick <strong>outline</strong> for a place's real boundary), or use the
-      <strong>rectangle, polygon, circle or freehand &#9998; tools</strong> on the left and
-      drag out an area.
+    <div id="map-hint">
+      Search for a place, or draw an area with the tools on the left.
+      A search result's <b>outline</b> button picks its real boundary.
       <button type="button" class="hint-close" aria-label="Dismiss">&times;</button>
-    </div>
-    <div id="hud" class="glass" aria-hidden="true">
-      <span class="hud-k">LAT</span><span id="hud-lat">—</span>
-      <span class="hud-k">LON</span><span id="hud-lon">—</span>
-      <span class="hud-k">Z</span><span id="hud-zoom">—</span>
     </div>
 
     <div id="gen-overlay" hidden>
-      <div class="radar">
-        <div class="radar-rings"></div>
-        <div class="radar-sweep"></div>
-        <span class="blip" style="--x:62%;--y:30%;--d:.2s"></span>
-        <span class="blip" style="--x:28%;--y:58%;--d:1.1s"></span>
-        <span class="blip" style="--x:70%;--y:70%;--d:1.8s"></span>
-        <span class="blip" style="--x:44%;--y:22%;--d:2.4s"></span>
-      </div>
-      <div class="gen-text">
-        <div class="gen-kicker">GENERATING TERRAIN</div>
+      <div class="gen-box">
+        <div class="gen-kicker">Generating terrain</div>
         <div id="gen-stage">Contacting OpenStreetMap…</div>
         <div id="gen-detail"></div>
         <div class="bar"><div id="gen-bar" class="bar-fill"></div></div>
-        <div id="gen-quip" aria-live="off"></div>
-        <div class="gen-elapsed"><span id="gen-clock">0:00</span> elapsed</div>
+        <div class="gen-elapsed"><span id="gen-clock">0:00</span></div>
       </div>
     </div>
   </section>
 
   <aside id="controls">
-    <section class="card setup-card" id="setupCard" hidden>
-      <div class="setup-kicker">SETUP INCOMPLETE</div>
-      <div class="setup-text">You can draw maps and generate buildings now. To compile
-        them into the game, run <b>Setup.bat</b> once:</div>
+    <section class="panel setup-card" id="setupCard" hidden>
+      <h2>Setup isn't finished</h2>
+      <p>You can make terrain and buildings already. To compile maps for the game,
+        run <b>Setup.bat</b> once:</p>
       <ul class="setup-list" id="setupList"></ul>
     </section>
-    <section class="card" data-card="area">
-      <header class="card-h"><span class="num">01</span><h2>Area</h2></header>
+
+    <section class="panel" data-card="area">
+      <h2>1. Area</h2>
       <div class="coords">
         <label>S <input type="number" step="0.000001" id="south" readonly></label>
         <label>W <input type="number" step="0.000001" id="west"  readonly></label>
@@ -115,55 +71,37 @@
         <label>E <input type="number" step="0.000001" id="east"  readonly></label>
       </div>
       <div id="area-stats" class="empty">
-        <div class="empty-state">
-          <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="12" width="32" height="24" rx="2"/><path d="M8 20h32M16 12v24"/></svg>
-          Draw a rectangle on the map to see what you'll get.
-        </div>
+        <div class="empty-state">Nothing selected yet.</div>
       </div>
       <div id="landmark-panel">
-        <button id="landmarksBtn" class="btn btn-ghost" disabled>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
-          What's in this area?
-        </button>
+        <button id="landmarksBtn" class="btn" disabled>List named places in the area</button>
         <div id="landmark-results"></div>
       </div>
     </section>
 
-    <section class="card" data-card="style">
-      <header class="card-h"><span class="num">02</span><h2>Style</h2></header>
+    <section class="panel" data-card="style">
+      <h2>2. Settings</h2>
       <label class="field">Map name
-        <input type="text" id="mapName" value="" placeholder="auto-generated if blank"/>
+        <input type="text" id="mapName" value="" placeholder="leave blank for an automatic name"/>
       </label>
-      <label class="field">Detail
+      <label class="field">Scale
         <select id="metersPerTile">
-          <option value="0.5">0.5 m / tile — highest detail, small area</option>
-          <option value="1.0" selected>1.0 m / tile — recommended</option>
-          <option value="2.0">2.0 m / tile — larger area</option>
-          <option value="3.0">3.0 m / tile — big area, blocky</option>
-          <option value="4.0">4.0 m / tile — town scale</option>
-          <option value="6.0">6.0 m / tile — region</option>
-          <option value="8.0">8.0 m / tile — coarsest</option>
+          <option value="0.5">0.5 m per tile (small areas)</option>
+          <option value="1.0" selected>1 m per tile (recommended)</option>
+          <option value="2.0">2 m per tile</option>
+          <option value="3.0">3 m per tile</option>
+          <option value="4.0">4 m per tile</option>
+          <option value="6.0">6 m per tile</option>
+          <option value="8.0">8 m per tile (whole regions)</option>
         </select>
       </label>
 
       <div class="field-label">Kind of place</div>
       <div class="preset-cards" id="presetCards" role="radiogroup" aria-label="Kind of place">
-        <button type="button" class="preset-card is-on" data-preset="town" data-quip="Houses, flats, and a pharmacy someone already looted." role="radio" aria-checked="true">
-          <svg viewBox="0 0 64 40" aria-hidden="true"><path d="M4 36V22l8-7 8 7v14M24 36V14h14v22M42 36V24l7-6 7 6v12M2 36h60"/><path d="M29 19h4M29 25h4M29 31h4"/></svg>
-          <span class="pc-name">Town</span><span class="pc-desc">Houses &amp; low flats</span>
-        </button>
-        <button type="button" class="preset-card" data-preset="suburb" data-quip="Plenty of cars. None of them have keys." role="radio" aria-checked="false">
-          <svg viewBox="0 0 64 40" aria-hidden="true"><path d="M8 36V23l11-9 11 9v13M2 36h60"/><path d="M16 36v-7h6v7"/><circle cx="46" cy="21" r="7"/><path d="M46 28v8"/></svg>
-          <span class="pc-name">Suburb</span><span class="pc-desc">Detached &amp; parking</span>
-        </button>
-        <button type="button" class="preset-card" data-preset="city" data-quip="Tall buildings. Taller body counts." role="radio" aria-checked="false">
-          <svg viewBox="0 0 64 40" aria-hidden="true"><path d="M6 36V16h10v20M20 36V4h12v32M36 36V12h10v24M50 36V20h8v16M2 36h60"/><path d="M24 10h4M24 16h4M24 22h4M24 28h4M40 18h2M40 24h2"/></svg>
-          <span class="pc-name">City</span><span class="pc-desc">Dense &amp; tall</span>
-        </button>
-        <button type="button" class="preset-card" data-preset="rural" data-quip="Nobody can hear you scream. Great acoustics though." role="radio" aria-checked="false">
-          <svg viewBox="0 0 64 40" aria-hidden="true"><path d="M22 36V20l10-8 10 8v16M27 36v-9h10v9M2 36h60"/><path d="M10 36v-8"/><circle cx="10" cy="22" r="6"/><path d="M53 36v-8"/><circle cx="53" cy="23" r="5"/></svg>
-          <span class="pc-name">Rural</span><span class="pc-desc">Farms &amp; forest</span>
-        </button>
+        <button type="button" class="preset-card is-on" data-preset="town" role="radio" aria-checked="true">Town</button>
+        <button type="button" class="preset-card" data-preset="suburb" role="radio" aria-checked="false">Suburb</button>
+        <button type="button" class="preset-card" data-preset="city" role="radio" aria-checked="false">City</button>
+        <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
       </div>
       <select id="preset" hidden>
         <option value="town" selected>Town</option>
@@ -173,129 +111,95 @@
       </select>
 
       <details id="advanced">
-        <summary>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
-          Fine tuning
-        </summary>
+        <summary>More settings</summary>
         <div id="advanced-body">
           <!-- Filled from /api/settings so the page never holds a second,
                drifting copy of the limits. -->
         </div>
-        <button type="button" id="resetSettings" class="linkish">
-          Reset to the preset
-        </button>
+        <button type="button" id="resetSettings" class="linkish">Reset to the defaults for this kind of place</button>
       </details>
     </section>
 
-    <section class="card card-cta" data-card="generate">
-      <button id="generateBtn" class="btn btn-hero" disabled>
-        <span class="btn-hero-txt">Generate map</span>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
-      </button>
+    <section class="panel" data-card="generate">
+      <button id="generateBtn" class="btn btn-primary" disabled>Generate map</button>
       <div id="status"></div>
-      <div class="cta-quip" id="ctaQuip">Warning: map may contain zombies.</div>
-    </section>
-
-    <section class="card tip-card" aria-live="off">
-      <div class="tip-kicker">SURVIVAL TIP #<span id="tipNum">1</span></div>
-      <div class="tip-text" id="tipText"></div>
     </section>
   </aside>
 </main>
 
 <section id="results" hidden>
-  <div class="results-head">
-    <div>
-      <div class="kicker">TERRAIN READY</div>
-      <h2>Your map <span class="ph map-badge">—</span></h2>
-    </div>
-  </div>
+  <h2>Map: <span class="ph map-badge">—</span></h2>
 
   <div id="results-grid">
     <figure class="preview-frame">
-      <a id="previewLink" target="_blank"><img id="previewImg" alt="Rendered map preview"/></a>
-      <div class="scanline" aria-hidden="true"></div>
-      <figcaption>Preview — landscape with trees</figcaption>
+      <a id="previewLink" target="_blank"><img id="previewImg" alt="Map preview"/></a>
+      <figcaption>Preview</figcaption>
     </figure>
     <div class="results-side">
       <div id="results-info"></div>
-      <a id="downloadAll" class="download-all" download>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
-        <span>
-          <span class="da-main">Download everything</span>
-          <span class="da-sub">one .zip — bitmaps, preview, footprints and any buildings</span>
-        </span>
-      </a>
+      <a id="downloadAll" class="btn" download>Download everything (.zip)</a>
       <details id="downloads-details">
-        <summary>Individual files</summary>
+        <summary>Single files</summary>
         <ul id="downloads"></ul>
       </details>
     </div>
   </div>
 
-  <h3 class="section-title">Finish the map</h3>
+  <h3>Finish the map</h3>
   <ol class="pipeline">
     <li class="pipe-card" data-step="buildings">
-      <div class="pipe-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21V9l6-4 6 4v12M15 21V12h6v9M2 21h20M7 13h4M7 17h4"/></svg></div>
       <div class="pipe-body">
-        <div class="pipe-title">Generate buildings</div>
-        <span id="buildingsNote" class="step-note">Turns every OSM footprint into
-          a furnished building.</span>
+        <div class="pipe-title">3. Buildings</div>
+        <span id="buildingsNote" class="step-note">Makes a furnished building for every footprint.</span>
         <div class="bar bar-indet"><div class="bar-fill"></div></div>
         <div id="census" class="census" hidden>
-          <div class="census-head">🧟 Zombie census <span class="census-sub">who was here when it started</span></div>
+          <div class="census-head">Population</div>
           <div class="tiles census-tiles" id="censusTiles"></div>
           <div class="census-official" id="censusOfficial"></div>
           <div class="census-actions">
-            <button id="recountBtn" class="btn btn-ghost btn-small" type="button">
-              Recount with current settings</button>
-            <span id="censusNote" class="step-note">Tweak the zombie settings in Fine tuning, then recount —
-              no rebuilding needed.</span>
+            <button id="recountBtn" class="btn btn-small" type="button">Recount</button>
+            <span id="censusNote" class="step-note">Change the zombie settings under More settings,
+              then recount. No need to rebuild.</span>
           </div>
         </div>
       </div>
-      <button id="buildingsBtn" class="btn btn-step">Build</button>
+      <button id="buildingsBtn" class="btn">Build</button>
     </li>
     <li class="pipe-card" data-step="compile">
-      <div class="pipe-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7l8-4 8 4-8 4-8-4zM4 12l8 4 8-4M4 17l8 4 8-4"/></svg></div>
       <div class="pipe-body">
-        <div class="pipe-title">Compile map</div>
-        <span id="compileNote" class="step-note">Runs BMP to TMX and Generate Lots
-          headlessly via the patched WorldEd. Takes a few minutes.</span>
+        <div class="pipe-title">4. Compile</div>
+        <span id="compileNote" class="step-note">Turns the map into the game's files with WorldEd.
+          Takes a few minutes.</span>
         <div class="bar"><div id="compileBar" class="bar-fill"></div></div>
         <details class="manual-fallback">
-          <summary>or do it by hand in WorldEd</summary>
-          <button id="worldedBtn" class="btn btn-ghost btn-small" disabled>Open in WorldEd</button>
+          <summary>Or do it yourself in WorldEd</summary>
+          <button id="worldedBtn" class="btn btn-small" disabled>Open in WorldEd</button>
           <span id="worldedNote" class="step-note">Then
-            <b>File → BMP To TMX → All Cells…</b>, then
+            <b>File → BMP To TMX → All Cells…</b> and
             <b>File → Generate Lots 8x8 → All Cells…</b></span>
         </details>
       </div>
-      <button id="compileBtn" class="btn btn-step" disabled>Compile</button>
+      <button id="compileBtn" class="btn" disabled>Compile</button>
     </li>
     <li class="pipe-card" data-step="install">
-      <div class="pipe-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg></div>
       <div class="pipe-body">
-        <div class="pipe-title">Install into Project Zomboid</div>
+        <div class="pipe-title">5. Install</div>
         <div class="install-row">
-          <label>In-game name <input type="text" id="mapTitle"/></label>
+          <label>Name in game <input type="text" id="mapTitle"/></label>
           <label>Mod id <input type="text" id="modId"/></label>
         </div>
-        <span id="installNote" class="step-note">Copies the compiled map into
-          ~/Zomboid/mods.</span>
+        <span id="installNote" class="step-note">Copies the map into your Zomboid mods folder.</span>
       </div>
-      <button id="installBtn" class="btn btn-step" disabled>Install</button>
+      <button id="installBtn" class="btn" disabled>Install</button>
     </li>
   </ol>
 </section>
 
 <div id="toasts" aria-live="polite"></div>
-<canvas id="confetti" aria-hidden="true"></canvas>
 
 <script src="/static/vendor/leaflet/leaflet.js"></script>
 <script src="/static/vendor/leaflet-draw/leaflet.draw.js"></script>
 <script src="/static/js/fx.js"></script>
 <script src="/static/js/app.js"></script>
-<script src="/static/js/quirks.js"></script>
 </body>
 </html>
