@@ -531,6 +531,11 @@ def _media_in(root: Path) -> Path | None:
         return root                                  # the media folder itself
     if _is_dir(root / "media" / "texturepacks"):
         return root / "media"                        # Windows and Linux
+    for sub in ("projectzomboid", "ProjectZomboid"):
+        if _is_dir(root / sub / "media" / "texturepacks"):
+            return root / sub / "media"              # Linux nested layout
+        if _is_dir(root / sub / "texturepacks"):
+            return root / sub
     bundles = [root] if root.suffix == ".app" else sorted(root.glob("*.app"))
     for bundle in bundles:
         for inside in _BUNDLE_MEDIA:

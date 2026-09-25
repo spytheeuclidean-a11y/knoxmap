@@ -475,6 +475,10 @@ def check_portable(check) -> None:
     (real / "media" / "texturepacks").mkdir(parents=True)
     check(knoxpaths.pz_media_dir(real) == real / "media",
           "while Windows and Linux still find <game>/media")
+    linux_nested = Path(tempfile.mkdtemp()) / "ProjectZomboid"
+    (linux_nested / "projectzomboid" / "media" / "texturepacks").mkdir(parents=True)
+    check(knoxpaths.pz_media_dir(linux_nested) == linux_nested / "projectzomboid" / "media",
+          "and Linux finds <game>/projectzomboid/media when nested")
     check(knoxpaths.pz_install_from(Path(tempfile.mkdtemp())) is None,
           "and a folder with no game in it is still refused")
 
