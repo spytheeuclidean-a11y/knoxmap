@@ -388,7 +388,8 @@ function buildSettingsForm(values) {
   body.innerHTML = '';
   for (const [key, [label, hint]] of Object.entries(SETTING_LABELS)) {
     if (!(key in settingsMeta.defaults)) continue;   // knob has been removed
-    const [lo, hi] = settingsMeta.limits[key];
+    // A choice (building_alignment) is a name, not a number: it has no limits.
+    const [lo, hi] = settingsMeta.limits[key] || [0, 0];
     const isInt = settingsMeta.types
       ? settingsMeta.types[key] === 'int'
       : Number.isInteger(settingsMeta.defaults[key]);

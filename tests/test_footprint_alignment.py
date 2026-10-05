@@ -90,6 +90,20 @@ class BuildingAlignment(unittest.TestCase):
         self.assertEqual([value for value, _label in body["options"]["building_alignment"]],
                          ["real", "smart", "rectilinear", "rectangle"])
 
+    def test_alignment_is_a_name_not_a_number(self):
+        from app import app
+        from knoxbuild.settings import LIMITS
+
+        self.assertIs(type(Settings().building_alignment), str)
+        self.assertNotIn("building_alignment", LIMITS)
+        body = app.test_client().get("/api/settings").get_json()
+        self.assertNotIn("building_alignment", body["limits"])
+        self.assertEqual(body["current"]["building_alignment"], "smart")
+        # A number is not a choice: the default stays.
+        for junk in (2, "2", 1.5, True, None):
+            self.assertEqual(Settings.from_dict({"building_alignment": junk})
+                             .building_alignment, "smart", junk)
+
 
 if __name__ == "__main__":
     unittest.main()

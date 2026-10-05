@@ -175,7 +175,6 @@ LIMITS = {
     # and compile time - the presets stay low and this is the ceiling.
     "max_levels": (1, 30),
     "room_size": (16, 400),
-    "building_alignment": (0, 3),
     "square_buildings": (0, 45),
     "neighbourhood_tiles": (20, 2000),
     "style_oddity": (0.0, 1.0),
