@@ -12,6 +12,14 @@
   under that share is left out ("on the road" in the build summary: 21 of the
   same 957, none left on a road). Pavement is still something a building may
   front.
+- **A wall is no longer lost under a neighbour's roof** (`knoxbuild/world.py`,
+  `build.py`). Where a taller building stood beside a lower one, the lower one's
+  ceiling and roof tiles landed on the squares its upper-floor wall stands on, and WorldEd
+  lays lots down in the order the project lists them, with a tile of that kind taking the
+  whole square: the wall vanished, leaving a gap in the side of the taller building. On a
+  real map 89 wall edges were missing this way (80 under a roof). Lots are now listed
+  lowest building first, so the taller building is laid last and its wall is added to what
+  is there; none were missing on the same map afterwards.
 
 - **A building that fronts a pavement is built, not thrown away**
   (`knoxbuild/footprint.py`). Standing a footprint off the road became a hard

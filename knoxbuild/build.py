@@ -1624,7 +1624,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             from . import catalog as _C
             escalator_squares.extend(_C.escalator_tiles(x0 + ex, y0 + ey,
                                                           west=True))
-        p = Placement(f"buildings/{fname}", x0, y0, w, h)
+        p = Placement(f"buildings/{fname}", x0, y0, w, h, levels=storeys)
         placements.append(p)
         peopled.append((x0, y0, fp.mask, storeys, special or "house"))
         outlines.append((px, special or "house", real_name))
