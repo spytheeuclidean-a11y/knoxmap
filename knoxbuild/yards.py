@@ -98,6 +98,24 @@ def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
     return found
 
 
+DOOR_FRONT_DEPTH = 2
+
+
+def door_fronts(out_dir: str, rows: list[dict]) -> set[tuple[int, int]]:
+    """The squares in front of every ground-floor outside door, DOOR_FRONT_DEPTH deep, as map
+    tiles: where nothing that blocks (a tree, a fence) may stand."""
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        lists = list(pool.map(lambda r: _outside_doors(os.path.join(out_dir, "buildings", r["file"])), rows))
+    out: set[tuple[int, int]] = set()
+    for row, doors in zip(rows, lists):
+        for ox, oy, ix, iy in doors:
+            dx, dy = ox - ix, oy - iy
+            for k in range(DOOR_FRONT_DEPTH):
+                out.add((row["tile_x"] + ox + dx * k, row["tile_y"] + oy + dy * k))
+    return out
+
+
 def _pave_patio(ground, veg, crossable, claimed, cells):
     """Pave only unclaimed lawn so one home's patio cannot overwrite a neighbor's path."""
     h, w = crossable.shape
@@ -114,7 +132,8 @@ def _pave_patio(ground, veg, crossable, claimed, cells):
 
 def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 drives: list | None = None,
-                lights: list | None = None) -> tuple[int, list]:
+                lights: list | None = None,
+                fronts: set | None = None) -> tuple[int, list]:
     """Dress houses and connect mapped garages. Return houses dressed and fences.
 
     Each drive's parking space, (x, y, width, height) at its house end, is
@@ -459,6 +478,11 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             drives.append((min(xs), min(ys), max(xs) - min(xs) + 1,
                            max(ys) - min(ys) + 1))
 
+    if veg is not None and fronts:
+        # No tree or bush grows in a doorway.
+        for x, y in fronts:
+            if 0 <= x < w and 0 <= y < h:
+                veg[y, x] = C.VEG_NOTHING
     Image.fromarray(ground).save(bmp, format="BMP")
     if veg is not None:
         Image.fromarray(veg).save(veg_path, format="BMP")

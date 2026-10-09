@@ -144,8 +144,13 @@ def _tarmac_mask(bmp_path: str, width: int, height: int):
 
 
 def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
-                 bdir: str, extra: list | None = None) -> tuple[list, int]:
-    """Write one fence .tbx per map cell that has fences. Returns placements."""
+                 bdir: str, extra: list | None = None,
+                 keep_clear: set | None = None) -> tuple[list, int]:
+    """Write one fence .tbx per map cell that has fences. Returns placements.
+
+    `keep_clear` is a set of (x, y) tiles - the ground in front of each door - that no fence
+    edge may touch: a fence across a doorway is a gap in the fence instead."""
+    clear = keep_clear or ()
     from .world import Placement
 
     path = os.path.join(out_dir, f"{map_name}_fences.geojson")
@@ -213,12 +218,16 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
                 # A fence never runs through a building: that edge is a wall.
                 if building_at(x, y1) or building_at(x, y1 - 1):
                     continue
+                if (x, y1) in clear or (x, y1 - 1) in clear:
+                    continue
                 if crossing(x, y1, x, y1 - 1):
                     continue
                 edges.setdefault((x, y1), {})["N"] = style
             else:                             # along a west edge
                 y = min(y1, y2)
                 if building_at(x1, y) or building_at(x1 - 1, y):
+                    continue
+                if (x1, y) in clear or (x1 - 1, y) in clear:
                     continue
                 if crossing(x1, y, x1 - 1, y):
                     continue
@@ -243,7 +252,7 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
     for (x, y), style in ends.items():
         if (x, y) in pieces or not (0 <= x < map_w and 0 <= y < map_h):
             continue
-        if building_at(x, y):
+        if building_at(x, y) or (x, y) in clear:
             continue
         touching = sum(1 for key, side in (((x, y), "W"), ((x, y), "N"),
                                            ((x, y - 1), "W"), ((x - 1, y), "N"))

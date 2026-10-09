@@ -20,6 +20,13 @@
   real map 89 wall edges were missing this way (80 under a roof). Lots are now listed
   lowest building first, so the taller building is laid last and its wall is added to what
   is there; none were missing on the same map afterwards.
+- **No tree, bush or fence stands in a doorway** (`knoxbuild/yards.py`,
+  `fences.py`, `build.py`). The ground and the fences are drawn from OpenStreetMap
+  before anyone knows where a door is, so on a real map 19 of 19,796 doors had a
+  fence or a tree on the square in front of them and 53 had a bush. The two squares
+  in front of every ground-floor outside door are now cleared of vegetation, and a
+  fence edge that touches them is left out, which makes a gap in the fence where the
+  door is. None were blocked afterwards on the same map.
 
 - **A building that fronts a pavement is built, not thrown away**
   (`knoxbuild/footprint.py`). Standing a footprint off the road became a hard
