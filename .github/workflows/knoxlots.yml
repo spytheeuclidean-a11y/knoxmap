@@ -1,0 +1,47 @@
+name: knoxlots
+
+# The Rust map compiler (rust/knoxlots), built on each system and tested there.
+#
+# KnoxMap compiles with it when it finds it (tools/compile_map.py knoxlots_exe): beside
+# KnoxMap.exe in a release, or in rust/knoxlots/target/release after `cargo build --release`.
+# Without it a compile goes through WorldEd as before. The release workflow calls this one
+# and puts each system's binary in that system's download.
+on:
+  push:
+    paths: ["rust/knoxlots/**", ".github/workflows/knoxlots.yml"]
+  pull_request:
+    paths: ["rust/knoxlots/**", ".github/workflows/knoxlots.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: knoxlots (${{ matrix.system }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {system: windows, os: windows-latest, exe: knoxlots.exe}
+          - {system: linux,   os: ubuntu-latest,  exe: knoxlots}
+          - {system: macos,   os: macos-latest,   exe: knoxlots}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Test
+        working-directory: rust/knoxlots
+        run: cargo test --release --locked
+
+      - name: Build
+        working-directory: rust/knoxlots
+        run: cargo build --release --locked
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: knoxlots-${{ matrix.system }}
+          path: rust/knoxlots/target/release/${{ matrix.exe }}
+          if-no-files-found: error

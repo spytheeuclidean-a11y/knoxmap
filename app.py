@@ -815,9 +815,9 @@ def generate():
                      f"{BIG_TILES_PER_SIDE} a side that is comfortable")
     # The one size that is refused: WorldEd cannot compile it, so a map this big
     # would be made over most of an hour and then fail at the compile.
-    from tools.compile_map import WORLDED_MAX_PIXELS, bitmap_pixels, scale_that_fits
+    from tools.compile_map import WORLDED_MAX_PIXELS, bitmap_pixels, default_backend, scale_that_fits
     pixels = bitmap_pixels(int(approx_w), int(approx_h))
-    if pixels > WORLDED_MAX_PIXELS:
+    if pixels > WORLDED_MAX_PIXELS and default_backend() != "rust":
         fits = scale_that_fits(int(approx_w), int(approx_h), meters_per_tile)
         return jsonify({"error": (
             f"That map would be about {int(approx_w)} x {int(approx_h)} tiles "
@@ -1696,7 +1696,11 @@ def api_compile():
     map_dir = _map_dir(data.get("mapName", ""))
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
+    from tools.compile_map import default_backend
+    rust = (data.get("backend") or default_backend()) == "rust"
     exe = _worlded_exe(cli=True)
+    if exe is None and rust:
+        exe = Path("PZWorldEd_cli.exe")        # not used by the rust backend
     if exe is None:
         return jsonify({"error": "Patched PZWorldEd_cli.exe not found — use "
                                  "Open in WorldEd and run the two menu "
@@ -1745,6 +1749,14 @@ def api_compile():
                 _COMPILE[name] = {**now, "state": state, "error": None,
                                   "batch": done, "batches": total}
 
+        def phase(text: str, fraction: float) -> None:
+            # The Rust compile has no batches: it says where it is and how far along.
+            with _PROGRESS_LOCK:
+                now = _COMPILE.get(name, {})
+                state = "stopping" if now.get("state") == "stopping" else "running"
+                _COMPILE[name] = {**now, "state": state, "error": None,
+                                  "phase": text, "fraction": round(fraction, 3)}
+
         def detail(info: dict) -> None:
             with _PROGRESS_LOCK:
                 now = {**_COMPILE.get(name, {"state": "running"}),
@@ -1761,10 +1773,11 @@ def api_compile():
         try:
             produced = compiler.compile_map(str(map_dir), batch=COMPILE_BATCH,
                                             exe=str(exe), on_progress=note,
-                                            on_detail=detail,
+                                            on_detail=detail, on_phase=phase,
                                             should_stop=_stopper(name),
                                             only_cells=only,
-                                            fresh=bool(data.get("fresh")))
+                                            fresh=bool(data.get("fresh")),
+                                            backend="rust" if rust else "worlded")
             if not produced:
                 eid = knoxlog.record(None, f"compile {name}: produced no cells")
                 with _PROGRESS_LOCK:

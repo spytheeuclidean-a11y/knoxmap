@@ -35,6 +35,28 @@
   fence edge that touches them is left out, which makes a gap in the fence where the
   door is. None were blocked afterwards on the same map.
 
+- **A map compiler of our own: no size limit, minutes become seconds**
+  (`rust/knoxlots`, `knoxbuild/terrain.py`, `blends.py`, `buildtiles.py`,
+  `buildroofs.py`, `buildheader.py`, `tools/map_source.py`, `tools/compile_map.py`).
+  Compiling no longer needs WorldEd. KnoxMap now makes the tile stack of every square
+  itself - ground and edge blends from `Rules.txt` / `Blends.txt`, then the buildings
+  from their `.tbx` files (floors, walls, doors, windows, curtains, furniture, stairs,
+  ceilings, roofs, porch lights and signs), then the room and building tables of the
+  header - and a small Rust program, `knoxlots`, writes the `.lotheader`, `.lotpack` and
+  `chunkdata` files. On a 1,500 m town of 1,177 buildings it took 60 s against WorldEd's
+  271 s, and 2,020,709 of 2,020,734 squares are identical to WorldEd's (the rest are a few
+  window, door and wall details and the order of tiles within a square). A map built this
+  way was played in Build 42. The bitmap size limit does not apply.
+
+  It is used whenever `knoxlots` is found - next to `KnoxMap.exe` in a release, or in
+  `rust/knoxlots/target/release` after `cargo build --release`, or named by `KNOXLOTS` -
+  and WorldEd is used otherwise; `KNOXMAP_BACKEND=worlded` or `rust` chooses outright, and
+  `python tools/compile_map.py <map> --backend rust` does it from a terminal. Releases
+  carry the binary for their system (built and tested by `.github/workflows/knoxlots.yml`).
+  Written without WorldEd's source: from the file formats and from running WorldEd on
+  small inputs and comparing what it wrote (see `rust/knoxlots/README.md`); the work and
+  its test maps are also kept at github.com/thehorseofcourse45/worlded-rusted.
+
 - **A building that fronts a pavement is built, not thrown away**
   (`knoxbuild/footprint.py`). Standing a footprint off the road became a hard
   rule: a spot clear of every road and pavement tile within five, or the

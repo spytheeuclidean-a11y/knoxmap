@@ -67,8 +67,15 @@ jobs:
     if: needs.gate.outputs.ours == 'yes'
     uses: ./.github/workflows/launcher.yml
 
+  # The Rust map compiler, built and tested on each system. Each download carries its
+  # own system's binary beside the launcher; KnoxMap uses it when it is there.
+  knoxlots:
+    needs: gate
+    if: needs.gate.outputs.ours == 'yes'
+    uses: ./.github/workflows/knoxlots.yml
+
   release:
-    needs: [gate, checks, launcher]
+    needs: [gate, checks, launcher, knoxlots]
     if: needs.gate.outputs.ours == 'yes'
     runs-on: ubuntu-latest
     permissions:
@@ -83,6 +90,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: KnoxMap-exe
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: knoxlots-*
+          path: knoxlots
 
       - name: Which version, and which systems it is for
         id: which
@@ -142,6 +154,7 @@ jobs:
                 # the launcher workflow. It is not in the repository as a
                 # binary, and it is no use on Linux or macOS.
                 cp KnoxMap.exe pack/windows/KnoxMap/
+                cp knoxlots/knoxlots-windows/knoxlots.exe pack/windows/KnoxMap/
                 # KnoxMap.exe goes in last, and nothing may follow it.
                 # Updaters up to 1.4.7.1 unpack a release in the order its
                 # entries are stored and stop dead at the first file Windows
@@ -162,6 +175,9 @@ jobs:
               *)
                 rm -f "pack/$system/KnoxMap"/*.bat
                 rm -rf "pack/$system/KnoxMap/win"
+                # The Rust compiler for this system; a tarball keeps the executable bit.
+                cp "knoxlots/knoxlots-$system/knoxlots" "pack/$system/KnoxMap/knoxlots"
+                chmod +x "pack/$system/KnoxMap/knoxlots"
                 (cd "pack/$system" && tar -czf "$GITHUB_WORKSPACE/KnoxMap-$v-$system.tar.gz" KnoxMap)
                 # The launchers must still be executable inside the tarball.
                 tar -tvzf "$GITHUB_WORKSPACE/KnoxMap-$v-$system.tar.gz" |

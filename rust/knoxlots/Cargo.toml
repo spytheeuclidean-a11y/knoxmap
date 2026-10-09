@@ -1,0 +1,11 @@
+[package]
+name = "knoxlots"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Reads and writes Project Zomboid lot files (.lotheader, .lotpack, chunkdata) for KnoxMap"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3

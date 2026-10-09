@@ -3514,6 +3514,8 @@ def check_updater(check, work: str) -> None:
 
 
 def main(argv: list[str]) -> int:
+    # The compile checks drive a stand-in for WorldEd; they are about WorldEd's failures.
+    os.environ["KNOXMAP_BACKEND"] = "worlded"
     keep = "--keep" in argv
     check = Checks()
     work = tempfile.mkdtemp(prefix="knoxmap-selftest-")

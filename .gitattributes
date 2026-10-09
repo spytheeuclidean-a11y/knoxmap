@@ -16,3 +16,7 @@ static/vendor/** -text
 # uploaded from here, none of which a player downloading KnoxMap needs.
 workshop export-ignore
 branding/window.png export-ignore
+# The Rust compiler's test maps (about 50 MB, in the worlded-rusted repository) are not in
+# this repository; if they are put here, keep them out of release zips.
+rust/knoxlots/fixtures export-ignore
+rust/knoxlots/experiments export-ignore
