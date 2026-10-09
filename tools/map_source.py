@@ -21,6 +21,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import knoxstop  # noqa: E402
 from knoxbuild import bitmaps  # noqa: E402
 from knoxbuild.blends import blend_layers, load_blends  # noqa: E402
 from knoxbuild.buildheader import cell_tables, placed_rooms  # noqa: E402
@@ -183,7 +184,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
     if workers == 1:
         for cy in range(rows):
             if should_stop and should_stop():
-                raise RuntimeError("stopped")
+                raise knoxstop.Stopped("the compile")
             written += _row(project, out, cy, bands[cy], placed, seed, seams, (w, h))
             if on_row:
                 on_row(cy + 1, rows)
@@ -197,7 +198,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                     if on_row:
                         on_row(n, rows)
                     if should_stop and should_stop():
-                        raise RuntimeError("stopped")
+                        raise knoxstop.Stopped("the compile")
             except BaseException:
                 for fut in jobs:
                     fut.cancel()

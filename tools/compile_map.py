@@ -748,7 +748,7 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
     with _only_one(project, run):
         try:
             if should_stop and should_stop():
-                raise RuntimeError("stopped")
+                raise knoxstop.Stopped("the compile")
             make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop)
             cmd = [str(exe), "compile", str(src), str(out), "--threads", str(workers or os.cpu_count() or 1)]
             proc = _run_batch(cmd, should_stop or (lambda: False), time.time())
