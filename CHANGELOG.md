@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6
+## 1.6 rust
 
 - **No red question marks from Erika's paintings and posters** (`knoxbuild/catalog.py`,
   `tools/make_catalog.py`). Eight tiles of Erika's Tiles 1.0.7 are blank - paintings
@@ -19,6 +19,7 @@
   under that share is left out ("on the road" in the build summary: 21 of the
   same 957, none left on a road). Pavement is still something a building may
   front.
+
 - **A wall is no longer lost under a neighbour's roof** (`knoxbuild/world.py`,
   `build.py`). Where a taller building stood beside a lower one, the lower one's
   ceiling and roof tiles landed on the squares its upper-floor wall stands on, and WorldEd
@@ -27,6 +28,7 @@
   real map 89 wall edges were missing this way (80 under a roof). Lots are now listed
   lowest building first, so the taller building is laid last and its wall is added to what
   is there; none were missing on the same map afterwards.
+
 - **No tree, bush or fence stands in a doorway** (`knoxbuild/yards.py`,
   `fences.py`, `build.py`). The ground and the fences are drawn from OpenStreetMap
   before anyone knows where a door is, so on a real map 19 of 19,796 doors had a
@@ -56,6 +58,23 @@
   Written without WorldEd's source: from the file formats and from running WorldEd on
   small inputs and comparing what it wrote (see `rust/knoxlots/README.md`); the work and
   its test maps are also kept at github.com/thehorseofcourse45/worlded-rusted.
+
+- **A map too big for WorldEd is refused before it is made** (`app.py`,
+  `tools/compile_map.py`). WorldEd's BMP to TMX cannot load a landscape bitmap past
+  about 268 million pixels (2^28): 16200 x 16500 compiles, 16500 x 16500 fails with
+  "The image file couldn't be loaded", on every batch. A 17700 x 19500 map took
+  most of an hour to make and then failed all 255 batches. Generate now says so
+  at once, with the smallest scale that fits; a compile that fails this way says
+  why. Every other size limit is still only a warning.
+
+- **The compile eases off when WorldEd starts failing, and says how long is
+  left** (`tools/compile_map.py`). Six WorldEd processes at once on 8 cores and
+  32 GB made it fail with "Error Loading Image". A failure while others are
+  running now takes one slot (never below one, and not again for 90 s). The
+  window shows the time left once a few batches have set the pace, and when it
+  eased off. Generate buildings shows its stage as it goes.
+
+## 1.6
 
 - **A building that fronts a pavement is built, not thrown away**
   (`knoxbuild/footprint.py`). Standing a footprint off the road became a hard
@@ -91,24 +110,19 @@
   step comes from the server (`RENDER_SETTINGS`), with a test holding it level
   with what the generate step actually reads.
 
-- **A map too big for WorldEd is refused before it is made** (`app.py`,
-  `tools/compile_map.py`). WorldEd's BMP to TMX cannot load a landscape bitmap past
-  about 268 million pixels (2^28): 16200 x 16500 compiles, 16500 x 16500 fails with
-  "The image file couldn't be loaded", on every batch. A 17700 x 19500 map took
-  most of an hour to make and then failed all 255 batches. Generate now says so
-  at once, with the smallest scale that fits; a compile that fails this way says
-  why. Every other size limit is still only a warning.
 - **Other websites can no longer post to KnoxMap** (`app.py`). A page open in the
   browser could send the server a plain POST with no body (open the logs,
   restart for an update, change the language) and it was run: the Host was
   checked, where the request came from was not. A POST or DELETE whose `Origin`
   is not this computer, or that the browser marks `cross-site`, is now refused.
   Requests with no `Origin` (curl, the tests) are unchanged.
+
 - **Your own map data server, set in the window** (`app.py`, `generator/osm.py`,
   `docs/SELF_HOSTING_OVERPASS.md`). A "Map data server" field takes the address of an
   Overpass server of your own, saves it as `overpass_endpoints` and uses it at
   once; empty goes back to the public ones. The new doc says how to run one for
   a region. Reading a `.pbf` directly is still not supported.
+
 - **A check before publishing to the Workshop** (`tools/workshop_check.py`).
   After Install, "Before you publish" reads the mod folder and reports a missing
   or incomplete OpenStreetMap credit (and Overture, when used), a mod id the game
@@ -145,13 +159,6 @@
   ran 9 of 24 batches in 613 s against 1,249 s, and all 1,653 lot files were
   byte-identical (`tools/compile_verify_incremental.py`). "Start from scratch"
   under Compile throws everything away first.
-
-- **The compile eases off when WorldEd starts failing, and says how long is
-  left** (`tools/compile_map.py`). Six WorldEd processes at once on 8 cores and
-  32 GB made it fail with "Error Loading Image". A failure while others are
-  running now takes one slot (never below one, and not again for 90 s). The
-  window shows the time left once a few batches have set the pace, and when it
-  eased off. Generate buildings shows its stage as it goes.
 
 - **A picture of what was built, before the compile** (`knoxbuild/layout_preview.py`).
   Buildings coloured by use, or the zombie spawn density, drawn from files the
