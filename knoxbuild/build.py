@@ -1672,8 +1672,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     from .yards import paint_paths
     drives: list = []
     porch_lights: list = []
+    from .yards import door_fronts
+    fronts = door_fronts(out_dir, rows)
     paths, yard_fences = paint_paths(out_dir, map_name, rows, occupied, drives,
-                                     porch_lights)
+                                     porch_lights, fronts=fronts)
     # The lights stand outside the houses, past the edge of their own .tbx.
     from .structures import pack_loose
     light_placements = pack_loose(bdir, map_name, "lights", porch_lights,
@@ -1725,7 +1727,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         job_fences = pool.submit(build_fences, out_dir, map_name, proj, occupied,
-                                 areas, bdir, extra=yard_fences)
+                                 areas, bdir, extra=yard_fences, keep_clear=fronts)
         job_spawn = pool.submit(make_spawn_map)
         job_paper = pool.submit(worldmap.write, out_dir, map_name, proj, info,
                                 outlines)
