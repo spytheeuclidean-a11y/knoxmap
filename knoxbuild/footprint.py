@@ -290,6 +290,24 @@ def _clear_box(mask: np.ndarray, blocked: np.ndarray) -> tuple[int, int, int, in
 
 
 NUDGE_TILES = 5
+# A building may stand on at most this share of road; it is moved out of the road as far as
+# WIDE_NUDGE_TILES to get there, and the road squares it still has are cut away. One that
+# cannot be got under the share is refused ("road"): 63 of 957 buildings of a real town sat
+# on roads, 25 of them mostly, before this.
+ROAD_SHARE_MAX = 0.10
+WIDE_NUDGE_TILES = 12
+ROAD_WEIGHT = 2        # `avoid` at or above this is road; 1 is pavement, which a building may front
+
+
+def _road_share(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray) -> float:
+    """The share of the footprint's tiles that are road, with the footprint at (x0, y0)."""
+    map_h, map_w = avoid.shape
+    h, w = mask.shape
+    cx0, cy0, cx1, cy1 = max(0, x0), max(0, y0), min(map_w, x0 + w), min(map_h, y0 + h)
+    if cx1 <= cx0 or cy1 <= cy0 or not mask.sum():
+        return 0.0
+    m = mask[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+    return float((avoid[cy0:cy1, cx0:cx1][m] >= ROAD_WEIGHT).sum()) / float(mask.sum())
 
 
 def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
@@ -336,6 +354,21 @@ def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
             if score < best_score:
                 best, best_score = (ox, oy), score
     ox, oy = clear if clear is not None else best
+    if _road_share(mask, x0 + ox, y0 + oy, avoid) > ROAD_SHARE_MAX:
+        # Still on the road: look further for a spot that is off it, nearest first.
+        found = None
+        for r in range(NUDGE_TILES + 1, WIDE_NUDGE_TILES + 1):
+            for ox2 in range(-r, r + 1):
+                for oy2 in range(-r, r + 1):
+                    if max(abs(ox2), abs(oy2)) != r or cost(ox2, oy2) is None:
+                        continue
+                    if _road_share(mask, x0 + ox2, y0 + oy2, avoid) <= ROAD_SHARE_MAX:
+                        c = cost(ox2, oy2)
+                        if found is None or c[1] < found[0]:
+                            found = (c[1], ox2, oy2)
+            if found:
+                ox, oy = found[1], found[2]
+                break
     return x0 + ox, y0 + oy
 
 
@@ -420,6 +453,16 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
     if avoid is not None:
         x0, y0 = _clear_of(mask, x0, y0, avoid, occupied)
     point_offset = (x0 - before_nudge[0], y0 - before_nudge[1])
+    if avoid is not None:
+        if _road_share(mask, x0, y0, avoid) > ROAD_SHARE_MAX:
+            return None, "road"
+        # What little is left on the road is cut away: no room stands on the carriageway.
+        map_h2, map_w2 = avoid.shape
+        h2, w2 = mask.shape
+        cx0, cy0, cx1, cy1 = max(0, x0), max(0, y0), min(map_w2, x0 + w2), min(map_h2, y0 + h2)
+        if cx1 > cx0 and cy1 > cy0:
+            mask = mask.copy()
+            mask[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0] &= ~(avoid[cy0:cy1, cx0:cx1] >= ROAD_WEIGHT)
 
     # Clip to the map, then give up tiles already owned by a neighbour.
     h, w = mask.shape

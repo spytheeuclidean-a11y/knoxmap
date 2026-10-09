@@ -2,6 +2,17 @@
 
 ## 1.6
 
+- **A building is no longer built on the road** (`knoxbuild/footprint.py`,
+  `build.py`). Since 1.6 a building that fronted a pavement stood "on the least
+  road it can" when there was no clear spot, and on a real 5100 x 2700 map 63 of
+  957 buildings had room squares on a road and 25 were mostly on it - houses
+  and apartments in the middle of an intersection. A building may now stand on at
+  most 10% road. It is moved out of the road as far as twelve tiles to get
+  there, whatever road squares are left are cut away, and one that cannot be got
+  under that share is left out ("on the road" in the build summary: 21 of the
+  same 957, none left on a road). Pavement is still something a building may
+  front.
+
 - **A building that fronts a pavement is built, not thrown away**
   (`knoxbuild/footprint.py`). Standing a footprint off the road became a hard
   rule: a spot clear of every road and pavement tile within five, or the
