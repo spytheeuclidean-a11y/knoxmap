@@ -27,7 +27,7 @@ from flask import (Flask, jsonify, render_template, request, send_file,
 
 import knoxlog
 import knoxstop
-from generator import osm, places, renderer
+from generator import osm, places, renderer, sketch
 from knoxbuild import mapstate
 from knoxbuild.settings import PRESETS, Settings
 
@@ -852,6 +852,16 @@ def generate():
     settings = Settings.from_dict(data.get("settings"))
     _save_settings(map_dir, settings)
 
+    # The drawn map, kept beside the real one. The page sends it when there is
+    # one; when there is not, whatever was drawn for this map last time is used
+    # again, so Generate map twice over does not quietly lose it.
+    drawn = data.get("sketch")
+    if drawn is None:
+        drawn = _load_sketch(map_dir)
+    else:
+        _save_sketch(map_dir, drawn)
+    drawn_only = bool(data.get("drawnOnly"))
+
     # What to download. A map turned to its street grid (see
     # renderer.dominant_road_angle) reaches past the drawn box at its corners,
     # and the angle is only known once the streets are in. This used to fetch
@@ -870,7 +880,10 @@ def generate():
     # re-rendered after the ground or road rules change - and a town's worth of
     # Overpass tiles takes minutes to download every time. The reply is kept on
     # disk and reused whenever the bbox matches to the metre.
-    features = osm.load_cache(cache, fetch_box)
+    # A map drawn by hand has no town behind it to download. Overpass is not
+    # asked at all, which is also the only way to make a map of a place that
+    # is not on OpenStreetMap - one never surveyed, or one that does not exist.
+    features = [] if drawn_only else osm.load_cache(cache, fetch_box)
     if features is None:
         _set_progress(map_name, stage="osm", done=0, total=1)
         def _progress(i, total, note=""):
@@ -917,6 +930,16 @@ def generate():
         if gaps.get("added"):
             log.info("overture %s: %d buildings OSM had not got, from %d fetched",
                      map_name, gaps["added"], gaps.get("fetched", 0))
+
+    # What the mapper drew, on top of whatever came down. It goes in here, with
+    # the real features and before a single thing is measured from them, so the
+    # street angle, the ground, the gardens, the buildings and the compiled
+    # cells all see a drawn street exactly as they see a surveyed one.
+    drawn_features = sketch.features(drawn)
+    if drawn_features:
+        features = list(features) + drawn_features
+        log.info("generate %s: %d drawn features%s", map_name,
+                 len(drawn_features), " (drawn map)" if drawn_only else "")
 
     rotation = 0.0
     if settings.align_streets:
@@ -1318,6 +1341,70 @@ def _save_settings(map_dir: Path, settings: Settings) -> None:
             json.dump(settings.to_dict(), f, indent=2)
     except OSError:
         pass          # a map whose settings cannot be saved still builds
+
+
+# ---- the drawn map --------------------------------------------------------------
+#
+# What was drawn by hand for a map, as GeoJSON, next to the map it belongs to.
+# It is kept rather than converted and thrown away because it is the only copy:
+# the features it becomes go into the render and are gone, so without this a
+# map could never be opened and its drawing changed.
+def _sketch_path(map_dir: Path) -> Path:
+    return map_dir / f"{map_dir.name}_sketch.geojson"
+
+
+def _load_sketch(map_dir: Path) -> dict:
+    try:
+        with open(_sketch_path(map_dir), encoding="utf-8") as f:
+            drawn = json.load(f)
+    except (OSError, ValueError):
+        return {"type": "FeatureCollection", "features": []}
+    return drawn if isinstance(drawn, dict) else {
+        "type": "FeatureCollection", "features": []}
+
+
+def _save_sketch(map_dir: Path, drawn: dict | None) -> None:
+    """Written whole through a temporary file, so a crash part way cannot
+    leave a half-written drawing where the drawing was."""
+    if not isinstance(drawn, dict):
+        return
+    path = _sketch_path(map_dir)
+    try:
+        map_dir.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".geojson.part")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(drawn, f)
+        os.replace(tmp, path)
+    except OSError:
+        pass          # a map whose drawing cannot be saved still renders
+
+
+@app.route("/api/sketch")
+def api_sketch_palette():
+    """What can be drawn, and the OpenStreetMap tags each one carries.
+
+    The page builds its palette from this rather than holding a second copy of
+    the tags: a tag that is wrong here draws a shape that is missing from the
+    finished map, and one list cannot disagree with itself."""
+    return jsonify({"palette": sketch.palette(),
+                    "categories": {e["id"]: sketch.category_of(e["id"])
+                                   for e in sketch.palette()}})
+
+
+@app.route("/api/sketch/<name>", methods=["GET", "POST"])
+def api_sketch(name: str):
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Bad map name."}), 400
+    if request.method == "GET":
+        return jsonify(_load_sketch(map_dir))
+    drawn = _json_body()
+    if not isinstance(drawn, dict):
+        return jsonify({"error": "Expected a GeoJSON FeatureCollection."}), 400
+    _save_sketch(map_dir, drawn)
+    made = sketch.features(drawn)
+    return jsonify({"saved": len(drawn.get("features") or []),
+                    "usable": len(made)})
 
 
 # ---- saved areas ----------------------------------------------------------------

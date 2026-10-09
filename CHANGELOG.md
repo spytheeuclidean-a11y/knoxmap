@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased
+
+- **Draw your own map** (`generator/sketch.py`, new; `app.py`,
+  `static/js/app.js`, `templates/index.html`). A town that is not on
+  OpenStreetMap could not be built at all: one never surveyed, one behind a
+  licence, or one that only exists in somebody's head. There is a palette in
+  the window now - 34 things, from a motorway to a hedge to a single tree -
+  and whatever is drawn on the map goes in with whatever was downloaded.
+  Tick "Only what I draw" and Overpass is not asked at all.
+
+  Nothing downstream knows the difference, which is the point of doing it this
+  way. A drawn shape becomes an ordinary `OSMFeature` carrying real
+  OpenStreetMap tags, so `classify` sorts it, the renderer paints it, the
+  building generator furnishes it and the compiler writes it, with no second
+  path through any of them. Draw a street and it gets a street's width, its
+  pavement, its kerbs, its lamps and its parked cars, because by the time
+  anything looks at it, it is one. Draw a school and the rooms inside are a
+  school's. A hand-drawn town of 14 shapes came out as 900x900 tiles with
+  2,393 tiles of tarmac, 4,110 of pavement it was never told to add, a lake,
+  woods, 8 buildings furnished by kind and 720 residents estimated to haunt
+  them.
+
+  The palette's tags live on the server and the page builds itself from them,
+  so the two cannot drift; a test checks every entry against `classify`
+  rather than against the comment beside it, because a tag that classifies as
+  nothing draws a shape on the page that is silently missing from the
+  finished map. The drawing is kept beside the map as GeoJSON, so opening one
+  brings it back to be added to, and regenerating does not lose it.
+
 ## 1.6 rust
 
 - **No red question marks from Erika's paintings and posters** (`knoxbuild/catalog.py`,

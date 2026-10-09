@@ -83,7 +83,18 @@ function setSelection(layer) {
   updateBboxFields();
 }
 
-map.on(L.Draw.Event.CREATED, (e) => setSelection(e.layer));
+map.on(L.Draw.Event.CREATED, (e) => {
+  // The area selection and the drawing palette both finish a shape the same
+  // way; which of them it belongs to is which of them armed the handler.
+  if (sketchKind) {
+    const kind = sketchKind;
+    stopSketch();
+    addSketchShape(kind, e.layer);
+    noteSketch(`${sketchLabel(kind)} added. Pick another to keep drawing.`);
+    return;
+  }
+  setSelection(e.layer);
+});
 
 // ---- freehand lasso ---------------------------------------------------------------
 // Drag round what you want. The traced line is thinned to a polygon, so the
@@ -929,6 +940,11 @@ async function openMap(mapName) {
   // The settings this map was made with, back in the panel, so one of them can
   // be changed and put into it without setting all the others again.
   if (data.settings && settingsMeta) buildSettingsForm(data.settings);
+  // Whatever was drawn for this map, back on the map to be added to or changed.
+  fetch(`/api/sketch/${encodeURIComponent(data.mapName)}`)
+    .then(r => r.json())
+    .then(loadSketchGeoJSON)
+    .catch(() => { /* a map with nothing drawn simply has none */ });
   rememberMap({ mapName: data.mapName, bbox: data.bbox,
                 metersPerTile: data.metersPerTile, shape: data.shape,
                 settings: data.settings });
@@ -1108,6 +1124,9 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     mapName: chosen,
     settings: readSettings(),
     shape: selectionShape(),
+    // What was drawn by hand, and whether it is the whole map.
+    sketch: sketchGeoJSON(),
+    drawnOnly: document.getElementById('drawnOnly').checked,
   };
 
   const btn = document.getElementById('generateBtn');
@@ -1946,3 +1965,176 @@ function pollCompile() {
   watch.observe(searchResults, { childList: true });
   runSearch(q);
 })();
+
+// ---- drawing a map by hand --------------------------------------------------
+//
+// Pick something from the palette, draw it, and it joins the features the
+// generator would have downloaded. Nothing here paints anything itself: a
+// drawn shape becomes an OSM feature with real tags on the server
+// (generator/sketch.py) and the renderer, the building generator and the
+// compiler treat it exactly as they treat a surveyed one.
+//
+// The palette and its tags come from /api/sketch rather than being written out
+// again here, for the same reason the settings do: a second copy drifts, and a
+// tag that is wrong draws a shape on the page that is missing from the map.
+const sketchLayer = new L.FeatureGroup().addTo(map);
+let sketchPalette = [];
+let sketchKind = null;      // the palette id being drawn, or null for the bbox
+let sketchHandler = null;
+
+// What each category looks like while it is being drawn. Close enough to the
+// finished map to recognise, not so close it is mistaken for it.
+const SKETCH_COLOURS = {
+  road_major: '#e8a33d', road_medium: '#e8c33d', road_minor: '#cfcfcf',
+  road_service: '#9a9a9a', paved_path: '#b8b8a0', dirt_path: '#a88c5f',
+  railway: '#7a7a8c', water: '#4d8fd1', coastline: '#4d8fd1',
+  forest: '#3f7a3f', scrub: '#6b8f4a', grass: '#6aa84f', park: '#5fa85f',
+  farmland: '#b7a24a', sand: '#d9c88a', parking: '#8c8c8c',
+  cemetery: '#6f8f6f', playground: '#c76fa8', industrial: '#9a7f6f',
+  building: '#c45b4b', fence: '#8a6f4a', hedge: '#4f7a3f',
+  tree_single: '#2f7a2f',
+};
+
+function sketchStyle(kind) {
+  const cat = (sketchPalette.find(e => e.id === kind) || {}).category;
+  const colour = SKETCH_COLOURS[cat] || '#a5e266';
+  return { color: colour, weight: 3, fillColor: colour, fillOpacity: 0.3 };
+}
+
+function sketchLabel(kind) {
+  return (sketchPalette.find(e => e.id === kind) || {}).label || kind;
+}
+
+async function loadSketchPalette() {
+  let data;
+  try {
+    data = await (await fetch('/api/sketch')).json();
+  } catch {
+    return;                       // the panel simply stays empty
+  }
+  sketchPalette = (data.palette || []).map(
+    e => ({ ...e, category: (data.categories || {})[e.id] }));
+  const box = document.getElementById('sketchPalette');
+  if (!box) return;
+  box.innerHTML = sketchPalette.map(e =>
+    `<button type="button" class="sketch-pick" data-kind="${e.id}"
+      data-geometry="${e.geometry}" title="${escapeHtml(Object.entries(e.tags)
+        .map(([k, v]) => k + '=' + v).join(', '))}">
+      <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#a5e266'}"></span>
+      ${escapeHtml(e.label)}</button>`).join('');
+  box.addEventListener('click', ev => {
+    const btn = ev.target.closest('.sketch-pick');
+    if (btn) startSketch(btn.dataset.kind, btn.dataset.geometry);
+  });
+}
+
+// Leaflet's own draw handlers, one shape at a time, rather than the toolbar:
+// the toolbar already belongs to the area selection and the two would fight
+// over which of them a finished shape belongs to.
+function startSketch(kind, geometry) {
+  stopSketch();
+  sketchKind = kind;
+  const style = sketchStyle(kind);
+  if (geometry === 'line') {
+    sketchHandler = new L.Draw.Polyline(map, { shapeOptions: style });
+  } else if (geometry === 'area') {
+    sketchHandler = new L.Draw.Polygon(map, {
+      allowIntersection: false, shapeOptions: style });
+  } else {
+    sketchHandler = new L.Draw.Marker(map, {});
+  }
+  sketchHandler.enable();
+  for (const b of document.querySelectorAll('.sketch-pick')) {
+    b.classList.toggle('on', b.dataset.kind === kind);
+  }
+  noteSketch(`Drawing ${sketchLabel(kind)}. Click the map; double-click or Escape to finish.`);
+}
+
+function stopSketch() {
+  if (sketchHandler) {
+    sketchHandler.disable();
+    sketchHandler = null;
+  }
+  sketchKind = null;
+  for (const b of document.querySelectorAll('.sketch-pick')) b.classList.remove('on');
+}
+
+function noteSketch(text) {
+  const box = document.getElementById('sketchNote');
+  if (box) box.textContent = text || '';
+}
+
+function sketchCount() {
+  return sketchLayer.getLayers().length;
+}
+
+function showSketchCount() {
+  const badge = document.getElementById('sketchCount');
+  const n = sketchCount();
+  if (badge) badge.textContent = n ? `(${n})` : '';
+  const only = document.getElementById('drawnOnly');
+  if (only && !n) only.checked = false;
+}
+
+// A finished shape, as GeoJSON with the palette id on it. Point features come
+// back from Leaflet as a marker, which has no style of its own to carry.
+function addSketchShape(kind, layer) {
+  layer.sketchKind = kind;
+  if (layer.setStyle) layer.setStyle(sketchStyle(kind));
+  layer.bindTooltip(sketchLabel(kind), { sticky: true });
+  sketchLayer.addLayer(layer);
+  showSketchCount();
+}
+
+function sketchGeoJSON() {
+  const features = [];
+  sketchLayer.eachLayer(layer => {
+    if (!layer.sketchKind) return;
+    const geo = layer.toGeoJSON();
+    features.push({ type: 'Feature', properties: { kind: layer.sketchKind },
+                    geometry: geo.geometry });
+  });
+  return { type: 'FeatureCollection', features };
+}
+
+function loadSketchGeoJSON(drawn) {
+  sketchLayer.clearLayers();
+  for (const f of (drawn && drawn.features) || []) {
+    const kind = (f.properties || {}).kind;
+    const geo = f.geometry || {};
+    if (!kind || !geo.type) continue;
+    let layer = null;
+    if (geo.type === 'LineString') {
+      layer = L.polyline(geo.coordinates.map(([lon, lat]) => [lat, lon]));
+    } else if (geo.type === 'Polygon') {
+      layer = L.polygon((geo.coordinates[0] || []).map(([lon, lat]) => [lat, lon]));
+    } else if (geo.type === 'Point') {
+      layer = L.marker([geo.coordinates[1], geo.coordinates[0]]);
+    }
+    if (layer) addSketchShape(kind, layer);
+  }
+  showSketchCount();
+}
+
+document.getElementById('sketchUndo').addEventListener('click', () => {
+  const layers = sketchLayer.getLayers();
+  if (!layers.length) return;
+  sketchLayer.removeLayer(layers[layers.length - 1]);
+  showSketchCount();
+  noteSketch('Last shape removed.');
+});
+
+document.getElementById('sketchClear').addEventListener('click', () => {
+  if (!sketchCount()) return;
+  sketchLayer.clearLayers();
+  showSketchCount();
+  noteSketch('Cleared.');
+});
+
+document.getElementById('drawnOnly').addEventListener('change', ev => {
+  noteSketch(ev.target.checked
+    ? 'Nothing will be downloaded: the map is only what you have drawn.'
+    : 'What you draw goes in on top of what is on OpenStreetMap.');
+});
+
+loadSketchPalette();

@@ -411,3 +411,16 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
            border: 1px solid var(--line, #2a2f26); background: #14180f; }
 .shots img { display: block; width: 100%; height: auto; }
 .shots a:hover { border-color: var(--accent, #8ce65a); }
+
+/* ---- drawing a map by hand ------------------------------------------- */
+.sketch-palette { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0; }
+.sketch-pick { display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  font: inherit; font-size: 12px; padding: 3px 8px; border-radius: 4px;
+  color: var(--text); background: transparent; border: 1px solid var(--line-strong); }
+.sketch-pick:hover { border-color: var(--accent); }
+.sketch-pick.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+.sketch-pick .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.sketch-actions { display: flex; gap: 6px; margin: 8px 0 4px; }
+.sketch-actions .btn { font-size: 12px; padding: 4px 10px; }
+.check { display: block; margin: 8px 0 2px; font-size: 13px; }
+.check input { margin-right: 6px; }

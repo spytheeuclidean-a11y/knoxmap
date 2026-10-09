@@ -206,6 +206,27 @@
       </details>
     </section>
 
+    <!-- Drawing a map by hand. Everything here becomes an ordinary OSM
+         feature before it reaches the generator, so a drawn street is a
+         street as far as every later step can tell. -->
+    <section class="panel" data-card="sketch">
+      <details id="sketch">
+        <summary>Draw your own <span class="count" id="sketchCount"></span></summary>
+        <p class="hint">Pick what to draw, then draw it on the map. It is built
+          exactly as a surveyed one would be - a street gets its pavement,
+          kerbs and parked cars; a house gets rooms, loot and people.</p>
+        <div id="sketchPalette" class="sketch-palette"></div>
+        <label class="check"><input type="checkbox" id="drawnOnly">
+          Only what I draw <span class="hint">- nothing is downloaded, so a
+          place that is not on OpenStreetMap can be built</span></label>
+        <div class="sketch-actions">
+          <button type="button" id="sketchUndo" class="btn">Undo last</button>
+          <button type="button" id="sketchClear" class="btn">Clear all</button>
+        </div>
+        <div id="sketchNote" class="hint"></div>
+      </details>
+    </section>
+
     <section class="panel" data-card="generate">
       <button id="generateBtn" class="btn btn-primary" disabled>Generate map</button>
       <div id="status"></div>
