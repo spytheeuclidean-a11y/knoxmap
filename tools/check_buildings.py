@@ -90,6 +90,48 @@ def furniture_tiles(b) -> set[str]:
             for tiles in d["orients"].values() for _x, _y, t in tiles}
 
 
+def blank_tiles(lots_dir: str) -> list[str]:
+    """Tiles used by the compiled map whose sprite is empty in Erika's Tiles, so the game draws
+    a red question mark ("CellLoader> missing tile"). Needs Erika's Tiles on this PC."""
+    import re
+    import struct
+
+    import numpy as np
+    from PIL import Image
+
+    import knoxpaths
+    media = knoxpaths.erikas_tiles_media()
+    res = media / "resource" if media else None
+    if not res or not res.is_dir():
+        return []
+    used = set()
+    for f in os.listdir(lots_dir):
+        if f.endswith(".lotheader"):
+            d = open(os.path.join(lots_dir, f), "rb").read()
+            o = 12
+            for _ in range(struct.unpack_from("<I", d, 8)[0]):
+                e = d.index(b"\n", o)
+                used.add(d[o:e].decode())
+                o = e + 1
+    by_sheet: dict[str, list[int]] = collections.defaultdict(list)
+    for t in used:
+        m = re.match(r"^(.*_erika_\d+(?:_on)?)_(\d+)$", t)
+        if m:
+            by_sheet[m[1]].append(int(m[2]))
+    out = []
+    for sheet, idxs in by_sheet.items():
+        png = res / f"{sheet}.png"
+        if not png.exists():
+            continue
+        im = np.array(Image.open(png).convert("RGBA"))
+        cols = im.shape[1] // 128
+        for i in idxs:
+            r, c = divmod(i, cols)
+            if im[r * 256:(r + 1) * 256, c * 128:(c + 1) * 128, 3].max() == 0:
+                out.append(f"{sheet}_{i}")
+    return sorted(out)
+
+
 def check(project: str, show: int = 8, only_level: int | None = None) -> dict:
     name = os.path.basename(os.path.normpath(project))
     lots = Lots(os.path.join(project, "lots"))
@@ -172,6 +214,8 @@ def check(project: str, show: int = 8, only_level: int | None = None) -> dict:
                         counts["doors_blocked"] += 1
                         found["door_blocked"].append((t, lv + z, tx + sx, ty + sy, bad[0]))
                         break
+    found["blank"] = blank_tiles(os.path.join(project, "lots"))
+    counts["blank_tiles"] = len(found["blank"])
     return {"name": name, "counts": counts, "found": found}
 
 
@@ -193,6 +237,7 @@ def main(argv: list[str]) -> int:
           f"{c['walls_by_stairs']} more beside stairs are not counted)")
     print(f"  doors with no wall under them: {c['doors_without_wall']}")
     print(f"  doors with a blocked side    : {c['doors_blocked']}")
+    print(f"  tiles the game cannot draw   : {c['blank_tiles']} {f['blank'][:6]}")
     print(f"  doors with a bush at them    : {c['doors_with_bushes']} (walked through; not counted above)")
     for key, title in (("walls", "missing wall (file, level, x, y, edge)"),
                        ("door_wall", "door without wall"), ("door_blocked", "blocked door (side square, blocker)")):
@@ -201,7 +246,8 @@ def main(argv: list[str]) -> int:
             print(f"  {title}; worst buildings: {by_file.most_common(5)}")
         for x in f[key][:show]:
             print("     ", x)
-    return 1 if (c["walls_missing"] or c["doors_without_wall"] or c["doors_blocked"]) else 0
+    return 1 if (c["walls_missing"] or c["doors_without_wall"] or c["doors_blocked"]
+                or c["blank_tiles"]) else 0
 
 
 if __name__ == "__main__":
