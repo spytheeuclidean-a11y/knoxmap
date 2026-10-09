@@ -2,6 +2,13 @@
 
 ## 1.6
 
+- **No red question marks from Erika's paintings and posters** (`knoxbuild/catalog.py`,
+  `tools/make_catalog.py`). Eight tiles of Erika's Tiles 1.0.7 are blank - paintings
+  74 to 79 and posters 22 and 23 of their sheets are empty and not in the mod's pack - and
+  the catalogue had four wall-art pieces made of them, so the game logged
+  "CellLoader> missing tile ..." and drew red question marks on the wall. Those four
+  pieces are left out (and by `make_catalog.py` when it is run again).
+
 - **A building is no longer built on the road** (`knoxbuild/footprint.py`,
   `build.py`). Since 1.6 a building that fronted a pavement stood "on the least
   road it can" when there was no clear spot, and on a real 5100 x 2700 map 63 of
