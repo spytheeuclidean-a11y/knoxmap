@@ -155,7 +155,7 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
 
 
 def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
-                    workers: int | None = None, should_stop=None, on_row=None) -> int:
+                    workers: int | None = None, should_stop=None, on_row=None, on_start=None) -> int:
     """Write the cell sources of a map into `out`, one process per row of cells."""
     from concurrent import futures
     name = os.path.basename(os.path.normpath(project))
@@ -171,6 +171,8 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
     reach = [(b.width, b.height) for b, *_ in parsed]
     del parsed
 
+    if on_start:
+        on_start()
     rows = (h + SIDE - 1) // SIDE
     bands = []
     for cy in range(rows):

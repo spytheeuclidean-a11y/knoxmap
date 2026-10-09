@@ -1584,7 +1584,7 @@ function setupPipeline(data) {
   note('buildingsNote', 'Turns every OSM footprint into a furnished building.');
   // Reset with the rest of them: opening another map used to leave whatever
   // the last compile said sitting under the new one's Compile button.
-  note('compileNote', "Turns the map into the game's files with WorldEd. "
+  note('compileNote', "Turns the map into the game's files. "
                       + 'Takes a few minutes.');
   note('worldedNote', 'Generate the buildings first.');
   note('installNote', 'Copies the compiled map into ~/Zomboid/mods.');
@@ -1815,12 +1815,10 @@ async function startCompile(onlyFailed) {
   try {
     const res = await fetch('/api/compile', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mapName: currentMap, onlyFailed: !!onlyFailed,
-                             fresh: document.getElementById('compileFresh').checked }),
+      body: JSON.stringify({ mapName: currentMap, onlyFailed: !!onlyFailed }),
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
-    document.getElementById('compileFresh').checked = false;   // once, not always
     pollCompile();
   } catch (err) {
     note('compileNote', err.message, 'bad');
@@ -1874,6 +1872,12 @@ function pollCompile() {
       const p = await res.json();
       if (p.state === 'stopping') {
         note('compileNote', 'Stopping — waiting for WorldEd to close…');
+        return;
+      }
+      if (p.state === 'running' && p.phase) {
+        // The Rust compile: no batches, so it says where it is.
+        fx.progress('compile', Math.round(100 * p.fraction));
+        note('compileNote', `Compiling — ${p.phase} (${Math.round(100 * p.fraction)}%)…`);
         return;
       }
       if (p.state === 'running') {

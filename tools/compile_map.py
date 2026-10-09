@@ -278,7 +278,7 @@ if sys.platform == "win32":
             self._cleanup()
 
 
-def _run_batch(cmd, should_stop, started: float):
+def _run_batch(cmd, should_stop, started: float, tick=None):
     """Run one WorldEd batch, watching for a stop while it works.
 
     subprocess.run waits for the process and nothing else, so a compile could
@@ -330,6 +330,8 @@ def _run_batch(cmd, should_stop, started: float):
             if should_stop is not None and should_stop():
                 _end_batch(proc)
                 raise knoxstop.Stopped("the compile")
+            if tick is not None:
+                tick()
             if time.time() - started > BATCH_TIMEOUT:
                 _end_batch(proc)
                 raise subprocess.TimeoutExpired(cmd, BATCH_TIMEOUT,
@@ -726,12 +728,16 @@ def default_backend() -> str:
     return "rust" if knoxlots_exe() else "worlded"
 
 
-def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: int | None = None) -> int:
+def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: int | None = None,
+                 on_phase=None) -> int:
     """Compile with knoxlots instead of WorldEd: no bitmap limit, no batches.
 
     Makes the cell sources from the project (tools/map_source.py), compiles them into a
     scratch folder and, only when that worked, replaces the project's lots with the result.
-    Returns the number of cells."""
+    Returns the number of cells.
+
+    `on_phase(text, fraction)` is told where the work is: reading the buildings (to 5%), the
+    cell sources (to 60%), knoxlots writing the lot files (to 95%), and moving them in."""
     import shutil
     exe = knoxlots_exe()
     if exe is None:
@@ -749,14 +755,30 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
         try:
             if should_stop and should_stop():
                 raise knoxstop.Stopped("the compile")
-            make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop)
+            def phase(text: str, fraction: float) -> None:
+                if on_phase:
+                    on_phase(text, fraction)
+
+            phase("Reading the buildings", 0.0)
+            make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop,
+                            on_row=lambda n, rows: phase(f"Building the cells: row {n} of {rows}",
+                                                         0.05 + 0.55 * n / rows),
+                            on_start=lambda: phase("Building the cells", 0.05))
+            total = len(list(src.glob("cell_*.kcell"))) or 1
+            phase(f"Writing lot files: 0 of {total} cells", 0.6)
+
+            def tick() -> None:
+                done = sum(1 for _ in out.glob("*.lotheader")) if out.exists() else 0
+                phase(f"Writing lot files: {done} of {total} cells", 0.6 + 0.35 * min(done, total) / total)
+
             cmd = [str(exe), "compile", str(src), str(out), "--threads", str(workers or os.cpu_count() or 1)]
-            proc = _run_batch(cmd, should_stop or (lambda: False), time.time())
+            proc = _run_batch(cmd, should_stop or (lambda: False), time.time(), tick=tick)
             if proc.returncode != 0:
                 raise RuntimeError(f"knoxlots failed (exit {proc.returncode}): {_why(proc)}")
             cells = len(list(out.glob("*.lotheader")))
             if not cells:
                 raise RuntimeError("knoxlots produced no cells")
+            phase("Putting the lot files in the map", 0.95)
             lots = project / "lots"
             lots.mkdir(exist_ok=True)
             for old in lots.glob("*.lotheader"):
@@ -777,7 +799,7 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
                 on_progress=None, should_stop=None,
                 only_cells: list | None = None, workers: int | None = None,
                 on_detail=None, incremental: bool = True, fresh: bool = False,
-                backend: str | None = None) -> int:
+                backend: str | None = None, on_phase=None) -> int:
     """Run every batch. Returns the number of compiled cells.
 
     A batch that fails is tried again (BATCH_ATTEMPTS) and, if it still will
@@ -804,7 +826,7 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
     everything compiled away first.
     """
     if (backend or default_backend()) == "rust":
-        return compile_rust(project_dir, on_progress, should_stop, workers)
+        return compile_rust(project_dir, on_progress, should_stop, workers, on_phase)
     if workers is None:
         workers = default_workers()
     project = Path(project_dir).resolve()

@@ -1749,6 +1749,14 @@ def api_compile():
                 _COMPILE[name] = {**now, "state": state, "error": None,
                                   "batch": done, "batches": total}
 
+        def phase(text: str, fraction: float) -> None:
+            # The Rust compile has no batches: it says where it is and how far along.
+            with _PROGRESS_LOCK:
+                now = _COMPILE.get(name, {})
+                state = "stopping" if now.get("state") == "stopping" else "running"
+                _COMPILE[name] = {**now, "state": state, "error": None,
+                                  "phase": text, "fraction": round(fraction, 3)}
+
         def detail(info: dict) -> None:
             with _PROGRESS_LOCK:
                 now = {**_COMPILE.get(name, {"state": "running"}),
@@ -1765,7 +1773,7 @@ def api_compile():
         try:
             produced = compiler.compile_map(str(map_dir), batch=COMPILE_BATCH,
                                             exe=str(exe), on_progress=note,
-                                            on_detail=detail,
+                                            on_detail=detail, on_phase=phase,
                                             should_stop=_stopper(name),
                                             only_cells=only,
                                             fresh=bool(data.get("fresh")),
