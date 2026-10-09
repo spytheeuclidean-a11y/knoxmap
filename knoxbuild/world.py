@@ -191,6 +191,11 @@ class Placement:
     # house wall is on, so sorted by position it went down before the wall
     # and the wall covered it. Anything that hangs on a building goes last.
     on_top: bool = False
+    # Storeys. A taller building is laid after a lower one beside it: the lower one's
+    # ceiling and roof tiles take the squares they are on, and that took the taller
+    # one's upper-floor wall with them when it was laid first (a wall missing over a
+    # neighbour's roof). Laid after, its wall is added to what is there.
+    levels: int = 1
 
     @property
     def cell_x(self) -> int:
@@ -337,7 +342,7 @@ def render_pzw(cells_x: int, cells_y: int, bmp_name: str,
     for (cx, cy) in sorted(set(all_cells) | set(by_cell) | set(zones_by_cell)):
         out.append(f' <cell x="{cx}" y="{cy}" map={quoteattr(cell_map(cx, cy))}>')
         for p in sorted(by_cell.get((cx, cy), []),
-                        key=lambda q: (q.on_top, q.offset_y, q.offset_x)):
+                        key=lambda q: (q.on_top, q.levels, q.offset_y, q.offset_x)):
             out.append(
                 f'  <lot x="{p.offset_x}" y="{p.offset_y}" level="0"'
                 f' width="{p.width}" height="{p.height}"'
