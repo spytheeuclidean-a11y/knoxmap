@@ -37,6 +37,7 @@ NOT_A_WALL = ("walls_detailing", "walls_interior_detailing", "walls_exterior_roo
 GROUND_BLOCKING_LAYERS = ("0_Vegetation", "0_Furniture")
 BLOCKING_PREFIXES = ("fencing_", "vegetation_trees")
 # Bushes and grass overlays are walked through (slowly); they are counted, not failed.
+WALKABLE_PREFIXES = ("floors_", "lighting_", "walls_", "fixtures_", "overlay_", "ceilings", "roofs_")
 STAIR_PREFIXES = ("fixtures_escalators", "fixtures_stairs", "stairs_", "location_stairs")
 SOFT_PREFIXES = ("vegetation_foliage", "blends_")
 
@@ -118,6 +119,8 @@ def check(project: str, show: int = 8, only_level: int | None = None) -> dict:
         own = wall_tiles(b)
 
         def blocks(tile: str) -> bool:
+            if tile.startswith(WALKABLE_PREFIXES):          # a rug, a light on the wall
+                return False
             return tile in furn or tile in blockers or tile.startswith(BLOCKING_PREFIXES)
 
         for z, fl in enumerate(b.floors):
