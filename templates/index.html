@@ -227,6 +227,26 @@
       </details>
     </section>
 
+    <!-- Changing what KnoxMap already made. The download is left as it came;
+         what is changed about it is kept beside the map as a short list of
+         changes and put back on every time it is built (generator/edits.py). -->
+    <section class="panel" data-card="edit">
+      <details id="editMap">
+        <summary>Edit this map <span class="count" id="editCount"></span></summary>
+        <p class="hint">Open a map, then load what it was built from. Click
+          anything to remove it or say what it really is; drag its corners to
+          move it. Generate map again and the change is in.</p>
+        <div class="sketch-actions">
+          <button type="button" id="editLoad" class="btn" disabled>Load what is here</button>
+          <button type="button" id="editShape" class="btn" disabled>Move and reshape</button>
+          <button type="button" id="editSave" class="btn" disabled>Save changes</button>
+          <button type="button" id="editReset" class="btn" disabled>Undo all</button>
+        </div>
+        <div id="editSelected" class="edit-selected" hidden></div>
+        <div id="editNote" class="hint"></div>
+      </details>
+    </section>
+
     <section class="panel" data-card="generate">
       <button id="generateBtn" class="btn btn-primary" disabled>Generate map</button>
       <div id="status"></div>

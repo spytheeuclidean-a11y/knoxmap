@@ -27,6 +27,7 @@ from flask import (Flask, jsonify, render_template, request, send_file,
 
 import knoxlog
 import knoxstop
+from generator import edits as mapedits
 from generator import osm, places, renderer, sketch
 from knoxbuild import mapstate
 from knoxbuild.settings import PRESETS, Settings
@@ -868,13 +869,7 @@ def generate():
     # the box, measure the angle, then fetch the turned map's bounds as well -
     # the same town twice over, about 2.4 times the data. Now one download
     # covers the map at any angle: the circle round it, as a box.
-    turned = bool(settings.align_streets) or bool(settings.rotate_degrees)
-    if turned:
-        fetch_box = renderer.cover_bbox(south, west, north, east, meters_per_tile)
-        cache = osm.cache_path(str(map_dir), f"{map_name}_turned")
-    else:
-        fetch_box = bbox
-        cache = osm.cache_path(str(map_dir), map_name)
+    cache, fetch_box = _osm_cache_for(map_dir, bbox, meters_per_tile, settings)
 
     # Regenerating the same area is the common case - it is how a map gets
     # re-rendered after the ground or road rules change - and a town's worth of
@@ -935,6 +930,15 @@ def generate():
     # the real features and before a single thing is measured from them, so the
     # street angle, the ground, the gardens, the buildings and the compiled
     # cells all see a drawn street exactly as they see a surveyed one.
+    # What the mapper changed about the features themselves - a building
+    # removed, a road dragged straight, a house retagged as a shop. Applied
+    # here so nothing downstream ever sees the version that was rejected.
+    changes = _load_edits(map_dir)
+    if mapedits.count(changes):
+        features, used = mapedits.apply(features, changes)
+        log.info("generate %s: %d removed, %d moved, %d retagged by hand",
+                 map_name, used["removed"], used["moved"], used["tags"])
+
     drawn_features = sketch.features(drawn)
     if drawn_features:
         features = list(features) + drawn_features
@@ -1341,6 +1345,109 @@ def _save_settings(map_dir: Path, settings: Settings) -> None:
             json.dump(settings.to_dict(), f, indent=2)
     except OSError:
         pass          # a map whose settings cannot be saved still builds
+
+
+# ---- editing what a map was built from ------------------------------------------
+#
+# The download stays the download: what the mapper changed about it is kept
+# beside the map as a short list of changes, keyed by each feature's own OSM
+# id (generator/edits.py). A town is a hundred thousand features and nearly
+# all of them are untouched, so this is a few lines where a copy would be
+# megabytes - and a re-download does not throw the editing away.
+def _osm_cache_for(map_dir: Path, bbox, meters_per_tile: float,
+                   settings: Settings) -> tuple[str, tuple]:
+    """Where this map's download lives, and the box it covers.
+
+    A map turned to its street grid reaches past the drawn box at its corners
+    and is fetched as the circle round it, under its own name. The editor and
+    the generator both ask here, so they cannot look in different files.
+    """
+    south, west, north, east = bbox
+    if bool(settings.align_streets) or bool(settings.rotate_degrees):
+        return (osm.cache_path(str(map_dir), f"{map_dir.name}_turned"),
+                renderer.cover_bbox(south, west, north, east, meters_per_tile))
+    return osm.cache_path(str(map_dir), map_dir.name), tuple(bbox)
+
+
+def _edits_path(map_dir: Path) -> Path:
+    return map_dir / f"{map_dir.name}_edits.json"
+
+
+def _load_edits(map_dir: Path) -> dict:
+    try:
+        with open(_edits_path(map_dir), encoding="utf-8") as f:
+            return mapedits.clean(json.load(f))
+    except (OSError, ValueError):
+        return mapedits.empty()
+
+
+def _save_edits(map_dir: Path, changes: dict) -> None:
+    path = _edits_path(map_dir)
+    try:
+        map_dir.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.part")
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(mapedits.clean(changes), f)
+        os.replace(tmp, path)
+    except OSError:
+        pass          # a map whose edits cannot be saved still renders
+
+
+# How many features one look at the map may bring back. A city has a hundred
+# thousand; a page that is handed them all stops responding, and nobody edits
+# a hundred thousand things by hand anyway. The biggest are sent first, so
+# what arrives is what is worth editing.
+EDIT_FEATURE_LIMIT = 1200
+
+
+@app.route("/api/features/<name>")
+def api_features(name: str):
+    """This map's own features, as GeoJSON, for editing.
+
+    They come from the download that made the map, not from a fresh one, so
+    what is edited is exactly what was built - and editing costs no requests
+    to Overpass at all.
+    """
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Bad map name."}), 400
+    info = _map_summary(map_dir)
+    box = info.get("bbox") or {}
+    if not box:
+        return jsonify({"error": "That map has no area recorded, so there is "
+                                 "nothing to read its features from."}), 400
+    settings = _load_settings(map_dir)
+    cache, fetch_box = _osm_cache_for(
+        map_dir, (box["south"], box["west"], box["north"], box["east"]),
+        float(info.get("metersPerTile") or 1.0), settings)
+    features = osm.load_cache(cache, fetch_box)
+    if features is None:
+        return jsonify({"error": "This map's download is not beside it any "
+                                 "more, or it was made by a version whose "
+                                 "filters have changed. Generate it again and "
+                                 "its features can be edited."}), 404
+    # Only what is being looked at, which is what keeps a town editable.
+    view = None
+    try:
+        view = (float(request.args["south"]), float(request.args["west"]),
+                float(request.args["north"]), float(request.args["east"]))
+    except (KeyError, TypeError, ValueError):
+        view = None
+    out = mapedits.as_geojson(features, view, EDIT_FEATURE_LIMIT)
+    out["edits"] = _load_edits(map_dir)
+    return jsonify(out)
+
+
+@app.route("/api/edits/<name>", methods=["GET", "POST"])
+def api_edits(name: str):
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Bad map name."}), 400
+    if request.method == "GET":
+        return jsonify(_load_edits(map_dir))
+    changes = mapedits.clean(_json_body())
+    _save_edits(map_dir, changes)
+    return jsonify({"changes": mapedits.count(changes), **changes})
 
 
 # ---- the drawn map --------------------------------------------------------------

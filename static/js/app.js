@@ -498,6 +498,18 @@ function rememberMap(map) {
   // really move are sent, so the rest keep the value the map was made with.
   openedMap.shown = readSettings();
   showReapply();
+  // Editing is about a map that exists, so it waits for one to be open. The
+  // shapes of whichever map was open before are cleared rather than left to
+  // be edited into a map they do not belong to.
+  if (typeof editReady === 'function') {
+    editReady(map && openedMap ? openedMap.mapName : null);
+    editLayer.clearLayers();
+    pickEdit(null);
+    mapEdits = { removed: [], moved: {}, tags: {} };
+    document.getElementById('editShape').disabled = true;
+    showEditCount();
+    noteEdit('');
+  }
 }
 
 // The knobs moved since the panel was filled in, by name.
@@ -2138,3 +2150,205 @@ document.getElementById('drawnOnly').addEventListener('change', ev => {
 });
 
 loadSketchPalette();
+
+// ---- editing what a map was built from --------------------------------------
+//
+// A generated map is a reading of OpenStreetMap, and a reading is sometimes
+// wrong: a shed the survey calls a house, a road through where a square should
+// be. The features come back here as shapes; what is changed about them is
+// kept as a short list of changes keyed by each one's own OSM id, so a town of
+// a hundred thousand features costs a few lines, the download is never
+// rewritten, and an edit can be taken back by dropping its line.
+const editLayer = new L.FeatureGroup().addTo(map);
+let mapEdits = { removed: [], moved: {}, tags: {} };
+let editShaper = null;
+let editSelected = null;
+
+const EDIT_STYLE = { color: '#f0b429', weight: 2, fillOpacity: 0.12 };
+const EDIT_PICKED = { color: '#ff5f5f', weight: 4, fillOpacity: 0.3 };
+
+function editCountNow() {
+  return mapEdits.removed.length + Object.keys(mapEdits.moved).length
+       + Object.keys(mapEdits.tags).length;
+}
+
+function showEditCount() {
+  const badge = document.getElementById('editCount');
+  const n = editCountNow();
+  if (badge) badge.textContent = n ? `(${n})` : '';
+  document.getElementById('editSave').disabled = !n;
+  document.getElementById('editReset').disabled = !n;
+}
+
+function noteEdit(text) {
+  const box = document.getElementById('editNote');
+  if (box) box.textContent = text || '';
+}
+
+function editReady(mapName) {
+  document.getElementById('editLoad').disabled = !mapName;
+}
+
+// What a feature is, in the palette's words where the palette has a word for
+// it, so "Street" and "House" rather than highway=residential.
+function describeTags(tags) {
+  for (const entry of sketchPalette) {
+    if (Object.entries(entry.tags).every(([k, v]) => tags[k] === v)) return entry.label;
+  }
+  const first = Object.entries(tags || {})[0];
+  return first ? `${first[0]}=${first[1]}` : 'something';
+}
+
+function pickEdit(layer) {
+  if (editSelected && editSelected.setStyle) editSelected.setStyle(EDIT_STYLE);
+  editSelected = layer;
+  const box = document.getElementById('editSelected');
+  if (!layer) { box.hidden = true; box.innerHTML = ''; return; }
+  layer.setStyle(EDIT_PICKED);
+  const tags = mapEdits.tags[layer.osmId] || layer.osmTags || {};
+  box.hidden = false;
+  box.innerHTML = `<span class="hint">${escapeHtml(describeTags(tags))}
+      <small>#${layer.osmId}</small></span>
+    <button type="button" id="editDelete" class="btn">Remove it</button>
+    <select id="editRetag"><option value="">Say what it is...</option>
+      ${sketchPalette.filter(e => e.geometry !== 'point').map(e =>
+        `<option value="${e.id}">${escapeHtml(e.label)}</option>`).join('')}
+    </select>`;
+  document.getElementById('editDelete').addEventListener('click', () => {
+    mapEdits.removed.push(layer.osmId);
+    delete mapEdits.moved[layer.osmId];
+    delete mapEdits.tags[layer.osmId];
+    editLayer.removeLayer(layer);
+    pickEdit(null);
+    showEditCount();
+    noteEdit('Removed. It will be gone the next time the map is generated.');
+  });
+  document.getElementById('editRetag').addEventListener('change', ev => {
+    const entry = sketchPalette.find(e => e.id === ev.target.value);
+    if (!entry) return;
+    mapEdits.tags[layer.osmId] = { ...entry.tags };
+    layer.osmTags = { ...entry.tags };
+    showEditCount();
+    pickEdit(layer);
+    noteEdit(`Now a ${entry.label.toLowerCase()}.`);
+  });
+}
+
+function addEditable(feature) {
+  const geo = feature.geometry || {};
+  const flip = ring => ring.map(([lon, lat]) => [lat, lon]);
+  let layer = null;
+  if (geo.type === 'Polygon') layer = L.polygon(flip(geo.coordinates[0] || []), EDIT_STYLE);
+  else if (geo.type === 'LineString') layer = L.polyline(flip(geo.coordinates), EDIT_STYLE);
+  if (!layer) return;
+  layer.osmId = feature.id;
+  layer.osmTags = (feature.properties || {}).tags || {};
+  // What it looked like when it arrived, so only a shape that really moved is
+  // recorded as moved.
+  layer.wasAt = JSON.stringify(layer.toGeoJSON().geometry.coordinates);
+  layer.on('click', ev => { L.DomEvent.stop(ev); pickEdit(layer); });
+  editLayer.addLayer(layer);
+}
+
+async function loadEditable() {
+  if (!openedMap) return;
+  const b = map.getBounds();
+  const q = new URLSearchParams({
+    south: b.getSouth(), west: b.getWest(),
+    north: b.getNorth(), east: b.getEast(),
+  });
+  noteEdit('Reading what this map was built from...');
+  let data;
+  try {
+    const res = await fetch(`/api/features/${encodeURIComponent(openedMap.mapName)}?${q}`);
+    data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+  } catch (err) {
+    noteEdit(err.message);
+    return;
+  }
+  editLayer.clearLayers();
+  pickEdit(null);
+  mapEdits = { removed: [], moved: {}, tags: {}, ...(data.edits || {}) };
+  mapEdits.removed = mapEdits.removed || [];
+  const gone = new Set(mapEdits.removed);
+  for (const f of data.features || []) {
+    if (!gone.has(f.id)) addEditable(f);
+  }
+  document.getElementById('editShape').disabled = !editLayer.getLayers().length;
+  showEditCount();
+  // Say what is on the map, not what came down: the two differ by whatever
+  // has already been taken out, and "5 features" over four shapes reads as a
+  // bug in the counting.
+  const hidden = (data.features || []).length - editLayer.getLayers().length;
+  const capped = data.shown < data.total
+    ? `${data.shown} of ${data.total} here - the biggest. Zoom in for the rest. ` : '';
+  const already = hidden ? ` ${hidden} already removed.` : '';
+  noteEdit(`${capped}${editLayer.getLayers().length} to edit.${already}`
+    + ' Click one to remove it or say what it is.');
+}
+
+// Leaflet's own corner-dragging, over the whole layer at once.
+function toggleShaping() {
+  const btn = document.getElementById('editShape');
+  if (editShaper) {
+    editShaper.save();
+    editShaper.disable();
+    editShaper = null;
+    btn.textContent = 'Move and reshape';
+    // Only what really moved counts as moved.
+    editLayer.eachLayer(layer => {
+      const now = JSON.stringify(layer.toGeoJSON().geometry.coordinates);
+      if (now !== layer.wasAt) {
+        const geo = layer.toGeoJSON().geometry;
+        const ring = geo.type === 'Polygon' ? geo.coordinates[0] : geo.coordinates;
+        mapEdits.moved[layer.osmId] = ring.map(([lon, lat]) => [lat, lon]);
+      }
+    });
+    showEditCount();
+    noteEdit('Shapes saved. Press Save changes to keep them.');
+    return;
+  }
+  pickEdit(null);
+  editShaper = new L.EditToolbar.Edit(map, { featureGroup: editLayer });
+  editShaper.enable();
+  btn.textContent = 'Done moving';
+  noteEdit('Drag the corners. Press Done moving when finished.');
+}
+
+document.getElementById('editLoad').addEventListener('click', loadEditable);
+document.getElementById('editShape').addEventListener('click', toggleShaping);
+
+document.getElementById('editSave').addEventListener('click', async () => {
+  if (!openedMap) return;
+  const btn = document.getElementById('editSave');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/edits/${encodeURIComponent(openedMap.mapName)}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(mapEdits),
+    });
+    const out = await res.json();
+    if (!res.ok) throw apiError(out, res);
+    noteEdit(`${out.changes} change${out.changes === 1 ? '' : 's'} saved. `
+      + 'Generate map again to build them in.');
+    fx.toast('ok', 'Changes saved',
+             `${openedMap.mapName}: generate the map again to see them.`);
+  } catch (err) {
+    noteEdit(err.message);
+  } finally {
+    showEditCount();
+  }
+});
+
+document.getElementById('editReset').addEventListener('click', async () => {
+  if (!openedMap) return;
+  mapEdits = { removed: [], moved: {}, tags: {} };
+  await fetch(`/api/edits/${encodeURIComponent(openedMap.mapName)}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(mapEdits),
+  }).catch(() => {});
+  showEditCount();
+  await loadEditable();
+  noteEdit('Every change undone. The map is back to what was downloaded.');
+});

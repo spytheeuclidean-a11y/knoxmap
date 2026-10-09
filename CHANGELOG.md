@@ -1,6 +1,30 @@
 # Changelog
 
-## Unreleased
+## 1.6.2 editor
+
+- **Edit the map KnoxMap made** (`generator/edits.py`, new; `app.py`,
+  `static/js/app.js`, `templates/index.html`). A generated map is a reading of
+  OpenStreetMap, and a reading is sometimes wrong: a shed the survey calls a
+  house, a road running through where a square should be, a building that is
+  simply not wanted. Until now the only answer was to accept it. Open a map,
+  load what it was built from, and its roads, buildings, water and woods come
+  back as shapes: click one to remove it or say what it really is, drag its
+  corners to move it, then generate the map again and the change is in.
+
+  The download is left exactly as it came. What is changed about it is kept
+  beside the map as a short list of changes keyed by each feature's own OSM id
+  - removed, moved, retagged - so a town of a hundred thousand features costs
+  a few lines where a copy would be megabytes, a re-download does not throw
+  the editing away, and any change can be taken back by dropping its line.
+  Only what is being looked at is sent, biggest first and capped, because a
+  page handed a city's features stops responding and nobody edits a hundred
+  thousand things by hand.
+
+  Tags a page may set are a fixed list, since they reach `classify` and the
+  renderer. An area whose ring is dragged open is closed again before it is
+  used, or a house would be painted as a stripe. And the one place that works
+  out which file a map's download lives in is now shared by the editor and the
+  generator, so the two cannot look in different ones.
 
 - **Draw your own map** (`generator/sketch.py`, new; `app.py`,
   `static/js/app.js`, `templates/index.html`). A town that is not on

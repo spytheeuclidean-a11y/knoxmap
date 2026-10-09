@@ -424,3 +424,10 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .sketch-actions .btn { font-size: 12px; padding: 4px 10px; }
 .check { display: block; margin: 8px 0 2px; font-size: 13px; }
 .check input { margin-right: 6px; }
+.edit-selected { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 8px 0 4px; padding: 8px 10px; border-radius: 6px;
+  border: 1px solid var(--line-strong); }
+.edit-selected[hidden] { display: none; }
+.edit-selected .hint { flex: 1 1 120px; margin: 0; }
+.edit-selected small { opacity: .6; }
+.edit-selected .btn, .edit-selected select { font-size: 12px; padding: 4px 8px; }
