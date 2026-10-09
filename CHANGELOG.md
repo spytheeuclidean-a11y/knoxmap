@@ -2,6 +2,39 @@
 
 ## 1.6
 
+- **No red question marks from Erika's paintings and posters** (`knoxbuild/catalog.py`,
+  `tools/make_catalog.py`). Eight tiles of Erika's Tiles 1.0.7 are blank - paintings
+  74 to 79 and posters 22 and 23 of their sheets are empty and not in the mod's pack - and
+  the catalogue had four wall-art pieces made of them, so the game logged
+  "CellLoader> missing tile ..." and drew red question marks on the wall. Those four
+  pieces are left out (and by `make_catalog.py` when it is run again).
+
+- **A building is no longer built on the road** (`knoxbuild/footprint.py`,
+  `build.py`). Since 1.6 a building that fronted a pavement stood "on the least
+  road it can" when there was no clear spot, and on a real 5100 x 2700 map 63 of
+  957 buildings had room squares on a road and 25 were mostly on it - houses
+  and apartments in the middle of an intersection. A building may now stand on at
+  most 10% road. It is moved out of the road as far as twelve tiles to get
+  there, whatever road squares are left are cut away, and one that cannot be got
+  under that share is left out ("on the road" in the build summary: 21 of the
+  same 957, none left on a road). Pavement is still something a building may
+  front.
+- **A wall is no longer lost under a neighbour's roof** (`knoxbuild/world.py`,
+  `build.py`). Where a taller building stood beside a lower one, the lower one's
+  ceiling and roof tiles landed on the squares its upper-floor wall stands on, and WorldEd
+  lays lots down in the order the project lists them, with a tile of that kind taking the
+  whole square: the wall vanished, leaving a gap in the side of the taller building. On a
+  real map 89 wall edges were missing this way (80 under a roof). Lots are now listed
+  lowest building first, so the taller building is laid last and its wall is added to what
+  is there; none were missing on the same map afterwards.
+- **No tree, bush or fence stands in a doorway** (`knoxbuild/yards.py`,
+  `fences.py`, `build.py`). The ground and the fences are drawn from OpenStreetMap
+  before anyone knows where a door is, so on a real map 19 of 19,796 doors had a
+  fence or a tree on the square in front of them and 53 had a bush. The two squares
+  in front of every ground-floor outside door are now cleared of vegetation, and a
+  fence edge that touches them is left out, which makes a gap in the fence where the
+  door is. None were blocked afterwards on the same map.
+
 - **A building that fronts a pavement is built, not thrown away**
   (`knoxbuild/footprint.py`). Standing a footprint off the road became a hard
   rule: a spot clear of every road and pavement tile within five, or the

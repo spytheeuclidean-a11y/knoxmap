@@ -31,6 +31,7 @@ import knoxstop
 from .areas import AreaIndex
 from .bitmaps import read_gray, read_rgb, same_colour
 from .fences import build_fences
+from . import footprint
 from .footprint import place
 from .layout import build_building
 from .uses import USE_KEYS, is_hotel, uses_of
@@ -1266,7 +1267,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     placements: list[Placement] = []
     rows = []
-    skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0,
+    skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0, "road": 0,
                "not a building": 0}
     sheds = 0        # outbuildings given a single storage room
     from_near = 0    # storeys borrowed from tagged neighbours
@@ -1623,7 +1624,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             from . import catalog as _C
             escalator_squares.extend(_C.escalator_tiles(x0 + ex, y0 + ey,
                                                           west=True))
-        p = Placement(f"buildings/{fname}", x0, y0, w, h)
+        p = Placement(f"buildings/{fname}", x0, y0, w, h, levels=storeys)
         placements.append(p)
         peopled.append((x0, y0, fp.mask, storeys, special or "house"))
         outlines.append((px, special or "house", real_name))
@@ -1672,8 +1673,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     from .yards import paint_paths
     drives: list = []
     porch_lights: list = []
+    from .yards import door_fronts
+    fronts = door_fronts(out_dir, rows)
     paths, yard_fences = paint_paths(out_dir, map_name, rows, occupied, drives,
-                                     porch_lights)
+                                     porch_lights, fronts=fronts)
     # The lights stand outside the houses, past the edge of their own .tbx.
     from .structures import pack_loose
     light_placements = pack_loose(bdir, map_name, "lights", porch_lights,
@@ -1725,7 +1728,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         job_fences = pool.submit(build_fences, out_dir, map_name, proj, occupied,
-                                 areas, bdir, extra=yard_fences)
+                                 areas, bdir, extra=yard_fences, keep_clear=fronts)
         job_spawn = pool.submit(make_spawn_map)
         job_paper = pool.submit(worldmap.write, out_dir, map_name, proj, info,
                                 outlines)
@@ -1775,6 +1778,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         print(f"  too large (>{max_size})   : {skipped['large']}")
     print(f"  outside the map     : {skipped['outside']}")
     print(f"  swallowed by others : {skipped['taken']}")
+    print(f"  on the road         : {skipped['road']} (more than {round(100 * footprint.ROAD_SHARE_MAX)}% road)")
     print(f"  not buildings       : {skipped['not a building']} (roofs, ruins, tanks)")
     import collections as _c
     kinds = _c.Counter(r["kind"] for r in rows)

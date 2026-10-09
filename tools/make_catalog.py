@@ -876,6 +876,15 @@ def main(argv: list[str]) -> int:
             "N": {"0,0": "fixtures_escalators_01_50", "1,0": "fixtures_escalators_01_51"},
         }
         furniture_layers["elevator_door"] = "Walls"
+        # Tiles that are empty in Erika's Tiles 1.0.7: the sprite is not in its pack, so the game
+        # draws a red question mark ("CellLoader> missing tile ..."). Left out.
+        blank = {"walls_decoration_paintings_erika_01_" + n for n in ("074", "075", "076", "077", "078", "079")}
+        blank |= {"walls_decoration_posters_erika_01_022", "walls_decoration_posters_erika_01_023"}
+        for role in [r for r, shape in furniture.items()
+                     if any(t in blank for tiles in shape.values() for t in tiles.values())]:
+            del furniture[role]
+            furniture_layers.pop(role, None)
+            erika["art"] = [a for a in erika["art"] if a != role]
         f.write("FURNITURE = " + pprint.pformat(furniture, width=100, sort_dicts=False) + "\n\n")
         f.write("# Furniture layer per role; anything but Furniture sits on a wall.\n")
         f.write("FURNITURE_LAYERS = " + pprint.pformat(furniture_layers, width=100) + "\n\n")
