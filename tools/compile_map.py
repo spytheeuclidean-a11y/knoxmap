@@ -702,10 +702,82 @@ def _free_memory_gb() -> float:
     return 0.0
 
 
+def knoxlots_exe() -> Path | None:
+    """The Rust compiler: KNOXLOTS, else the one a release ships beside KnoxMap.exe, else a
+    local release build, else one on PATH."""
+    import shutil
+    env = os.environ.get("KNOXLOTS")
+    for cand in ([Path(env)] if env else []) + [
+            BASE_DIR / "knoxlots.exe", BASE_DIR / "knoxlots",
+            BASE_DIR / "rust" / "knoxlots" / "target" / "release" / "knoxlots.exe",
+            BASE_DIR / "rust" / "knoxlots" / "target" / "release" / "knoxlots"]:
+        if cand.exists():
+            return cand
+    found = shutil.which("knoxlots")
+    return Path(found) if found else None
+
+
+def default_backend() -> str:
+    """knoxlots when it is built (or KNOXLOTS names it), else WorldEd; KNOXMAP_BACKEND=worlded|rust
+    chooses outright."""
+    chosen = os.environ.get("KNOXMAP_BACKEND")
+    if chosen in ("worlded", "rust"):
+        return chosen
+    return "rust" if knoxlots_exe() else "worlded"
+
+
+def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: int | None = None) -> int:
+    """Compile with knoxlots instead of WorldEd: no bitmap limit, no batches.
+
+    Makes the cell sources from the project (tools/map_source.py), compiles them into a
+    scratch folder and, only when that worked, replaces the project's lots with the result.
+    Returns the number of cells."""
+    import shutil
+    exe = knoxlots_exe()
+    if exe is None:
+        raise FileNotFoundError("knoxlots not found - build it with `cargo build --release` in "
+                                "rust/knoxlots, or set KNOXLOTS to its path")
+    project = Path(project_dir).resolve()
+    if not (project / f"{project.name}.pzw").exists():
+        raise FileNotFoundError(f"No {project.name}.pzw - generate the buildings first.")
+    from tools.map_source import make_map_source
+    run = uuid.uuid4().hex[:8]
+    scratch = project / ".knoxlots"
+    src, out = scratch / "src", scratch / "lots"
+    shutil.rmtree(scratch, ignore_errors=True)
+    with _only_one(project, run):
+        try:
+            if should_stop and should_stop():
+                raise RuntimeError("stopped")
+            make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop)
+            cmd = [str(exe), "compile", str(src), str(out), "--threads", str(workers or os.cpu_count() or 1)]
+            proc = _run_batch(cmd, should_stop or (lambda: False), time.time())
+            if proc.returncode != 0:
+                raise RuntimeError(f"knoxlots failed (exit {proc.returncode}): {_why(proc)}")
+            cells = len(list(out.glob("*.lotheader")))
+            if not cells:
+                raise RuntimeError("knoxlots produced no cells")
+            lots = project / "lots"
+            lots.mkdir(exist_ok=True)
+            for old in lots.glob("*.lotheader"):
+                old.unlink()
+            for old in list(lots.glob("world_*.lotpack")) + list(lots.glob("chunkdata_*.bin")):
+                old.unlink()
+            for f in out.iterdir():
+                shutil.move(str(f), str(lots / f.name))
+            if on_progress:
+                on_progress(cells, cells, cells)
+            knoxlog.log.info("compile %s [%s]: knoxlots wrote %d cells", project.name, run, cells)
+            return cells
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+
+
 def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
                 on_progress=None, should_stop=None,
                 only_cells: list | None = None, workers: int | None = None,
-                on_detail=None, incremental: bool = True, fresh: bool = False) -> int:
+                on_detail=None, incremental: bool = True, fresh: bool = False,
+                backend: str | None = None) -> int:
     """Run every batch. Returns the number of compiled cells.
 
     A batch that fails is tried again (BATCH_ATTEMPTS) and, if it still will
@@ -731,6 +803,8 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
     every cell that has not changed (see compile_state.py); `fresh` throws
     everything compiled away first.
     """
+    if (backend or default_backend()) == "rust":
+        return compile_rust(project_dir, on_progress, should_stop, workers)
     if workers is None:
         workers = default_workers()
     project = Path(project_dir).resolve()
@@ -991,9 +1065,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--batch", type=int, default=4,
                     help="source cells per side per batch (default 4)")
     ap.add_argument("--exe", default=None)
+    ap.add_argument("--backend", choices=["worlded", "rust"], default=None,
+                    help="default: rust (knoxlots, no size limit) when built, else worlded; "
+                         "or KNOXMAP_BACKEND")
     args = ap.parse_args(argv)
     try:
-        total = compile_map(args.project_dir, args.batch, args.exe)
+        total = compile_map(args.project_dir, args.batch, args.exe, backend=args.backend)
     except Exception as exc:
         print(f"Compile failed: {exc}", file=sys.stderr)
         return 1
