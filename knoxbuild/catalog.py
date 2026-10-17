@@ -11557,9 +11557,13 @@ def _interior_walls() -> list[dict]:
 # eight and ten further on. Only the ones whose whole set the game uses are
 # here - a style with no window or door tile in it would leave a hole in a
 # wall. Its mall alone paints 117 different wall tiles where we managed 27.
+#
+# walls_commercial_02 at 16 and 32 are not here: those are see-through
+# partitions (WallWTrans/WallNTrans in the game's tile definitions, no north-west
+# corner, no door or window piece at +10/+11), which came out as half walls and
+# missing walls. Found by Zombaxx.
 GAME_WALL_STYLES = [
-    ("walls_commercial_01", 32), ("walls_commercial_02", 16),
-    ("walls_commercial_02", 32), ("walls_commercial_03", 16),
+    ("walls_commercial_01", 32), ("walls_commercial_03", 16),
     ("walls_interior_house_01", 0), ("walls_interior_house_01", 16),
     ("walls_interior_house_01", 32), ("walls_interior_house_01", 48),
     ("walls_interior_house_02", 0), ("walls_interior_house_02", 16),

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Half walls and missing walls inside buildings** (`knoxbuild/catalog.py`).
+  Two of the game's own interior wall styles, `walls_commercial_02` at 16 and
+  32, are see-through partitions (`WallWTrans`/`WallNTrans`, no corner and no
+  door piece), not walls. Used as one they came out as half walls and as walls
+  that were not there. They are not offered any more; 263 of 1,410 buildings
+  in a test map of central Amsterdam used them. Found and fixed by Zombaxx.
+
+- **A gap in the wall where two buildings meet at a corner** (`knoxbuild/buildtiles.py`).
+  Where one building's east wall and the next one's south wall land on the same
+  square, the two were written to a single "walls" slot and only the last one
+  stayed, so the square was left with one wall and a hole you could walk through
+  diagonally. A west wall and a north wall are different walls and both stay now;
+  a corner piece or an end post still replaces what was there, as WorldEd's own
+  output does. In a map of Telegraph Hill, San Francisco, 417 wall tiles come back,
+  and in one of central Amsterdam, 1,358.
+
 - **The lift could wall off part of a floor** (`knoxbuild/layout.py`). A lift
   shaft is a sealed box, so what it stands across is a wall. In a tall
   building with a narrow arm - an L or a T whose neck is a few tiles wide -

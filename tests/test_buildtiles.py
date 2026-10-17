@@ -263,6 +263,17 @@ class AdditionalBuildingRulesTests(unittest.TestCase):
         north = compose_lots([(a, 0, 0, 0), (b, 3, 2, 0)])
         self.assertEqual(north[(4, 3, 0)], ["gr_3", "ew_1", "tr_1", "gr_1"])
 
+    def test_a_west_wall_and_a_north_wall_on_one_square_both_stay(self):
+        from knoxbuild.buildtiles import compose_lots
+        # `a`'s east wall stands on the square (4, 4); `b` ends one row above it, so its
+        # south wall stands on that same square. They are different walls.
+        a = parse_tbx(tbx(4, 3, [(grid(4, 3), [])]))
+        b = parse_tbx(tbx(4, 4, [(grid(4, 4), [])]))
+        for lots in ([(a, 0, 2, 0), (b, 4, 0, 0)], [(b, 4, 0, 0), (a, 0, 2, 0)]):
+            tiles = compose_lots(lots)[(4, 4, 0)]
+            self.assertIn("ew_0", tiles)          # the west wall
+            self.assertIn("ew_1", tiles)          # the north wall
+
 
 if __name__ == "__main__":
     unittest.main()

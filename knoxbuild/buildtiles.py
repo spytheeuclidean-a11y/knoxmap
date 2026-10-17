@@ -396,6 +396,10 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
                     continue
                 channel = layer
                 if layer == "walls":
+                    # A west wall and a north wall are different walls: two buildings that
+                    # meet at a corner each put one of them on the same square, and one
+                    # channel between them kept only whichever was laid last.
+                    channel = {"West": "walls_west", "North": "walls_north"}.get(kind_at.get(pos), layer)
                     if tile in trim_names:
                         channel = "wall_trim_north" if tile in north_trim else "wall_trim_west"
                     elif tile in grime_names:
@@ -409,6 +413,14 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
 def level_tiles(b: Building, z: int) -> dict[tuple[int, int], list[str]]:
     """Building tiles in drawing order; retains the original flat-stack interface."""
     return {pos: [tile for _, tile in items] for pos, items in level_layers(b, z).items()}
+
+
+# Which earlier wall channels a new wall takes the place of. A west wall and a north wall
+# on one square are two walls and both stay; anything else on the "walls" channel (a
+# corner piece, an end post) replaces what was there, as WorldEd's own output does.
+WALL_REPLACES = {"walls": {"walls", "walls_west", "walls_north"},
+                 "walls_west": {"walls", "walls_west"},
+                 "walls_north": {"walls", "walls_north"}}
 
 
 def compose_lots(lots) -> dict[tuple[int, int, int], list[str]]:
@@ -432,5 +444,6 @@ def compose_lots(lots) -> dict[tuple[int, int, int], list[str]]:
                     old = world.get(pos, [])
                     if "floor" in channels:     # a floor tile (a flat roof is one) takes the square
                         old = []
-                    world[pos] = [(layer, tile) for layer, tile in old if layer not in channels] + new
+                    replaced = set().union(*(WALL_REPLACES.get(c, {c}) for c in channels)) if channels else set()
+                    world[pos] = [(layer, tile) for layer, tile in old if layer not in replaced] + new
     return {pos: [tile for _, tile in items] for pos, items in world.items() if items}
