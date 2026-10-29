@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.7.6.5
+## 1.8
 
 - Furniture no longer blocks doors or routes: pieces are placed around a
   reserved walkway, decoration is dropped before essentials, and pieces on
