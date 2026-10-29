@@ -98,13 +98,13 @@ _LIKE = {
 # shops mix their fittings, and a long aisle changes what it holds partway
 # along, so the rows are drawn from these instead.
 AISLE_MIX = {
-    "grocery": ["shop_aisle", "shop_aisle", "shop_shelf", "shop_freezer", "shop_display"],
+    "grocery": ["shop_aisle", "shop_aisle", "shop_shelf"],
     "conveniencestore": ["shop_aisle", "shop_aisle_red", "shop_shelf_red"],
     "generalstore": ["shop_aisle", "shop_shelf", "shop_shelf_wood"],
     "liquorstore": ["shop_aisle", "shop_shelf_wood", "shop_shelf"],
-    "pharmacy": ["shop_aisle", "shop_shelf_white", "shop_display"],
-    "clothingstore": ["clothes_rack", "clothes_rack_small", "shop_shelf_wood", "shop_display"],
-    "toolstore": ["metal_rack", "shop_shelf_wood", "shop_display"],
+    "pharmacy": ["shop_aisle", "shop_shelf_white"],
+    "clothingstore": ["clothes_rack", "clothes_rack_small", "shop_shelf_wood"],
+    "toolstore": ["metal_rack", "shop_shelf_wood"],
 }
 for _kind, _mix in AISLE_MIX.items():
     STORES[_kind]["aisles"] = _mix
