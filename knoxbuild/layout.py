@@ -4407,6 +4407,14 @@ def _door_tiles(plan: Plan) -> set[tuple[int, int]]:
     return door_tiles
 
 
+SHOP_STAFF_ROOMS = {"storage", "grocerystorage", "office", "bathroom"}
+
+
+def SHOP_FLOOR_KINDS() -> set:
+    from . import interiors
+    return set(interiors.STORES)
+
+
 def _room_walkway(plan: Plan, idx: int, door_tiles: set,
                   stairs: tuple[int, int, str] | None) -> set[tuple[int, int]]:
     """Tiles of room idx nothing standing may cover: a path joining its ways
@@ -4423,7 +4431,17 @@ def _room_walkway(plan: Plan, idx: int, door_tiles: set,
     cells = {(x, y) for y in range(r.y0, r.y1 + 1) for x in range(r.x0, r.x1 + 1)
              if plan.grid[y][x] == idx}
     entries = []
+    shop = r.kind in SHOP_FLOOR_KINDS()
     for x, y, d in list(plan.doors) + sorted(plan.open_edge):
+        inside, other = (((x, y), (x - 1, y)) if d == "W" else ((x, y), (x, y - 1)))
+        if inside not in cells:
+            inside, other = other, inside
+        # A shop's customers do not walk to its staff doors: the way through
+        # joins the street to the rest of the sales floor, and the stock room
+        # and office doors open onto whatever aisle is beside them. Counting
+        # them put the walkway along the back wall, where the coolers go.
+        if shop and (x, y, d) in plan.doors and _room_at(plan, *other) and                 plan.rooms[_room_at(plan, *other) - 1].kind in SHOP_STAFF_ROOMS:
+            continue
         entries += [(x, y), (x - 1, y) if d == "W" else (x, y - 1)]
     if stairs is not None:
         sx, sy, sd = stairs
@@ -4635,6 +4653,7 @@ def _furnish(plan: Plan, rng: random.Random,
         occupied: set[tuple[int, int]] = set()
         office = r.kind == "office" and plan.kind not in HOUSE_LIKE_KINDS
         eatery = r.kind in interiors.DINING_ROOMS
+        salon = r.kind == "aesthetic" and plan.kind not in HOME_KINDS
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
         if r.kind in ("garage", "mechanic") and interiors.furnish_service_bay(
                 plan, idx, r, rng, door_tiles, keep_clear,
@@ -4643,6 +4662,8 @@ def _furnish(plan: Plan, rng: random.Random,
         if office:
             base = interiors.furnish_office(plan, idx, r, rng, occupied, keep_clear,
                                             keeps_open)
+        elif salon:
+            base = interiors.furnish_salon(plan, idx, r, rng, occupied, no_go, keeps_open)
         elif eatery:
             base = interiors.furnish_dining(plan, idx, r, rng, occupied,
                                             stair_tiles | walk, door_tiles, street,
@@ -4687,7 +4708,7 @@ def _furnish(plan: Plan, rng: random.Random,
                     if role in ("painting", "mirror") and C.ERIKA_WALL_ART
                     and plan.kind not in ART_FREE_KINDS
                     else rng.choice(C.ERIKA_PLANTS)
-                    if role == "plant" and C.ERIKA_PLANTS and not eatery
+                    if role == "plant" and C.ERIKA_PLANTS and plan.kind in HOME_KINDS
                     else rng.choice(C.ERIKA_SHELVES)
                     if role == "bookshelf" and C.ERIKA_SHELVES and rng.random() < ERIKA_SHELF_SHARE
                     else role for role in base]
@@ -4715,7 +4736,7 @@ def _furnish(plan: Plan, rng: random.Random,
         if plan.profile:
             per = max(1, round(per * (1.18 - 0.36 * plan.profile.clutter)))
         target = max(len(base), min(40, r.area // per))
-        if eatery or commercial_kitchen or r.kind in {"bathroom", "theatre"}:
+        if eatery or salon or commercial_kitchen or r.kind in {"bathroom", "theatre"}:
             target = len(base)       # fitted out; nothing more to scatter
         wishlist = []
         art_chance = WALL_ART_CHANCE
