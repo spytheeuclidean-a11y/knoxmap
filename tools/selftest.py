@@ -3289,6 +3289,9 @@ def check_workshop(check, work: str) -> None:
     with open(os.path.join(root, "ATTRIBUTION.txt"), "w", encoding="utf-8") as f:
         f.write("made with KnoxMap")
     check(not levels()[1]["ready"], "an attribution without the OpenStreetMap credit stops it")
+    with open(os.path.join(root, "ATTRIBUTION.txt"), "w", encoding="utf-8") as f:
+        f.write("Map data (c) OpenStreetMap contributors, available under the Open Database\nLicense (ODbL)")
+    check("bad" not in levels()[0], "the credit passes when the file wraps it over two lines")
     os.remove(os.path.join(root, "ATTRIBUTION.txt"))
     check(not levels()[1]["ready"], "no attribution file stops it")
     with open(os.path.join(root, "mod.info"), "w", encoding="utf-8") as f:

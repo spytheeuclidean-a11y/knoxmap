@@ -70,7 +70,8 @@ def check(mod_root: str, project_dir: str | None = None) -> list[dict]:
         add("bad", "ATTRIBUTION.txt is missing.",
             "Install again: it writes the file, and the map may not be published without it.")
     else:
-        low = attribution.lower()
+        # The file wraps its lines, and "Open Database" / "License" are on two.
+        low = " ".join(attribution.lower().split())
         if "openstreetmap contributors" in low and "open database license" in low:
             add("ok", "ATTRIBUTION.txt credits OpenStreetMap under the ODbL.")
         else:
