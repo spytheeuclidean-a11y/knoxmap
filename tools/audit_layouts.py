@@ -20,6 +20,14 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from knoxbuild.layout import ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, STAIR_RUN, build_building, roof_rects  # noqa: E402
 
+# Doors with no free tile to step onto, and rooms entered only through a
+# bathroom, each as a share of what could have them. Measured over 200
+# buildings: 1 door in 23,000, and 75 rooms in 7,800 (apartment bedrooms, mostly,
+# whose only other wall is the outside). A rise means furnishing or the door
+# tree has started boxing people in.
+DOORS_BOXED_IN_BUDGET = 0.0005
+ROOMS_VIA_BATHROOM_BUDGET = 0.02
+
 # Doors left on a corner, as a share of all doors. It was 1.69% before they
 # were moved off; anything near that means the moving has stopped working.
 DOORS_ON_CORNERS_BUDGET = 0.2
@@ -116,6 +124,50 @@ def audit(building, kind):
         problems["stat:doors"] += len(s.doors)
         problems["stat:on a corner"] += sum(1 for door in s.doors
                                             if (door[0], door[1]) in on_corner)
+        # What blocks the floor, then the checks that read it.
+        from knoxbuild.layout import _blocks, _tiles_under, _under_a_window
+        solid = {}
+        for role, fx, fy, o in s.furniture:
+            if _blocks(role):
+                for t in _tiles_under(role, fx, fy, o):
+                    solid[t] = role
+
+        def room_at(x, y):
+            return s.grid[y][x] if 0 <= x < s.width and 0 <= y < s.height else 0
+
+        # A window with a wardrobe or a bookcase across it cannot be opened,
+        # climbed through or seen out of (a bed or a bath may stand there).
+        for x, y, d in s.windows:
+            for t in (((x - 1, y) if d == "W" else (x, y - 1)), (x, y)):
+                role = solid.get(t)
+                if role and room_at(*t) and not _under_a_window(role):
+                    problems["window blocked by furniture"] += 1
+        # A door with nowhere to step: both free neighbours of the tile in
+        # front of it, inside its own room, are taken.
+        for x, y, d in s.doors:
+            front = (x - 1, y) if d == "W" else (x, y - 1)
+            for tile in (front, (x, y)):
+                r = room_at(*tile)
+                if not r:
+                    continue
+                problems["stat:door fronts"] += 1
+                onward = [(tile[0] + dx, tile[1] + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                          if (tile[0] + dx, tile[1] + dy) not in (front, (x, y))]
+                if not any(room_at(*n) == r and n not in solid for n in onward):
+                    problems["stat:door boxed in"] += 1
+        # A room you can only get to through a bathroom.
+        links: dict = {}
+        for x, y, d in s.doors:
+            a, b = ((room_at(x - 1, y) if d == "W" else room_at(x, y - 1)), room_at(x, y))
+            if a and b and a != b:
+                links.setdefault(a, set()).add(b)
+                links.setdefault(b, set()).add(a)
+        baths = {i for i, rm in enumerate(s.rooms, 1) if rm.kind == "bathroom"}
+        for i, rm in enumerate(s.rooms, 1):
+            if i not in baths and not rm.is_shaft:
+                problems["stat:rooms"] += 1
+                if links.get(i) and links[i] <= baths:
+                    problems["stat:room through a bathroom"] += 1
         lit = {s.grid[fy][fx] for role, fx, fy, _o in s.furniture if role == "switch"}
         shafts = {i for i, r in enumerate(s.rooms, 1) if r.is_shaft}
         if any(i not in lit and i not in shafts for i in range(1, n + 1)):
@@ -197,6 +249,16 @@ def audit(building, kind):
                 problems["stairs crossing a wall"] += 1
                 break
         blocked = {(x + dx * i, y + dy * i) for i in range(STAIR_RUN)}
+        # The steps between the two landings cannot be walked across, so a
+        # door that opens onto one cannot be used.
+        steps = set(run[1:-1])
+        for s in (building.storeys[lvl], building.storeys[lvl + 1]):
+            for door in s.doors:
+                pair = door_pair(s, door)
+                spots = ((door[0] - 1, door[1]) if door[2] == "W" else (door[0], door[1] - 1),
+                         (door[0], door[1]))
+                if pair and any(sp in steps for sp in spots):
+                    problems["door opening onto the stairs"] += 1
         for s in (building.storeys[lvl], building.storeys[lvl + 1]):
             for role, fx, fy, _o in s.furniture:
                 if (fx, fy) in blocked:
@@ -253,7 +315,15 @@ def main(argv):
     stuck = 100.0 * stats["stat:on a corner"] / max(1, stats["stat:doors"])
     print(f"doors drawn as wall, on a corner: {stats['stat:on a corner']} of "
           f"{stats['stat:doors']} ({stuck:.3f}%)")
-    return 1 if problems or stuck > DOORS_ON_CORNERS_BUDGET else 0
+    boxed = 100.0 * stats["stat:door boxed in"] / max(1, stats["stat:door fronts"])
+    via = 100.0 * stats["stat:room through a bathroom"] / max(1, stats["stat:rooms"])
+    print(f"door fronts boxed in: {stats['stat:door boxed in']} of "
+          f"{stats['stat:door fronts']} ({boxed:.3f}%)")
+    print(f"rooms entered only through a bathroom: "
+          f"{stats['stat:room through a bathroom']} of {stats['stat:rooms']} ({via:.2f}%)")
+    over = (stuck > DOORS_ON_CORNERS_BUDGET or boxed > 100 * DOORS_BOXED_IN_BUDGET
+            or via > 100 * ROOMS_VIA_BATHROOM_BUDGET)
+    return 1 if problems or over else 0
 
 
 if __name__ == "__main__":
