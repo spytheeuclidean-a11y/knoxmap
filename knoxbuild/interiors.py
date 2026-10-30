@@ -592,6 +592,42 @@ def eatery_style(plan, idx: int, room) -> str:
     return "tables"
 
 
+MIN_PACK_SIDE = 4
+
+
+def _pack_sets(plan, idx: int, frame, group, occupied: set, blocked: set,
+               keeps_open=None) -> int:
+    """As many of a seating set as the floor holds, a tile of aisle between
+    one set and the next but the aisle shared, so a dining room is rows of
+    booths and not three sets with a ring of floor round each. Filled from the
+    back of the room, so the way in stays open."""
+    L = _layout()
+    pieces = [(role, dx, dy, L._facing(role, o)) for role, dx, dy, o in group]
+    shape = [(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             for cx, cy in L._cells_for(role, 0, 0, o)]
+    solid = [(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             if C.FURNITURE_LAYERS.get(role, "Furniture") == "Furniture"
+             for cx, cy in L._cells_for(role, 0, 0, o)]
+    ring = {(x + i, y + j) for x, y in shape for i in (-1, 0, 1) for j in (-1, 0, 1)} - set(shape)
+    spot = {frame.xy(a, d): (a, d) for a in range(frame.length) for d in range(frame.depth)}
+    origins = sorted(spot, key=lambda c: (-spot[c][1], abs(spot[c][0] - frame.length / 2), c))
+    aisle: set = set()
+    n = 0
+    for ox, oy in origins:
+        cells = [(ox + x, oy + y) for x, y in shape]
+        if any(L._room_at(plan, *c) != idx or c in occupied or c in blocked or c in aisle
+               for c in cells):
+            continue
+        if keeps_open and not keeps_open({(ox + x, oy + y) for x, y in solid}):
+            continue
+        for role, dx, dy, o in pieces:
+            plan.furniture.append((role, ox + dx, oy + dy, o))
+        occupied.update(cells)
+        aisle.update((ox + x, oy + y) for x, y in ring)
+        n += 1
+    return n
+
+
 def _wall_sets(plan, idx: int, room, group, placed_cells: set, blocked: set) -> int:
     """Sets stood against a long wall one after another, leaving the rest of a
     narrow room as the aisle."""
@@ -650,20 +686,41 @@ def furnish_dining(plan, idx: int, room, rng: random.Random, occupied: set,
     back = OPPOSITE[front]
     depth = frame.depth - 1
     if counter and frame.depth >= 5:
-        start = max(0, (frame.length - len(counter)) // 2)
-        a = start
-        for role in counter:
-            x, y = frame.xy(a, depth)
-            orient = L._facing(role, back)
-            got = _fits(plan, idx, role, x, y, orient, blocked | occupied)
-            if got is None:
-                a += 1
-                continue
-            plan.furniture.append((role, x, y, orient))
-            occupied.update(got)
-            a += len(got)
-        # Room behind the counter to stand, and in front to queue.
-        occupied.update(frame.xy(a2, depth - k) for a2 in range(start - 1, a + 1) for k in (1,))
+        # An unbroken run: the back wall has doors to the kitchen and
+        # storerooms, so the whole run goes where there is clear wall, nearest
+        # the middle, and a shorter one when there is none that long.
+        run = None
+        shorter = []
+        for n in range(len(counter), 1, -1):
+            for roles in (counter[:n], counter[-n:]):
+                if roles not in shorter:
+                    shorter.append(roles)
+        for roles in shorter:
+            n = len(roles)
+            for start in sorted(range(frame.length - n + 1),
+                                key=lambda s0: abs(s0 + n / 2 - frame.length / 2)):
+                a, used, laid = start, set(), []
+                for role in roles:
+                    x, y = frame.xy(a, depth)
+                    orient = L._facing(role, back)
+                    got = _fits(plan, idx, role, x, y, orient, blocked | occupied | used)
+                    if got is None:
+                        laid = None
+                        break
+                    laid.append((role, x, y, orient))
+                    used.update(got)
+                    a += len(got)
+                if laid:
+                    run = (start, a, laid, used)
+                    break
+            if run:
+                break
+        if run:
+            start, a, laid, used = run
+            plan.furniture.extend(laid)
+            occupied.update(used)
+            # Room behind the counter to stand, and in front to queue.
+            occupied.update(frame.xy(a2, depth - 1) for a2 in range(start - 1, a + 1))
 
     # Seating: sets out in the floor where there is room for an aisle all
     # round, else against the long wall.
@@ -675,9 +732,8 @@ def furnish_dining(plan, idx: int, room, rng: random.Random, occupied: set,
         group = TABLE_SET
     group = [g for g in group if g[0] in C.FURNITURE]
     placed = 0
-    if min(room.w, room.h) >= MIN_CENTRE_SIDE:
-        placed = L._place_group(plan, idx, room, group, max(1, room.area // 12), occupied, blocked,
-                                keeps_open)
+    if min(room.w, room.h) >= MIN_PACK_SIDE:
+        placed = _pack_sets(plan, idx, frame, group, occupied, blocked, keeps_open)
     if not placed:
         placed = _wall_sets(plan, idx, room, group, occupied, blocked)
     if not placed:
