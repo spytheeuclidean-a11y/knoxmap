@@ -17,6 +17,10 @@ import contextlib
 import io
 import json
 import math
+import os as _os
+
+# The self-test fakes the Overpass servers, so it asks them rather than an extract.
+_os.environ.setdefault("KNOXMAP_OSM_SOURCE", "overpass")
 import os
 import re
 import shutil
@@ -2258,6 +2262,7 @@ def check_overpass_blank(check) -> None:
         # rest, so the tiles behind the first one do not each wait the whole
         # timeout to learn the same thing.
         _osm._cooling.clear()
+        _osm._fails.clear()
         down = _osm.ANSWERING_ENDPOINTS[0]
         replies = {down.split("/")[2]: Reply({}, status=504)}
         asked.clear()
@@ -2265,19 +2270,22 @@ def check_overpass_blank(check) -> None:
         paid = list(asked)
         asked.clear()
         _osm.fetch_features(50.0, 5.0, 50.1, 5.1, timeout=10, first=0)
-        check(asked[0] != down.split("/")[2] and down.split("/")[2] in asked,
-              "an instance that answered 504 goes to the back of the queue "
-              f"for the tiles behind it, but is still asked ({asked})")
+        check(down.split("/")[2] not in asked and asked,
+              "an instance that answered 504 is left alone while it rests, and "
+              f"the tiles behind it go to the others ({asked})")
 
-        # ...but when every instance is resting there is nothing else to do.
+        # ...and when every instance is resting nothing is asked at all: the
+        # download waits and tries again after the rest (22,515 requests in a
+        # day, 14,608 of them 504, is what asking anyway came to).
         _osm._cooling.clear()
+        _osm._fails.clear()
         for e in _osm.ANSWERING_ENDPOINTS:
             _osm._note_down(e)
         order = _osm._endpoint_order(0)
-        check(all(e in order for e in _osm.ANSWERING_ENDPOINTS),
-              "with every instance resting the tile asks them all anyway: a "
-              "rest is a guess and may not be the reason a town fails")
+        check(not any(e in order for e in _osm.ANSWERING_ENDPOINTS),
+              "with every instance resting the tile asks none of them")
         _osm._cooling.clear()
+        _osm._fails.clear()
 
         # The wait between passes outlasts a busy spell instead of landing
         # back inside it.
