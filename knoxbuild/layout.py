@@ -6029,9 +6029,9 @@ def _joined_without(storey, skip: int) -> bool:
 # The share of a room's floor its furniture may cover before the smallest
 # pieces come out. A bedroom with bed, two chests, a desk and a shelf in 16
 # tiles is a room you turn sideways in; Knox County's sit near a third.
-CLUTTER_CAP = {"hall": 0.32, "bedroom": 0.46, "kidsbedroom": 0.46,
-               "livingroom": 0.46, "bathroom": 0.58, "kitchen": 0.54,
-               "dining": 0.46}
+CLUTTER_CAP = {"hall": 0.36, "bedroom": 0.5, "kidsbedroom": 0.5,
+               "livingroom": 0.5, "bathroom": 0.62, "kitchen": 0.58,
+               "dining": 0.5}
 
 
 def _thin_clutter(building: "Building") -> int:

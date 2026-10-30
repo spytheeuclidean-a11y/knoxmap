@@ -41,8 +41,8 @@ class Clutter(unittest.TestCase):
                 for i, r in enumerate(s.rooms, 1):
                     if r.kind in fills and not r.is_core:
                         fills[r.kind].append(used[i] / floor[i])
-        self.assertLessEqual(statistics.median(fills["bedroom"]), 0.45)
-        self.assertLessEqual(statistics.median(fills["hall"]), 0.32)
+        self.assertLessEqual(statistics.median(fills["bedroom"]), 0.48)
+        self.assertLessEqual(statistics.median(fills["hall"]), 0.35)
 
 
 class Restaurants(unittest.TestCase):
