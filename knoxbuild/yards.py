@@ -417,6 +417,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                         veg[y, x] = frame[(col, row)]
         dressed += 1
 
+
+    base_traversable = crossable | paved | road  # hotfix: hoisted out of loop, was recomputed per garage
     for row in rows:
         if (row.get("building") not in ("garage", "garages")
                 and row.get("kind") != "garage"):
@@ -432,7 +434,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         if road[sy, sx]:
             continue
 
-        traversable = (crossable | paved | road) & ~occupied & ~claimed
+        traversable = base_traversable & ~occupied & ~claimed
         previous = {start: None}
         queue = deque([(sx, sy, 0)])
         end = None
