@@ -169,10 +169,18 @@ def _build_preview(landscape: Image.Image, vegetation: Image.Image) -> Image.Ima
     vp = vegetation.load()
     w, h = preview.size
     tree_colors = {C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
-                   C.BUSHES_TREES_DARK_GRASS}
+                   C.BUSHES_TREES_DARK_GRASS, C.TREE_SMALL}
+    # A big tree covers more ground than its one tile, so the preview gives it
+    # the square it keeps clear - otherwise a wood of them reads as a clearing.
     for y in range(h):
         for x in range(w):
             v = vp[x, y]
             if v in tree_colors:
                 lp[x, y] = (40, 75, 35) if v == C.TREES else (65, 95, 45)
+            elif v in C.BIG_TREE_ROOM:
+                side = C.BIG_TREE_ROOM[v]
+                reach = side // 2 if side % 2 else 0
+                for fy in range(max(0, y - reach), min(h, y - reach + side)):
+                    for fx in range(max(0, x - reach), min(w, x - reach + side)):
+                        lp[fx, fy] = (25, 60, 25)
     return preview

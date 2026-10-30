@@ -53,4 +53,9 @@ update/
 
 # Buildings built by hand (knoxbuild/presets.py, knoxbuild/designer.py).
 # Somebody's own buildings, kept beside the app rather than in it.
+# presets/library/ is the other half - buildings people sent in, which ship
+# with KnoxMap - and that one belongs in the repository.
 presets/buildings/
+
+# Areas and buildings written out to send to somebody (knoxbuild/share.py).
+preset_exports/

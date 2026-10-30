@@ -635,11 +635,21 @@ def save_design(base_dir, name: str, design: dict) -> None:
 
 
 def load_design(base_dir, name: str) -> dict | None:
-    try:
-        with open(design_path(base_dir, name), encoding="utf-8") as f:
-            return clean(json.load(f))
-    except (OSError, ValueError):
-        return None
+    """The drawing a preset was made from: somebody's own, or a shipped one.
+
+    A building that ships with KnoxMap keeps its drawing beside it, so one can
+    be opened, changed and saved - which saves it as a building of their own
+    and leaves the shipped one alone (knoxbuild/presets.py, library).
+    """
+    clean_name = P.safe_name(name)
+    for where in (P.folder(base_dir), P.library_folder(base_dir)):
+        try:
+            with open(os.path.join(where, f"{clean_name}{P.DESIGN_SUFFIX}"),
+                      encoding="utf-8") as f:
+                return clean(json.load(f))
+        except (OSError, ValueError):
+            continue
+    return None
 
 
 def drop_design(base_dir, name: str) -> bool:

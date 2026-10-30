@@ -197,6 +197,15 @@ second without rebuilding, then compile again so the game sees the change.
   in English stay English, so you can translate as much or as little as you
   like, and `python tools/make_lang_template.py` writes the English file again
   after an update. Translations are welcome as pull requests.
+- **Build a building yourself, and send it to anyone.** Under **Hand-built
+  buildings** you can draw a house, a police station or a shop room by room
+  and have the generator stamp it onto the map wherever it has one of those,
+  instead of laying out its own. **Share** writes the whole thing - the
+  building, the drawing it was made from and what it stands in for - into one
+  `.knoxbuilding.json` file, and **Take one in** reads one somebody sent you.
+  Send one to the [KnoxMap Discord](https://discord.gg/ePM8dSxPm7) and it can
+  go into the library that ships with KnoxMap, with your name on it, for
+  everybody's maps.
 - **Fresh loot without a new save.** The game fills a container once and
   remembers it, so a map installed again keeps what it rolled the first time.
   In game, right-click the ground and pick **Reset loot** - this building, or

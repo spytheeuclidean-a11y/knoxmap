@@ -3796,9 +3796,11 @@ function drawBuiltList() {
   box.innerHTML = presets.map(p => `<li>
       <span>${escapeHtml(p.name)}</span>
       <span class="zone-what">${p.width}×${p.height}, ${p.storeys} storey${p.storeys === 1 ? '' : 's'}
-        · ${escapeHtml(bdPresetKind(p))}</span>
+        · ${escapeHtml(bdPresetKind(p))}${p.shared
+          ? ` · shipped with KnoxMap${p.author ? `, by ${escapeHtml(p.author)}` : ''}` : ''}</span>
       ${p.editable ? `<button type="button" data-open-built="${escapeHtml(p.name)}">Open</button>` : ''}
-      <button type="button" data-drop-built="${escapeHtml(p.name)}">Remove</button></li>`).join('');
+      <button type="button" data-share-built="${escapeHtml(p.name)}">Share</button>
+      ${p.shared ? '' : `<button type="button" data-drop-built="${escapeHtml(p.name)}">Remove</button>`}</li>`).join('');
   runListSearch('builtList');
   const badge = document.getElementById('builtCount');
   if (badge) badge.textContent = presets.length ? `(${presets.length})` : '';
@@ -3829,6 +3831,64 @@ async function refreshBuilt() {
   drawBuiltList();
 }
 
+function builtNote(text, kind) {
+  const el = document.getElementById('builtNote');
+  el.textContent = text;
+  el.className = kind === 'bad' ? 'hint bad' : 'hint';
+}
+
+// One file holds the whole building - the .tbx, the drawing it was made from
+// and what it stands in for - so it can be sent to somebody over Discord and
+// dropped into their KnoxMap (knoxbuild/share.py).
+async function bdShare(name) {
+  try {
+    const res = await fetch(`/api/presets/buildings/${encodeURIComponent(name)}/share`,
+                            { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({}) });
+    if (!res.ok) throw bdApiError(await res.json(), res);
+    if (IN_WINDOW) {
+      const data = await res.json();
+      builtNote(`Wrote ${data.name} to ${data.folder}. Send that file to anyone `
+                + 'with KnoxMap, or to the KnoxMap Discord to have it shipped.');
+    } else {
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${name.replace(/[^A-Za-z0-9_-]+/g, '_') || 'building'}.knoxbuilding.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      builtNote(`Shared "${name}".`);
+    }
+  } catch (err) { builtNote(err.message, 'bad'); }
+}
+
+document.getElementById('builtImport').addEventListener('click', () =>
+  document.getElementById('builtFile').click());
+
+document.getElementById('builtFile').addEventListener('change', async ev => {
+  const file = ev.target.files[0];
+  ev.target.value = '';                    // so the same file can be picked again
+  if (!file) return;
+  try {
+    if (file.size > 5000000) throw new Error('That building file is too large.');
+    let building;
+    try { building = JSON.parse(await file.text()); }
+    catch (_) { throw new Error('That file is not a building shared from KnoxMap.'); }
+    const res = await fetch('/api/presets/buildings/import', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(building) });
+    const out = await res.json();
+    if (!res.ok) throw bdApiError(out, res);
+    await refreshBuilt();
+    const who = out.author ? `, built by ${out.author}` : '';
+    builtNote(`Took in "${out.saved.name}"${who}. Switch its kind on above to `
+              + 'have the map use it.');
+  } catch (err) { builtNote(err.message, 'bad'); }
+});
+
 document.getElementById('builtKinds').addEventListener('click', async ev => {
   const btn = ev.target.closest('[data-use-kind]');
   if (!btn) return;
@@ -3844,11 +3904,11 @@ document.getElementById('builtKinds').addEventListener('click', async ev => {
     drawBuiltKinds();
     const found = (bdMeta.kinds || []).find(k => k.id === kind);
     const name = found ? found.label : kind;
-    document.getElementById('builtNote').textContent = on
+    builtNote(on
       ? `${name}: the hand-built one is used. Generate buildings again to see it.`
-      : `${name}: back to buildings the generator lays out.`;
+      : `${name}: back to buildings the generator lays out.`);
   } catch (err) {
-    document.getElementById('builtNote').textContent = err.message;
+    builtNote(err.message, 'bad');
   }
 });
 
@@ -3859,6 +3919,11 @@ document.getElementById('builtList').addEventListener('click', async ev => {
     await bdOpenSaved(open.dataset.openBuilt);
     return;
   }
+  const share = ev.target.closest('[data-share-built]');
+  if (share) {
+    await bdShare(share.dataset.shareBuilt);
+    return;
+  }
   const drop = ev.target.closest('[data-drop-built]');
   if (!drop) return;
   const name = drop.dataset.dropBuilt;
@@ -3867,9 +3932,9 @@ document.getElementById('builtList').addEventListener('click', async ev => {
                             { method: 'DELETE' });
     if (!res.ok) throw bdApiError(await res.json(), res);
     await refreshBuilt();
-    document.getElementById('builtNote').textContent = `"${name}" removed.`;
+    builtNote(`"${name}" removed.`);
   } catch (err) {
-    document.getElementById('builtNote').textContent = err.message;
+    builtNote(err.message, 'bad');
   }
 });
 

@@ -52,6 +52,15 @@ MANIFEST = "presets.json"
 # The drawing a preset was made from, kept beside it (knoxbuild/designer.py)
 # so one made in the window can be opened and changed again.
 DESIGN_SUFFIX = ".design.json"
+# Buildings other people built and sent in, which ship with KnoxMap and are
+# there in a fresh install (knoxbuild/share.py, tools/add_shared_building.py).
+# They are read and never written: somebody's own folder is theirs, and this
+# one is replaced wholesale by every update, so a building changed here would
+# lose the change at the next one. What each is and who built it travels with
+# them in their own manifest, because the one above is somebody's own settings
+# and these are not.
+LIBRARY = "library"
+LIBRARY_MANIFEST = "library.json"
 # A preset with no kind recorded stands in for any building. It is only ever
 # reached as a fallback (`choose_for_kind`), so turning "police" on cannot
 # quietly make somebody's hand-built house into the town's police station
@@ -61,6 +70,45 @@ ANY = ""
 
 def folder(base_dir) -> str:
     return os.path.join(str(base_dir), "presets", "buildings")
+
+
+def library_folder(base_dir) -> str:
+    """Where the buildings that ship with KnoxMap live."""
+    return os.path.join(str(base_dir), "presets", LIBRARY)
+
+
+def shipped(base_dir) -> dict:
+    """What each building in that library is, and who built it."""
+    path = os.path.join(library_folder(base_dir), LIBRARY_MANIFEST)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    listed = data.get("buildings") if isinstance(data, dict) else None
+    if not isinstance(listed, dict):
+        return {}
+    out = {}
+    for name, about in listed.items():
+        if isinstance(about, dict):
+            out[str(name)] = {"kind": str(about.get("kind") or ANY),
+                              "author": str(about.get("author") or ""),
+                              "notes": str(about.get("notes") or ""),
+                              "added": str(about.get("added") or "")}
+    return out
+
+
+def write_shipped(base_dir, buildings: dict) -> None:
+    """Rewrite that manifest. Only tools/add_shared_building.py does this."""
+    where = library_folder(base_dir)
+    os.makedirs(where, exist_ok=True)
+    path = os.path.join(where, LIBRARY_MANIFEST)
+    tmp = path + ".part"
+    with open(tmp, "w", encoding="utf-8", newline="\n") as f:
+        json.dump({"version": 1, "buildings": dict(sorted(buildings.items()))},
+                  f, indent=1, ensure_ascii=False)
+        f.write("\n")
+    os.replace(tmp, path)
 
 
 def safe_name(name: str) -> str:
@@ -179,10 +227,8 @@ def using(base_dir) -> set:
     return {k for k, on in manifest(base_dir)["use"].items() if on}
 
 
-def library(base_dir) -> list[dict]:
-    """Every preset, smallest first, each with what it is."""
-    where = folder(base_dir)
-    recorded = manifest(base_dir)["kinds"]
+def _in_folder(where: str) -> list[dict]:
+    """Every .tbx in one folder, measured. Anything else there is ignored."""
     out = []
     try:
         names = sorted(os.listdir(where))
@@ -201,22 +247,53 @@ def library(base_dir) -> list[dict]:
             continue
         about["name"] = entry[:-4]
         about["file"] = path
-        about["kind"] = recorded.get(about["name"], ANY)
         # Whether there is a drawing to open and change, or only the .tbx -
         # a building out of a map, or one made in BuildingEd, has none.
         about["editable"] = os.path.exists(path[:-4] + DESIGN_SUFFIX)
+        out.append(about)
+    return out
+
+
+def library(base_dir) -> list[dict]:
+    """Every preset, somebody's own and the shipped ones, smallest first.
+
+    A name in both folders is theirs: opening a shipped building, changing it
+    and saving it writes a building of their own, and from then on that is the
+    one used - an update replacing the library cannot undo somebody's work.
+    """
+    recorded = manifest(base_dir)["kinds"]
+    out = _in_folder(folder(base_dir))
+    for about in out:
+        about["kind"] = recorded.get(about["name"], ANY)
+        about["shared"] = False
+    mine = {about["name"] for about in out}
+    from_others = shipped(base_dir)
+    for about in _in_folder(library_folder(base_dir)):
+        if about["name"] in mine:
+            continue
+        credit = from_others.get(about["name"], {})
+        # A shipped building's kind travels with it, but somebody who has said
+        # what it stands in for here has the last word.
+        about["kind"] = recorded.get(about["name"], credit.get("kind", ANY))
+        about["shared"] = True
+        about["author"] = credit.get("author", "")
+        about["notes"] = credit.get("notes", "")
         out.append(about)
     out.sort(key=lambda p: (p["width"] * p["height"], p["name"]))
     return out
 
 
 def read(base_dir, name: str) -> str | None:
-    path = os.path.join(folder(base_dir), f"{safe_name(name)}.tbx")
-    try:
-        with open(path, encoding="utf-8", errors="replace") as f:
-            return f.read()
-    except OSError:
-        return None
+    """A preset's .tbx, somebody's own first and then the shipped one."""
+    clean = safe_name(name)
+    for where in (folder(base_dir), library_folder(base_dir)):
+        try:
+            with open(os.path.join(where, f"{clean}.tbx"),
+                      encoding="utf-8", errors="replace") as f:
+                return f.read()
+        except OSError:
+            continue
+    return None
 
 
 def save(base_dir, name: str, text: str, kind: str | None = None) -> dict:
@@ -245,8 +322,15 @@ def save(base_dir, name: str, text: str, kind: str | None = None) -> dict:
 
 
 def remove(base_dir, name: str) -> bool:
+    """Throw away one of somebody's own buildings.
+
+    A shipped one is not theirs to throw away - it would come back with the
+    next update anyway - so this leaves it alone and says it did nothing.
+    """
     clean = safe_name(name)
     path = os.path.join(folder(base_dir), f"{clean}.tbx")
+    if not os.path.exists(path):
+        return False
     data = manifest(base_dir)
     if data["kinds"].pop(clean, None) is not None:
         _write_manifest(base_dir, data)

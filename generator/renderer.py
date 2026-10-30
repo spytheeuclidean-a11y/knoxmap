@@ -66,14 +66,16 @@ from .rendering.vegetation import (BOX_STRIP_ROWS, GARDEN_CLEAR_OF_HOUSE,
                                    GARDEN_CLEAR_OF_PAVING, GARDEN_REACH_TILES,
                                    GARDEN_TREE_CHANCE, GARDEN_TREE_EVERY,
                                    GRASS_COLOURS, LONG_GRASS_SHARE,
-                                   SHORT_GRASS_SHARE, SHRUB_CHANCE,
+                                   PARK_EDGE_M, SHORT_GRASS_SHARE, SHRUB_CHANCE,
                                    WILD_BUSH_SHARE, WILD_CLEAR_OF_PAVING,
                                    WILD_CLUMP_M, WILD_GROUND, WILD_TREE_CHANCE,
                                    WILD_TREE_EVERY_M, _box_any,
                                    _clear_building_vegetation,
                                    _clear_road_vegetation, _paint_gardens,
-                                   _paint_vegetation, _paint_vegetation_extras,
-                                   _paint_wild_growth, _paint_woodland)  # noqa: F401
+                                   _paint_parks, _paint_vegetation,
+                                   _paint_vegetation_extras, _paint_wild_growth,
+                                   _paint_woodland, _plant_big_trees,
+                                   tree_rules_ready)  # noqa: F401
 from .rendering.widths import (ROAD_WIDTHS_BY_HIERARCHY_M, ROAD_WIDTHS_M,
                                SIDEWALK_BY_HIERARCHY_M, SIDEWALK_M,
                                VERGE_BY_HIERARCHY_M, VERGE_M, _road_markings,
@@ -283,8 +285,16 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # over open ground take the overall one only.
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
                       density=tree_density * forest_density)
+    _paint_parks(vegetation, landscape, buckets.get("park", []), proj,
+                 density=tree_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     _paint_wild_growth(vegetation, landscape, proj, density=tree_density)
+    # Last of the planting: some of the trees now down become the big ones,
+    # which need a square of their own and so can only be chosen once it is
+    # settled what stands where.
+    _plant_big_trees(vegetation, landscape, vegetation_feats,
+                     buckets.get("park", []), building_feats, proj,
+                     density=tree_density)
     _clear_building_vegetation(vegetation, building_feats, proj)
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)

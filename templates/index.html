@@ -312,7 +312,12 @@
         <div class="sketch-actions">
           <button type="button" id="builderOpen" class="btn">Build a building
             by hand</button>
+          <button type="button" id="builtImport" class="btn">Take one in</button>
+          <input type="file" id="builtFile" accept=".json,application/json" hidden>
         </div>
+        <p class="hint">Share sends a building out as one file. Take one in
+          reads one somebody sent you. Buildings sent to the KnoxMap Discord
+          can go into the library that ships with it, for everybody.</p>
         <p class="hint">Use hand-built buildings for:</p>
         <div id="builtKinds" class="sketch-palette"></div>
         <input type="search" id="builtFind" class="list-search" hidden
