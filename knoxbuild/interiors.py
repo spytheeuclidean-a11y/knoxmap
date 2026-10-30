@@ -465,17 +465,29 @@ def furnish_salon(plan, idx: int, room, rng: random.Random, occupied: set,
     front = _front_side(plan, idx, cells, None)
     frame = Frame(cells, front)
     back = OPPOSITE[front]
-    # The back wall: a basin, then a counter, then a basin.
+    # The back wall: a basin, then a counter, then a basin. A wall with doors
+    # down it has room for one basin or none, so the side walls get a turn.
     basin = rng.choice([s for s in ("sink", "sink_cream") if s in C.FURNITURE] or ["sink"])
-    run = [basin if n % 2 == 0 else "shop_counter" for n in range(frame.length)]
-    for a, role in enumerate(run):
-        x, y = frame.xy(a, frame.depth - 1)
-        orient = L._facing(role, back)
-        got = _fits(plan, idx, role, x, y, orient, no_go | occupied)
-        if got is None or (keeps_open and not keeps_open(set(got))):
-            continue
-        plan.furniture.append((role, x, y, orient))
-        occupied.update(got)
+
+    def wash_wall(frame, back) -> int:
+        run = [basin if n % 2 == 0 else "shop_counter" for n in range(frame.length)]
+        basins = 0
+        for a, role in enumerate(run):
+            x, y = frame.xy(a, frame.depth - 1)
+            orient = L._facing(role, back)
+            got = _fits(plan, idx, role, x, y, orient, no_go | occupied)
+            if got is None or (keeps_open and not keeps_open(set(got))):
+                continue
+            plan.furniture.append((role, x, y, orient))
+            occupied.update(got)
+            basins += role == basin
+        return basins
+
+    washed = wash_wall(frame, back)
+    for f in (f for f in ("N", "S", "E", "W") if f != front and f != OPPOSITE[front]):
+        if washed >= 2:
+            break
+        washed += wash_wall(Frame(cells, f), OPPOSITE[f])
     # Styling chairs, a clear tile all round each, in rows across the floor.
     chairs = 0
     for d in range(frame.depth - 3, 1, -3):
@@ -749,9 +761,10 @@ def furnish_dining(plan, idx: int, room, rng: random.Random, occupied: set,
     frame = Frame(cells, front)
     counter = BACK_COUNTERS.get(style, BACK_COUNTERS["tables"])
     counter = [c for c in counter if c in C.FURNITURE]
-    back = OPPOSITE[front]
-    depth = frame.depth - 1
-    if counter and frame.depth >= 5:
+    def lay_counter(frame, back) -> bool:
+        depth = frame.depth - 1
+        if not counter or frame.depth < 5:
+            return False
         # An unbroken run: the back wall has doors to the kitchen and
         # storerooms, so the whole run goes where there is clear wall, nearest
         # the middle, and a shorter one when there is none that long.
@@ -781,12 +794,22 @@ def furnish_dining(plan, idx: int, room, rng: random.Random, occupied: set,
                     break
             if run:
                 break
-        if run:
-            start, a, laid, used = run
-            plan.furniture.extend(laid)
-            occupied.update(used)
-            # Room behind the counter to stand, and in front to queue.
-            occupied.update(frame.xy(a2, depth - 1) for a2 in range(start - 1, a + 1))
+        if not run:
+            return False
+        start, a, laid, used = run
+        plan.furniture.extend(laid)
+        occupied.update(used)
+        # Room behind the counter to stand, and in front to queue.
+        occupied.update(frame.xy(a2, depth - 1) for a2 in range(start - 1, a + 1))
+        return True
+
+    # Across from the street door; failing that along a side wall, as a
+    # back wall with doors all down it has no stretch long enough.
+    sides = [front] + [f for f in ("N", "S", "E", "W")
+                       if f != front and f != OPPOSITE[front]]
+    for f in sides:
+        if lay_counter(frame if f == front else Frame(cells, f), OPPOSITE[f]):
+            break
 
     # Seating: sets out in the floor where there is room for an aisle all
     # round, else against the long wall.

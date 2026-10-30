@@ -485,10 +485,12 @@ SPECIAL_MIXES = {
                    ["hall", "cafe", "storage", "office", "sportstorage"]),
     "medical":    (["clinic", "medical", "lobby", "office", "bathroom",
                     "storage"],
-                   ["clinic", "medical", "storage"]),
+                   ["clinic", "medical", "clinic", "office", "storage"]),
+    # Offices, a few at a time: a town hall's storerooms are a closet or two
+    # off a corridor, not a quarter of the floor.
     "civic":      (["office", "lobby", "office", "storage", "bathroom",
                     "library"],
-                   ["office", "storage"]),
+                   ["office", "office", "office", "storage"]),
     # A police station was "civic" - offices and a storeroom - so the one
     # thing players go to a police station for was not in it. These are the
     # game's own police rooms, which is what puts the uniforms, the evidence
@@ -1287,7 +1289,8 @@ def _ground_bedroom(bedrooms: int, levels: int, floor: int,
             and rng.random() < GROUND_BEDROOM_SHARE)
 
 
-def _house_spares(profile, rng: random.Random, upstairs: bool = False):
+def _house_spares(profile, rng: random.Random, upstairs: bool = False,
+                  big: bool = False):
     """Rooms for a floor past its bedrooms, in turn: a study (or storage, by
     the household's _house_study_share), then storage and offices. The
     laundry is in the programme, the closets are the pieces a cut leaves.
@@ -1297,7 +1300,12 @@ def _house_spares(profile, rng: random.Random, upstairs: bool = False):
     first = "office" if rng.random() < _house_study_share(profile) else "storage"
     yield first
     yield from (k for k in HOUSE_TOP_UP if k != first)
-    if upstairs:
+    if big:
+        # A large house keeps its bedroom and bathroom budget; the extra
+        # floor goes to a dining room and the rooms beside it.
+        if not upstairs:
+            yield "dining"
+    elif upstairs:
         yield from ("bedroom", "bedroom")
 
 
@@ -1307,6 +1315,12 @@ def _house_spares(profile, rng: random.Random, upstairs: bool = False):
 # HOUSE_ROOM_TILES of floor and HOUSE_MAX_SPARE spares.
 HOUSE_ROOM_TILES = 22
 HOUSE_MAX_SPARE = 40
+# A floor this many tiles or more is a large house and takes more rooms of the
+# kinds that fill a floor.
+HOUSE_BIG_FLOOR = 260
+# On a floor that size the bedrooms still stay bedrooms, not suites: the wings
+# give the other rooms the space.
+BIG_FLOOR_BEDROOM_OVERSIZE = 1.5
 HOUSE_TOP_UP = ["storage", "office"]
 # Rooms a cut may clip away: what is left of one is folded into the room
 # beside it or kept as a closet. The hall too, unless it is the landing.
@@ -1333,6 +1347,63 @@ def _wall_shared(a, b, run: int = 2) -> bool:
     oy = min(a.y1, b.y1) - max(a.y0, b.y0) + 1
     return ((ox >= run and (a.y1 + 1 == b.y0 or b.y1 + 1 == a.y0))
             or (oy >= run and (a.x1 + 1 == b.x0 or b.x1 + 1 == a.x0)))
+
+
+# The rooms of a large house's day wing; the rest sleep.
+_DAY_ROOMS = {"hall", "livingroom", "openplan", "kitchen", "dining", "laundry",
+              "office", "storage"}
+
+
+def _cut_in_wings(box, kinds: list[str], rng: random.Random, floor, core,
+                  landing) -> list[Room] | None:
+    """A big house floor cut in two wings, each with a hall of its own.
+
+    One cut over four hundred tiles has to put every bedroom beside a hall,
+    and cannot, so a large house came out as rooms that open into rooms. Two
+    wings are two small houses side by side: the stairs and the day rooms in
+    one, the bedrooms in the other, and the halls meet. Returns None when
+    the floor will not split (the caller cuts it whole)."""
+    from .sizing import room_areas
+    rest = kinds[1:]
+    day = [k for k in rest if k in _DAY_ROOMS]
+    night = [k for k in rest if k not in _DAY_ROOMS]
+    if len(day) < 2 or len(night) < 2:
+        # Upstairs is all bedrooms: share them out, the second wing gets a hall.
+        half = max(2, len(rest) // 2)
+        day, night = rest[:half], rest[half:]
+        if len(night) < 2:
+            return None
+    wing_a, wing_b = ["hall"] + day, ["hall"] + night
+    ta = sum(room_areas(wing_a, 1000.0))
+    tb = sum(room_areas(wing_b, 1000.0))
+    x0, y0, x1, y1 = box
+    wide = (x1 - x0) >= (y1 - y0)
+    lo, hi = (x0, x1) if wide else (y0, y1)
+    cut = lo + round((hi - lo + 1) * ta / (ta + tb))
+    cut = min(max(cut, lo + 6), hi - 5)
+    if core is not None:
+        # The stairs stay in the first wing: the line goes past them, or in
+        # front of them if that is nearer the ideal.
+        c0, c1 = (core[0], core[2]) if wide else (core[1], core[3])
+        if c0 < cut <= c1:
+            cut = c1 + 1 if c1 + 1 <= hi - 5 else c0
+    a_box = (x0, y0, cut - 1, y1) if wide else (x0, y0, x1, cut - 1)
+    b_box = (cut, y0, x1, y1) if wide else (x0, cut, x1, y1)
+
+    def tiles(b):
+        return sum(1 for y in range(b[1], b[3] + 1) for x in range(b[0], b[2] + 1)
+                   if floor[y][x])
+
+    out = []
+    for sub, wing in ((a_box, wing_a), (b_box, wing_b)):
+        holds_core = core is not None and not (
+            core[2] < sub[0] or core[0] > sub[2] or core[3] < sub[1] or core[1] > sub[3])
+        got = split_by_targets(sub, wing, rng, area=tiles(sub),
+                               touch=landing if holds_core else None)
+        if got is None:
+            return None
+        out += got
+    return out
 
 
 def _house_by_kind(plan: Plan, level: int, levels: int,
@@ -1370,7 +1441,7 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
         kinds.append("dining")
     bedrooms, bathrooms = _house_room_budgets(plan, levels)
     quota = _house_floor_bedrooms(bedrooms, levels, level)
-    spares = _house_spares(plan.profile, rng, level > 0)
+    spares = _house_spares(plan.profile, rng, level > 0, area >= HOUSE_BIG_FLOOR)
     beds = [i for i, k in enumerate(kinds) if k in ("bedroom", "kidsbedroom")]
     for i in beds[quota:]:     # past the house's bedroom budget
         kinds[i] = next(spares, "storage")
@@ -1411,18 +1482,29 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
         return any(o is not room and o.kind in ("hall", "livingroom", "openplan")
                    and _wall_shared(room, o) for o in rooms)
 
+    # A big floor has more of everything, and each room may be bigger too.
+    oversize = HOUSE_OVERSIZE
+
     def too_big(room: Room) -> bool:
         return (room.kind != "hall" and sum(map(len, _pieces(room, floor)))
-                > HOUSE_OVERSIZE * SIZES[room.kind].hi)
+                > (BIG_FLOOR_BEDROOM_OVERSIZE if room.kind in ("bedroom", "kidsbedroom")
+                   and area >= HOUSE_BIG_FLOOR else oversize) * SIZES[room.kind].hi)
 
     while True:
         always_big = True
         for _ in range(HOUSE_TRIES if len(kinds) > need else HOUSE_LAST_TRIES):
-            rooms = split_by_targets(box, kinds, rng, area=area, touch=landing)
+            rooms = (_cut_in_wings(box, kinds, rng, floor, core, landing)
+                     if area >= HOUSE_BIG_FLOOR else None)
+            if rooms is None:
+                rooms = split_by_targets(box, kinds, rng, area=area, touch=landing)
             kept = [r for r in rooms or () if r.kind not in losable]
             big = any(map(too_big, kept))
-            if rooms and not big and all(map(keeps, kept)) and all(
-                    _on_circulation(r, rooms, core) for r in rooms):
+            # One hall cannot touch every bedroom of a large house, and the
+            # wings already give each half its own, so only a smaller floor
+            # is held to it.
+            if rooms and not big and all(map(keeps, kept)) and (
+                    area >= HOUSE_BIG_FLOOR
+                    or all(_on_circulation(r, rooms, core) for r in rooms)):
                 return rooms
             always_big &= big
         # Fewer rooms would only come out bigger.
@@ -4744,6 +4826,7 @@ def _furnish(plan: Plan, rng: random.Random,
                     else rng.choice(C.ERIKA_WALL_ART)
                     if role in ("painting", "mirror") and C.ERIKA_WALL_ART
                     and plan.kind not in ART_FREE_KINDS
+                    and not (role == "mirror" and (salon or r.kind == "bathroom"))
                     else rng.choice(C.ERIKA_PLANTS)
                     if role == "plant" and C.ERIKA_PLANTS and plan.kind in HOME_KINDS
                     else rng.choice(C.ERIKA_SHELVES)
@@ -5269,10 +5352,14 @@ CORRIDOR_WIDE = 3   # a landing wide enough to be circulation, not a cupboard
 # and 6 in 23. Ours was always exactly 3, which is the commonest but the
 # only one we ever built.
 CORRIDOR_WIDTHS = (2, 3, 3, 3, 4, 4, 6)
+# Every other building with a corridor keeps to what a corridor is. A clinic or
+# a station with one six tiles wide was a third hall.
+NARROW_CORRIDOR_WIDTHS = (2, 3, 3, 3, 4)
 
 
 def _pick_corridor(width: int, height: int, mask: list[list[bool]] | None,
-                   rng: random.Random) -> tuple[int, int, int, int] | None:
+                   rng: random.Random, widths=CORRIDOR_WIDTHS
+                   ) -> tuple[int, int, int, int] | None:
     """A corridor through the floor, with room for the stairs inside it.
 
     Flats need something to open onto, and it has to reach all of them: a
@@ -5292,7 +5379,7 @@ def _pick_corridor(width: int, height: int, mask: list[list[bool]] | None,
     across = width if along_y else height
     # This building's corridor width, narrowing if the floor is too thin
     # for the one drawn.
-    wide = rng.choice(CORRIDOR_WIDTHS)
+    wide = rng.choice(widths)
     while wide > CORRIDOR_WIDE and across < wide + 2 * MIN_ROOM:
         wide -= 1
     if span < STAIR_RUN + 2 or across < wide + 2 * MIN_ROOM:
@@ -5939,6 +6026,59 @@ def _joined_without(storey, skip: int) -> bool:
     return b in seen
 
 
+# The share of a room's floor its furniture may cover before the smallest
+# pieces come out. A bedroom with bed, two chests, a desk and a shelf in 16
+# tiles is a room you turn sideways in; Knox County's sit near a third.
+CLUTTER_CAP = {"hall": 0.32, "bedroom": 0.46, "kidsbedroom": 0.46,
+               "livingroom": 0.46, "bathroom": 0.58, "kitchen": 0.54,
+               "dining": 0.46}
+
+
+def _thin_clutter(building: "Building") -> int:
+    """Take the decoration, then the secondary pieces, out of a room that is
+    more furniture than floor. Essentials stay whatever the room."""
+    removed = 0
+    for storey in building.storeys:
+        w, h, grid = storey.width, storey.height, storey.grid
+        area: dict = {}
+        for row in grid:
+            for v in row:
+                if v:
+                    area[v] = area.get(v, 0) + 1
+        by_room: dict = {}
+        for i, (role, fx, fy, orient) in enumerate(storey.furniture):
+            if not _blocks(role) or not (0 <= fx < w and 0 <= fy < h) or not grid[fy][fx]:
+                continue
+            by_room.setdefault(grid[fy][fx], []).append(
+                (i, role, sum(1 for _ in _tiles_under(role, fx, fy, orient))))
+        gone: set = set()
+        for idx, pieces in by_room.items():
+            room = storey.rooms[idx - 1]
+            cap = CLUTTER_CAP.get(room.kind)
+            if cap is None or room.is_core or area[idx] < MIN_ROOM * MIN_ROOM:
+                continue
+            fill = sum(t for _i, _r, t in pieces)
+            order = sorted((p for p in pieces if FR.priority(p[1], room.kind) != FR.ESSENTIAL),
+                           key=lambda p: (-FR.priority(p[1], room.kind), p[2], p[0]))
+            for i, _role, tiles in order:
+                if fill <= cap * area[idx]:
+                    break
+                gone.add(i)
+                fill -= tiles
+        if gone:
+            # What stood on a piece goes with it: a lamp left over bare floor
+            # hangs in the air, a cabinet over nothing is on a bare wall.
+            cells = {c for i in gone
+                     for c in _tiles_under(*storey.furniture[i])}
+            for i, (role, fx, fy, _o) in enumerate(storey.furniture):
+                if (fx, fy) in cells and (_needs_surface(role)
+                                          or role in ("wall_cabinet", "microwave")):
+                    gone.add(i)
+            storey.furniture = [f for i, f in enumerate(storey.furniture) if i not in gone]
+            removed += len(gone)
+    return removed
+
+
 def _clear_the_way(building: "Building") -> int:
     """Take out whatever stands between a doorway and the rooms behind it.
 
@@ -5967,6 +6107,7 @@ def _clear_the_way(building: "Building") -> int:
             storey.furniture = [f for i, f in enumerate(storey.furniture)
                                 if i not in gone]
             removed += len(gone)
+    _thin_clutter(building)
     return removed
 
 
@@ -6025,7 +6166,8 @@ def build_building(width: int, height: int, levels: int = 1,
         # ones relabelled, which is what read as corridors all the way down.
         # Only where there are rooms enough to be worth serving - a two-room
         # library with a corridor through it is a third corridor.
-        core = _pick_corridor(width, height, mask, rng)
+        core = _pick_corridor(width, height, mask, rng,
+                              CORRIDOR_WIDTHS if kind == "school" else NARROW_CORRIDOR_WIDTHS)
     if core is None and levels > 1:
         core = _pick_core(width, height, mask, rng, street)
     if levels > 1 and core is None:
