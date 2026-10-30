@@ -1680,15 +1680,37 @@ SHOP_BACK_ROOMS = ["storage", "office", "storage"]
 SHOP_BACK_SHARE = 0.3
 SHOP_BACK_TILES = (3, 7)
 MIN_SALES_DEPTH = 8
+# A sales floor bigger than this is cut into sections, as a department store
+# or a mall is: each about this big, none narrower than the minimum, and
+# deeper floors cut into rows of them as well as columns.
+SECTION_TILES = 450
+MIN_SECTION_WIDTH = 12
+SECTION_DEPTH = 22
 
 
-def _shop_rooms(plan: Plan, rng: random.Random, street: str | None) -> None:
+def _grid(length: int, depth: int) -> tuple[list[int], list[int]]:
+    """Column widths along the street and row depths back from it for a sales
+    floor `length` by `depth`; one of each for a floor small enough to stay whole."""
+    n = round(length * depth / SECTION_TILES)
+    rows = max(1, min(round(depth / SECTION_DEPTH), n // 2))
+    cols = min(max(1, round(n / rows)), length // MIN_SECTION_WIDTH)
+    if rows * cols < 2:
+        return [length], [depth]
+
+    def cut(total, parts):
+        base, extra = divmod(total, parts)
+        return [base + (i < extra) for i in range(parts)]
+    return cut(length, cols), cut(depth, rows)
+
+
+def _shop_rooms(plan: Plan, rng: random.Random, street: str | None) -> list[int]:
     """A shop's ground floor as one sales floor the width of the shop front,
     and a strip of back rooms behind it: stockroom, office, toilet.
 
     Cut up like a house, a supermarket was eight rooms of 24 tiles, and the
     one that became the shop was a corridor four tiles wide with nothing but
-    a shelf along each wall.
+    a shelf along each wall. A sales floor too big for one shop is cut into
+    sections, each its own shop; returns the numbers of the sales rooms.
     """
     w, h = plan.width, plan.height
     side = street if street in ("N", "S", "W", "E") else ("S" if w >= h else "E")
@@ -1696,7 +1718,7 @@ def _shop_rooms(plan: Plan, rng: random.Random, street: str | None) -> None:
     back = max(SHOP_BACK_TILES[0], min(SHOP_BACK_TILES[1], round(total * SHOP_BACK_SHARE)))
     if total - back < MIN_SALES_DEPTH:
         plan.rooms.append(Room(0, 0, w - 1, h - 1))
-        return
+        return [1]
     if side == "S":
         sales, strip = (0, back, w - 1, h - 1), (0, 0, w - 1, back - 1)
     elif side == "N":
@@ -1705,10 +1727,49 @@ def _shop_rooms(plan: Plan, rng: random.Random, street: str | None) -> None:
         sales, strip = (back, 0, w - 1, h - 1), (0, 0, back - 1, h - 1)
     else:
         sales, strip = (0, 0, w - 1 - back, h - 1), (w - back, 0, w - 1, h - 1)
-    plan.rooms.append(Room(*sales))
+    x0, y0, x1, y1 = sales
+    along_x = side in ("N", "S")
+    cols, rows = _grid(x1 - x0 + 1 if along_x else y1 - y0 + 1,
+                       y1 - y0 + 1 if along_x else x1 - x0 + 1)
+    # Rows run back from the street: the one on the street first.
+    far_first = side in ("S", "E")
+    sections = []
+    back_at = (y0 if along_x else x0)
+    for depth in (rows[::-1] if far_first else rows):
+        at = x0 if along_x else y0
+        for width in cols:
+            plan.rooms.append(Room(at, back_at, at + width - 1, back_at + depth - 1) if along_x
+                              else Room(back_at, at, back_at + depth - 1, at + width - 1))
+            sections.append(len(plan.rooms))
+            at += width
+        back_at += depth
     _split(*strip, rng, MAX_DEPTH, plan.rooms, target_area=max(16, back * 8),
            mask=plan.mask, small=[True])
+    return sections
 MIN_SHOP_ROOM = 16
+
+
+def _fit_out_sections(plan: Plan, rng: random.Random, sections: list[int],
+                      uses: list | None) -> None:
+    """The sections that are not on the street are shops as well, not back
+    rooms: a department store's far end is as much sales floor as its front.
+    With no known use each section is a different kind of shop while the kinds
+    last, as in a mall, not four general stores in a row."""
+    from . import interiors
+    if uses:
+        for i in sections:
+            if plan.rooms[i - 1].kind not in interiors.STORES:
+                plan.rooms[i - 1].kind = uses[0][0]
+        return
+    kinds = list(interiors.STORE_WEIGHTS)
+    rng.shuffle(kinds)
+    for n, i in enumerate(sections):
+        plan.rooms[i - 1].kind = kinds[n % len(kinds)]
+    adj = _neighbours(plan)
+    for i, room in enumerate(plan.rooms, 1):
+        if room.kind == "grocerystorage" and not any(
+                plan.rooms[j - 1].kind == "grocery" for j in adj.get(i, ())):
+            room.kind = "storage"
 
 
 def _assign_shop_floor(plan: Plan, rng: random.Random, street: str | None,
@@ -6117,7 +6178,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
     elif kind == "apartment":
         _apartment_rooms(plan, rng, target, HOTEL_FRONTAGE if hotel else FLAT_FRONTAGE)
     elif shop_floor and kind in ("shop", "restaurant"):
-        _shop_rooms(plan, rng, street)
+        sections = _shop_rooms(plan, rng, street)
     elif mix_kind == "mall":
         _mall_rooms(plan, rng, target, level)
     elif mix_kind == "garage":
@@ -6164,7 +6225,10 @@ def build_plan(width: int, height: int, commercial: bool = False,
     elif shop_floor:
         if kind == "restaurant" and not uses:
             uses = [("restaurantdining", "restaurantkitchen")]
-        _assign_shop_floor(plan, rng, street, uses, several=(kind == "retail"))
+        _assign_shop_floor(plan, rng, street, uses,
+                           several=(kind == "retail" or (kind == "shop" and len(sections) > 1)))
+        if kind == "shop" and len(sections) > 1:
+            _fit_out_sections(plan, rng, sections, uses)
     elif mix_kind == "garage":
         pass
     elif mix_kind and mix_kind in SPECIAL_MIXES:

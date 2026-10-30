@@ -285,8 +285,11 @@ def check_1_3_6(check, out: str, tbx: list[str], pzw_text: str, log: str) -> Non
     for role, x, y, _o in mall.furniture:
         if role == "switch":
             per_room[mall.grid[y][x]] = per_room.get(mall.grid[y][x], 0) + 1
-    check(max(per_room.values(), default=0) >= 4,
-          f"a big room has several light switches ({max(per_room.values(), default=0)})")
+    # A floor this big is cut into sections now, each its own shop; a section of
+    # 200 tiles or more still gets a switch at each end.
+    big = [i for i, r in enumerate(mall.rooms, 1) if r.area >= 200]
+    check(big and all(per_room.get(i, 0) >= 2 for i in big),
+          f"a big room has several light switches ({[per_room.get(i, 0) for i in big]})")
 
     # And its aisles are not forty copies of one shelf.
     from collections import Counter as _Counter
