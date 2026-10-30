@@ -343,6 +343,94 @@ def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
     return planted
 
 
+# Woods in the open. The scatter above is one tree to a patch, which across a
+# field is a few lone trees and an empty horizon. A wood is a place: a few
+# hundred metres of trees close together with a ragged edge, and a clearing
+# between it and the next. They grow where smooth noise is highest, so they
+# are blobs, not a grid of squares, and the share of open ground they take is
+# a number to turn.
+GROVE_SHARE = 0.14             # of open ground, at density 1
+GROVE_CELL_M = 260.0           # how far apart woods are, give or take
+GROVE_RAGGED_M = 70.0          # how ragged their edges are
+GROVE_SOLID = 0.07             # noise above the edge where trees stand close
+GROVE_LOOSE = 0.025            # ...and where they thin out toward the edge
+GROVE_SEED = 5513
+
+
+def _paint_groves(veg: Image.Image, landscape: Image.Image,
+                  proj: Projector, density: float = 1.0) -> int:
+    """Woods on open grass. Returns the tiles planted."""
+    import numpy as np
+
+    if density <= 0:
+        return 0
+    ground = np.array(landscape.convert("RGB"))
+    open_ground = np.zeros(ground.shape[:2], dtype=bool)
+    for colour in WILD_GROUND:
+        open_ground |= np.all(ground == colour, axis=2)
+    del ground
+    vegp = np.array(veg.convert("RGB"))
+    free = open_ground & np.all(vegp == 0, axis=2)
+    del vegp
+    free &= ~_box_any(~open_ground, WILD_CLEAR_OF_PAVING)
+    del open_ground
+    h, w = free.shape
+    if not free.any():
+        return 0
+
+    rng = np.random.default_rng(GROVE_SEED)
+    big = max(8, int(round(GROVE_CELL_M / proj.meters_per_tile)))
+    small = max(4, int(round(GROVE_RAGGED_M / proj.meters_per_tile)))
+    lat_big = rng.random((h // big + 3, w // big + 3), dtype=np.float32)
+    lat_small = rng.random((h // small + 3, w // small + 3), dtype=np.float32)
+
+    def lattice(lat, cell, ys, xs):
+        fy, fx = ys / cell, xs / cell
+        y0, x0 = fy.astype(int), fx.astype(int)
+        ty, tx = fy - y0, fx - x0
+        ty, tx = ty * ty * (3 - 2 * ty), tx * tx * (3 - 2 * tx)   # smoothstep
+        y1, x1 = y0 + 1, x0 + 1
+        top = lat[np.ix_(y0, x0)] * (1 - tx) + lat[np.ix_(y0, x1)] * tx
+        bot = lat[np.ix_(y1, x0)] * (1 - tx) + lat[np.ix_(y1, x1)] * tx
+        return top * (1 - ty[:, None]) + bot * ty[:, None]
+
+    def noise(ys, xs):
+        return (0.85 * lattice(lat_big, big, ys, xs)
+                + 0.15 * lattice(lat_small, small, ys, xs))
+
+    # The edge is where the noise is high enough for `share` of the open
+    # ground to lie above it, read off a thin sample rather than every tile.
+    share = min(0.6, GROVE_SHARE * density)
+    sy, sx = np.arange(0, h, 6), np.arange(0, w, 6)
+    sample = noise(sy.astype(np.float32), sx.astype(np.float32))[free[::6, ::6]]
+    if sample.size == 0:
+        return 0
+    edge = float(np.quantile(sample, 1.0 - share))
+
+    planted = 0
+    xs = np.arange(w, dtype=np.float32)
+    for top in range(0, h, BOX_STRIP_ROWS):
+        bottom = min(h, top + BOX_STRIP_ROWS)
+        n = noise(np.arange(top, bottom, dtype=np.float32), xs)
+        inside = free[top:bottom] & (n > edge)
+        if not inside.any():
+            continue
+        strip = np.array(veg.crop((0, top, w, bottom)).convert("RGB"))
+        strip[inside] = C.SPARSE_TREES
+        strip[inside & (n > edge + GROVE_LOOSE)] = C.TREES_DARK_GRASS
+        strip[inside & (n > edge + GROVE_SOLID)] = C.TREES
+        veg.paste(Image.fromarray(strip), (0, top))
+        # Trees sit on dark grass, as the woods the mapper drew do.
+        land = np.array(landscape.crop((0, top, w, bottom)).convert("RGB"))
+        lawn = inside & (np.all(land == C.MEDIUM_GRASS, axis=2)
+                         | np.all(land == C.LIGHT_GRASS, axis=2))
+        if lawn.any():
+            land[lawn] = C.DARK_GRASS
+            landscape.paste(Image.fromarray(land), (0, top))
+        planted += int(inside.sum())
+    return planted
+
+
 def _clear_building_vegetation(veg: Image.Image, feats: list[OSMFeature],
                                proj: Projector) -> None:
     """No trees or bushes inside a building.

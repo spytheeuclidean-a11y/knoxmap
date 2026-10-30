@@ -396,6 +396,7 @@ def configure_tools(tools: Path, game: Path | None) -> None:
     add_erikas_tiles(tools, tilesets, two_x)
 
     for script, what in (("patch_rules_b42_trees.py", "Build 42 trees and flowers"),
+                         ("patch_rules_big_trees.py", "Jumbo trees"),
                          ("patch_rules_roads.py", "Kerbs and road markings")):
         rules = subprocess.run([sys.executable, str(BASE_DIR / "worlded" / script), str(tools)],
                                capture_output=True, text=True, check=False)

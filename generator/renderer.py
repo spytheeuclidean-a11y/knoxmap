@@ -73,7 +73,7 @@ from .rendering.vegetation import (BOX_STRIP_ROWS, GARDEN_CLEAR_OF_HOUSE,
                                    _clear_building_vegetation,
                                    _clear_road_vegetation, _paint_gardens,
                                    _paint_vegetation, _paint_vegetation_extras,
-                                   _paint_wild_growth, _paint_woodland)  # noqa: F401
+                                   _paint_groves, _paint_wild_growth, _paint_woodland)  # noqa: F401
 from .rendering.widths import (ROAD_WIDTHS_BY_HIERARCHY_M, ROAD_WIDTHS_M,
                                SIDEWALK_BY_HIERARCHY_M, SIDEWALK_M,
                                VERGE_BY_HIERARCHY_M, VERGE_M, _road_markings,
@@ -285,6 +285,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                       density=tree_density * forest_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     _paint_wild_growth(vegetation, landscape, proj, density=tree_density)
+    _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density)
     _clear_building_vegetation(vegetation, building_feats, proj)
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)
