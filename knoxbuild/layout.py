@@ -1287,20 +1287,25 @@ def _ground_bedroom(bedrooms: int, levels: int, floor: int,
             and rng.random() < GROUND_BEDROOM_SHARE)
 
 
-def _house_spares(profile, rng: random.Random):
+def _house_spares(profile, rng: random.Random, upstairs: bool = False):
     """Rooms for a floor past its bedrooms, in turn: a study (or storage, by
     the household's _house_study_share), then storage and offices. The
-    laundry is in the programme, the closets are the pieces a cut leaves."""
-    yield "office" if rng.random() < _house_study_share(profile) else "storage"
-    while True:
-        yield from HOUSE_TOP_UP
+    laundry is in the programme, the closets are the pieces a cut leaves.
+    Only those: a house has a study and a store room, not a row of them, so
+    past that an upper floor takes bedrooms, which are big enough to fill
+    it, rather than filling with cupboards; a ground floor's rooms grow."""
+    first = "office" if rng.random() < _house_study_share(profile) else "storage"
+    yield first
+    yield from (k for k in HOUSE_TOP_UP if k != first)
+    if upstairs:
+        yield from ("bedroom", "bedroom")
 
 
 # A house floor cut by kind gets spare rooms while it is bigger than its
 # rooms can fill (sizing.capacity: the big ones at their hi), so a big floor
 # gets more rooms rather than a living room of 90 tiles - up to one room per
 # HOUSE_ROOM_TILES of floor and HOUSE_MAX_SPARE spares.
-HOUSE_ROOM_TILES = 14
+HOUSE_ROOM_TILES = 22
 HOUSE_MAX_SPARE = 40
 HOUSE_TOP_UP = ["storage", "office"]
 # Rooms a cut may clip away: what is left of one is folded into the room
@@ -1318,7 +1323,16 @@ HOUSE_LAST_TRIES = 10
 HOUSE_MIN_FILL = 0.8
 # Nor is a cut kept where a room it keeps is more than this many times the
 # biggest its kind comes.
-HOUSE_OVERSIZE = 1.5
+HOUSE_OVERSIZE = 2.0
+
+
+def _wall_shared(a, b, run: int = 2) -> bool:
+    """Whether two rectangles (anything with x0 y0 x1 y1) share a wall of at
+    least `run` tiles."""
+    ox = min(a.x1, b.x1) - max(a.x0, b.x0) + 1
+    oy = min(a.y1, b.y1) - max(a.y0, b.y0) + 1
+    return ((ox >= run and (a.y1 + 1 == b.y0 or b.y1 + 1 == a.y0))
+            or (oy >= run and (a.x1 + 1 == b.x0 or b.x1 + 1 == a.x0)))
 
 
 def _house_by_kind(plan: Plan, level: int, levels: int,
@@ -1356,10 +1370,10 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
         kinds.append("dining")
     bedrooms, bathrooms = _house_room_budgets(plan, levels)
     quota = _house_floor_bedrooms(bedrooms, levels, level)
-    spares = _house_spares(plan.profile, rng)
+    spares = _house_spares(plan.profile, rng, level > 0)
     beds = [i for i, k in enumerate(kinds) if k in ("bedroom", "kidsbedroom")]
     for i in beds[quota:]:     # past the house's bedroom budget
-        kinds[i] = next(spares)
+        kinds[i] = next(spares, "storage")
     spare = ["bedroom"] * (quota - len(beds))
     if level == 0:
         if _ground_bedroom(bedrooms, levels, area, rng):
@@ -1371,7 +1385,10 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
     n = 0
     while (area > capacity(kinds)
            and n < HOUSE_MAX_SPARE and len(kinds) < area // HOUSE_ROOM_TILES):
-        kinds.append(spare[n] if n < len(spare) else next(spares))
+        more = spare[n] if n < len(spare) else next(spares, None)
+        if more is None:
+            break
+        kinds.append(more)
         n += 1
     box = (0, 0, plan.width - 1, plan.height - 1)
     landing = core if core is not None and kinds[0] == "hall" else None
@@ -1381,6 +1398,18 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
         ps = _pieces(room, floor)
         return bool(ps) and SIZES[room.kind].lo <= len(ps[0]) and not (
             _too_small(ps[0]) or (len(ps) > 1 and not _too_small(ps[1])))
+
+    def _on_circulation(room: Room, rooms: list, core) -> bool:
+        """A bedroom opens onto a hall, the stairs or the living room, else it
+        is reached through another bedroom."""
+        if room.kind not in ("bedroom", "kidsbedroom"):
+            return True
+        if core is not None:
+            c = Room(*core)
+            if _wall_shared(room, c):
+                return True
+        return any(o is not room and o.kind in ("hall", "livingroom", "openplan")
+                   and _wall_shared(room, o) for o in rooms)
 
     def too_big(room: Room) -> bool:
         return (room.kind != "hall" and sum(map(len, _pieces(room, floor)))
@@ -1392,7 +1421,8 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
             rooms = split_by_targets(box, kinds, rng, area=area, touch=landing)
             kept = [r for r in rooms or () if r.kind not in losable]
             big = any(map(too_big, kept))
-            if rooms and not big and all(map(keeps, kept)):
+            if rooms and not big and all(map(keeps, kept)) and all(
+                    _on_circulation(r, rooms, core) for r in rooms):
                 return rooms
             always_big &= big
         # Fewer rooms would only come out bigger.
@@ -2925,7 +2955,11 @@ DEPTH_COST = 9.0
 
 def _door_cost(a: str, b: str) -> float:
     kinds = {a, b}
-    if "hall" in kinds or "lobby" in kinds:
+    if a == b == "hall":
+        # Two halls side by side - the stair core and the landing - open onto
+        # each other before either opens onto a bedroom.
+        cost = 0.5
+    elif "hall" in kinds or "lobby" in kinds:
         cost = 1.0
     elif kinds in TOGETHER:
         cost = 1.5
@@ -2977,8 +3011,11 @@ def _doors(plan: Plan, rng: random.Random) -> None:
     def start_room() -> int:
         for kind in ("hall", "lobby", "livingroom", "openplan"):
             found = [i for i, r in enumerate(rooms, 1) if r.kind == kind]
+            # The stairs arrive in the core: grow from there, or a second hall
+            # beside it wins on size and the stairs open into a bedroom.
+            at_stairs = [i for i in found if rooms[i - 1].is_core]
             if found:
-                return max(found, key=lambda i: rooms[i - 1].area)
+                return max(at_stairs or found, key=lambda i: rooms[i - 1].area)
         return max(range(1, n + 1), key=lambda i: rooms[i - 1].area)
 
     connected = {start_room()} | sealed
