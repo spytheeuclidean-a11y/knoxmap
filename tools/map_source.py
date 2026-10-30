@@ -25,7 +25,7 @@ import knoxstop  # noqa: E402
 from knoxbuild import bitmaps  # noqa: E402
 from knoxbuild.blends import blend_layers, load_blends  # noqa: E402
 from knoxbuild.buildheader import cell_tables, placed_rooms  # noqa: E402
-from knoxbuild.buildtiles import compose_lots, parse_tbx, tile_name  # noqa: E402
+from knoxbuild.buildtiles import compose_lots, parse_tbx, parse_tbx_rooms, tile_name  # noqa: E402
 from knoxbuild.kcell import SIDE, cell_source  # noqa: E402
 from knoxbuild.rules import load_rules  # noqa: E402
 from knoxbuild.terrain import Palette, ground_layers, stack_order  # noqa: E402
@@ -156,6 +156,41 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
     return written
 
 
+# Below this many buildings the pool costs more to start than it saves.
+PARALLEL_READ_FROM = 300
+
+
+def _read_rooms(project: str, names: list[str]) -> list:
+    """The room tables' view of each building (knoxbuild.buildtiles.parse_tbx_rooms)."""
+    return [parse_tbx_rooms(open(os.path.join(project, "buildings", f"{n}.tbx"), encoding="utf-8").read())
+            for n in names]
+
+
+def read_buildings(project: str, names: list[str], workers: int | None = None, should_stop=None) -> list:
+    """Every building the lots name, in order, parsed for the room tables - across
+    processes once there are enough of them, since reading is where a big map
+    spent minutes before a single cell was built."""
+    from concurrent import futures
+    workers = workers or os.cpu_count() or 1
+    if len(names) < PARALLEL_READ_FROM or workers < 2:
+        return _read_rooms(project, names)
+    size = max(50, len(names) // (workers * 4))
+    chunks = [names[i:i + size] for i in range(0, len(names), size)]
+    out: list = []
+    with futures.ProcessPoolExecutor(max_workers=workers) as pool:
+        jobs = [pool.submit(_read_rooms, project, c) for c in chunks]
+        try:
+            for job in jobs:          # in order: the result is the lots' order
+                out.extend(job.result())
+                if should_stop and should_stop():
+                    raise knoxstop.Stopped("the compile")
+        except BaseException:
+            for job in jobs:
+                job.cancel()
+            raise
+    return out
+
+
 def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                     workers: int | None = None, should_stop=None, on_row=None, on_start=None) -> int:
     """Write the cell sources of a map into `out`, one process per row of cells."""
@@ -167,8 +202,8 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
 
     # Room tables need every building at once (they touch, and a later lot takes squares).
     # Only the rooms are kept; the parsed buildings go.
-    parsed = [(parse_tbx(open(os.path.join(project, "buildings", f"{t}.tbx"), encoding="utf-8").read()),
-               tx, ty, lv) for t, tx, ty, lv, _w, _h in lots]
+    parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
+        read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
     placed = placed_rooms([(b, tx, ty, lv) for b, tx, ty, lv in parsed if b.floors])
     reach = [(b.width, b.height) for b, *_ in parsed]
     del parsed

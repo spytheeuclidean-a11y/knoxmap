@@ -72,7 +72,7 @@ from .rendering.vegetation import (BOX_STRIP_ROWS, GARDEN_CLEAR_OF_HOUSE,
                                    WILD_TREE_EVERY_M, _box_any,
                                    _clear_building_vegetation,
                                    _clear_road_vegetation, _paint_gardens,
-                                   _paint_parks, _paint_vegetation,
+                                   _paint_groves, _paint_parks, _paint_vegetation,
                                    _paint_vegetation_extras, _paint_wild_growth,
                                    _paint_woodland, _plant_big_trees,
                                    tree_rules_ready)  # noqa: F401
@@ -289,6 +289,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                  density=tree_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     _paint_wild_growth(vegetation, landscape, proj, density=tree_density)
+    _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density)
     # Last of the planting: some of the trees now down become the big ones,
     # which need a square of their own and so can only be chosen once it is
     # settled what stands where.

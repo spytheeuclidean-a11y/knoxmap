@@ -254,6 +254,10 @@ def features(drawn: dict | list | None) -> list[OSMFeature]:
             kind = "way"
             if len(points) < 2:
                 continue
+            # A road drawn back to where it started is a loop of road, not a
+            # plot of ground: the renderer fills a closed way as an area.
+            if len(points) > 2 and points[0] == points[-1]:
+                tags["knox:line"] = "yes"
         elif gtype == "Polygon" and isinstance(coords, list) and coords:
             ring = _listed(coords[0])
             points = _lat_lons(ring)

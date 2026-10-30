@@ -79,6 +79,26 @@ def parse_tbx(text: str) -> Building:
     return Building(w, h, dict(root.attrib), entries, rooms, floors, furniture)
 
 
+def parse_tbx_rooms(text: str) -> Building:
+    """A building with only what the room tables read: its size, its rooms and
+    the room number of every square. No tile layers, objects or furniture - on a
+    map of thousands of buildings that is most of what parse_tbx costs, and the
+    tables never look at it."""
+    root = ET.fromstring(text)
+    w, h = int(root.get("width")), int(root.get("height"))
+    floors = []
+    for f in root:
+        if f.tag != "floor":
+            continue
+        grid_el = f.find("rooms")
+        values = [int(v) for v in re.split(r"[,\s]+", (grid_el.text or "").strip()) if v] if grid_el is not None else []
+        if len(values) != w * h:
+            raise ValueError(f"a floor has {len(values)} room numbers, expected {w * h}")
+        floors.append(Floor([values[y * w:(y + 1) * w] for y in range(h)], [], []))
+    return Building(w, h, dict(root.attrib), [], [dict(r.attrib) for r in root if r.tag == "room"],
+                    floors, [])
+
+
 # Windows the game will never let anybody open. It marks them WindowLocked in
 # its own tile definitions (media/newtiledefinitions.tiles) and most of each
 # sheet is: in the wooden one only two of its sixteen shapes open, so a third
