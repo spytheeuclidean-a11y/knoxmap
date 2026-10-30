@@ -182,6 +182,9 @@ input[readonly] { background: var(--bg); color: var(--muted); }
 .lasso-control a { font-size: 17px; line-height: 30px; text-align: center; }
 .lasso-control a.is-active { background: var(--accent); color: var(--accent-ink); }
 .lasso-armed, .lasso-armed .leaflet-interactive { cursor: crosshair !important; }
+/* The chosen area can be dragged to somewhere else. */
+path.sel-rect { cursor: move; }
+.sel-dragging, .sel-dragging .leaflet-interactive { cursor: grabbing !important; }
 
 /* ---- area panel ------------------------------------------------------------------ */
 .coords { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }

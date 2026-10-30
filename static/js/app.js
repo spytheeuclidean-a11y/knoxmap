@@ -79,8 +79,61 @@ let currentRect = null;
 function setSelection(layer) {
   drawnItems.clearLayers();
   currentRect = layer;
+  makeSelectionDraggable(layer);
   drawnItems.addLayer(currentRect);
   updateBboxFields();
+}
+
+// ---- drag the selection --------------------------------------------------------
+// Press on the chosen area and drag it to somewhere else; the size and shape
+// stay as they are. leaflet-draw only reshapes by the corners, so moving a
+// whole rectangle, polygon, circle or a place's outline is done here. It stands
+// aside while any drawing tool or the corner editor is in use.
+let selDrawing = false;
+map.on(L.Draw.Event.DRAWSTART, () => { selDrawing = true; });
+map.on(L.Draw.Event.DRAWSTOP, () => { selDrawing = false; });
+
+function shiftLatLngs(ll, dLat, dLng) {
+  return Array.isArray(ll) ? ll.map(x => shiftLatLngs(x, dLat, dLng))
+                           : L.latLng(ll.lat + dLat, ll.lng + dLng);
+}
+
+function makeSelectionDraggable(layer) {
+  layer.on('mousedown', (ev) => {
+    const oe = ev.originalEvent;
+    if (oe && oe.button !== undefined && oe.button !== 0) return;
+    if (selDrawing || map.getContainer().classList.contains('lasso-armed')) return;
+    if (layer.editing && layer.editing.enabled && layer.editing.enabled()) return;
+    if (!drawnItems.hasLayer(layer)) return;
+    L.DomEvent.stop(ev);                     // not a map pan, not a click
+    if (oe) L.DomEvent.preventDefault(oe);   // and no text selection while dragging
+    const isCircle = layer instanceof L.Circle;
+    const startLL = ev.latlng;
+    const start = isCircle ? layer.getLatLng() : layer.getLatLngs();
+    let moved = false;
+    map.dragging.disable();
+    map.getContainer().classList.add('sel-dragging');
+    const move = (e) => {
+      const dLat = e.latlng.lat - startLL.lat;
+      const dLng = e.latlng.lng - startLL.lng;
+      // A few pixels of wobble on a click is not a move.
+      if (!moved && Math.hypot(e.containerPoint.x - ev.containerPoint.x,
+                               e.containerPoint.y - ev.containerPoint.y) < 4) return;
+      moved = true;
+      if (isCircle) layer.setLatLng(L.latLng(start.lat + dLat, start.lng + dLng));
+      else layer.setLatLngs(shiftLatLngs(start, dLat, dLng));
+      updateBboxFields();
+    };
+    const up = () => {
+      map.off('mousemove', move);
+      document.removeEventListener('mouseup', up, true);
+      map.dragging.enable();
+      map.getContainer().classList.remove('sel-dragging');
+      if (moved) updateBboxFields();
+    };
+    map.on('mousemove', move);
+    document.addEventListener('mouseup', up, true);
+  });
 }
 
 map.on(L.Draw.Event.CREATED, (e) => {
