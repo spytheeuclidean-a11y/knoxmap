@@ -1,5 +1,7 @@
 """The Overpass client is a guest on shared servers: it rests a server that fails,
 leaves one that refuses it alone, honours Retry-After and asks one at a time."""
+import os
+import tempfile
 import time
 import unittest
 from unittest import mock
@@ -29,7 +31,9 @@ class Manners(unittest.TestCase):
         osm._refused.clear()
         osm.HOST_MIN_GAP_S = 0
         osm.EMPTY_NEEDS_SECOND = False
-        self.save = mock.patch.object(osm, "_refused_file", lambda: "does/not/exist/refused.json")
+        self.tmp = tempfile.mkdtemp()
+        self.save = mock.patch.object(osm, "_refused_file",
+                                      lambda: os.path.join(self.tmp, "refused.json"))
         self.save.start()
         self.sleep = mock.patch.object(osm.time, "sleep", lambda s: None)
         self.sleep.start()
