@@ -4768,6 +4768,9 @@ def _furnish(plan: Plan, rng: random.Random,
             return side_rank[facing], -distance, y, x
 
         floor_slots = sorted(slots, key=slot_order)
+        # Boxes are not a wall of them: a few, apart, some stacked two high.
+        crates: set[tuple[int, int]] = set()
+        crate_cap = max(2, len(floor_slots) // CRATE_ONE_IN)
 
         def centre():
             # The middle, with an aisle round it the wall pieces must leave
@@ -4836,12 +4839,20 @@ def _furnish(plan: Plan, rng: random.Random,
                     front = {(cx + fx, cy + fy) for cx, cy in cells} - set(cells)
                     if any(c in occupied or _room_at(plan, *c) != idx for c in front):
                         continue
+                if role == "crate" and (len(crates) >= crate_cap or any(
+                        n in crates for cx, cy in cells
+                        for n in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)))):
+                    continue
                 # Nothing standing that shuts off a patch of the floor.
                 if _blocks(role) and not keeps_open(cells):
                     continue
                 occupied.update(cells)
                 occupied.update(front)
                 plan.furniture.append((role, ax, ay, orient))
+                if role == "crate":
+                    crates.update(cells)
+                    if rng.random() < CRATE_STACKED:
+                        plan.furniture.append(("crate_top", ax, ay, orient))
                 return
 
         # Most important first, so a plant cannot take the fridge's place:
@@ -5081,6 +5092,10 @@ KIND_FLOOR_CHOICES = {
 # The most counters a wishlist may ask for however big the room; past this the
 # budget above decides.
 WISHLIST_COUNTERS = 2
+# Boxes against a wall: at most one wall slot in this many, never two side by
+# side, and this share of them with another box on top.
+CRATE_ONE_IN = 6
+CRATE_STACKED = 0.5
 
 
 def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
