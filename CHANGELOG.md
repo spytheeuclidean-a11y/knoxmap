@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+- **Maps are built from an OpenStreetMap extract, not live Overpass queries**
+  (`generator/extract.py`). A town was a few hundred requests to public Overpass
+  servers that other people run and pay for. KnoxMap now finds the smallest
+  Geofabrik extract that covers the map (a state, a country), downloads it once
+  into `cache/extracts`, asks Geofabrik for a newer copy at most every two
+  weeks, and reads the map out of it on this PC with the same tag filters. It
+  needs `osmium` (pyosmium; Setup installs it). Without it, or where no extract
+  covers the place, KnoxMap falls back to Overpass. Set `osm_source` in
+  `knoxmap_config.json` to `extract` (never Overpass), `overpass` (the old way)
+  or leave it on `auto`.
+- **Overpass manners**, for when it is still used (`generator/osm.py`). A server
+  that fails is rested for twice as long each time, up to an hour, and for as
+  long as it asks in `Retry-After`; one that refuses us (401, 403, 451) is left
+  alone for a week, across restarts. A resting server is not asked at all,
+  where it used to be asked last. One request at a time to a host, two seconds
+  apart. The start-of-download check reads each server's `/status` page instead
+  of sending a query. `overpass.atownsend.org.uk`, whose operator asked us to
+  stop, is no longer in the default list.
+
 ## 1.8.1
 
 - **A building you built can go to somebody else** (`knoxbuild/share.py`).

@@ -17,6 +17,10 @@ import contextlib
 import io
 import json
 import math
+import os as _os
+
+# The self-test fakes the Overpass servers, so it asks them rather than an extract.
+_os.environ.setdefault("KNOXMAP_OSM_SOURCE", "overpass")
 import os
 import re
 import shutil

@@ -9,6 +9,9 @@ import tempfile
 import unittest
 from unittest import mock
 
+# These tests are about the Overpass route; the default would take the extract.
+os.environ["KNOXMAP_OSM_SOURCE"] = "overpass"
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import requests  # noqa: E402
@@ -41,18 +44,22 @@ class Order(Base):
                          osm.ANSWERING_ENDPOINTS)
         self.assertEqual(order[len(osm.ANSWERING_ENDPOINTS):], BLANK)
 
-    def test_resting_is_asked_last_not_dropped(self):
+    # A resting server used to be asked last, "not dropped", on the grounds that
+    # a rest is a guess. One operator counted 22,515 requests in a day, 14,608 of
+    # them 504s, from exactly that. A resting server is not asked; the download
+    # waits and tries again (fetch_features_tiled) when the rest is over.
+    def test_resting_is_not_asked(self):
         osm._note_down(A)
         order = osm._endpoint_order(0)
-        self.assertIn(A, order)
-        self.assertLess(order.index(B), order.index(A))
+        self.assertNotIn(A, order)
+        self.assertIn(B, order)
 
-    def test_all_resting_still_asks_every_one(self):
+    def test_all_resting_asks_none(self):
         for e in osm.ANSWERING_ENDPOINTS:
             osm._note_down(e)
         order = osm._endpoint_order(0)
         for e in osm.ANSWERING_ENDPOINTS:
-            self.assertIn(e, order)
+            self.assertNotIn(e, order)
 
     def test_rotation_spreads_tiles(self):
         firsts = {osm._endpoint_order(i)[0] for i in range(len(osm.ANSWERING_ENDPOINTS))}

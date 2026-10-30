@@ -148,14 +148,26 @@ def landmarks(south: float, west: float, north: float, east: float,
     query = _build_query(south, west, north, east)
     last_err: Exception | None = None
     for endpoint in OVERPASS_ENDPOINTS:
+        # The same manners as the map download: a server that is resting or
+        # has refused us is not asked, and one request at a time to a host.
+        if not osm.endpoint_ready(endpoint):
+            last_err = RuntimeError(f"{endpoint} is resting")
+            continue
         try:
-            r = requests.post(endpoint, data={"data": query},
-                              headers=HEADERS,
-                              timeout=(osm.CONNECT_TIMEOUT_S, 60))
+            with osm._one_at_a_time(endpoint):
+                r = requests.post(endpoint, data={"data": query},
+                                  headers=HEADERS,
+                                  timeout=(osm.CONNECT_TIMEOUT_S, 60))
+            if r.status_code in (401, 403, 451):
+                osm._refuse(endpoint)
+                last_err = RuntimeError(f"{endpoint} -> {r.status_code}")
+                continue
             if r.status_code == 429 or r.status_code >= 500:
+                osm._note_down(endpoint, osm._retry_after(r))
                 last_err = RuntimeError(f"{endpoint} -> {r.status_code}")
                 continue
             r.raise_for_status()
+            osm._note_up(endpoint)
             return _parse(r.json(), limit)
         except (requests.RequestException, ValueError) as exc:
             last_err = exc
