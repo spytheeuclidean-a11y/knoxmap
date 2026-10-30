@@ -1,4 +1,5 @@
 import unittest
+from unittest import mock
 
 from knoxbuild import layout
 
@@ -35,6 +36,15 @@ class RestaurantsAreFull(unittest.TestCase):
     def test_no_bedroom_furniture_in_a_dining_room(self):
         for _p, _i, roles in dining_rooms([("restaurantdining", "dinerkitchen")]):
             self.assertFalse([r for r in roles if r in HOME_PIECES], roles)
+
+
+    def test_no_chest_under_a_plant_with_erikas_tiles(self):
+        # Erika's plants are tabletop pieces, so each stood on a chest of
+        # drawers; a dining room's plants stand on the floor.
+        with mock.patch.object(layout, "_erika_ready", lambda: True):
+            for _p, _i, roles in dining_rooms([("restaurantdining", "dinerkitchen")],
+                                              range(8)):
+                self.assertFalse([r for r in roles if r in HOME_PIECES], roles)
 
 
 if __name__ == "__main__":

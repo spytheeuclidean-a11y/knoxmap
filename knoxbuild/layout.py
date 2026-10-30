@@ -4686,7 +4686,8 @@ def _furnish(plan: Plan, rng: random.Random,
                     else rng.choice(C.ERIKA_WALL_ART)
                     if role in ("painting", "mirror") and C.ERIKA_WALL_ART
                     and plan.kind not in ART_FREE_KINDS
-                    else rng.choice(C.ERIKA_PLANTS) if role == "plant" and C.ERIKA_PLANTS
+                    else rng.choice(C.ERIKA_PLANTS)
+                    if role == "plant" and C.ERIKA_PLANTS and not eatery
                     else rng.choice(C.ERIKA_SHELVES)
                     if role == "bookshelf" and C.ERIKA_SHELVES and rng.random() < ERIKA_SHELF_SHARE
                     else role for role in base]
