@@ -5813,6 +5813,95 @@ def _make_way_for_windows(storey: "Plan", stairs: tuple[int, int, str] | None) -
     return moved
 
 
+def _doors_off_stairs(building: "Building") -> int:
+    """Move a door that opens onto the steps of a flight to somewhere else on
+    the same wall between the same two rooms.
+
+    The steps between the two landings cannot be walked across, so a door
+    hung on one - or on the wall beside one - leads nowhere, and the rooms
+    behind it are cut off. Left where it is only when no other clean stretch
+    of that boundary exists.
+    """
+    if not building.stairs:
+        return 0
+    x, y, d = building.stairs[0]
+    dx, dy = (0, 1) if d == "N" else (1, 0)
+    steps = {(x + dx * i, y + dy * i) for i in range(1, STAIR_RUN - 1)}
+
+    def on_steps(door) -> bool:
+        dxx, dyy, dd = door
+        before = (dxx - 1, dyy) if dd == "W" else (dxx, dyy - 1)
+        return (dxx, dyy) in steps or before in steps
+
+    moved = 0
+    for storey in building.storeys:
+        bad = [i for i, door in enumerate(storey.doors) if on_steps(door)]
+        if not bad:
+            continue
+        edges = {(ex, ey, ed) for _side, wall in _facade_runs(storey.grid)
+                 for ex, ey, ed, _ix, _iy in wall} | _room_edges(storey.grid)
+        corners = {(ex, ey) for ex, ey, ed in edges
+                   if (ex, ey, "N" if ed == "W" else "W") in edges}
+        keep_off = set(storey.party) | set(getattr(storey, "wall_pieces", ()))
+        for i in bad:
+            door = storey.doors[i]
+            want = _sides_of(storey.grid, *door)
+            taken = set(storey.doors)
+            spots = [e for e in edges
+                     if e not in taken and e not in keep_off
+                     and (e[0], e[1]) not in corners and not on_steps(e)
+                     and _sides_of(storey.grid, *e) == want]
+            if spots:
+                spots.sort(key=lambda e: (abs(e[0] - door[0]) + abs(e[1] - door[1]), e))
+                storey.doors[i] = spots[0]
+                moved += 1
+            else:
+                # Nowhere else on that wall. Where the rooms are reached
+                # another way the door only has to go; where it was the one
+                # way in, a door to some other neighbour takes its place.
+                if not _joined_without(storey, i):
+                    for e in sorted(edges, key=lambda e: (abs(e[0] - door[0]) + abs(e[1] - door[1]), e)):
+                        pair = _sides_of(storey.grid, *e)
+                        if (e in taken or e in keep_off or (e[0], e[1]) in corners
+                                or on_steps(e) or 0 in pair or pair[0] == pair[1]
+                                or not set(pair) & set(want) or set(pair) == set(want)
+                                or any(storey.rooms[r - 1].is_shaft for r in pair)):
+                            continue
+                        ua, ub = (storey.rooms[r - 1].unit for r in pair)
+                        if ua and ub and ua != ub:
+                            continue
+                        storey.doors.append(e)
+                        if _joined_without(storey, i):
+                            taken.add(e)
+                            break
+                        storey.doors.pop()
+                if _joined_without(storey, i):
+                    storey.doors[i] = None
+                    moved += 1
+        storey.doors = [d for d in storey.doors if d is not None]
+    return moved
+
+
+def _joined_without(storey, skip: int) -> bool:
+    """Whether the two rooms either side of door `skip` still meet through the
+    other doors and open edges, so that door can go without shutting one in."""
+    adj: dict[int, set] = {}
+    links = [d for j, d in enumerate(storey.doors) if j != skip and d is not None]
+    for x, y, d in list(links) + list(getattr(storey, "open_edge", ())):
+        a, b = _sides_of(storey.grid, x, y, d)
+        if a and b and a != b:
+            adj.setdefault(a, set()).add(b)
+            adj.setdefault(b, set()).add(a)
+    a, b = _sides_of(storey.grid, *storey.doors[skip])
+    seen, stack = {a}, [a]
+    while stack:
+        for nxt in adj.get(stack.pop(), ()):
+            if nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
+    return b in seen
+
+
 def _clear_the_way(building: "Building") -> int:
     """Take out whatever stands between a doorway and the rooms behind it.
 
@@ -5820,6 +5909,7 @@ def _clear_the_way(building: "Building") -> int:
     the only doorway or a counter spanning the only way through. The plan was
     connected - every audit of it passed - but the furnished building was not.
     """
+    _doors_off_stairs(building)
     removed = 0
     stairs = building.stairs[0] if building.stairs else None
     for level, storey in enumerate(building.storeys):

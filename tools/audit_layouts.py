@@ -197,6 +197,16 @@ def audit(building, kind):
                 problems["stairs crossing a wall"] += 1
                 break
         blocked = {(x + dx * i, y + dy * i) for i in range(STAIR_RUN)}
+        # The steps between the two landings cannot be walked across, so a
+        # door that opens onto one cannot be used.
+        steps = set(run[1:-1])
+        for s in (building.storeys[lvl], building.storeys[lvl + 1]):
+            for door in s.doors:
+                pair = door_pair(s, door)
+                spots = ((door[0] - 1, door[1]) if door[2] == "W" else (door[0], door[1] - 1),
+                         (door[0], door[1]))
+                if pair and any(sp in steps for sp in spots):
+                    problems["door opening onto the stairs"] += 1
         for s in (building.storeys[lvl], building.storeys[lvl + 1]):
             for role, fx, fy, _o in s.furniture:
                 if (fx, fy) in blocked:
