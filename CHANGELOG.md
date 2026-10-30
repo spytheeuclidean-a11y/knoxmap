@@ -23,6 +23,11 @@
 - **No more cabinets over nothing**. A wall cabinet or microwave above a counter that was
   removed to clear a doorway is removed with it. This also affects shops, offices and other
   non-home buildings, and buildings laid out by the room solver.
+- **Russian**, in the language menu, from a player - thank you. All of it: the
+  window, the settings and the map controls, in the informal "ty" form the
+  Spanish and Turkish files use. A handful of lines cannot be translated -
+  paths, css classes, hotkeys and WorldEd's own menus - and stay in English on
+  purpose.
 
 ## 1.7.6.4
 
