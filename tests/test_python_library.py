@@ -58,12 +58,15 @@ class SetupRefusesSuchAPython(unittest.TestCase):
     """Both setup scripts check before they build an environment on it."""
 
     def script(self, name):
+        # The names as they are spelled in the repository: Windows finds
+        # "setup.bat" whatever the case, and Linux - where this runs in CI -
+        # does not.
         from pathlib import Path
         return (Path(__file__).resolve().parent.parent / name).read_text(
             encoding="utf-8", errors="replace")
 
     def test_windows_setup_checks_and_falls_back_to_a_private_copy(self):
-        text = self.script("setup.bat")
+        text = self.script("Setup.bat")
         self.assertIn("import xml.etree.ElementTree", text)
         self.assertIn(":python_damaged", text)
         # It must recover rather than stop: the private copy is fetched again.
