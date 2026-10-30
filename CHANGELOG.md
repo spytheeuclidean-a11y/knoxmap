@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.8.2
 
 - **Maps are built from an OpenStreetMap extract, not live Overpass queries**
   (`generator/extract.py`). A town was a few hundred requests to public Overpass
