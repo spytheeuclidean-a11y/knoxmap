@@ -171,11 +171,26 @@ def _setup_report() -> dict:
          "fix": "KnoxMap is running 32-bit Python, which can only use about 2 GB of "
                 "memory, so anything past a few square kilometres fails. Close KnoxMap "
                 f"and run {setup} again: it fetches a 64-bit Python."},
+        {"id": "python_library", "ok": not _missing_from_python(),
+         "label": "Python's own library",
+         "fix": ("This Python is missing "
+                 + ", ".join(_missing_from_python()[:3])
+                 + ", which comes with Python itself and cannot be installed "
+                 "with pip - something has trimmed or removed part of it, "
+                 "which antivirus software sometimes does. Close KnoxMap, "
+                 "delete the .venv folder beside it (and .python if there is "
+                 f"one), then run {setup} again to build a fresh one. If it "
+                 "keeps happening, install Python from python.org and run "
+                 "Setup once more.")},
         {"id": "tiles", "ok": tiles >= 400, "label": "Tile artwork from your game",
          "fix": f"Run {setup} to extract it from your install."},
         # Added to the tools after KnoxMap 1.0's first setups: without them a
         # compile still works but lays no kerbs or road markings, silently.
         {"id": "road_rules", "ok": _has_road_rules(tools), "label": "Kerbs and road markings",
+         "fix": f"Run {setup} again to add them to the map tools."},
+        # Likewise the big trees, and the tree sizes beside them: without
+        # these rules a map still builds, and its woods are undergrowth.
+        {"id": "tree_rules", "ok": _has_tree_rules(tools), "label": "Big trees",
          "fix": f"Run {setup} again to add them to the map tools."},
     ]
     # Off Windows the compiler is either one built for this system - what
@@ -312,6 +327,32 @@ def api_zomboid_folder():
                     "chosen": bool(knoxpaths.load_config().get("zomboid_dir"))})
 
 
+# Parts of Python itself that KnoxMap cannot do without: the .tbx and paper
+# map readers (xml), the compressed download beside each map (zlib), the
+# release downloads (ssl, zipfile, tarfile, hashlib) and the Windows folder
+# lookups (ctypes). pip cannot put any of them back - they come with Python -
+# so a copy that is missing one has to be mended or replaced, and saying
+# which one it is turns "No module named 'xml.etree.ElementTree'" halfway
+# through a build into something a person can act on.
+NEEDED_FROM_PYTHON = ("xml.etree.ElementTree", "xml.sax.saxutils", "zlib",
+                      "hashlib", "zipfile", "tarfile", "struct", "socket",
+                      "ssl", "ctypes", "unicodedata")
+
+
+def _missing_from_python() -> list[str]:
+    """Which of them this Python cannot import, in the order above."""
+    import importlib.util
+
+    missing = []
+    for name in NEEDED_FROM_PYTHON:
+        try:
+            if importlib.util.find_spec(name) is None:
+                missing.append(name)
+        except (ImportError, ValueError):
+            missing.append(name)
+    return missing
+
+
 def _has_road_rules(tools) -> bool:
     if not tools:
         return False
@@ -325,6 +366,25 @@ def _has_road_rules(tools) -> bool:
     # patched while the litter rule still named trash_01_13 and 14, which the
     # game draws as a question mark.
     return "KnoxMap road Yard bed_soil" in text and "trash_01_13" not in text
+
+
+def _has_tree_rules(tools) -> bool:
+    """Whether the tools place big trees, and trees the game grows.
+
+    Two things, one answer, because one run of Setup writes both: the rules
+    for the jumbo sheets, and ordinary trees moved off the sheet indices the
+    game has no tile definition for - which drew, and were scenery.
+    """
+    if not tools:
+        return False
+    try:
+        text = (tools / "config" / "Rules.txt").read_text(encoding="utf-8",
+                                                          errors="replace")
+    except OSError:
+        return False
+    import re
+    return ("KnoxMap tree Giant tree" in text and "KnoxMap tree Small tree" in text
+            and not re.search(r"\be_\w+_1_(?:[89]|1[0-5])\b", text))
 
 
 def _overture_ready() -> bool:

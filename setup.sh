@@ -29,6 +29,18 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 
+# Part of Python itself gone missing - a distribution that splits it into
+# packages, or antivirus taking a file out - is not something pip can put back,
+# and it surfaces much later as "No module named 'xml.etree.ElementTree'" in
+# the middle of a build. Say so now, with the package to install.
+if ! "$PY" -c "import xml.etree.ElementTree, xml.sax.saxutils, zlib, hashlib, zipfile, tarfile, ssl, ctypes" 2>/dev/null; then
+  echo "The Python found on this machine is missing part of its own library."
+  echo "pip cannot put that back. Install the full Python from your package manager:"
+  echo "    sudo apt install python3 python3-venv python3-pip     # Debian, Ubuntu"
+  echo "    sudo dnf install python3                              # Fedora"
+  exit 1
+fi
+
 # An environment built by a 32-bit Python stays 32-bit, and a town-sized map
 # needs more memory than one can address.
 if [ -x ".venv/bin/python" ] && ! .venv/bin/python -c 'import sys; sys.exit(sys.maxsize <= 2**32)' 2>/dev/null; then

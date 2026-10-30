@@ -23,6 +23,13 @@ if not defined PY where py >nul 2>nul && py -3 -c "import sys; sys.exit(sys.vers
 if not defined PY if not defined PY32 python -c "import sys; sys.exit(sys.version_info < (3, 10))" >nul 2>nul && set PY32=python
 if not defined PY call :portable_python || goto :fail
 
+rem Part of Python itself gone missing - antivirus software quarantining a
+rem file of it is the usual reason - is not something pip can put back, and
+rem it surfaces much later as "No module named 'xml.etree.ElementTree'" in
+rem the middle of a build. A copy that cannot import what KnoxMap needs is
+rem passed over here, and a private one is fetched instead.
+%PY% -c "import xml.etree.ElementTree, xml.sax.saxutils, zlib, hashlib, zipfile, tarfile, ssl, ctypes" >nul 2>nul || call :python_damaged || goto :fail
+
 rem An environment built by a 32-bit Python stays 32-bit, so a copy set up
 rem before this check is made again with the one found above.
 set VENV_PYTHON=".venv\Scripts\python.exe"
@@ -58,6 +65,24 @@ rem environment is as good as it gets.
 echo The Python environment is 32-bit, which runs out of memory on a big map.
 echo Making it again with 64-bit Python...
 rmdir /s /q ".venv"
+exit /b 0
+
+:python_damaged
+echo The Python found on this PC is missing part of its own library
+echo (antivirus software sometimes removes a piece of it).
+if exist ".python\tools\python.exe" (
+  echo The private copy KnoxMap downloaded is the damaged one: deleting it.
+  rmdir /s /q ".python"
+)
+if exist ".venv" rmdir /s /q ".venv"
+set PY=
+call :portable_python || exit /b 1
+%PY% -c "import xml.etree.ElementTree, xml.sax.saxutils, zlib, hashlib, zipfile, tarfile, ssl, ctypes" >nul 2>nul || (
+  echo The downloaded Python is missing those parts too, which usually means
+  echo antivirus software is taking them out as they arrive. Allow this folder
+  echo in your antivirus, or install Python from python.org, then run Setup again.
+  exit /b 1
+)
 exit /b 0
 
 :portable_python

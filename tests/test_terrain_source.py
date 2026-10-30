@@ -6,10 +6,23 @@ import numpy as np
 from PIL import Image
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-RULES = os.path.join(ROOT, "vendor", "PZMappingTools", "config", "Rules.txt")
 
 
-@unittest.skipUnless(os.path.exists(RULES), "the mapping tools' Rules.txt is not installed")
+def rules_installed() -> bool:
+    """Whether this PC has the map tools, wherever it keeps them.
+
+    Looking only inside KnoxMap's own vendor folder meant these never ran on a
+    PC that keeps the tools beside it, which is where Setup puts them - the
+    same assumption that stopped the compile finding Rules.txt at all.
+    """
+    from tools.terrain_source import rules_path
+    try:
+        return bool(rules_path())
+    except FileNotFoundError:
+        return False
+
+
+@unittest.skipUnless(rules_installed(), "the mapping tools' Rules.txt is not installed")
 class TerrainSourceTests(unittest.TestCase):
     def make_project(self, d):
         proj = os.path.join(d, "tiny")

@@ -1,6 +1,4 @@
-"""Woods in open fields, and jumbo trees in the tree rules."""
-import os
-import sys
+"""Woods in open fields."""
 import unittest
 
 import numpy as np
@@ -9,9 +7,6 @@ from PIL import Image
 from generator import pz_colors as C
 from generator.rendering.vegetation import _paint_groves
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
-    os.path.abspath(__file__))), "worlded"))
-from patch_rules_big_trees import add_big_trees  # noqa: E402
 
 
 class Proj:
@@ -54,24 +49,6 @@ class Groves(unittest.TestCase):
         trees = np.array(veg).sum(axis=2) > 0
         ground = np.array(land)
         self.assertTrue((ground[trees] == np.array(C.DARK_GRASS)).all())
-
-
-class BigTrees(unittest.TestCase):
-    RULES = ("rule\n{\n    tiles = [\n        e_redmaple_1_8\n        e_americanlinden_1_10\n"
-             "        e_dogwood_1_11\n        darklonggrass\n    ]\n}\n")
-
-    def test_jumbos_are_added_once(self):
-        text, n = add_big_trees(self.RULES, lambda s, i: True)
-        self.assertEqual(n, 2)
-        self.assertIn("e_redmapleJUMBO_1_8", text)
-        self.assertIn("e_dogwoodJUMBO_1_11", text)
-        self.assertNotIn("lindenJUMBO", text)
-        again, n2 = add_big_trees(text, lambda s, i: True)
-        self.assertEqual((again, n2), (text, 0))
-
-    def test_a_sheet_that_is_missing_adds_nothing(self):
-        text, n = add_big_trees(self.RULES, lambda s, i: False)
-        self.assertEqual((text, n), (self.RULES, 0))
 
 
 if __name__ == "__main__":

@@ -1,6 +1,61 @@
 # Changelog
 
-## 1.8
+## 1.8.1
+
+- **A building you built can go to somebody else** (`knoxbuild/share.py`).
+  Hand-built buildings lived in two or three files beside the app and could
+  not leave the PC they were made on. **Share** now writes the whole of one -
+  the .tbx, the drawing it was made from, what it stands in for and who built
+  it - into a single `<name>.knoxbuilding.json`, and **Take one in** reads one
+  somebody sent. What arrives is treated as a stranger's file: it is refused
+  unless it really is a building, under the size a building can be, and with
+  no XML document type declaration in it (a few nested entities expand into
+  gigabytes in the parser that reads these).
+
+
+- **Buildings people sent in ship with KnoxMap** (`presets/library/`,
+  `tools/add_shared_building.py`). Send a building to the Discord and it can
+  go into a library every release carries, with the builder's name on it;
+  every map can then be built from it, the same way as from one of your own.
+  `python tools/add_shared_building.py <file>` checks a submission, puts it in
+  and records what it is. A building of your own with the same name is the one
+  used, so a shipped building can be opened, changed and saved without an
+  update undoing the change - and a shipped one cannot be deleted, since it
+  would come back with the next update anyway.
+
+
+- **Big trees** (`worlded/patch_rules_b42_trees.py`,
+  `generator/rendering/vegetation.py`). Build 42 fills its own woods with
+  jumbo trees - one tile each, with a picture several tiles across - and in
+  its maple forest a jumbo XL or XXL comes up about thirty times as often as
+  a plain tree. KnoxMap placed none of them, ever, so every wood and park it
+  made was undergrowth: "big trees seem to almost never generate, leading to
+  very disappointing results". Woods, parks, hedgerows and the odd garden now
+  grow jumbo, jumbo XL and jumbo XXL trees, each with the square of clear
+  ground around it that the game's own tree features reserve.
+
+
+- **A tree the game knows is a tree** (`worlded/patch_rules_b42_trees.py`).
+  Of the 24 pictures on a species sheet Build 42 gives a tile definition to
+  the first eight, four sizes in two seasons, and it is the definition that
+  carries the `tree` property - what makes the thing a tree the game can
+  grow, chop and blow about in the wind. Every tree KnoxMap had ever placed
+  sat past that, on a picture with nothing behind it: it drew, so nothing
+  complained, and it was scenery. Trees are now placed on the defined tiles,
+  in sizes that follow the rule they come from - a dense wood is grown trees,
+  a scrubby edge keeps the saplings and the half-grown ones - which is also
+  why small trees were as rare as big ones. A park belt and the scrub over
+  open country take young trees outright, a quarter of them or so, so that a
+  stand of trees is not all exactly one height.
+
+
+- **Parks have trees round the edge** (`generator/rendering/vegetation.py`).
+  A mapped park came out as mown grass with whatever the wild growth pass
+  happened to drop on it. A park's trees stand in a belt round its edge, deep
+  enough to screen it from the streets and with the big ones in it, and its
+  middle is left open with the odd specimen tree - and the paths through it
+  keep their width.
+
 
 - Furniture no longer blocks doors or routes: pieces are placed around a
   reserved walkway, decoration is dropped before essentials, and pieces on
@@ -23,6 +78,35 @@
 - **No more cabinets over nothing**. A wall cabinet or microwave above a counter that was
   removed to clear a doorway is removed with it. This also affects shops, offices and other
   non-home buildings, and buildings laid out by the room solver.
+- **The chosen area can be moved and resized on the map**
+  (`static/js/app.js`), from a player - thank you. Drag the rectangle,
+  polygon, circle or place outline to move it, and its corner handles to
+  reshape it, with the corner boxes and the area updating as you drag. The
+  handles are there from the start rather than behind the Edit button, and
+  stand aside while a drawing tool is in use.
+
+
+- **An Update button for installed maps** (`web/maps.py`, `static/js/app.js`).
+  A map already in the game can be brought up to date from the maps list
+  rather than installed again by hand.
+
+
+- **A map still downloads when every data server is down** (`generator/osm.py`).
+  Tiles already in the cache are used when no Overpass server answers, rather
+  than the download failing outright.
+
+
+- **Walls where buildings overlap, and roofs on wide wings**
+  (`knoxbuild/buildtiles.py`, `knoxbuild/buildroofs.py`). Where two lots
+  overlap, the later one's wall now replaces the earlier one's rather than
+  both standing; a wide block among several wings takes the 45-degree roof.
+
+
+- **Russian**, in the language menu, from a player - thank you. All of it: the
+  window, the settings and the map controls, in the informal "ty" form the
+  Spanish and Turkish files use. A handful of lines cannot be translated -
+  paths, css classes, hotkeys and WorldEd's own menus - and stay in English on
+  purpose.
 
 ## 1.7.6.4
 
