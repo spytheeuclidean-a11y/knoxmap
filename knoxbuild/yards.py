@@ -433,22 +433,32 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             continue
         if road[sy, sx]:
             continue
-
-        traversable = base_traversable & ~occupied & ~claimed
-        previous = {start: None}
-        queue = deque([(sx, sy, 0)])
+        
+        # hotfix: BFS never goes further than PATH_MAX_TILES from the start,
+        # so the mask only ever needs to cover that window, not the whole map
+        x0, x1 = max(0, sx - PATH_MAX_TILES), min(w, sx + PATH_MAX_TILES + 1)
+        y0, y1 = max(0, sy - PATH_MAX_TILES), min(h, sy + PATH_MAX_TILES + 1)
+        local_traversable = (base_traversable[y0:y1, x0:x1]
+                             & ~occupied[y0:y1, x0:x1]
+                             & ~claimed[y0:y1, x0:x1])
+        local_road = road[y0:y1, x0:x1]
+        lw, lh = x1 - x0, y1 - y0
+        lsx, lsy = sx - x0, sy - y0
+        
+        previous = {(lsx, lsy): None}
+        queue = deque([(lsx, lsy, 0)])
         end = None
         while queue:
             x, y, distance = queue.popleft()
-            if road[y, x]:
+            if local_road[y, x]:
                 end = (x, y)
                 break
             if distance >= PATH_MAX_TILES:
                 continue
             for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
                 nx, ny = x + dx, y + dy
-                if (0 <= nx < w and 0 <= ny < h and (nx, ny) not in previous
-                        and traversable[ny, nx]):
+                if (0 <= nx < lw and 0 <= ny < lh and (nx, ny) not in previous
+                        and local_traversable[ny, nx]):
                     previous[(nx, ny)] = (x, y)
                     queue.append((nx, ny, distance + 1))
         if end is None:
@@ -460,6 +470,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             route.append(step)
             step = previous[step]
         route.reverse()
+        route = [(x + x0, y + y0) for x, y in route]  # back to global coords
+        
         painted = []
         for index, (x, y) in enumerate(route):
             before = route[max(0, index - 1)]
