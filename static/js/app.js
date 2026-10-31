@@ -710,8 +710,6 @@ function updateBboxFields() {
 
   const shapeKm2 = selectionAreaKm2();
   const shapeVal = shapeKm2 !== null ? shapeKm2 : area;
-  const isRu = (document.getElementById('language') && document.getElementById('language').value === 'russian')
-    || (document.documentElement.lang === 'ru');
 
   stats.className = heavy.length ? 'warn' : (slow ? 'warn' : 'ok');
   stats.innerHTML = `
@@ -730,9 +728,8 @@ function updateBboxFields() {
       <div class="bar"><div class="bar-fill" style="width:${fill}%"></div></div>
     </div>
     ${selectionShape() !== null && shapeKm2 !== null ? `<div class="stat-note shape">
-      ${isRu
-        ? `Застраивается только нарисованная фигура: <b>${shapeKm2.toFixed(2)} км²</b> (вся карта с сеткой ячеек: ${area.toFixed(1)} км², ${cellsX}×${cellsY} ячеек). Вне фигуры местность плавно переходит в дикую природу с продолжением основных дорог и рек.`
-        : `Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b> (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.`}
+      Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b>
+      (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.
     </div>` : ''}
     ${heavy.length ? `<div class="stat-note warn">${heavy.join(' ')}
       You can still build it — this is a heads-up, not a wall.
@@ -1445,22 +1442,16 @@ document.getElementById('healthBtn').addEventListener('click', async () => {
 
 const OSM_SOURCE_DESCS = {
   overpass: {
-    title_ru: '⚡ Overpass API — Онлайн-запросы',
-    desc_ru: 'Скачивает выделенный фрагмент с серверов ниже. При перегрузке делает ограниченное число повторов и сохраняет полученные части карты. Если серверы недоступны, выбери Auto или Geofabrik.',
-    title_en: '⚡ Overpass API — Online queries',
-    desc_en: 'Downloads the selected area from the servers below. Busy servers get a limited number of retries; downloaded parts are kept. If the servers are unreachable, choose Auto or Geofabrik.',
+    title: '⚡ Overpass API — Online queries',
+    description: 'Downloads the selected area from the servers below. Busy servers get a limited number of retries; downloaded parts are kept. If the servers are unreachable, choose Auto or Geofabrik.',
   },
   auto: {
-    title_ru: '⚙ Авто (Auto)',
-    desc_ru: 'Читает региональные данные Geofabrik, если установлен pyosmium. Файл скачивается один раз и сохраняется. Во время чтения показан текущий этап и число проверенных объектов. Если этот источник недоступен, используется Overpass.',
-    title_en: '⚙ Auto mode',
-    desc_en: 'Reads regional Geofabrik data when pyosmium is installed. The file is downloaded once and cached. Reading reports its current stage and object count. Falls back to Overpass if the extract is unavailable.',
+    title: '⚙ Auto mode',
+    description: 'Reads regional Geofabrik data when pyosmium is installed. The file is downloaded once and cached. Reading reports its current stage and object count. Falls back to Overpass if the extract is unavailable.',
   },
   extract: {
-    title_ru: '📦 Geofabrik — Локальные данные',
-    desc_ru: 'Скачивает и сохраняет файл региона Geofabrik, затем выбирает из него объекты для выделенной области. После загрузки работает без Overpass. Первое чтение большого региона требует времени; текущий этап отображается в окне.',
-    title_en: '📦 Geofabrik — Local data',
-    desc_en: 'Downloads and caches a Geofabrik region, then selects objects for your area. Works without Overpass after the download. The first read of a large region takes time; the current stage is shown in the window.',
+    title: '📦 Geofabrik — Local data',
+    description: 'Downloads and caches a Geofabrik region, then selects objects for your area. Works without Overpass after the download. The first read of a large region takes time; the current stage is shown in the window.',
   },
 };
 
@@ -1477,12 +1468,10 @@ function setOsmSourceUI(source, saveToServer = true) {
     card.setAttribute('aria-checked', isThis ? 'true' : 'false');
   });
 
-  const isRu = (document.getElementById('language') && document.getElementById('language').value === 'russian')
-    || (document.documentElement.lang === 'ru');
   const info = OSM_SOURCE_DESCS[source];
   const descEl = document.getElementById('osmSourceDesc');
   if (descEl) {
-    descEl.innerHTML = `<b>${escapeHtml(isRu ? info.title_ru : info.title_en)}</b><br>${escapeHtml(isRu ? info.desc_ru : info.desc_en)}`;
+    descEl.innerHTML = `<b>${escapeHtml(info.title)}</b><br>${escapeHtml(info.description)}`;
   }
 
   if (saveToServer) {
@@ -1490,8 +1479,12 @@ function setOsmSourceUI(source, saveToServer = true) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ osm_source: source }),
-    }).then(r => r.json()).then(() => {
-      note('overpassNote', isRu ? `Режим данных карты: ${source}` : `Map data source set to ${source}`, 'ok');
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw apiError(data, r);
+    }).then(() => {
+      const name = { overpass: 'Overpass API', auto: 'Auto', extract: 'Geofabrik' }[source];
+      note('overpassNote', `Map data source set to ${name}`, 'ok');
     }).catch(err => {
       note('overpassNote', err.message, 'bad');
     });

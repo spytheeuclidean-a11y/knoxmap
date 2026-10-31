@@ -13,14 +13,53 @@
 
 const i18n = (() => {
   let strings = {};            // English -> translated
+  let templates = [];          // compiled once when a language is loaded
   let watching = null;
 
   const clean = s => s.replace(/\s+/g, ' ').trim();
 
+  function compileTemplates() {
+    templates = [];
+    for (const [english, translated] of Object.entries(strings)) {
+      const names = [];
+      const pieces = english.split(/(\{[A-Za-z_]\w*\})/g);
+      if (pieces.length === 1) continue;
+      const escape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = pieces.map(piece => {
+        if (!/^\{[A-Za-z_]\w*\}$/.test(piece)) return escape(piece);
+        names.push(piece.slice(1, -1));
+        return '(.+?)';
+      }).join('');
+      templates.push({ regex: new RegExp(`^${pattern}$`), names, translated,
+                       specificity: pieces.filter((_, i) => i % 2 === 0).join('').length });
+    }
+    templates.sort((a, b) => b.specificity - a.specificity);
+  }
+
+  function lookup(text, depth = 0) {
+    const source = clean(text);
+    if (Object.hasOwn(strings, source)) return strings[source];
+    if (depth >= 4) return null;
+    for (const { regex, names, translated } of templates) {
+      const match = regex.exec(source);
+      if (!match) continue;
+      const values = Object.create(null);
+      names.forEach((name, i) => {
+        const value = match[i + 1];
+        values[name] = lookup(value, depth + 1) ?? value;
+      });
+      // Callback replacement keeps URLs, dollar signs and markup as literal
+      // text. The result still goes through text nodes or attributes only.
+      return translated.replace(/\{([A-Za-z_]\w*)\}/g,
+                                (token, name) => values[name] ?? token);
+    }
+    return null;
+  }
+
   function say(text) {
     if (!text) return null;
-    const hit = strings[clean(text)];
-    if (!hit) return null;
+    const hit = lookup(text);
+    if (hit === null) return null;
     // Keep the spacing around it: the page lays text out with it.
     const [, before, , after] = text.match(/^(\s*)([\s\S]*?)(\s*)$/);
     return before + hit + after;
@@ -77,6 +116,7 @@ const i18n = (() => {
     } catch (_) {
       strings = {};                   // no file, no harm: English it is
     }
+    compileTemplates();
     if (Object.keys(strings).length) {
       translateAll();
       watch();
@@ -113,5 +153,5 @@ const i18n = (() => {
   }
 
   document.addEventListener('DOMContentLoaded', start);
-  return { use, translateAll };
+  return { use, translateAll, t: text => say(text) ?? text };
 })();
