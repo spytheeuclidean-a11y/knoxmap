@@ -90,6 +90,8 @@ _LIKE = {
     "cornerstore": ("conveniencestore", {}),
     "optometrist": ("pharmacy", {"front": ["mirror"]}),
 }
+# Hanging rails: wall fittings, not aisle ones.
+RACKS = {"clothes_rack", "clothes_rack_small"}
 # What may stand in an aisle, besides the piece "rows" names.
 #
 # Every aisle used to be the same piece, so a supermarket or a mall came out
@@ -373,7 +375,12 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
     orient_row = "W" if frame.along_x else "N"
     # Bookcases stand back to back in pairs and are left alone; every other
     # shop draws each row, and each stretch of a row, from its mix.
-    mix = [r for r in (spec.get("aisles") or [row_role]) if r in C.FURNITURE] or [row_role]
+    # A clothes rack stands against a wall, never out in the floor: the middle
+    # of a clothes shop is tables of folded stock, as in a real one.
+    if row_role in RACKS:
+        row_role = "shop_shelf_wood"
+    mix = [r for r in (spec.get("aisles") or [row_role]) if r in C.FURNITURE and r not in RACKS]
+    mix = mix or [row_role]
     row_starts = list(range(2, frame.length - 2, every))
     if row_role == "shop_display":
         # Cases are a deli counter, not a floor of aisles: a row or two.
@@ -436,20 +443,105 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
 OFFICE_DESKS = ["desk", "desk_dark", "desk_long", "desk_long_pale"]
 
 
+# Workstations stand a tile apart along a row, and the rows a tile of aisle
+# apart; the room's edge is left a tile clear to walk round.
+STATION_GAP = 1
+STATION_AISLE = 1
+
+
 def furnish_office(plan, idx: int, room, rng: random.Random, occupied: set,
-                   keep_clear: set, keeps_open=None) -> list[str]:
-    """Desks with their chairs in rows. Returns what is left for the walls."""
+                   keep_clear: set, keeps_open=None) -> tuple[list[str], bool]:
+    """Workstations across the floor, a filing cabinet or a plant in the gaps
+    between them. Returns what is left for the walls, and whether the floor
+    was fitted out (a room too small for a desk in the open is not, and is
+    furnished from its walls like any other)."""
     L = _layout()
     desk = rng.choice(OFFICE_DESKS)
     long_desk = len(C.FURNITURE[desk]["N"]) == 3
     group = [(desk, 0, 1, "S"), ("office_chair", 1 if long_desk else 0, 0, "N")]
-    placed = L._place_group(plan, idx, room, group, max(1, room.area // 16), occupied, keep_clear,
-                            keeps_open)
+    pieces = [(role, dx, dy, L._facing(role, o)) for role, dx, dy, o in group]
+    shape = [(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             for cx, cy in L._cells_for(role, 0, 0, o)]
+    gx0, gy0 = min(x for x, _ in shape), min(y for _, y in shape)
+    gw = max(x for x, _ in shape) - gx0 + 1
+    gh = max(y for _, y in shape) - gy0 + 1
+    solid = {(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             if C.FURNITURE_LAYERS.get(role, "Furniture") == "Furniture"
+             for cx, cy in L._cells_for(role, 0, 0, o)}
     cabinet = rng.choice(["filing_cabinet", "filing_cabinet_pale"])
-    walls = [cabinet, cabinet, "water_cooler", "whiteboard", "plant", cabinet, "corkboard",
-             "bookshelf"]
-    # A room too narrow for a desk out in the floor has one against the wall.
-    return ([desk, "office_chair"] if not placed else []) + walls
+    plant = "plant"
+
+    def clear(ox: int, oy: int) -> bool:
+        cells = {(ox + x, oy + y) for x, y in shape}
+        if any(L._room_at(plan, x, y) != idx or (x, y) in occupied for x, y in cells):
+            return False
+        return not ({(ox + x, oy + y) for x, y in solid} & keep_clear)
+
+    def station_at(ox: int, oy: int) -> bool:
+        mine = {(ox + x, oy + y) for x, y in solid}
+        if not clear(ox, oy) or (keeps_open and not keeps_open(mine)):
+            return False
+        for role, dx, dy, o in pieces:
+            plan.furniture.append((role, ox + dx, oy + dy, o))
+        occupied.update((ox + x, oy + y) for x, y in shape)
+        return True
+
+    def lay(margin: int, shift: int, commit: bool):
+        """Rows of stations, left to right along each, stepping round whatever
+        is in the way (the walkway, a doorway). Counted only, unless commit."""
+        x_lo, x_hi = room.x0 + margin, room.x1 - margin
+        y_lo, y_hi = room.y0 + margin, room.y1 - margin
+        pitch = gw + STATION_GAP
+        slack = (x_hi - x_lo + 1 + STATION_GAP) % pitch
+        out = []
+        oy = y_lo + shift - gy0
+        while oy + gy0 + gh - 1 <= y_hi:
+            row = []
+            ox = x_lo + slack // 2 - gx0
+            while ox + gx0 + gw - 1 <= x_hi:
+                if (station_at(ox, oy) if commit else clear(ox, oy)):
+                    row.append(ox)
+                    ox += pitch
+                else:
+                    ox += 1
+            if row:
+                out.append([oy] + row)
+            oy += gh + STATION_AISLE
+        return out
+
+    def pack(margin: int):
+        """The best of the ways to start the rows, by how many stations fit."""
+        best = max(range(gh + STATION_AISLE),
+                   key=lambda sh: sum(len(r) - 1 for r in lay(margin, sh, False)))
+        return lay(margin, best, True)
+
+    rows = pack(1) or pack(0)
+    if not rows:
+        # Too small for a desk in the open: one against the wall, as before.
+        walls = [desk, "office_chair", cabinet, cabinet, "water_cooler", "whiteboard",
+                 plant, cabinet, "corkboard", "bookshelf"]
+        return walls, False
+
+    def put_extra(role: str, x: int, y: int, orient: str) -> bool:
+        got = _fits(plan, idx, role, x, y, orient, occupied | keep_clear)
+        if got is None or (keeps_open and not keeps_open(set(got))):
+            return False
+        plan.furniture.append((role, x, y, orient))
+        occupied.update(got)
+        return True
+
+    # Between neighbours on a row, on the desk's line a filing cabinet and on
+    # the chair's line a plant, and a cabinet at the end of the row.
+    desk_dy = pieces[0][2]
+    chair_dy = pieces[1][2]
+    for oy, *xs in rows:
+        for c, ox in enumerate(xs):
+            gap = ox + gx0 + gw
+            if c % 2 == 0:
+                put_extra(cabinet, gap, oy + desk_dy, L._facing(cabinet, "S"))
+            elif c % 3 == 1:
+                put_extra(plant, gap, oy + chair_dy, "N")
+    return ["water_cooler", "whiteboard", "corkboard", "bookshelf", cabinet, plant], True
 
 
 SALON_TILES_PER_CHAIR = 25

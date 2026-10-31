@@ -4771,6 +4771,7 @@ def _furnish(plan: Plan, rng: random.Random,
         _, _, base = ROOM_STYLE[r.kind]
         occupied: set[tuple[int, int]] = set()
         office = r.kind == "office" and plan.kind not in HOUSE_LIKE_KINDS
+        office_fitted = False
         eatery = r.kind in interiors.DINING_ROOMS
         salon = r.kind == "aesthetic" and plan.kind not in HOME_KINDS
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
@@ -4779,8 +4780,8 @@ def _furnish(plan: Plan, rng: random.Random,
                 mechanic=(r.kind == "mechanic")):
             continue
         if office:
-            base = interiors.furnish_office(plan, idx, r, rng, occupied, keep_clear,
-                                            keeps_open)
+            base, office_fitted = interiors.furnish_office(
+                plan, idx, r, rng, occupied, keep_clear, keeps_open)
         elif salon:
             base = interiors.furnish_salon(plan, idx, r, rng, occupied, no_go, keeps_open)
         elif eatery:
@@ -4856,7 +4857,8 @@ def _furnish(plan: Plan, rng: random.Random,
         if plan.profile:
             per = max(1, round(per * (1.18 - 0.36 * plan.profile.clutter)))
         target = max(len(base), min(40, r.area // per))
-        if eatery or salon or commercial_kitchen or r.kind in {"bathroom", "theatre"}:
+        if (eatery or salon or commercial_kitchen or office_fitted
+                or r.kind in {"bathroom", "theatre"}):
             target = len(base)       # fitted out; nothing more to scatter
         wishlist = []
         art_chance = WALL_ART_CHANCE

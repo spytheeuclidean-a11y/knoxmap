@@ -40,6 +40,7 @@ from .settings import LIMITS, Settings
 #   rotate_degrees  the same
 #   straight_roads  the roads are drawn once, before any zone is read
 #   fill_gaps       the download happens before there are zones to read
+#   fill_frontage   the buildings are added while the ground is drawn
 #   building_alignment  a footprint is squared up before its centre is known
 OVERRIDABLE = (
     # --- what is built ---

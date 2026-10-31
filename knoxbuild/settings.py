@@ -84,6 +84,12 @@ class Settings:
     # a few minutes: measured over the same size of box, 60 buildings in
     # Gifhorn against 761 in Urgup. Needs DuckDB installed.
     fill_gaps: int = 0
+    # Build into the gaps along a street that has buildings either side of
+    # them (generator/rendering/infill.py): the shop missing from a row of
+    # shops, the houses missing from a run of houses, built like the ones
+    # beside them. It needs no data from anywhere, only the streets and
+    # buildings already on the map.
+    fill_frontage: int = 0
     # Put one military rifle somewhere on the map, come what may. A real town
     # has no army checkpoint in it, so the game's rifles - which spawn from
     # army and police loot - may have nowhere at all to appear.
@@ -204,6 +210,7 @@ LIMITS = {
     "seed": (0, 2 ** 31 - 1),
     "true_map": (0, 1),
     "fill_gaps": (0, 1),
+    "fill_frontage": (0, 1),
     "guaranteed_rifle": (0, 1),
     # MIN_ROOM in layout.py is 3, and a building has to hold at least one room
     # plus its walls. MAX_BUILDING_DIMENSION in the reader is 300.
