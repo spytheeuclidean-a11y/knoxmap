@@ -21,6 +21,7 @@ from typing import Iterable, Sequence
 
 import requests
 
+import knoxlog
 import knoxpaths
 import knoxstop
 
@@ -54,7 +55,6 @@ _DEFAULT_ENDPOINTS = [
     "https://overpass.osm.ch/api/interpreter",
     # More regional instances. Like osm.ch they answer blank outside their own
     # area, so they are blank-only too (BLANK_ONLY_HOSTS).
-    "https://overpass.atownsend.org.uk/api/interpreter",
     "https://overpass.maprva.org/api/interpreter",
     "https://ethiopia.overpass.openplaceguide.org/api/interpreter",
 ]
@@ -67,11 +67,25 @@ OVERPASS_ENDPOINTS = _config_list("overpass_endpoints") or _DEFAULT_ENDPOINTS
 # out: it is still asked, and its blank still counts towards BLANKS_TO_BELIEVE,
 # but it is not capacity and must not be counted as a download slot.
 BLANK_ONLY_HOSTS = tuple(_config_list("overpass_blank_only")
-                         or ["overpass.osm.ch", "overpass.atownsend.org.uk",
+                         or ["overpass.osm.ch",
                               "overpass.maprva.org",
                               "ethiopia.overpass.openplaceguide.org"])
 ANSWERING_ENDPOINTS = [e for e in OVERPASS_ENDPOINTS
                        if not any(h in e for h in BLANK_ONLY_HOSTS)]
+
+
+def osm_source() -> str:
+    """Where a map's OpenStreetMap data comes from: "extract" (a downloaded
+    regional file), "overpass" (the live servers) or "auto", the default - the
+    extract, and Overpass only where no extract can be used. Set osm_source in
+    knoxmap_config.json, or KNOXMAP_OSM_SOURCE in the environment."""
+    value = os.environ.get("KNOXMAP_OSM_SOURCE", "").strip().lower()
+    if not value:
+        try:
+            value = str(knoxpaths.load_config().get("osm_source") or "").strip().lower()
+        except Exception:  # noqa: BLE001
+            value = ""
+    return value if value in ("extract", "overpass") else "auto"
 
 
 def set_endpoints(urls: Sequence[str] | None) -> list:
@@ -98,18 +112,75 @@ def set_endpoints(urls: Sequence[str] | None) -> list:
 # fact. The tile that finds it pays once and the rest go straight to an
 # instance that is answering.
 ENDPOINT_COOLDOWN_S = 120.0
+# Each failure in a row doubles the rest, up to this. A server that is down or
+# turning people away is not helped by being asked again every two minutes: one
+# operator counted 22,515 requests in a day, 14,608 of them answered with a 504.
+ENDPOINT_COOLDOWN_MAX_S = 3600.0
+# A server that refuses us outright (401, 403, 451 - "white-listed use only",
+# or told to go away) is left alone for this long, and across restarts.
+REFUSED_FOR_S = 7 * 86400.0
+# One request at a time to a host, and at least this long between the end of one
+# and the start of the next. The public instances have a few slots each and
+# many people sharing them.
+HOST_MIN_GAP_S = 2.0
 _cooling: dict = {}
+_fails: dict = {}
 _cooling_lock = threading.Lock()
 
 
-def _note_down(endpoint: str) -> None:
+def _refused_file() -> str:
+    return os.path.join(str(knoxpaths.BASE_DIR), "cache", "overpass_refused.json")
+
+
+def _load_refused() -> dict:
+    try:
+        with open(_refused_file(), encoding="utf-8") as f:
+            data = json.load(f)
+        now = time.time()
+        return {k: float(v) for k, v in data.items() if float(v) > now}
+    except (OSError, ValueError, AttributeError):
+        return {}
+
+
+_refused: dict = _load_refused()
+
+
+def _refuse(endpoint: str) -> None:
+    """This server said no. Leave it alone for a week, even after a restart."""
     with _cooling_lock:
-        _cooling[endpoint] = time.time() + ENDPOINT_COOLDOWN_S
+        _refused[endpoint] = time.time() + REFUSED_FOR_S
+        snapshot = dict(_refused)
+    try:
+        os.makedirs(os.path.dirname(_refused_file()), exist_ok=True)
+        with open(_refused_file(), "w", encoding="utf-8") as f:
+            json.dump(snapshot, f)
+    except OSError:
+        pass
+
+
+def _is_refused(endpoint: str) -> bool:
+    with _cooling_lock:
+        until = _refused.get(endpoint, 0.0)
+        if until and until <= time.time():
+            del _refused[endpoint]
+            return False
+        return bool(until)
+
+
+def _note_down(endpoint: str, retry_after: float | None = None) -> None:
+    with _cooling_lock:
+        n = _fails.get(endpoint, 0) + 1
+        _fails[endpoint] = n
+        wait = min(ENDPOINT_COOLDOWN_MAX_S, ENDPOINT_COOLDOWN_S * 2 ** (n - 1))
+        if retry_after:
+            wait = max(wait, min(float(retry_after), ENDPOINT_COOLDOWN_MAX_S))
+        _cooling[endpoint] = time.time() + wait
 
 
 def _note_up(endpoint: str) -> None:
     with _cooling_lock:
         _cooling.pop(endpoint, None)
+        _fails.pop(endpoint, None)
 
 
 def _is_cooling(endpoint: str) -> bool:
@@ -121,17 +192,73 @@ def _is_cooling(endpoint: str) -> bool:
         return bool(until)
 
 
+def _rest_left() -> float:
+    """Seconds until the first resting server may be asked again (0 if none rest)."""
+    with _cooling_lock:
+        times = [t - time.time() for t in _cooling.values()]
+    return max(0.0, min(times)) if times else 0.0
+
+
+_host_gate: dict = {}
+_host_last: dict = {}
+_gate_lock = threading.Lock()
+
+
+class _one_at_a_time:
+    """Hold a host for one request, after waiting out HOST_MIN_GAP_S since the
+    last one finished."""
+
+    def __init__(self, endpoint: str):
+        self.host = endpoint.split("/")[2] if "//" in endpoint else endpoint
+
+    def __enter__(self):
+        with _gate_lock:
+            gate = _host_gate.setdefault(self.host, threading.Lock())
+        gate.acquire()
+        pause = _host_last.get(self.host, 0.0) + HOST_MIN_GAP_S - time.time()
+        if pause > 0:
+            time.sleep(pause)
+        return self
+
+    def __exit__(self, *exc):
+        _host_last[self.host] = time.time()
+        _host_gate[self.host].release()
+        return False
+
+
+def _retry_after(r) -> float | None:
+    """Seconds a server asked us to wait, from its Retry-After header."""
+    try:
+        return float(r.headers.get("Retry-After", ""))
+    except (TypeError, ValueError, AttributeError):
+        return None
+
+
+def endpoint_ready(endpoint: str) -> bool:
+    """Whether this server may be asked at all right now."""
+    return not (_is_refused(endpoint) or _is_cooling(endpoint))
+
+
 CONNECT_TIMEOUT_S = 10
 PROBE_TIMEOUT_S = 8
 
 
+def _status_url(endpoint: str) -> str:
+    return endpoint.replace("/interpreter", "/status")
+
+
 def _probe(endpoint: str, lat: float, lon: float) -> bool:
-    """One tiny query: does this instance answer, and quickly?"""
-    query = (f'[out:json][timeout:{PROBE_TIMEOUT_S}];'
-             f'way["highway"]({lat},{lon},{lat + 0.002},{lon + 0.002});out count;')
+    """Does this instance answer? Asked of its status page, which is what that
+    page is for and which costs the server no query - the probe used to be a
+    real query sent to every instance at the start of every download."""
+    if _is_refused(endpoint):
+        return False
     try:
-        r = requests.post(endpoint, data={"data": query}, headers=HEADERS,
-                          timeout=(CONNECT_TIMEOUT_S, PROBE_TIMEOUT_S + 4))
+        with _one_at_a_time(endpoint):
+            r = requests.get(_status_url(endpoint), headers=HEADERS,
+                             timeout=(CONNECT_TIMEOUT_S, PROBE_TIMEOUT_S))
+        if r.status_code in (401, 403, 451):
+            _refuse(endpoint)
         return r.status_code == 200
     except (requests.RequestException, ValueError):
         return False
@@ -171,10 +298,9 @@ def _endpoint_order(first: int) -> list:
     # gave up having never asked the first. A rest is a guess about a server
     # we cannot see, so it may reorder the asking and must not end it. When
     # anything is answering the resting one is never reached anyway.
-    ready = [e for e in spun if not _is_cooling(e)]
-    resting = [e for e in spun if _is_cooling(e)]
-    return (ready + resting
-            + [e for e in OVERPASS_ENDPOINTS if e not in ANSWERING_ENDPOINTS])
+    ready = [e for e in spun if endpoint_ready(e)]
+    return (ready + [e for e in OVERPASS_ENDPOINTS
+                     if e not in ANSWERING_ENDPOINTS and endpoint_ready(e)])
 
 
 # Whether an empty answer has to be confirmed by another instance before the
@@ -349,8 +475,12 @@ class OverpassError(RuntimeError):
     """A failed query, with whether a smaller bbox would plausibly succeed."""
 
     def __init__(self, message: str, too_big: bool = False,
-                 timed_out: bool = False, busy: bool = False):
+                 timed_out: bool = False, busy: bool = False,
+                 retry_after: float | None = None, refused: bool = False):
         super().__init__(message)
+        self.retry_after = retry_after
+        # The server said no, not "later": 401, 403 or 451.
+        self.refused = refused
         self.too_big = too_big
         # Nothing answered at all, as opposed to answering with a refusal.
         self.timed_out = timed_out
@@ -398,8 +528,9 @@ def _error_text(body: str) -> str:
 def _ask(endpoint: str, query: str, timeout: int) -> list[OSMFeature]:
     # A host that is down never completes the connection; waiting the whole
     # query timeout to learn that cost 100 s per dead instance per tile.
-    r = requests.post(endpoint, data={"data": query}, headers=HEADERS,
-                      timeout=(CONNECT_TIMEOUT_S, timeout + 10))
+    with _one_at_a_time(endpoint):
+        r = requests.post(endpoint, data={"data": query}, headers=HEADERS,
+                          timeout=(CONNECT_TIMEOUT_S, timeout + 10))
     if r.status_code == 200:
         payload = r.json()
         # A query that runs out of time or memory part way through does not
@@ -422,7 +553,9 @@ def _ask(endpoint: str, query: str, timeout: int) -> list[OSMFeature]:
     raise OverpassError(f"HTTP {r.status_code}"
                         + (f" — {message}" if message else ""),
                         too_big=too_big,
-                        busy=r.status_code == 429 or 500 <= r.status_code < 600)
+                        busy=r.status_code == 429 or 500 <= r.status_code < 600,
+                        retry_after=_retry_after(r),
+                        refused=r.status_code in (401, 403, 451))
 
 
 def fetch_features(south: float, west: float, north: float, east: float,
@@ -451,8 +584,10 @@ def fetch_features(south: float, west: float, north: float, east: float,
         except OverpassError as exc:
             errors.append(f"{host}: {exc}")
             too_big = too_big or exc.too_big
-            if exc.busy:
-                _note_down(endpoint)
+            if exc.refused:
+                _refuse(endpoint)
+            elif exc.busy:
+                _note_down(endpoint, exc.retry_after)
         except requests.Timeout:
             errors.append(f"{host}: no answer within {timeout + 10}s")
             timed_out = True
@@ -484,6 +619,12 @@ def fetch_features(south: float, west: float, north: float, east: float,
     # be among them.
     if blank >= BLANKS_TO_BELIEVE and real_blank:
         return []
+    if not errors:
+        wait = int(_rest_left())
+        raise OverpassError(
+            "the Overpass servers are resting after refusing or failing to answer"
+            + (f" - asking again in about {wait}s" if wait else ""),
+            busy=True)
     raise OverpassError("every Overpass endpoint failed — "
                         + "; ".join(errors), too_big=too_big,
                         timed_out=timed_out)
@@ -620,6 +761,24 @@ def fetch_features_tiled(south: float, west: float, north: float, east: float,
     (`out geom` gives complete geometry regardless of clipping), so features are
     de-duplicated on (kind, osm_id) and keep their whole shape.
     """
+    source = osm_source()
+    if source != "overpass":
+        # A town is hundreds of queries against servers other people run and
+        # pay for. OpenStreetMap is also published as files, and reading one on
+        # this PC asks nobody for anything (generator/extract.py).
+        from . import extract
+        try:
+            if not extract.available():
+                raise extract.ExtractUnavailable(
+                    "pyosmium is not installed (run Setup again, or pip install osmium)")
+            return extract.features(south, west, north, east, progress=progress,
+                                    should_stop=should_stop)
+        except extract.ExtractUnavailable as exc:
+            if source == "extract":
+                raise OverpassError(f"The OpenStreetMap extract could not be used: {exc}") from None
+            _say(progress, 1, 1, f"no extract ({exc}) - asking the Overpass servers instead")
+            knoxlog.log.warning("osm: no extract (%s); using Overpass", exc)
+
     area = _area_km2(south, west, north, east)
     steps = max(1, math.ceil(math.sqrt(area / max_tile_km2)))
     # A map small enough to be one tile goes the same way as any other. It

@@ -29,11 +29,31 @@ def _feature_coords_px(feat: OSMFeature, proj: Projector) -> list[list[tuple[flo
     return []
 
 
+# A road that comes back to where it started is a ring road, a roundabout or a
+# loop of lane - not a plot of ground. Filled as an area it paved everything
+# inside it: a road drawn round a town, or a closed loop of roads, turned the
+# whole town to tarmac. Only a mapper who says it is an area makes it one.
+_LINEAR_HIGHWAYS = frozenset({
+    "motorway", "trunk", "primary", "secondary", "tertiary", "residential",
+    "unclassified", "living_street", "service", "track", "path", "cycleway",
+    "bridleway", "steps", "motorway_link", "trunk_link", "primary_link",
+    "secondary_link", "tertiary_link"})
+
+
 def _is_polygon(feat: OSMFeature) -> bool:
-    """Treat as polygon if first/last point match (way) or it's a relation."""
+    """Treat as polygon if first/last point match (way) or it's a relation -
+    unless it is a road, which stays a line however it loops."""
     if feat.kind == "relation":
         return True
     if feat.kind == "way" and len(feat.geometry) >= 3:
+        # Drawn on the map as a line, so a line it stays when it closes.
+        if feat.tags.get("knox:line") == "yes":
+            return False
+        if (feat.geometry[0] == feat.geometry[-1]
+                and feat.tags.get("highway") in _LINEAR_HIGHWAYS
+                and feat.tags.get("area") != "yes"
+                and "area:highway" not in feat.tags):
+            return False
         return feat.geometry[0] == feat.geometry[-1]
     return False
 

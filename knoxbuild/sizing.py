@@ -221,12 +221,15 @@ def split_by_targets(box: tuple[int, int, int, int], kinds: list[str],
         w, h = r[2] - r[0] + 1, r[3] - r[1] + 1
         if side is not None and 0 in idx and r[side] != box[side]:
             return False
-        if touch is not None and 0 in idx and not (
-                (r[0] <= touch[2] and r[2] >= touch[0]
-                 and r[1] <= touch[3] + 1 and r[3] >= touch[1] - 1)
-                or (r[1] <= touch[3] and r[3] >= touch[1]
-                    and r[0] <= touch[2] + 1 and r[2] >= touch[0] - 1)):
-            return False
+        if touch is not None and 0 in idx:
+            # Sharing a wall of two tiles at least, or a door has no room to
+            # go in it and the stairs open onto a bedroom instead.
+            ox = min(r[2], touch[2]) - max(r[0], touch[0]) + 1
+            oy = min(r[3], touch[3]) - max(r[1], touch[1]) + 1
+            if not ((ox > 0 and oy > 0)
+                    or (ox >= 2 and (r[1] == touch[3] + 1 or r[3] == touch[1] - 1))
+                    or (oy >= 2 and (r[0] == touch[2] + 1 or r[2] == touch[0] - 1))):
+                return False
         return (w // M) * (h // M) >= len(idx) and tiles(r) >= len(idx) * M * M
 
     def solve(r, idx):

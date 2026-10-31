@@ -89,7 +89,8 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
     for (x, y, z), (i, rid) in owner.items():
         squares.setdefault((i, z, rid), set()).add((x, y))
     # parts: (lot, level, room number) with squares left; group parts that touch
-    parts = sorted(squares, key=lambda k: (order.index(k[0]), k[1], k[2]))
+    rank = {lot: n for n, lot in enumerate(order)}
+    parts = sorted(squares, key=lambda k: (rank[k[0]], k[1], k[2]))
     parent = {k: k for k in parts}
 
     def find(k):
@@ -121,14 +122,17 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
     groups: dict[int, list[int]] = {}
     for i in order:
         groups.setdefault(lfind(i), []).append(i)
+    # Each lot's parts in order, so a group reads only its own - going through
+    # every part for every group was quadratic in the buildings on the map.
+    parts_of: dict[int, list] = {}
+    for k in parts:
+        parts_of.setdefault(k[0], []).append(k)
     out = []
     for members in groups.values():
         first = members[0]
         entries = []
         merged: dict[tuple, dict] = {}
-        for k in parts:
-            if k[0] not in members:
-                continue
+        for k in (k for lot in members for k in parts_of.get(lot, ())):
             root = find(k)
             if root not in merged:
                 merged[root] = {"name": lots[k[0]][0].rooms[k[2] - 1].get("Name", ""), "z": k[1], "squares": set()}

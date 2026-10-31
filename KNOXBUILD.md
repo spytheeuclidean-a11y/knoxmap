@@ -186,6 +186,45 @@ A mapper's own `building:levels` or `height` still beats every table, the
 neighbourhood median still beats it for the kinds that follow their
 neighbours, and `max_levels` still caps the lot.
 
+## Buildings built by hand, and passed around
+
+The generator lays out every building from scratch, which is what makes a map
+of ten thousand of them possible and is also its limit: it will never produce
+the one house somebody drew themselves. A **preset** is that building, saved
+whole and stamped onto a footprint instead of a generated one
+(`knoxbuild/presets.py`). It is a `.tbx` — the same file the generator writes
+and BuildingEd reads — used exactly as saved: nothing is converted, stretched
+or re-rendered. A footprint takes the biggest preset that fits, chosen from its
+own seed so a rebuild puts the same building back; a plot nothing fits goes to
+the generator.
+
+They come from two places and go to three:
+
+| | |
+|---|---|
+| `presets/buildings/` | Somebody's own, written by the window. Not in the repository and never touched by an update. |
+| `presets/library/` | Buildings people sent in, shipped with every release. Read-only: an update replaces the folder. |
+| `<name>.knoxbuilding.json` | One building in one file, to send to somebody (`knoxbuild/share.py`). |
+
+A name in both folders is the person's own, so a shipped building can be
+opened, changed and saved and the change survives updates. `library.json`
+beside the shipped ones records what each stands in for, who built it and when
+it was added — kept with the buildings rather than in the user's own manifest,
+which is their settings and not ours to write.
+
+A share file arrives from a stranger over a chat program, so `share.read` is
+the one door it comes through: it must say it is a KnoxMap building of a
+version we read, have a name that is a filename, hold a `.tbx` under the size
+cap that `measure` recognises as a building no bigger than a cell, and carry no
+XML document type declaration — `buildtiles.parse_tbx` reads these with
+ElementTree, which expands entities, and a few nested ones expand into
+gigabytes. The drawing beside it is best-effort: one that cannot be read costs
+the drawing, not the building.
+
+`python tools/add_shared_building.py <file>` is the other end — it checks a
+submission, copies it into `presets/library/` and records it. `--check` looks
+without adding, `--list` shows what is there, `--remove` takes one out.
+
 ## Footprint fitting
 
 A plain bounding box is wrong for anything not aligned to north: a 10x20
@@ -488,12 +527,30 @@ Four things had to be right, and each failed loudly before it worked:
    with `vegetation_trees_01_*` and flowers with `vegetation_groundcover_01_*`.
    B42 still *defines* those tiles but ships no artwork — they are in none of
    the 24 texture packs and exist as no loose PNG. `patch_rules_b42_trees.py`
-   repoints them at the per-species sheets B42 does ship (`e_redmaple_1`,
-   `e_riverbirch_1`, `e_americanlinden_1`, `e_dogwood_1`), which use the same
-   index convention: 0-7 bare, 8-11 green, 16+ autumn. The old rules asked for
-   8-11, so it is an index-for-index swap, rotated across four species so a
-   forest is not a monoculture. Flowers become `f_flowerbed_1`. **This affects
-   the GUI too** — without it, clicking the menu fails identically.
+   repoints them at the per-species sheets B42 does ship (`e_redmaple_1` and
+   ten more), rotating the species so a forest is not a monoculture. Flowers
+   become `f_flowerbed_1`. **This affects the GUI too** — without it, clicking
+   the menu fails identically.
+
+   **The index is not a free choice.** A species sheet holds 24 pictures — six
+   seasons of four sizes — and the game gives a tile definition to the first
+   eight only, which is where `tree = 1..4` lives. That property is what makes
+   the tile a tree the game grows, chops and blows about in the wind; past the
+   eighth there is a picture and nothing behind it, so it draws and is scenery.
+   The first version of this script swapped index for index and the old rules
+   asked for 8-11, so until 1.7.7 every tree on a KnoxMap map was scenery.
+   Trees go on indices 0-3 now, the size chosen by the rule they come from.
+
+   **Big trees** are the jumbo sheets (`e_redmapleJUMBO_1`, `...JUMBOXL_1`,
+   `...JUMBOXXL_1`): one tile each, carrying `tree = 5..8`, with a picture
+   several tiles across. Build 42 leans on them — in its own maple forest a
+   jumbo XL or XXL comes up about thirty times as often as a plain tree
+   (`media/lua/server/WorldGen/biomes/worldgen/maple_forest.lua`), and Knox
+   County's cells carry some 1800 of them. The script writes three
+   `KnoxMap tree` rules for them, one per size, and the renderer keeps the
+   square of clear ground round each that the game's own tree features reserve
+   (`media/lua/server/WorldGen/features/tree/maple_jumbo*.lua`): 2x2 for a
+   jumbo, 3x3 for an XL, 5x5 for an XXL.
 2. **`update-existing` must be false on a first run.** With it on, BMPToTMX
    writes to each cell's existing map path, and a fresh project has none, so it
    silently produces nothing.
@@ -528,7 +585,10 @@ self-tests), so these two are unavoidable from here.
 Knoxify's palette does line up with the tools' terrain rules: of the 18 colours
 it paints, 17 are defined in `config/Rules.txt` with the right bitmap and layer.
 The only one missing is `VEG_NOTHING` `(0,0,0)`, which means "no vegetation"
-anyway. So BMP to TMX needs no rules setup.
+anyway. So BMP to TMX needs no rules setup. The colours added since — the road
+details and the big trees — do need the rules Setup writes, and the renderer
+asks before it paints them: without those rules it leaves the trees as they
+were rather than painting a colour that would be dropped with a warning.
 
 Then package the result as a mod:
 

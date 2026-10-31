@@ -47,6 +47,25 @@ DENSE_BUSHES_GRASS = (200, 0, 200)      # must sit on DARK_GRASS — wetland
 FLOWERS = (200, 100, 200)               # flowers, any ground — cemeteries
 VEG_NOTHING = (0, 0, 0)
 
+# The big trees, each one a single tile whose picture is several tiles across.
+# Build 42's own world generator plants them as the ordinary tree of a wood -
+# in its maple forest a jumbo XL or XXL comes up thirty times more often than
+# a plain tree - and KnoxMap placed none at all, which is why generated woods
+# and parks read as scrub beside Knox County's. The rules for these colours
+# are written by worlded/patch_rules_b42_trees.py; the renderer keeps a clear
+# square around each (generator/rendering/vegetation.py), as the game does,
+# because the picture of one leans over its neighbours.
+TREE_BIG = (255, 0, 1)                  # jumbo: a 2x2 square to itself
+TREE_HUGE = (255, 0, 2)                 # jumbo XL: 3x3
+TREE_GIANT = (255, 0, 3)                # jumbo XXL: 5x5
+# And the other end of it: a young tree, a quarter or half grown. TREES is
+# whatever the rule it falls under calls a tree, which in a wood or a park is
+# a grown one, so without this every tree in a park was the same height.
+TREE_SMALL = (255, 0, 4)
+# How wide a square each one needs, in tiles - the footprints the game's own
+# tree features use (media/lua/server/WorldGen/features/tree).
+BIG_TREE_ROOM = {TREE_BIG: 2, TREE_HUGE: 3, TREE_GIANT: 5}
+
 # Road details on the vegetation bitmap, placed by the rules that
 # worlded/patch_rules_roads.py adds: a kerb on each edge of a pavement tile
 # that meets the road, and centre lines along the edge between two lanes.
@@ -126,6 +145,7 @@ VEGETATION_COLORS = {
     TREES, TREES_DARK_GRASS, SPARSE_TREES, GRASS_ON_DARK,
     LOT_OF_GRASS_AND_TREES, BUSHES_TREES_DARK_GRASS, VEG_NOTHING,
     BUSHES, DENSE_BUSHES_GRASS, FLOWERS,
+    TREE_BIG, TREE_HUGE, TREE_GIANT,
 }
 
 CELL_SIZE = 300  # tiles per cell side — fixed by the game engine

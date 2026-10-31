@@ -17,6 +17,10 @@ import contextlib
 import io
 import json
 import math
+import os as _os
+
+# The self-test fakes the Overpass servers, so it asks them rather than an extract.
+_os.environ.setdefault("KNOXMAP_OSM_SOURCE", "overpass")
 import os
 import re
 import shutil
@@ -285,8 +289,11 @@ def check_1_3_6(check, out: str, tbx: list[str], pzw_text: str, log: str) -> Non
     for role, x, y, _o in mall.furniture:
         if role == "switch":
             per_room[mall.grid[y][x]] = per_room.get(mall.grid[y][x], 0) + 1
-    check(max(per_room.values(), default=0) >= 4,
-          f"a big room has several light switches ({max(per_room.values(), default=0)})")
+    # A floor this big is cut into sections now, each its own shop; a section of
+    # 200 tiles or more still gets a switch at each end.
+    big = [i for i, r in enumerate(mall.rooms, 1) if r.area >= 200]
+    check(big and all(per_room.get(i, 0) >= 2 for i in big),
+          f"a big room has several light switches ({[per_room.get(i, 0) for i in big]})")
 
     # And its aisles are not forty copies of one shelf.
     from collections import Counter as _Counter
@@ -2255,6 +2262,7 @@ def check_overpass_blank(check) -> None:
         # rest, so the tiles behind the first one do not each wait the whole
         # timeout to learn the same thing.
         _osm._cooling.clear()
+        _osm._fails.clear()
         down = _osm.ANSWERING_ENDPOINTS[0]
         replies = {down.split("/")[2]: Reply({}, status=504)}
         asked.clear()
@@ -2262,19 +2270,22 @@ def check_overpass_blank(check) -> None:
         paid = list(asked)
         asked.clear()
         _osm.fetch_features(50.0, 5.0, 50.1, 5.1, timeout=10, first=0)
-        check(asked[0] != down.split("/")[2] and down.split("/")[2] in asked,
-              "an instance that answered 504 goes to the back of the queue "
-              f"for the tiles behind it, but is still asked ({asked})")
+        check(down.split("/")[2] not in asked and asked,
+              "an instance that answered 504 is left alone while it rests, and "
+              f"the tiles behind it go to the others ({asked})")
 
-        # ...but when every instance is resting there is nothing else to do.
+        # ...and when every instance is resting nothing is asked at all: the
+        # download waits and tries again after the rest (22,515 requests in a
+        # day, 14,608 of them 504, is what asking anyway came to).
         _osm._cooling.clear()
+        _osm._fails.clear()
         for e in _osm.ANSWERING_ENDPOINTS:
             _osm._note_down(e)
         order = _osm._endpoint_order(0)
-        check(all(e in order for e in _osm.ANSWERING_ENDPOINTS),
-              "with every instance resting the tile asks them all anyway: a "
-              "rest is a guess and may not be the reason a town fails")
+        check(not any(e in order for e in _osm.ANSWERING_ENDPOINTS),
+              "with every instance resting the tile asks none of them")
         _osm._cooling.clear()
+        _osm._fails.clear()
 
         # The wait between passes outlasts a busy spell instead of landing
         # back inside it.
@@ -2597,6 +2608,121 @@ def check_windows_open(check) -> None:
             wrong.append(f"{sheet}: {sorted(ours ^ theirs)[:8]}")
     check(not wrong, f"the locked-window table matches this copy of the game "
                      f"({'; '.join(wrong) if wrong else 'all four sheets'})")
+
+
+def check_trees_are_trees(check) -> None:
+    """Every tree the rules place is one the game knows is a tree.
+
+    A species sheet holds 24 pictures and Build 42 defines the first eight; it
+    is the definition that carries `tree = 1..8`, the property that makes the
+    tile a tree rather than a picture of one. Rules.txt asking for an index
+    past that is the quietest failure KnoxMap has had - the picture draws, so
+    nothing complains, and the wood is scenery - which is what this looks for.
+    Where this PC has no game, only the rules are checked.
+    """
+    import re as _re
+
+    import knoxpaths
+    from knoxbuild.rules import parse_rules
+
+    tools = knoxpaths.mapping_tools_dir()
+    path = os.path.join(str(tools), "config", "Rules.txt") if tools else ""
+    if not path or not os.path.exists(path):
+        print("  --    the map tools are not on this PC, so the tree rules "
+              "are taken as read")
+        return
+    with open(path, encoding="utf-8", errors="replace") as f:
+        rules = parse_rules(f.read())
+    named = {tile for rule in rules.rules for entry in rule.entries
+             for tile in rules.aliases.get(entry, [entry])
+             if tile.startswith("e_") and "grass" not in tile}
+    check(any("JUMBO" in t for t in named),
+          f"the rules place big trees ({sum('JUMBO' in t for t in named)} of "
+          f"{len(named)} tree tiles)")
+
+    media = knoxpaths.pz_media_dir()
+    if not media or not os.path.isdir(str(media)):
+        print("  --    the game is not on this PC, so the tree tiles are "
+              "taken as read")
+        return
+    sizes: dict = {}
+    for name in sorted(os.listdir(str(media))):
+        if not name.endswith(".tiles.txt"):
+            continue
+        with open(os.path.join(str(media), name), encoding="utf-8",
+                  errors="replace") as f:
+            text = f.read()
+        for tile in _re.finditer(r"//\s*(\S+)\n\s*tile\s*\n?\s*\{(.*?)\n    \}",
+                                 text, _re.S):
+            tree = _re.search(r"tree = (\d+)", tile.group(2))
+            if tree:
+                sizes[tile.group(1)] = int(tree.group(1))
+    scenery = sorted(t for t in named if t not in sizes)
+    check(not scenery, f"every tree the rules place is a tree the game grows "
+                       f"({len(named) - len(scenery)} of {len(named)}"
+                       + (f"; scenery: {', '.join(scenery[:4])}" if scenery else "") + ")")
+    spread = {sizes[t] for t in named if t in sizes}
+    check(len(spread) >= 6, f"and they come in every size the game has "
+                            f"({sorted(spread)})")
+
+
+def check_shared_buildings(check, work: str) -> None:
+    """A building goes out as one file and comes back as the same building.
+
+    Somebody builds a house, presses Share and sends the file; anybody with
+    KnoxMap can take it in, and tools/add_shared_building.py can put it into
+    the library that ships with it (knoxbuild/share.py). Checked here because
+    what arrives that way came from a stranger over a chat program.
+    """
+    import json as _json
+
+    from knoxbuild import designer as D
+    from knoxbuild import presets as P
+    from knoxbuild import share as S
+
+    tbx = ('<building version="4" width="12" height="10"><room name="hall"/>'
+           '<floor></floor><floor></floor></building>')
+    home = os.path.join(work, "shared_home")
+    sent = S.wrap("Station House", tbx, D.clean(
+        {"width": 12, "height": 10, "storeys": 1,
+         "rooms": [{"level": 0, "x": 0, "y": 0, "w": 12, "h": 10,
+                    "kind": "hall"}]}), kind="police", author="Somebody")
+    came, problem = S.read(_json.loads(_json.dumps(sent)))
+    check(came is not None and not problem,
+          f"a shared building survives being written out and read back ({problem})")
+    if came:
+        S.install(home, came)
+        listed = P.library(home)
+        check([p["name"] for p in listed] == ["Station House"]
+              and listed[0]["kind"] == "police" and listed[0]["editable"]
+              and P.read(home, "Station House") == tbx,
+              "and lands whole: the .tbx as it was sent, its kind and its drawing")
+
+    # What a stranger's file may not do.
+    bomb = '<!DOCTYPE a [<!ENTITY b "bb">]>' + tbx
+    refused = {what: S.read(data)[1] for what, data in (
+        ("not ours", {"format": "something-else"}),
+        ("a version we do not read", {**sent, "version": 99}),
+        ("no building in it", {**sent, "tbx": "hello"}),
+        ("an XML bomb", {**sent, "tbx": bomb}),
+        ("a building the size of a county",
+         {**sent, "tbx": tbx.replace('width="12"', f'width="{S.MAX_SIDE + 1}"')}),
+    )}
+    taken = [what for what, problem in refused.items() if not problem]
+    check(not taken, f"and a file that is none of those is refused "
+                     f"({', '.join(taken) if taken else 'all five'})")
+
+    # The library that ships with KnoxMap: every building listed has its file,
+    # and every file is listed, so a half-committed one is caught here.
+    import knoxpaths
+    folder = P.library_folder(knoxpaths.BASE_DIR)
+    on_disk = {entry["name"] for entry in P._in_folder(folder)}
+    recorded = set(P.shipped(knoxpaths.BASE_DIR))
+    check(on_disk == recorded,
+          f"the library that ships with KnoxMap matches its manifest "
+          f"({len(on_disk)} buildings"
+          + (f"; odd ones out: {sorted(on_disk ^ recorded)[:4]}"
+             if on_disk != recorded else "") + ")")
 
 
 def check_osm_cache(check, work: str) -> None:
@@ -3286,6 +3412,9 @@ def check_workshop(check, work: str) -> None:
     with open(os.path.join(root, "ATTRIBUTION.txt"), "w", encoding="utf-8") as f:
         f.write("made with KnoxMap")
     check(not levels()[1]["ready"], "an attribution without the OpenStreetMap credit stops it")
+    with open(os.path.join(root, "ATTRIBUTION.txt"), "w", encoding="utf-8") as f:
+        f.write("Map data (c) OpenStreetMap contributors, available under the Open Database\nLicense (ODbL)")
+    check("bad" not in levels()[0], "the credit passes when the file wraps it over two lines")
     os.remove(os.path.join(root, "ATTRIBUTION.txt"))
     check(not levels()[1]["ready"], "no attribution file stops it")
     with open(os.path.join(root, "mod.info"), "w", encoding="utf-8") as f:
@@ -4268,6 +4397,8 @@ def main(argv: list[str]) -> int:
         check_osm_parse_tolerant(check)
         check_osm_cache(check, work)
         check_windows_open(check)
+        check_trees_are_trees(check)
+        check_shared_buildings(check, work)
         check_config_file(check, work)
         check_install_clears(check, work)
         check_odd_tags(check)

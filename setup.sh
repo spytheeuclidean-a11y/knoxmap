@@ -29,6 +29,22 @@ if [ -z "$PY" ]; then
   exit 1
 fi
 
+# Part of Python itself gone missing is not something pip can put back, and
+# it surfaces much later as "No module named 'xml.etree.ElementTree'" in the
+# middle of a build. Some distributions split the standard library into
+# several packages, and a minimal install has only the first of them.
+if ! "$PY" -c 'import xml.etree.ElementTree, xml.sax.saxutils, zlib, hashlib, zipfile, tarfile, ssl, ctypes' 2>/dev/null; then
+  echo "This Python is missing part of its own standard library, which KnoxMap"
+  echo "needs and pip cannot install. Install the full Python package:"
+  echo "    sudo apt install python3 python3-venv python3-pip     # Debian, Ubuntu"
+  echo "    sudo pacman -S python                                 # Arch"
+  echo "    sudo dnf install python3 python3-libs                 # Fedora"
+  echo "What is missing:"
+  "$PY" -c 'import importlib.util as u; print("
+".join("    " + n for n in ("xml.etree.ElementTree", "xml.sax.saxutils", "zlib", "hashlib", "zipfile", "tarfile", "ssl", "ctypes") if u.find_spec(n) is None))' 2>/dev/null || true
+  exit 1
+fi
+
 # An environment built by a 32-bit Python stays 32-bit, and a town-sized map
 # needs more memory than one can address.
 if [ -x ".venv/bin/python" ] && ! .venv/bin/python -c 'import sys; sys.exit(sys.maxsize <= 2**32)' 2>/dev/null; then

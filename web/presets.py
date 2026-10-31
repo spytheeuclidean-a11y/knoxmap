@@ -65,6 +65,67 @@ def api_building_preset(name: str):
     return jsonify({k: v for k, v in about.items() if k != "file"})
 
 
+# ---- buildings passed from one person to another ----------------------------
+#
+# One file holds a whole hand-built building - the .tbx, the drawing it was
+# made from and what it stands in for - so it can be sent over Discord and
+# dropped into anybody's KnoxMap (knoxbuild/share.py). It is also how a
+# building gets into the library that ships with KnoxMap: send one in, and
+# tools/add_shared_building.py puts it in presets/library/.
+
+def _library_reply() -> list[dict]:
+    from knoxbuild import presets as P
+
+    return [{k: v for k, v in e.items() if k != "file"} for e in P.library(BASE_DIR)]
+
+
+@bp.route("/api/presets/buildings/<name>/share", methods=["POST"])
+def api_building_share(name: str):
+    """Write out a building as a file to send to somebody."""
+    from knoxbuild import share as S
+
+    body = _json_body()
+    body = body if isinstance(body, dict) else {}
+    try:
+        entry = S.of_preset(BASE_DIR, name, author=body.get("author") or "",
+                            notes=body.get("notes") or "")
+    except (ValueError, OSError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    payload = (json.dumps(entry, ensure_ascii=False, indent=1) + "\n").encode("utf-8")
+    filename = S.file_name(entry["name"])
+    if os.environ.get("KNOXMAP_WINDOW") == "1":
+        folder = BASE_DIR / "preset_exports"
+        try:
+            folder.mkdir(exist_ok=True)
+            target = folder / filename
+            if target.exists():
+                target = folder / f"{time.time_ns()}_{filename}"
+            target.write_bytes(payload)
+        except OSError as exc:
+            return failed(f"Could not write that building out: {exc}", 500, exc)
+        knoxlog.open_folder(target)
+        return jsonify({"name": target.name, "folder": str(folder)})
+    return send_file(io.BytesIO(payload), mimetype="application/json",
+                     as_attachment=True, download_name=filename)
+
+
+@bp.route("/api/presets/buildings/import", methods=["POST"])
+def api_building_import():
+    """Take in a building somebody else built and shared."""
+    from knoxbuild import share as S
+
+    entry, problem = S.read(_json_body())
+    if problem:
+        return jsonify({"error": problem}), 400
+    try:
+        about = S.install(BASE_DIR, entry)
+    except (ValueError, OSError) as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"saved": {k: v for k, v in about.items() if k != "file"},
+                    "author": entry.get("author") or "",
+                    "presets": _library_reply()})
+
+
 # ---- the building editor ----------------------------------------------------
 #
 # Rooms drawn on a sheet, built into a real .tbx by the generator's own passes
