@@ -494,7 +494,9 @@ def main(argv: list[str]) -> int:
         "shop_aisle_red": "location_shop_zippee_01_015",      # 1x4, W N
         "shop_shelf_wood": "location_shop_generic_01_047",    # 1x4, W N
         "shop_shelf": "location_shop_generic_01_075",         # 1x2
-        "shop_shelf_red": "location_shop_zippee_01_027",      # 1x2
+        # The seed is the piece against a west wall, so facing east: 027
+        # faces west and put every red shelf with its back to the shop.
+        "shop_shelf_red": "location_shop_zippee_01_033",      # 1x2
         "shop_shelf_white": "location_shop_generic_01_027",   # 1x2
         "shop_fridge_open": "location_shop_generic_01_069",   # 1x3, W N
         "shop_fridge": "appliances_refrigeration_01_023",
@@ -505,7 +507,7 @@ def main(argv: list[str]) -> int:
         "shop_counter_red": "location_shop_zippee_01_019",
         "register": "location_shop_accessories_01_000",
         "shop_display": "location_shop_generic_01_085",       # 1x3, W N
-        "shop_case": "location_shop_generic_01_099",
+        "shop_case": "location_shop_generic_01_103",          # faces E (099 faces W)
         "clothes_rack": "location_shop_generic_01_037",       # 1x2, W N
         "clothes_rack_small": "location_shop_generic_01_053",  # W N
         "mannequin": "location_shop_mall_01_065",

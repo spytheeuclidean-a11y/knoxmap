@@ -37,7 +37,8 @@ STORES = {
                 "counter": "shop_counter", "front": ["shop_bin"]},
     "conveniencestore": {"rows": "shop_aisle", "wall": ["shop_shelf_red", "shop_fridge"],
                          "back": ["shop_fridge", "shop_fridge", "shop_fridge_double"],
-                         "counter": "shop_counter_red", "front": ["vending", "vending_snacks"]},
+                         "counter": "shop_counter_red", "front": ["vending", "vending_snacks"],
+                         "produce": 2},
     "generalstore": {"rows": "shop_aisle", "wall": ["shop_shelf_wood", "shop_shelf"],
                      "back": ["shop_shelf", "shop_fridge_double"],
                      "counter": "shop_counter", "front": ["shop_bin"]},
@@ -69,7 +70,7 @@ _LIKE = {
     # down the sides and in short aisles, the counter by the door where the
     # cashier can see the pumps. Coolers on every wall was a cold room.
     "gasstore": ("conveniencestore", {"wall": ["shop_shelf_red", "shop_shelf_red", "shop_fridge"],
-                                      "front": ["vending", "vending_snacks"]}),
+                                      "front": ["vending", "vending_snacks"], "produce": 1}),
     "butcher": ("grocery", {"back_counter": "shop_counter", "rows": "shop_display", "back": ["shop_fridge_double", "shop_freezer"]}),
     "bakery": ("generalstore", {"back_counter": "shop_counter", "rows": "shop_display", "back": ["shop_shelf_white"],
                                 "front": ["shop_case"]}),
@@ -93,7 +94,7 @@ _LIKE = {
     "sewingstore": ("clothingstore", {"rows": "shop_display", "wall": ["shop_shelf_wood"]}),
     "electronicsstore": ("camerastore", {"wall": ["shop_shelf", "shop_case"]}),
     "housewarestore": ("generalstore", {"wall": ["shop_shelf_wood", "dresser"]}),
-    "cornerstore": ("conveniencestore", {}),
+    "cornerstore": ("conveniencestore", {"produce": 2}),
     "optometrist": ("pharmacy", {"front": ["mirror"]}),
 }
 # Hanging rails: wall fittings, not aisle ones.
@@ -118,6 +119,9 @@ for _kind, _mix in AISLE_MIX.items():
     STORES[_kind]["aisles"] = _mix
 for _kind, (_base, _over) in _LIKE.items():
     STORES[_kind] = {**STORES[_base], **_over}
+    # Fresh produce only where it is said: a candy store is not a greengrocer.
+    if "produce" not in _over:
+        STORES[_kind].pop("produce", None)
     # A shop given rows of its own does not keep the mix it was based on.
     if "rows" in _over and "aisles" not in _over:
         STORES[_kind]["aisles"] = [_over["rows"]]
@@ -348,6 +352,20 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
         line = sorted((c for c in cells if L._room_at(plan, c[0] + STEP[side][0], c[1] + STEP[side][1]) != idx),
                       key=lambda c: (c[0], c[1]))
         on_wall = set(line)
+        ix, iy = STEP[OPPOSITE[side]]
+
+        def put_on_wall(role, x, y, orient) -> bool:
+            # A cooler is opened, and a shelf is browsed, from the tile in
+            # front of it: that tile must be this room's floor, and it stays
+            # free - no drinks machine in front of a fridge door, no fridge
+            # facing the wall of a notch in the outline.
+            front = [(cx + ix, cy + iy) for cx, cy in L._cells_for(role, x, y, orient)]
+            if any(c not in cells or c in placed for c in front):
+                return False
+            if not put(role, x, y, orient):
+                return False
+            placed.update(front)
+            return True
         bank_left = (len(line) if not roles else round(len(line) * BANK_SHARE)) if bank_role else 0
         k = 0
         i = 0
@@ -376,7 +394,8 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
                 continue
             # The whole piece against this wall: past a corner or a doorway
             # it would stand out into the room.
-            if all(c in on_wall for c in L._cells_for(role, x, y, orient)) and put(role, x, y, orient):
+            if all(c in on_wall for c in L._cells_for(role, x, y, orient)) and \
+                    put_on_wall(role, x, y, orient):
                 if role == bank_role and bank_left > 0:
                     bank_left -= len(C.FURNITURE[role][orient])
                 else:
@@ -472,15 +491,27 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
                 break
 
     # Just inside the shop front: mannequins in a clothes shop's window, a
-    # drinks machine, a bin.
+    # drinks machine, produce stands. A mannequin looks out at the street;
+    # everything else stands with its back to the front and faces the shop -
+    # a drinks machine turned to the window shows the shop its back.
     front_roles = spec.get("front") or []
     stands = bool(front_roles) and all(r == "shop_bin" for r in front_roles)
-    for n, a in enumerate(range(1, frame.length - 1, 2 if stands else 3)):
-        if not front_roles or n >= (min(MAX_STANDS, frame.length // 3) if stands else FRONT_PIECES):
+    wanted = (min(MAX_STANDS, frame.length // 3) if stands else FRONT_PIECES) if front_roles else 0
+    queue = [front_roles[n % len(front_roles)] for n in range(wanted)]
+    # Fresh produce in a shop that is not a grocery: a few stands of it.
+    queue += ["shop_bin"] * spec.get("produce", 0)
+    for a in range(1, frame.length - 1, 2 if stands or not front_roles else 3):
+        if not queue:
             break
+        role = queue[0]
+        side = back_to if role.startswith("mannequin") else front
+        orient = L._facing(role, side)
+        if orient != side:
+            queue.pop(0)            # no sprite that way round: leave it out
+            continue
         x, y = frame.xy(a, 1)
-        role = front_roles[n % len(front_roles)]
-        put(role, x, y, L._facing(role, back_to))
+        if put(role, x, y, orient):
+            queue.pop(0)
     return True
 
 

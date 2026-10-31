@@ -36,6 +36,52 @@ class CoolersAreBanks(unittest.TestCase):
                   for s in range(12)]
         self.assertGreaterEqual(sum(stands) / len(stands), 4)
 
+    def test_nothing_stands_in_front_of_a_cooler_or_shelf(self):
+        # A drinks machine stood in front of a fridge door, and a fridge in a
+        # notch of the outline faced the wall.
+        step = {"N": (0, 1), "S": (0, -1), "W": (1, 0), "E": (-1, 0)}
+        for seed in range(10):
+            for kind in ("conveniencestore", "grocery", "liquorstore", "gasstore"):
+                for w, h in ((36, 22), (21, 14), (17, 23)):
+                    plan, idx, furniture = sales_floor(kind, seed, w, h)
+                    # a till stands on its counter, a light switch on the wall
+                    taken = {c for f in plan.furniture
+                             if f[0] != "register" and not layout._is_wall_piece(f[0])
+                             for c in layout._cells_for(*f)}
+                    for role, x, y, orient in furniture:
+                        if not (is_cooler(role) or role == "shop_shelf_red"):
+                            continue
+                        dx, dy = step[orient]
+                        for cx, cy in layout._cells_for(role, x, y, orient):
+                            front = (cx + dx, cy + dy)
+                            with self.subTest(kind=kind, seed=seed, size=(w, h), piece=(role, x, y)):
+                                self.assertEqual(plan.grid[front[1]][front[0]], idx)
+                                self.assertNotIn(front, taken)
+
+    def test_drinks_machines_face_into_the_shop(self):
+        # They stood one tile in from the shop front, turned to the window.
+        step = {"N": (0, 1), "S": (0, -1), "W": (1, 0), "E": (-1, 0)}
+        seen = 0
+        for seed in range(12):
+            plan, idx, furniture = sales_floor("conveniencestore", seed)
+            for role, x, y, orient in furniture:
+                if role.startswith("vending"):
+                    seen += 1
+                    dx, dy = step[orient]
+                    # its back is to the shop front: outside is behind it
+                    bx, by = x - 2 * dx, y - 2 * dy
+                    inside = 0 <= by < len(plan.grid) and 0 <= bx < len(plan.grid[0])
+                    self.assertFalse(inside and plan.grid[by][bx] == idx, (role, x, y, orient))
+        self.assertGreater(seen, 0)
+
+    def test_convenience_stores_sell_fresh_produce(self):
+        stands = [sum(1 for f in sales_floor(kind, s)[2] if f[0] == "shop_bin")
+                  for s in range(8) for kind in ("conveniencestore", "cornerstore")]
+        self.assertGreaterEqual(sum(stands) / len(stands), 1.5)
+        # and only where it is meant to be
+        for s in range(4):
+            self.assertFalse([f for f in sales_floor("candystore", s)[2] if f[0] == "shop_bin"])
+
     def test_display_cases_are_a_row_or_two(self):
         for seed in range(6):
             plan, idx, furniture = sales_floor("butcher", seed)

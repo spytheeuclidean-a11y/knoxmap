@@ -5272,7 +5272,10 @@ DOOR_CLEAR_DEPTH = 2
 
 
 def _needs_front(role: str) -> bool:
-    return role in FRONT_CLEAR_ROLES or role.startswith(("wardrobe", "dresser", "fridge"))
+    # A shop's coolers and drinks machines too: one moved off a window used to
+    # land in a corner with a shelf across its door.
+    return role in FRONT_CLEAR_ROLES or role.startswith(
+        ("wardrobe", "dresser", "fridge", "shop_fridge", "shop_freezer", "vending"))
 
 
 def _needs_surface(role: str) -> bool:
