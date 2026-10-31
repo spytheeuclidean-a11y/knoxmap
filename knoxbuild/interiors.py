@@ -63,7 +63,11 @@ _LIKE = {
     "giftstore": ("generalstore", {"front": ["plant"]}),
     "toystore": ("generalstore", {"wall": ["shop_shelf", "bookshelf"]}),
     "candystore": ("conveniencestore", {"front": ["shop_case"]}),
-    "gasstore": ("conveniencestore", {}),
+    # A forecourt shop: the drinks coolers along the back wall, snack shelving
+    # down the sides and in short aisles, the counter by the door where the
+    # cashier can see the pumps. Coolers on every wall was a cold room.
+    "gasstore": ("conveniencestore", {"wall": ["shop_shelf_red", "shop_shelf_red", "shop_fridge"],
+                                      "front": ["vending", "vending_snacks"]}),
     "butcher": ("grocery", {"rows": "shop_display", "back": ["shop_fridge_double", "shop_freezer"]}),
     "bakery": ("generalstore", {"rows": "shop_display", "back": ["shop_shelf_white"],
                                 "front": ["shop_case"]}),
