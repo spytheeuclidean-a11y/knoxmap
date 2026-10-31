@@ -164,21 +164,33 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     road = match((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
                   C.DARKEST_ASPHALT, C.DARK_POTHOLE, C.LIGHT_POTHOLE))
     crossable = match(CROSSABLE) & ~occupied
-    claimed = np.zeros((h, w), dtype=bool)     # painted for some house already
+    # Painted for some house already. One block of memory seen two ways: as an
+    # array for the whole-map work, and as bytes for the tile-at-a-time loops
+    # below, where reading a numpy element costs several times what a list
+    # does. The masks that never change are read the same way, as flat lists
+    # indexed y * w + x.
+    claimed_bytes = bytearray(h * w)
+    claimed = np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w)
+    crossable_at = crossable.ravel().tolist()
+    paved_at = paved.ravel().tolist()
+    occupied_at = np.asarray(occupied, dtype=bool).ravel().tolist()
+    road_at = road.ravel().tolist()
+    walkable_at = ((crossable | paved | road) & ~occupied).ravel().tolist()
 
     def free(x, y):
-        return 0 <= x < w and 0 <= y < h and crossable[y, x] and not claimed[y, x]
+        return (0 <= x < w and 0 <= y < h and crossable_at[y * w + x]
+                and not claimed_bytes[y * w + x])
 
     def paint(x, y, colour):
         ground[y, x] = colour
-        claimed[y, x] = True
+        claimed_bytes[y * w + x] = 1
         if veg is not None:
             veg[y, x] = 0
 
     def put(x, y, colour):
         if veg is not None and free(x, y):
             veg[y, x] = colour
-            claimed[y, x] = True
+            claimed_bytes[y * w + x] = 1
 
     dressed = 0
     fences = []
@@ -214,12 +226,12 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             style = rng.choice(PORCH_LIGHTS)
             for k in (1, -1):
                 lx, ly = sx + px * k, sy + py * k
-                if not (0 <= lx < w and 0 <= ly < h) or occupied[ly, lx]:
+                if not (0 <= lx < w and 0 <= ly < h) or occupied_at[ly * w + lx]:
                     continue
                 # Only where the house really is behind it: beside a door in a
                 # corner, one of the two faces open ground.
                 wx, wy = lx - dx, ly - dy
-                if not (0 <= wx < w and 0 <= wy < h and occupied[wy, wx]):
+                if not (0 <= wx < w and 0 <= wy < h and occupied_at[wy * w + wx]):
                     continue
                 lights.append((lx, ly, 0, PORCH_LIGHT_LAYER, style[side]))
                 break
@@ -234,7 +246,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         order = [(dx, dy)] + [d for d in ((1, 0), (-1, 0), (0, 1), (0, -1)) if d != (dx, dy)]
         while queue:
             x, y, n = queue.popleft()
-            if paved[y, x]:
+            if paved_at[y * w + x]:
                 end = (x, y)
                 break
             if n >= PATH_MAX_TILES:
@@ -242,7 +254,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             for ddx, ddy in order:
                 nx, ny = x + ddx, y + ddy
                 if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in prev \
-                        and (crossable[ny, nx] or paved[ny, nx]):
+                        and (crossable_at[ny * w + nx] or paved_at[ny * w + nx]):
                     prev[(nx, ny)] = (x, y)
                     queue.append((nx, ny, n + 1))
         if end is None:
@@ -285,7 +297,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                     else:
                         x, y = start + k, front + dy * t
                     line.append((x, y))
-                if all(0 <= x < w and 0 <= y < h and paved[y, x] for x, y in line) and t > 0:
+                if t > 0 and all(0 <= x < w and 0 <= y < h and paved_at[y * w + x]
+                                 for x, y in line):
                     break
                 if not all(free(x, y) for x, y in line):
                     strip = None
@@ -364,7 +377,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                     paint(x, y, ground_colour)
                 if colour is not None and veg is not None:
                     veg[y, x] = colour
-                claimed[y, x] = True
+                claimed_bytes[y * w + x] = 1
                 return True
 
             # Patio: stone outside the back door, three deep; behind the middle
@@ -389,7 +402,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 place(mid, 1, C.TABLE_Y0); place(mid, 2, C.TABLE_Y1)
                 place(mid - 1, 1, C.CHAIR_W); place(mid + 1, 2, C.CHAIR_E)
             for x, y in patio_tiles:
-                claimed[y, x] = True
+                claimed_bytes[y * w + x] = 1
 
             # Washing line along the back fence, if the yard is wide enough.
             v_line = depth - 2
@@ -427,18 +440,17 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         ox, oy, _ix, _iy = doors[0]
         start = (row["tile_x"] + ox, row["tile_y"] + oy)
         sx, sy = start
-        if not (0 <= sx < w and 0 <= sy < h) or occupied[sy, sx]:
+        if not (0 <= sx < w and 0 <= sy < h) or occupied_at[sy * w + sx]:
             continue
-        if road[sy, sx]:
+        if road_at[sy * w + sx]:
             continue
 
-        traversable = (crossable | paved | road) & ~occupied & ~claimed
         previous = {start: None}
         queue = deque([(sx, sy, 0)])
         end = None
         while queue:
             x, y, distance = queue.popleft()
-            if road[y, x]:
+            if road_at[y * w + x]:
                 end = (x, y)
                 break
             if distance >= PATH_MAX_TILES:
@@ -446,7 +458,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
                 nx, ny = x + dx, y + dy
                 if (0 <= nx < w and 0 <= ny < h and (nx, ny) not in previous
-                        and traversable[ny, nx]):
+                        and walkable_at[ny * w + nx] and not claimed_bytes[ny * w + nx]):
                     previous[(nx, ny)] = (x, y)
                     queue.append((nx, ny, distance + 1))
         if end is None:
@@ -467,9 +479,10 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             else:
                 across = ((x - 1, y), (x, y), (x + 1, y))
             for px, py in across:
-                if (0 <= px < w and 0 <= py < h and not road[py, px]
-                        and not occupied[py, px] and not claimed[py, px]
-                        and (crossable[py, px] or paved[py, px])):
+                if (0 <= px < w and 0 <= py < h and not road_at[py * w + px]
+                        and not occupied_at[py * w + px]
+                        and not claimed_bytes[py * w + px]
+                        and (crossable_at[py * w + px] or paved_at[py * w + px])):
                     paint(px, py, C.DARK_ASPHALT)
                     painted.append((px, py))
         if drives is not None and painted:
