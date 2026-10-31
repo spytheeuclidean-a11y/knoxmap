@@ -50,6 +50,8 @@ MIN_NEIGHBOUR_M2 = 40.0    # sheds and garages say nothing about the street
 MIN_LOT_M = 5.0            # narrowest new building
 MAX_LOT_M = 28.0           # widest; a longer gap is cut into more lots
 SIDE_GAP_M = 3.0           # between detached houses
+EDGE_SLACK_M = 0.05        # so a side gap never rounds to under SIDE_GAP_M
+                           # on its way through lat/lon and back
 STREET_WALL_M = 3.5        # set back less than this and the row is a street wall
 MAX_GAP_BOTH_M = 140.0     # longest gap filled with a building on both sides
 MAX_GAP_ONE_M = 45.0       # and with one: the row is carried a little further
@@ -214,7 +216,8 @@ def _states(scan):
 
 def _neighbours(scan, states, i, step, info, limit=3):
     """The buildings (up to `limit`) in the unbroken stretch of built frontage
-    that starts next to station `i` and goes in direction `step`."""
+    that starts next to station `i` and goes in direction `step`, and whether
+    that stretch is more than one building: a row joined wall to wall."""
     seen: list[int] = []
     j = i
     while 0 <= j < len(states) and states[j] == "B":
@@ -224,8 +227,8 @@ def _neighbours(scan, states, i, step, info, limit=3):
                 break
             seen.append(b)
         j += step
-    return [info[b] for b in seen
-            if info[b] and info[b]["area"] >= MIN_NEIGHBOUR_M2]
+    return ([info[b] for b in seen
+             if info[b] and info[b]["area"] >= MIN_NEIGHBOUR_M2], len(seen) > 1)
 
 
 def _describe(scan, states, bi, poly, tags):
@@ -238,10 +241,16 @@ def _describe(scan, states, bi, poly, tags):
     width = (idx[-1] - idx[0] + 1) * STEP_M
     k = idx[len(idx) // 2]
     nx, ny = scan["nx"][k], scan["ny"][k]
+    tx, ty = scan["tx"][k], scan["ty"][k]
     ox, oy = scan["ax"][k], scan["ay"][k]
     proj_d = [(x - ox) * nx + (y - oy) * ny for x, y in poly.exterior.coords]
+    # Where its side walls are along the street. The stations are STEP_M
+    # apart, so one can land on a side wall and fall either way by rounding;
+    # a gap is measured from these instead.
+    proj_s = [(x - ox) * tx + (y - oy) * ty for x, y in poly.exterior.coords]
     return {"width": width, "depth": max(proj_d) - min(proj_d),
             "setback": max(0.0, min(proj_d)), "area": poly.area,
+            "s_lo": scan["s"][k] + min(proj_s), "s_hi": scan["s"][k] + max(proj_s),
             "kind": (tags.get("building") or "yes").lower(),
             "levels": tags.get("building:levels")}
 
@@ -263,9 +272,14 @@ def _levels(near):
     return str(int(round(statistics.median(vals)))) if vals else None
 
 
-def _lots_for_gap(scan, i0, i1, left, right, hard_free):
+def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
+                  lo=None, hi=None):
     """Footprints (as lists of four metre corners) for the free frontage
-    between stations i0 and i1, built like the buildings beside it."""
+    between stations i0 and i1, built like the buildings beside it.
+
+    `joined` says the row beside it stands wall to wall; `lo` and `hi` are
+    the side walls of the buildings at either end, along the street, where
+    there are any."""
     near = left + right
     # One side only is a row carried on, and a row is two buildings at least;
     # a lone house in the country does not found a street.
@@ -277,7 +291,9 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free):
     width = statistics.median(n["width"] for n in near)
     depth = statistics.median(n["depth"] for n in near)
     setback = statistics.median(n["setback"] for n in near)
-    wall = setback <= STREET_WALL_M
+    # Close to the pavement is not enough: detached houses can stand there
+    # too, and a hole in their row gets their side gaps, not a terrace.
+    wall = setback <= STREET_WALL_M and joined
     gap = 0.0 if wall else SIDE_GAP_M
 
     length = (i1 - i0 + 1) * STEP_M
@@ -289,10 +305,10 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free):
 
     # The pavement edge of the gap; ends against a neighbour keep a garden's
     # width from it, ends against a road or nothing keep a little less.
-    inset_l = 0.4 if wall else (SIDE_GAP_M if left else 1.5)
-    inset_r = 0.4 if wall else (SIDE_GAP_M if right else 1.5)
-    start = i0 * STEP_M + inset_l
-    end = (i1 + 1) * STEP_M - inset_r
+    inset_l = 0.4 if wall else (SIDE_GAP_M + EDGE_SLACK_M if left else 1.5)
+    inset_r = 0.4 if wall else (SIDE_GAP_M + EDGE_SLACK_M if right else 1.5)
+    start = (i0 * STEP_M if lo is None else lo) + inset_l
+    end = ((i1 + 1) * STEP_M if hi is None else hi) - inset_r
     span = end - start
     if span < MIN_LOT_M:
         return []
@@ -430,13 +446,21 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                 j = i
                 while j + 1 < len(states) and states[j + 1] == "E":
                     j += 1
-                left = _neighbours(scan, states, i - 1, -1, info) if i > 0 else []
-                right = _neighbours(scan, states, j + 1, 1, info) if j + 1 < len(states) else []
+                left, joined_l = (_neighbours(scan, states, i - 1, -1, info)
+                                  if i > 0 else ([], False))
+                right, joined_r = (_neighbours(scan, states, j + 1, 1, info)
+                                   if j + 1 < len(states) else ([], False))
+                # the side walls of the buildings at either end of the gap
+                end_l = info.get(int(scan["which"][i - 1])) if i > 0 else None
+                end_r = info.get(int(scan["which"][j + 1])) if j + 1 < len(states) else None
+                lo = end_l["s_hi"] if end_l and states[i - 1] == "B" else None
+                hi = end_r["s_lo"] if end_r and states[j + 1] == "B" else None
                 run = (i, j)
                 i = j + 1
                 if not (left or right):
                     continue
-                got = _lots_for_gap(scan, run[0], run[1], left, right, free)
+                got = _lots_for_gap(scan, run[0], run[1], left, right, free,
+                                    joined_l or joined_r, lo, hi)
                 if not got:
                     continue
                 lots, kind, levels = got
