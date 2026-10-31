@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.8.3
 
 - **Fill gaps in streets** (`generator/rendering/infill.py`, setting
   `fill_frontage`, off by default). Where a street has buildings either side of
@@ -9,13 +9,29 @@
   gaps between detached houses. Never across a road, on water, in a park, wood
   or farmland, or over another building; a gap too narrow for a neighbour-sized
   building, or beside a church, school or garage, is left alone. Needs no
-  download.
-- **Offices are fitted across the floor.** Workstations (desk and chair) in
-  rows with an aisle between, cabinets and plants in the gaps between them,
-  instead of everything against the walls. A room too small for a desk in the
-  open keeps the old wall layout.
-- **Clothes racks stand on walls only.** The middle of a clothes shop is tables
-  of folded stock; hanging racks are wall fittings.
+  download. A gap is measured from its neighbours' walls, so the same map
+  fills the same way on Windows and Linux, and houses near the pavement keep
+  their side gaps rather than becoming a terrace.
+- **A warning before a big map.** The area panel says how long Generate map
+  should take, and pressing it on more than 60 km² or 20,000 tiles a side asks
+  first, with the size in km², cells and tiles.
+- **Shops.** Nothing stands in front of a cooler's door, and no cooler faces a
+  wall. Drinks machines and stands inside the shop front face the shop, not
+  the window. The red shelf and the glass display case no longer face the
+  wall. Convenience and corner stores sell fresh produce from a couple of
+  stands, and a gas station shop from one.
+- **Gas stations** have pump islands on concrete, pavement along the shop
+  front, a canopy, and toilets and a stockroom in the shop.
+- **Interiors laid out by trade.** Offices have workstations in rows across
+  the floor. Classrooms have desks in rows, clinics the couch out in the room,
+  a big supermarket a second till, and delis, pharmacies and butchers a
+  service counter along the back. Bookshops get a reading nook. Stockrooms
+  have racks standing in rows, a living room's sofa faces the TV, and a big
+  house is cut into rooms by what it needs. Clothes racks stand on walls
+  only; the middle of a clothes shop is tables of folded stock.
+- **Faster yards** (`knoxbuild/yards.py`), with the same output, and painting
+  garage paths no longer hangs on a large map. A garage gets one wide garage
+  door instead of three house doors.
 
 ## 1.8.2
 
