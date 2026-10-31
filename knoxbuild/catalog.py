@@ -206,8 +206,24 @@ TILE_ENTRIES = [{'category': 'exterior_walls',
             'WestWindow': 'walls_interior_detailing_01_012',
             'NorthWindow': 'walls_interior_detailing_01_013',
             'WestDoor': 'walls_interior_detailing_01_014',
-            'NorthDoor': 'walls_interior_detailing_01_015'}}]
-
+            'NorthDoor': 'walls_interior_detailing_01_015'}},
+            
+ # standard grey garage door, thin frame, closed - walls_garage_02. other
+ # variants on the same two sheets, same layout (closed row then open row,
+ # 3 tiles each, right-side then bottom orientation):
+ #   walls_garage_01: white/white frame (mansion) _0, green/grey frame
+ #   (warehouse) _16, grey metal/grey frame (warehouse, concrete) _48
+ #   walls_garage_02: red glazed (fire station?) _32, metal thin frame
+ #   glazed (garage/workshop?) _48
+ 
+ {'category': 'doors',
+  'tiles': {'West': 'walls_garage_02_0', 'North': 'walls_garage_02_3'}},
+ {'category': 'doors',
+  'tiles': {'West': 'walls_garage_02_1', 'North': 'walls_garage_02_4'}},
+ {'category': 'doors',
+  'tiles': {'West': 'walls_garage_02_2', 'North': 'walls_garage_02_5'}}]
+  
+ 
 EXTERIOR_WALL = 1
 DOOR = 2
 DOOR_FRAME = 3
@@ -275,6 +291,7 @@ ROOF_SLOPE = 15
 ROOF_TOP = 16
 CEILING = 17
 INTERIOR_WALL_TRIM = 18
+GARAGE_DOOR = (19, 20, 21)  # left, mid, right tile-table indexes, left to right across the opening
 
 FURNITURE = {'bed': {'W': {'0,0': 'furniture_bedding_01_002', '1,0': 'furniture_bedding_01_003'},
          'N': {'0,0': 'furniture_bedding_01_001', '0,1': 'furniture_bedding_01_000'},

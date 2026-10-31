@@ -3361,7 +3361,10 @@ def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:
         elif door not in opening:
             doors.append(door)
     plan.doors = doors
-
+    # (x, y, dir) triples: entry first (this stays the middle leaf once the
+    # opening is centred on it), then its two new neighbours - tbx.py remaps
+    # this order to the catalog's actual left/mid/right tiles
+    plan.garage_door_tiles = tuple(ordered)
 
 def _entrance_priority(entrance: tuple[float, float, dict]) -> tuple:
     """Main and accessible entrances take precedence when choosing the front."""
