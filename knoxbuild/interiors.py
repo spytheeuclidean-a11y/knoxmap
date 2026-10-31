@@ -105,7 +105,7 @@ AISLE_MIX = {
     "generalstore": ["shop_aisle", "shop_shelf", "shop_shelf_wood"],
     "liquorstore": ["shop_aisle", "shop_shelf_wood", "shop_shelf"],
     "pharmacy": ["shop_aisle", "shop_shelf_white"],
-    "clothingstore": ["clothes_rack", "clothes_rack_small", "shop_shelf_wood"],
+    "clothingstore": ["shop_shelf_wood", "shop_display", "shop_shelf_wood"],
     "toolstore": ["metal_rack", "shop_shelf_wood"],
 }
 for _kind, _mix in AISLE_MIX.items():
