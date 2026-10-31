@@ -1305,6 +1305,10 @@ def _house_spares(profile, rng: random.Random, upstairs: bool = False,
         # floor goes to a dining room and the rooms beside it.
         if not upstairs:
             yield "dining"
+        # And past those, the rooms a big house really has more of, dealt
+        # round: a floor of four hundred tiles is not seven rooms of sixty.
+        while True:
+            yield from BIG_HOUSE_FILL
     elif upstairs:
         yield from ("bedroom", "bedroom")
 
@@ -1320,8 +1324,11 @@ HOUSE_MAX_SPARE = 40
 HOUSE_BIG_FLOOR = 260
 # On a floor that size the bedrooms still stay bedrooms, not suites: the wings
 # give the other rooms the space.
-BIG_FLOOR_BEDROOM_OVERSIZE = 1.5
+BIG_FLOOR_BEDROOM_OVERSIZE = 1.2
 HOUSE_TOP_UP = ["storage", "office"]
+HOUSE_GROW_TRIES = 10
+BIG_HOUSE_FILL = ["closet", "livingroom", "laundry", "office", "storage",
+                  "office", "storage", "livingroom"]
 # Rooms a cut may clip away: what is left of one is folded into the room
 # beside it or kept as a closet. The hall too, unless it is the landing.
 HOUSE_LOSABLE = {"hall", "laundry", *HOUSE_TOP_UP}
@@ -1363,7 +1370,7 @@ def _cut_in_wings(box, kinds: list[str], rng: random.Random, floor, core,
     wings are two small houses side by side: the stairs and the day rooms in
     one, the bedrooms in the other, and the halls meet. Returns None when
     the floor will not split (the caller cuts it whole)."""
-    from .sizing import room_areas
+    from .sizing import capacity
     rest = kinds[1:]
     day = [k for k in rest if k in _DAY_ROOMS]
     night = [k for k in rest if k not in _DAY_ROOMS]
@@ -1374,8 +1381,11 @@ def _cut_in_wings(box, kinds: list[str], rng: random.Random, floor, core,
         if len(night) < 2:
             return None
     wing_a, wing_b = ["hall"] + day, ["hall"] + night
-    ta = sum(room_areas(wing_a, 1000.0))
-    tb = sum(room_areas(wing_b, 1000.0))
+    # Split by what each wing can hold, not by its rooms' targets: a floor cut
+    # in proportion to the targets gave a wing of three bedrooms the room of
+    # five, and bedrooms of fifty tiles.
+    ta = capacity(wing_a)
+    tb = capacity(wing_b)
     x0, y0, x1, y1 = box
     wide = (x1 - x0) >= (y1 - y0)
     lo, hi = (x0, x1) if wide else (y0, y1)
@@ -1490,6 +1500,7 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
                 > (BIG_FLOOR_BEDROOM_OVERSIZE if room.kind in ("bedroom", "kidsbedroom")
                    and area >= HOUSE_BIG_FLOOR else oversize) * SIZES[room.kind].hi)
 
+    grown = 0
     while True:
         always_big = True
         for _ in range(HOUSE_TRIES if len(kinds) > need else HOUSE_LAST_TRIES):
@@ -1507,6 +1518,13 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
                     or all(_on_circulation(r, rooms, core) for r in rooms)):
                 return rooms
             always_big &= big
+        # Every cut had a room too big for its kind. On a large floor that
+        # means too few rooms, not too many: add some and cut again, a few
+        # times, before the floor is given up to the plain splitter.
+        if always_big and area >= HOUSE_BIG_FLOOR and grown < HOUSE_GROW_TRIES:
+            grown += 1
+            kinds.extend(k for k in (next(spares, None) for _ in range(2)) if k)
+            continue
         # Fewer rooms would only come out bigger.
         if always_big or len(kinds) <= need:
             return None
@@ -3211,6 +3229,32 @@ def _doors(plan: Plan, rng: random.Random) -> None:
         if spot and rng.random() < 0.6:
             plan.doors.append(spot[0])
 
+    # A room whose only way in is a bathroom gets a second door, onto any
+    # other room of its own household it touches: nobody should have to walk
+    # through the bathroom to reach a bedroom.
+    baths = {i for i, r in enumerate(rooms, 1) if r.kind == "bathroom"}
+    if baths:
+        links: dict[int, set[int]] = {}
+        for x, y, d in plan.doors:
+            a = _room_at(plan, x - 1, y) if d == "W" else _room_at(plan, x, y - 1)
+            b = _room_at(plan, x, y)
+            if a and b and a != b:
+                links.setdefault(a, set()).add(b)
+                links.setdefault(b, set()).add(a)
+        for i in range(1, n + 1):
+            if i in baths or i in sealed or not links.get(i) or not links[i] <= baths:
+                continue
+            for (a, b), wall in edges.items():
+                other = b if a == i else a if b == i else 0
+                if not other or other in baths or other in sealed:
+                    continue
+                if rooms[a - 1].unit != rooms[b - 1].unit:
+                    continue
+                spot = _door_spot(wall, 1, rng)
+                if spot and spot[0] not in plan.doors:
+                    plan.doors.append(spot[0])
+                    break
+
 
 def _room_at(plan: Plan, x: int, y: int) -> int:
     if 0 <= x < plan.width and 0 <= y < plan.height:
@@ -3329,6 +3373,15 @@ def _exterior_door(plan: Plan, rng: random.Random,
               if plan.rooms[idx - 1].kind in order
               for run in _outside_runs(plan, idx)
               if run[0] == (street or "S") and len(run[1]) >= 3]
+    if not facing:
+        # No room anybody would arrive in reaches the street side - a large
+        # house cut in wings can have nothing but bedrooms there. Any room
+        # but a bathroom or a cupboard on the street beats a door round the
+        # back.
+        facing = [(idx, run) for idx in candidates
+                  if plan.rooms[idx - 1].kind not in ("bathroom", "closet")
+                  for run in _outside_runs(plan, idx)
+                  if run[0] == (street or "S") and len(run[1]) >= 3]
     if facing:
         idx, (_side, wall) = min(facing, key=lambda ir: (
             order.get(plan.rooms[ir[0] - 1].kind, 50),
@@ -4305,6 +4358,10 @@ CENTRE_GROUPS: dict[str, tuple[list[tuple[str, int, int, str]], int]] = {
                     ("chair", 2, 1, "E"), ("chair", 1, 0, "N"),
                     ("chair", 1, 2, "S")], 6),
 }
+# An exam room's couch stands out from the wall where the doctor can reach
+# both sides of it, and a ward's beds stand in rows with room to walk between.
+CENTRE_GROUPS["clinic"] = ([("bed_plain", 0, 0, "W")], 1)
+CENTRE_GROUPS["medical"] = ([("bed_plain", 0, 0, "W")], 4)
 # Every dining room seats people the same way, however it is named; the salon
 # and the ice cream parlour have tables too.
 # (Dining rooms, cafés and bars are fitted out by interiors.furnish_dining.)
@@ -4394,10 +4451,15 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
                     origin[1] + along[1] * a + into[1] * d)
         blocked = sum(tile(a, 0) in keep_clear or tile(a, 1) in keep_clear
                       for a in range(length))
-        options.append((blocked, -min(depth, 8), side, tile, length, depth, along))
-    options.sort(key=lambda o: o[:3])
+        # The windows go in last and along the outside walls, so a television
+        # (or a sofa's back) there ends up in front of one: an inside wall
+        # first.
+        outside = sum(_room_at(plan, tile(a, 0)[0] - into[0], tile(a, 0)[1] - into[1]) == 0
+                      for a in range(length))
+        options.append((blocked, outside, -min(depth, 8), side, tile, length, depth, along))
+    options.sort(key=lambda o: o[:4])
 
-    for _blocked, _d, side, tile, length, depth, along in options:
+    for _blocked, _outside, _d, side, tile, length, depth, along in options:
         sofa_d = 4 if depth >= 6 else 3
         centre = length // 2
         spots = sorted(range(1, length - 1), key=lambda a: (abs(a - centre), a))
@@ -4901,6 +4963,7 @@ def _furnish(plan: Plan, rng: random.Random,
         occupied: set[tuple[int, int]] = set()
         office = r.kind == "office" and plan.kind not in HOUSE_LIKE_KINDS
         office_fitted = False
+        classroom = r.kind == "classroom" and plan.kind in CIVIC_KINDS
         eatery = r.kind in interiors.DINING_ROOMS
         salon = r.kind == "aesthetic" and plan.kind not in HOME_KINDS
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
@@ -4910,6 +4973,9 @@ def _furnish(plan: Plan, rng: random.Random,
             continue
         if office:
             base, office_fitted = interiors.furnish_office(
+                plan, idx, r, rng, occupied, keep_clear, keeps_open)
+        elif classroom:
+            base, office_fitted = interiors.furnish_classroom(
                 plan, idx, r, rng, occupied, keep_clear, keeps_open)
         elif salon:
             base = interiors.furnish_salon(plan, idx, r, rng, occupied, no_go, keeps_open)
@@ -5057,6 +5123,7 @@ def _furnish(plan: Plan, rng: random.Random,
                 consumed = (_once(role)
                             or (r.kind == "church" and role == "table")
                             or (r.kind == "livingroom" and role.startswith("armchair"))
+                         or (r.kind in ("clinic", "medical") and role.startswith("bed"))
                          or (r.kind == "motelroom" and role == "sidetable")
                             or (r.kind == "lobby"
                                 and (plan.kind in CIVIC_KINDS or plan.kind == "apartment")
