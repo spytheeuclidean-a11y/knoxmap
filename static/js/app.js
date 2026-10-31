@@ -284,6 +284,18 @@ function rectBounds(rect) {
   };
 }
 
+// The box at the current scale, rounded out to whole 300-tile cells.
+function boxSize(s, w, n, e) {
+  const mpt = readScale();
+  const widthM  = haversineKm(s, w, s, e) * 1000;
+  const heightM = haversineKm(s, w, n, w) * 1000;
+  return {
+    area: bboxAreaKm2(s, w, n, e), widthM, heightM,
+    tilesX: Math.ceil(widthM / mpt / 300) * 300,
+    tilesY: Math.ceil(heightM / mpt / 300) * 300,
+  };
+}
+
 function updateBboxFields() {
   if (!currentRect) return clearBboxFields();
   const { s, w, n, e } = rectBounds(currentRect);
@@ -292,12 +304,8 @@ function updateBboxFields() {
   document.getElementById('north').value = n.toFixed(6);
   document.getElementById('east').value  = e.toFixed(6);
 
-  const area = bboxAreaKm2(s, w, n, e);
   const mpt = readScale();
-  const widthM  = haversineKm(s, w, s, e) * 1000;
-  const heightM = haversineKm(s, w, n, w) * 1000;
-  const tilesX = Math.ceil(widthM / mpt / 300) * 300;
-  const tilesY = Math.ceil(heightM / mpt / 300) * 300;
+  const { area, widthM, heightM, tilesX, tilesY } = boxSize(s, w, n, e);
   const cellsX = tilesX / 300;
   const cellsY = tilesY / 300;
 
@@ -325,6 +333,7 @@ function updateBboxFields() {
   const bitmap = bitmapFor(tilesX, tilesY);
   const buildGB = ((tilesX * tilesY * BUILD_BYTES_PER_TILE + BUILD_BASE_BYTES) / 1e9).toFixed(1);
   const fill = Math.min(100, (area / BIG_AREA_KM2) * 100);
+  const takes = durationText(generateSeconds(area, tilesX * tilesY));
 
   stats.className = heavy.length ? 'warn' : (slow ? 'warn' : 'ok');
   stats.innerHTML = `
@@ -336,7 +345,7 @@ function updateBboxFields() {
       ${fx.tile(queries, '', queries === 1 ? 'osm query' : 'osm queries')}
     </div>
     <div class="meter">
-      <div class="meter-top"><span>~${Math.round(widthM)} × ${Math.round(heightM)} m · ${bitmap} of bitmap · ~${buildGB} GB to add buildings</span>
+      <div class="meter-top"><span>~${Math.round(widthM)} × ${Math.round(heightM)} m · ${bitmap} of bitmap · ~${buildGB} GB to add buildings · ${takes} to generate</span>
         <span>${fill < 1 ? '<1' : Math.round(fill)}% of limit</span></div>
       <div class="bar"><div class="bar-fill" style="width:${fill}%"></div></div>
     </div>
@@ -347,8 +356,8 @@ function updateBboxFields() {
       You can still build it — this is a heads-up, not a wall.
       ${fitScale ? `<button type="button" class="use-scale" data-scale="${fitScale.mpt}">Use ${fitScale.mpt} m/tile
         (${fitScale.side} tiles a side, ${fitScale.bitmap})</button>` : ''}</div>` : ''}
-    ${slow ? `<div class="stat-note warn">A big map — roughly ${Math.ceil(queries * 12 / 60)}+ min
-      of OpenStreetMap queries before rendering starts.</div>` : ''}
+    ${slow ? `<div class="stat-note warn">A big map — Generate map will take ${takes},
+      mostly OpenStreetMap downloads.</div>` : ''}
   `;
   fx.countUp(stats);
   btn.disabled = false;
@@ -470,6 +479,22 @@ function bitmapFor(tilesX, tilesY) {
   return mb < 1000 ? `${Math.round(mb)} MB` : `${(mb / 1000).toFixed(1)} GB`;
 }
 
+// How long Generate map takes, as a range in seconds. Fitted to the timings in
+// logs/knoxmap.log (Oct 2026): the OpenStreetMap download ran 3 to 45 s a km²
+// depending on the server, and drawing ran 3 to 8 s per million tiles. A map
+// fetched before comes from the cache and lands near the low end.
+// ponytail: fixed rates from one machine, refit if the log drifts from them.
+function generateSeconds(areaKm2, tiles) {
+  const mTiles = tiles / 1e6;
+  return [20 + areaKm2 * 3 + mTiles * 3, 20 + areaKm2 * 45 + mTiles * 8];
+}
+
+function durationText([lo, hi]) {
+  const say = s => s < 90 ? `${Math.max(1, Math.round(s / 60))} min`
+    : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
+  return say(lo) === say(hi) ? `about ${say(hi)}` : `${say(lo)} to ${say(hi)}`;
+}
+
 function bboxAreaKm2(s, w, n, e) {
   const hKm = (n - s) * 111.32;
   const wKm = (e - w) * 111.32 * Math.cos((s + n) / 2 * Math.PI / 180);
@@ -501,6 +526,7 @@ const SETTING_LABELS = {
   forest_density:      ['Forests', 'Scales the woods the mapper drew, on top of Woodland. Thick forest round a thinly planted town, or the other way about.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
   fill_gaps:           ['Fill gaps from Microsoft footprints', 'On adds the buildings OpenStreetMap has not got, from Microsoft’s machine-detected building footprints, same licence. Downloads about 30 MB per tile on the first run, nothing to install. Worth it where your town is half missing from OSM; elsewhere it adds sheds. Falls back to Overture (needs DuckDB) if Microsoft cannot be reached.'],
+  fill_frontage:       ['Fill gaps in streets', 'On builds the buildings missing from a street that has buildings either side of the gap: the shop missing from a row of shops, the houses from a run of houses. They are made like their neighbours, same width, depth, set-back and storeys, and only where there is room: never across a road, on water, in a park or a wood. Uses nothing but the map itself, so it costs no download. Off leaves the gaps as OpenStreetMap has them.'],
   true_map:            ['True map generation', 'On builds every address as mapped. Off keeps the real roads, rivers, woods and terrain, but leaves out half the houses and grows the rest into proper homes with yards. Named places are always built, at the game’s size.'],
   guaranteed_rifle:    ['Guaranteed rifle', 'On leaves one military rifle on the map: in an army building if there is one, else the police station, else a gun shop, else a house on the edge of town. A real town has no checkpoints for one to spawn in.'],
   min_size:            ['Smallest building', 'Buildings narrower than this many tiles are left out.'],
@@ -1542,6 +1568,21 @@ loadMaps();
 document.getElementById('generateBtn').addEventListener('click', async () => {
   if (!currentRect) return;
   const b = currentRect.getBounds();
+
+  // A big map ties the app up for a long while, so say how big and how long
+  // before starting rather than after.
+  {
+    const { s, w, n, e } = rectBounds(currentRect);
+    const { area, tilesX, tilesY } = boxSize(s, w, n, e);
+    const side = Math.max(tilesX, tilesY);
+    if (area > SLOW_ABOVE_KM2 || side > BIG_TILES_PER_SIDE) {
+      const takes = durationText(generateSeconds(area, tilesX * tilesY));
+      if (!window.confirm(`This is a big map: ${Math.round(area)} km², `
+          + `${tilesX / 300} × ${tilesY / 300} cells (${tilesX} × ${tilesY} tiles).\n\n`
+          + `Generate map will take ${takes}. Adding buildings and compiling `
+          + 'take longer again.\n\nGenerate it?')) return;
+    }
+  }
 
   // Name it here rather than letting the server invent one, so progress can be
   // polled under a key the page already knows.

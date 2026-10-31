@@ -1951,7 +1951,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                   if t.get("amenity") == "fuel" and (x, y) not in points_taken]
     forecourts: list = []
     pump_placements, n_pumps = place_pumps(out_dir, map_name, bdir, occupied,
-                                           stations, loose_fuel, forecourts, canopies)
+                                           stations, loose_fuel, forecourts, canopies,
+                                           metres_per_tile=metres_per_tile)
 
     # Headstones in the churchyards, stores on the army bases: land uses that
     # are neither a building nor a colour of ground.

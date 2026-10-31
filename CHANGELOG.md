@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- **Fill gaps in streets** (`generator/rendering/infill.py`, setting
+  `fill_frontage`, off by default). Where a street has buildings either side of
+  a stretch with none, the gap is built in like its neighbours: same width,
+  depth, set-back, kind and storeys; wall to wall along a street wall, with
+  gaps between detached houses. Never across a road, on water, in a park, wood
+  or farmland, or over another building; a gap too narrow for a neighbour-sized
+  building, or beside a church, school or garage, is left alone. Needs no
+  download.
+- **Offices are fitted across the floor.** Workstations (desk and chair) in
+  rows with an aisle between, cabinets and plants in the gaps between them,
+  instead of everything against the walls. A room too small for a desk in the
+  open keeps the old wall layout.
+- **Clothes racks stand on walls only.** The middle of a clothes shop is tables
+  of folded stock; hanging racks are wall fittings.
+
 ## 1.8.2
 
 - **Maps are built from an OpenStreetMap extract, not live Overpass queries**

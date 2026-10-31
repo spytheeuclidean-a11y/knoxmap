@@ -15,6 +15,7 @@ bridges (see structures.py).
 """
 from __future__ import annotations
 
+import math
 import os
 
 import numpy as np
@@ -43,6 +44,61 @@ NOT_GROUND = {C.WATER}
 
 SIDES = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 
+# How a real station is laid out (the shop's side of NFPA 30A, and the
+# design guides that follow it): the dispensers stand on raised islands, not
+# loose on the tarmac, and no nearer a shop with windows than 5.5 m, so a
+# fire at a pump does not reach the glass. Cars drive round the islands in
+# lanes about 4 m wide. The shop has pavement along its front. Dimensions
+# are in metres and turned into tiles by the scale of the map.
+PUMP_SETBACK_M = 5.5
+LANE_M = 4.0
+REAR_CLEAR_M = 2.5
+# One island's worth of tiles beyond the last pump at each end.
+ISLAND_OVERHANG = 1
+# The roof over an island, as the game's own stations have: a flat slab one
+# floor up, a tile wider than the island either side, on a post at each
+# corner. The slab is a pale paving tile on the floor layer of level 1 - which
+# is what a flat roof is to the game - and the posts the plain pole from the
+# station's own tile sheet.
+CANOPY_ROOF = "floors_exterior_tilesandstone_01_3"
+CANOPY_POST = "location_shop_fossoil_01_56"
+CANOPY_OVERHANG = 1
+
+# A car in the game is two tiles across and four or five long whatever the
+# map's scale, so these are not allowed to shrink with it: at least this many
+# tiles from the shop to the first island, from island to island, and room
+# behind the last.
+MIN_SETBACK_TILES = 4
+MIN_LANE_TILES = 4
+MIN_REAR_TILES = 2
+
+
+def full_depth(metres_per_tile: float) -> int:
+    """The forecourt depth that holds two islands."""
+    mpt = max(0.25, metres_per_tile)
+    near = max(MIN_SETBACK_TILES, int(math.ceil(PUMP_SETBACK_M / mpt)))
+    lane = max(MIN_LANE_TILES, int(math.ceil(LANE_M / mpt)))
+    rear = max(MIN_REAR_TILES, int(math.ceil(REAR_CLEAR_M / mpt)))
+    return near + lane + 1 + rear
+
+
+def island_rows(depth: int, metres_per_tile: float) -> list[int]:
+    """Where the pump islands go, as tiles out from the shop front (0 is the
+    row touching the shop's pavement): one at the setback, a second a lane
+    further out when the forecourt is deep enough, none nearer than a tile or
+    two of pavement."""
+    mpt = max(0.25, metres_per_tile)
+    near = max(MIN_SETBACK_TILES, int(math.ceil(PUMP_SETBACK_M / mpt)))
+    lane = max(MIN_LANE_TILES, int(math.ceil(LANE_M / mpt)))
+    rear = max(MIN_REAR_TILES, int(math.ceil(REAR_CLEAR_M / mpt)))
+    if near + 1 + rear > depth:
+        near = max(1, depth // 2)       # a shallow forecourt: as far as it goes
+        return [near]
+    rows = [near]
+    if near + lane + 1 + rear <= depth:
+        rows.append(near + lane)
+    return rows
+
 
 def _forecourt(x0, y0, w, h, side, depth):
     """The rectangle (x, y, width, height) in front of a footprint's side."""
@@ -62,7 +118,8 @@ def _forecourt(x0, y0, w, h, side, depth):
 def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                 stations: list, points: list,
                 forecourts: list | None = None,
-                canopies: list | None = None) -> tuple[list, int]:
+                canopies: list | None = None,
+                metres_per_tile: float = 2.0) -> tuple[list, int]:
     """Forecourts and pumps for `stations` - (x0, y0, width, height, street
     side or None) of each station's building - and `points`, (x, y) of the
     stations mapped with no building, and `canopies`, the outlines of the
@@ -89,6 +146,7 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
 
     tiles: list[tuple[int, int, int, str, str]] = []
     pumps = 0
+    ground_free = np.ones((H, W), dtype=bool)
 
     paved = np.zeros((H, W), dtype=bool)
     for colour in ROAD | {C.PALE_CONCRETE, C.DARK_ASPHALT}:
@@ -118,7 +176,7 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                 y, h = (y, h + 1) if dy > 0 else (y - 1, h + 1)
         return None
 
-    def lay(x, y, w, h, brand, pumps_at=None):
+    def lay(x, y, w, h, brand, pumps_at=None, side=None):
         nonlocal pumps
         if forecourts is not None:
             forecourts.append((x, y, w, h))
@@ -127,18 +185,55 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
             veg[y:y + h, x:x + w] = 0
         blocked[y:y + h, x:x + w] = True
         occupied[y:y + h, x:x + w] = True
-        # The pumps in a row along the shop front, halfway across the part of
-        # the forecourt nearest the shop.
         px0, py0, pw, ph = pumps_at or (x, y, w, h)
-        along_x = pw >= ph
+        # Along the shop front when it is known, else along the long way.
+        along_x = side in ("N", "S") if side in SIDES else pw >= ph
         length = pw if along_x else ph
+        depth = ph if along_x else pw
         count = max(1, min(MAX_PUMPS, (length - 2) // PUMP_SPACING))
         start = (length - (count - 1) * PUMP_SPACING) // 2
-        for k in range(count):
-            t = start + k * PUMP_SPACING
-            px, py = (px0 + t, py0 + ph // 2) if along_x else (px0 + pw // 2, py0 + t)
-            tiles.append((px, py, 0, "Furniture", PUMPS[brand]["x" if along_x else "y"]))
-            pumps += 1
+        rows = island_rows(depth, metres_per_tile) if side in SIDES else [depth // 2]
+
+        def at(t, d):
+            """The tile `t` along the front and `d` out from the shop's side."""
+            if along_x:
+                return (px0 + t, py0 + (d if side != "N" else ph - 1 - d))
+            return (px0 + (d if side != "W" else pw - 1 - d), py0 + t)
+
+        def tarmac_or_concrete(tx, ty, colour):
+            if 0 <= tx < W and 0 <= ty < H and ground_free[ty, tx]:
+                ground[ty, tx] = colour
+
+        # Pavement along the shop front, then each island: a strip of
+        # concrete a tile past the first and last pump, the pumps standing
+        # in it.
+        if side in SIDES:
+            for t in range(length):
+                tarmac_or_concrete(*at(t, 0), C.PALE_CONCRETE)
+        for d in rows:
+            for t in range(start - ISLAND_OVERHANG,
+                           start + (count - 1) * PUMP_SPACING + ISLAND_OVERHANG + 1):
+                if 0 <= t < length:
+                    tarmac_or_concrete(*at(t, d), C.PALE_CONCRETE)
+            for k in range(count):
+                px, py = at(start + k * PUMP_SPACING, d)
+                tiles.append((px, py, 0, "Furniture", PUMPS[brand]["x" if along_x else "y"]))
+                pumps += 1
+            if side in SIDES:
+                t0 = max(0, start - CANOPY_OVERHANG - ISLAND_OVERHANG)
+                t1 = min(length - 1, start + (count - 1) * PUMP_SPACING
+                         + CANOPY_OVERHANG + ISLAND_OVERHANG)
+                d0, d1 = max(1, d - 1), min(depth - 1, d + 1)
+                for t in range(t0, t1 + 1):
+                    for dd in range(d0, d1 + 1):
+                        rx, ry = at(t, dd)
+                        if 0 <= rx < W and 0 <= ry < H:
+                            tiles.append((rx, ry, 1, "Floor", CANOPY_ROOF))
+                for t in (t0, t1):
+                    for dd in (d0, d1):
+                        rx, ry = at(t, dd)
+                        if 0 <= rx < W and 0 <= ry < H:
+                            tiles.append((rx, ry, 0, "Furniture", CANOPY_POST))
 
     def brand_for(x, y):
         return "fossoil" if (x * 7 + y * 13) % 2 else "gas2go"
@@ -201,11 +296,12 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
             continue          # its pumps are under its canopy already
         order = ([side] if side in SIDES else []) + [s for s in SIDES if s != side]
         done = False
-        for depth in (FORECOURT_DEPTH, FORECOURT_MIN_DEPTH):
+        wide = full_depth(metres_per_tile) + 1
+        for depth in (wide, FORECOURT_DEPTH, FORECOURT_MIN_DEPTH):
             for s in order:
                 rect = _forecourt(x0, y0, w, h, s, depth)
                 if clear(*rect):
-                    lay(*(reach(*rect, s) or rect), brand_for(x0, y0), pumps_at=rect)
+                    lay(*(reach(*rect, s) or rect), brand_for(x0, y0), pumps_at=rect, side=s)
                     done = True
                     break
             if done:

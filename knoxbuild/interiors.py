@@ -32,6 +32,7 @@ STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 # inside the shop front; "counter" is the till counter by the door.
 STORES = {
     "grocery": {"rows": "shop_aisle", "wall": ["shop_shelf", "shop_shelf_white"],
+                "tills": 2, "back_counter": "shop_counter",
                 "back": ["shop_fridge_open", "shop_fridge_double", "shop_freezer"],
                 "counter": "shop_counter", "front": ["shop_bin"]},
     "conveniencestore": {"rows": "shop_aisle", "wall": ["shop_shelf_red", "shop_fridge"],
@@ -44,13 +45,14 @@ STORES = {
                     "back": ["shop_fridge", "shop_fridge_white"],
                     "counter": "shop_counter", "front": []},
     "pharmacy": {"rows": "shop_aisle", "wall": ["shop_shelf_white"],
+                 "back_counter": "shop_counter",
                  "back": ["shop_display", "shop_shelf_white"],
                  "counter": "shop_counter", "front": ["shop_case"]},
     "clothingstore": {"rows": "clothes_rack", "wall": ["clothes_rack", "shop_shelf_wood"],
                       "back": ["shop_shelf_wood", "mirror"],
                       "counter": "shop_counter", "front": ["mannequin", "mannequin_male",
                                                            "mannequin_dark"]},
-    "bookstore": {"rows": "bookcases", "wall": ["bookshelf"], "back": ["bookshelf"],
+    "bookstore": {"rows": "bookcases", "wall": ["bookshelf"], "back": ["bookshelf"], "nook": True,
                   "counter": "shop_counter", "front": []},
     "toolstore": {"rows": "metal_rack", "wall": ["metal_rack", "shop_shelf_wood"],
                   "back": ["metal_rack"], "counter": "shop_display", "front": ["shop_bin"]},
@@ -63,9 +65,13 @@ _LIKE = {
     "giftstore": ("generalstore", {"front": ["plant"]}),
     "toystore": ("generalstore", {"wall": ["shop_shelf", "bookshelf"]}),
     "candystore": ("conveniencestore", {"front": ["shop_case"]}),
-    "gasstore": ("conveniencestore", {}),
-    "butcher": ("grocery", {"rows": "shop_display", "back": ["shop_fridge_double", "shop_freezer"]}),
-    "bakery": ("generalstore", {"rows": "shop_display", "back": ["shop_shelf_white"],
+    # A forecourt shop: the drinks coolers along the back wall, snack shelving
+    # down the sides and in short aisles, the counter by the door where the
+    # cashier can see the pumps. Coolers on every wall was a cold room.
+    "gasstore": ("conveniencestore", {"wall": ["shop_shelf_red", "shop_shelf_red", "shop_fridge"],
+                                      "front": ["vending", "vending_snacks"]}),
+    "butcher": ("grocery", {"back_counter": "shop_counter", "rows": "shop_display", "back": ["shop_fridge_double", "shop_freezer"]}),
+    "bakery": ("generalstore", {"back_counter": "shop_counter", "rows": "shop_display", "back": ["shop_shelf_white"],
                                 "front": ["shop_case"]}),
     "departmentstore": ("clothingstore", {"wall": ["shop_shelf", "clothes_rack"]}),
     "sportstore": ("clothingstore", {"wall": ["metal_rack", "shop_shelf"], "front": ["mannequin_male"]}),
@@ -90,6 +96,8 @@ _LIKE = {
     "cornerstore": ("conveniencestore", {}),
     "optometrist": ("pharmacy", {"front": ["mirror"]}),
 }
+# Hanging rails: wall fittings, not aisle ones.
+RACKS = {"clothes_rack", "clothes_rack_small"}
 # What may stand in an aisle, besides the piece "rows" names.
 #
 # Every aisle used to be the same piece, so a supermarket or a mall came out
@@ -103,7 +111,7 @@ AISLE_MIX = {
     "generalstore": ["shop_aisle", "shop_shelf", "shop_shelf_wood"],
     "liquorstore": ["shop_aisle", "shop_shelf_wood", "shop_shelf"],
     "pharmacy": ["shop_aisle", "shop_shelf_white"],
-    "clothingstore": ["clothes_rack", "clothes_rack_small", "shop_shelf_wood"],
+    "clothingstore": ["shop_shelf_wood", "shop_display", "shop_shelf_wood"],
     "toolstore": ["metal_rack", "shop_shelf_wood"],
 }
 for _kind, _mix in AISLE_MIX.items():
@@ -289,6 +297,9 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
     counter = spec["counter"]
     back_to = OPPOSITE[front]
     run = 3 if frame.length >= 9 else 2
+    # A wide supermarket has more than one till open.
+    tills_wanted = 2 if spec.get("tills", 1) > 1 and frame.length >= 16 else 1
+    tills = 0
     for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
         spots = [frame.xy(start + k, 2) for k in range(run)]
         orient = L._facing(counter, back_to)
@@ -299,7 +310,30 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
             plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
             # The cashier's tile behind, and a tile in front for customers.
             placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
-            break
+            tills += 1
+            if tills >= tills_wanted:
+                break
+
+    # A service counter along the back wall - the deli, the pharmacist's, the
+    # butcher's - with the staff's tile behind it and the customers' in front.
+    service = spec.get("back_counter")
+    if service and frame.length >= 10 and frame.depth >= 9 and service in C.FURNITURE:
+        orient = L._facing(service, back_to)
+        done = False
+        # As long a counter as the back wall's doors leave room for.
+        for span in (min(6, frame.length // 3), 4, 3):
+            for start in [frame.length - span - 1, 1] + list(range(2, frame.length - span - 1)):
+                spots = [frame.xy(start + k, frame.depth - 3) for k in range(span)]
+                if all(_fits(plan, idx, service, x, y, orient, blocked | placed)
+                       for x, y in spots):
+                    for x, y in spots:
+                        put(service, x, y, orient)
+                    placed.update(frame.xy(start + k, d) for k in range(-1, span + 1)
+                                  for d in (frame.depth - 2, frame.depth - 4))
+                    done = True
+                    break
+            if done:
+                break
 
     # Along the walls. Each wall is walked tile by tile, fitting one piece after
     # another so they stand in a line.
@@ -373,7 +407,12 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
     orient_row = "W" if frame.along_x else "N"
     # Bookcases stand back to back in pairs and are left alone; every other
     # shop draws each row, and each stretch of a row, from its mix.
-    mix = [r for r in (spec.get("aisles") or [row_role]) if r in C.FURNITURE] or [row_role]
+    # A clothes rack stands against a wall, never out in the floor: the middle
+    # of a clothes shop is tables of folded stock, as in a real one.
+    if row_role in RACKS:
+        row_role = "shop_shelf_wood"
+    mix = [r for r in (spec.get("aisles") or [row_role]) if r in C.FURNITURE and r not in RACKS]
+    mix = mix or [row_role]
     row_starts = list(range(2, frame.length - 2, every))
     if row_role == "shop_display":
         # Cases are a deli counter, not a floor of aisles: a row or two.
@@ -420,6 +459,18 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
                 else:
                     d += 1
 
+    # A place to sit and read, in the front corner away from the till.
+    if spec.get("nook") and frame.length >= 12 and frame.depth >= 7:
+        for a in (frame.length - 5, 3):
+            parts = [("chair", frame.xy(a - 1, 3)), ("chair", frame.xy(a + 1, 3)),
+                     ("round_table", frame.xy(a, 3))]
+            sides = ["W" if frame.along_x else "N", "E" if frame.along_x else "S", "N"]
+            if all(_fits(plan, idx, role, x, y, L._facing(role, side), blocked | placed)
+                   for (role, (x, y)), side in zip(parts, sides)):
+                for (role, (x, y)), side in zip(parts, sides):
+                    put(role, x, y, L._facing(role, side), ring=(role == "round_table"))
+                break
+
     # Just inside the shop front: mannequins in a clothes shop's window, a
     # drinks machine, a bin.
     front_roles = spec.get("front") or []
@@ -436,20 +487,136 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
 OFFICE_DESKS = ["desk", "desk_dark", "desk_long", "desk_long_pale"]
 
 
+# Workstations stand a tile apart along a row, and the rows a tile of aisle
+# apart; the room's edge is left a tile clear to walk round.
+STATION_GAP = 1
+STATION_AISLE = 1
+
+
+def pack_stations(plan, idx: int, room, group, occupied: set, keep_clear: set,
+                  keeps_open=None, gap: int = STATION_GAP,
+                  aisle: int = STATION_AISLE):
+    """Copies of `group` - [(role, dx, dy, orient)] - in rows across the room,
+    stepping round the walkway and doorways, leaving the room's edge clear when
+    that still holds some and its walls otherwise. Returns the rows as
+    [row_y, x, x, ...] of the group's anchors, and the group's measures
+    (gx0, gy0, gw, gh, pieces)."""
+    L = _layout()
+    pieces = [(role, dx, dy, L._facing(role, o)) for role, dx, dy, o in group]
+    shape = [(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             for cx, cy in L._cells_for(role, 0, 0, o)]
+    gx0, gy0 = min(x for x, _ in shape), min(y for _, y in shape)
+    gw = max(x for x, _ in shape) - gx0 + 1
+    gh = max(y for _, y in shape) - gy0 + 1
+    solid = {(dx + cx, dy + cy) for role, dx, dy, o in pieces
+             if C.FURNITURE_LAYERS.get(role, "Furniture") == "Furniture"
+             for cx, cy in L._cells_for(role, 0, 0, o)}
+
+    def clear(ox: int, oy: int) -> bool:
+        cells = {(ox + x, oy + y) for x, y in shape}
+        if any(L._room_at(plan, x, y) != idx or (x, y) in occupied for x, y in cells):
+            return False
+        return not ({(ox + x, oy + y) for x, y in solid} & keep_clear)
+
+    def station_at(ox: int, oy: int) -> bool:
+        mine = {(ox + x, oy + y) for x, y in solid}
+        if not clear(ox, oy) or (keeps_open and not keeps_open(mine)):
+            return False
+        for role, dx, dy, o in pieces:
+            plan.furniture.append((role, ox + dx, oy + dy, o))
+        occupied.update((ox + x, oy + y) for x, y in shape)
+        return True
+
+    def lay(margin: int, shift: int, commit: bool):
+        x_lo, x_hi = room.x0 + margin, room.x1 - margin
+        y_lo, y_hi = room.y0 + margin, room.y1 - margin
+        pitch = gw + gap
+        slack = (x_hi - x_lo + 1 + gap) % pitch
+        out = []
+        oy = y_lo + shift - gy0
+        while oy + gy0 + gh - 1 <= y_hi:
+            row = []
+            ox = x_lo + slack // 2 - gx0
+            while ox + gx0 + gw - 1 <= x_hi:
+                if (station_at(ox, oy) if commit else clear(ox, oy)):
+                    row.append(ox)
+                    ox += pitch
+                else:
+                    ox += 1
+            if row:
+                out.append([oy] + row)
+            oy += gh + aisle
+        return out
+
+    def pack(margin: int):
+        best = max(range(gh + aisle),
+                   key=lambda sh: sum(len(r) - 1 for r in lay(margin, sh, False)))
+        return lay(margin, best, True)
+
+    rows = pack(1) or pack(0)
+    return rows, (gx0, gy0, gw, gh, pieces)
+
+
 def furnish_office(plan, idx: int, room, rng: random.Random, occupied: set,
-                   keep_clear: set, keeps_open=None) -> list[str]:
-    """Desks with their chairs in rows. Returns what is left for the walls."""
+                   keep_clear: set, keeps_open=None) -> tuple[list[str], bool]:
+    """Workstations across the floor, a filing cabinet or a plant in the gaps
+    between them. Returns what is left for the walls, and whether the floor
+    was fitted out (a room too small for a desk in the open is not, and is
+    furnished from its walls like any other)."""
     L = _layout()
     desk = rng.choice(OFFICE_DESKS)
     long_desk = len(C.FURNITURE[desk]["N"]) == 3
     group = [(desk, 0, 1, "S"), ("office_chair", 1 if long_desk else 0, 0, "N")]
-    placed = L._place_group(plan, idx, room, group, max(1, room.area // 16), occupied, keep_clear,
-                            keeps_open)
     cabinet = rng.choice(["filing_cabinet", "filing_cabinet_pale"])
-    walls = [cabinet, cabinet, "water_cooler", "whiteboard", "plant", cabinet, "corkboard",
-             "bookshelf"]
-    # A room too narrow for a desk out in the floor has one against the wall.
-    return ([desk, "office_chair"] if not placed else []) + walls
+    plant = "plant"
+    rows, (gx0, gy0, gw, gh, pieces) = pack_stations(
+        plan, idx, room, group, occupied, keep_clear, keeps_open)
+    if not rows:
+        # Too small for a desk in the open: one against the wall, as before.
+        walls = [desk, "office_chair", cabinet, cabinet, "water_cooler", "whiteboard",
+                 plant, cabinet, "corkboard", "bookshelf"]
+        return walls, False
+
+    def put_extra(role: str, x: int, y: int, orient: str) -> bool:
+        got = _fits(plan, idx, role, x, y, orient, occupied | keep_clear)
+        if got is None or (keeps_open and not keeps_open(set(got))):
+            return False
+        plan.furniture.append((role, x, y, orient))
+        occupied.update(got)
+        return True
+
+    # Between neighbours on a row, on the desk's line a filing cabinet and on
+    # the chair's line a plant, and a cabinet at the end of the row.
+    desk_dy = pieces[0][2]
+    chair_dy = pieces[1][2]
+    for oy, *xs in rows:
+        for c, ox in enumerate(xs):
+            gap = ox + gx0 + gw
+            if c % 2 == 0:
+                put_extra(cabinet, gap, oy + desk_dy, L._facing(cabinet, "S"))
+            elif c % 3 == 1:
+                put_extra(plant, gap, oy + chair_dy, "N")
+    return ["water_cooler", "whiteboard", "corkboard", "bookshelf", cabinet, plant], True
+
+
+# A classroom's desks face the board. Students sit at a table two wide with a
+# chair to each place, in rows with an aisle between; what is left of the
+# walls is bookshelves and a teacher's desk.
+CLASS_DESK = [("dining_table", 0, 0, "W"), ("chair", 0, 1, "S"), ("chair", 1, 1, "S")]
+_TURNED = {"W": "N", "N": "W", "E": "S", "S": "E"}
+
+
+def furnish_classroom(plan, idx: int, room, rng: random.Random, occupied: set,
+                      keep_clear: set, keeps_open=None) -> tuple[list[str], bool]:
+    group = CLASS_DESK
+    if (room.x1 - room.x0) < (room.y1 - room.y0):
+        # A tall room faces its board on the west wall: the rows turn with it.
+        group = [(role, dy, dx, _TURNED[o]) for role, dx, dy, o in group]
+    rows, _measures = pack_stations(plan, idx, room, group, occupied, keep_clear,
+                                    keeps_open, gap=1, aisle=1)
+    if not rows:
+        return ["whiteboard", "table", "chair", "chair", "desk", "bookshelf", "shelf"], False
+    return ["whiteboard", "desk", "office_chair", "bookshelf", "bookshelf", "shelf"], True
 
 
 SALON_TILES_PER_CHAIR = 25

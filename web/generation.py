@@ -280,6 +280,7 @@ def generate():
             osm_bbox=osm_bbox,
             shape=shape,
             straight_roads=int(settings.straight_roads),
+            fill_frontage=int(settings.fill_frontage),
             should_stop=_stopper(map_name),
             progress=lambda done, total: _set_progress(map_name, stage="roads", done=done, total=total),
         )

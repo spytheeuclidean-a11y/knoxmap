@@ -35,6 +35,7 @@ from .rendering.buildings import (ADDRESS_APART_M, ADDRESS_AVOIDS_ROADS,
                                   BUILDING_TAGS, MAX_ADDRESS_HOUSES,
                                   _buildings_geojson, _houses_from_addresses,
                                   _off_the_road)  # noqa: F401
+from .rendering.infill import _infill_frontage
 from .rendering.furniture import (CRACK_SHARE, DRAIN_EVERY,
                                   EDGE_LINE_MIN_WIDTH, GRIME_SHARE,
                                   HYDRANT_EVERY, LAMP_EVERY, LITTER_SHARE,
@@ -114,6 +115,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            osm_bbox: tuple[float, float, float, float] | None = None,
            shape: dict | None = None,
            straight_roads: int = 1,
+           fill_frontage: int = 0,
            should_stop=None, progress=None) -> RenderResult:
     proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
     # Read more than once below - the buildings pass goes back over the
@@ -209,6 +211,17 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     if addressed:
         building_feats = building_feats + addressed
         buckets["building"] = buckets.get("building", []) + addressed
+
+    # Buildings for the gaps in a row, from the ones beside them
+    # (generator/rendering/infill.py). After the addresses, so a numbered
+    # house that was just put down is a neighbour like any other.
+    infilled: list[OSMFeature] = []
+    if fill_frontage:
+        infilled = _infill_frontage(buckets, vegetation_feats, building_feats,
+                                    proj, clip)
+        if infilled:
+            building_feats = building_feats + infilled
+            buckets["building"] = buckets.get("building", []) + infilled
 
     def ground_rings(feat: OSMFeature) -> list[list[tuple[float, float]]]:
         rings = _feature_coords_px(feat, proj)
@@ -383,6 +396,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         # How many homes came from an address with no building drawn for
         # it, so "it made none of mine" is a number rather than a guess.
         "houses_from_addresses": len(addressed),
+        # And how many were put into gaps along a street.
+        "houses_infilled": len(infilled),
         "guide_reference": "Thuztor Mapping Guide v0.2",
     }, indent=2)
 
