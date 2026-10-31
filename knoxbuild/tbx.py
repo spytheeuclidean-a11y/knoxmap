@@ -552,15 +552,32 @@ def render_tbx(plan: Plan | Building, name: str,
     for level, storey in enumerate(storeys):
         out.append(" <floor>")
         out.extend(above_roofs.pop(level, []))
+        
+        # The three doors _widen_vehicle_entry cut into one wide opening are
+        # still three door objects - BuildingEd has no object that spans more
+        # than one tile - but each takes its own third of the garage door
+        # tile instead of all three using the plain house door.
+        garage_tiles = getattr(storey, "garage_door_tiles", ())
 
         for x, y, direction in storey.doors:
             # In the shop glass: a glass door, framed by the glass wall itself.
             shop_door = level == 0 and (x, y, direction) in glazed
-            attrs = [("type", "door"), ("FrameTile", 0 if shop_door else C.DOOR_FRAME),
-                     ("x", x), ("y", y), ("dir", direction),
-                     ("Tile", store_door if shop_door else C.DOOR)]
+            garage_pos = (garage_tiles.index((x, y, direction))
+                          if (x, y, direction) in garage_tiles else None)
+            if garage_pos is not None:
+                # garage_tiles is (center, neighbour, neighbour): position 0
+                # is the original door tile before _widen_vehicle_entry grew
+                # it sideways, which ends up in the middle of the opening, not
+                # on the left. remap to the catalog's left/mid/right order.
+                garage_slot = (1, 0, 2)[garage_pos]
+                attrs = [("type", "door"), ("FrameTile", 0),
+                         ("x", x), ("y", y), ("dir", direction),
+                         ("Tile", C.GARAGE_DOOR[garage_slot])]
+            else:
+                attrs = [("type", "door"), ("FrameTile", 0 if shop_door else C.DOOR_FRAME),
+                         ("x", x), ("y", y), ("dir", direction),
+                         ("Tile", store_door if shop_door else C.DOOR)]
             out.append(f"  <object{_attrs(attrs)}/>")
-
         # The railing round the hole in this floor, one run per edge. A wall
         # object overrides what the room adjacency would have drawn, which is
         # how the shop glass below works too.

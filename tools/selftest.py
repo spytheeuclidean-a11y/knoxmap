@@ -97,6 +97,12 @@ def town() -> list[OSMFeature]:
                                   "name": "Selftest Pizza"}, box(x0, y0, x0 + 16, y0 + 12)))
                 feats.append(way({"building": "retail", "shop": "supermarket",
                                   "name": "Selftest Market"}, box(x0 + 22, y0, x0 + 50, y0 + 24)))
+            elif (bx, by) == (0, 0):
+                # A lone garage, for the door check: the street-facing
+                # opening should come out as one wide garage door, not
+                # three ordinary house doors side by side.
+                feats.append(way({"building": "garage", "name": "Selftest Garage"},
+                                 box(x0, y0, x0 + 14, y0 + 10)))
             else:
                 for k in range(3):
                     feats.append(way({"building": "house"},
@@ -1887,7 +1893,6 @@ def check_house_plan(check) -> None:
     check(not floating,
           f"nothing stands on a piece too low to hold it ({floating})")
 
-
 def check_porch_lights(check, out: str) -> None:
     """A light by the front door of nearly every house.
 
@@ -1943,6 +1948,33 @@ def check_porch_lights(check, out: str) -> None:
     check(order == ["house", "lamp"],
           f"and is laid down after the wall it hangs on, not before it ({order})")
 
+def check_garage_door(check, out: str) -> None:
+    """A garage gets one wide garage door, not three house doors.
+
+    _widen_vehicle_entry in knoxbuild/layout.py cuts the street-facing
+    entry into a three-tile opening, but tbx.py used to write every one
+    of the three door objects with the plain house door tile, so a
+    garage read as three ordinary doors in a row.
+    """
+    import csv as _csv
+    from knoxbuild.catalog import GARAGE_DOOR
+
+    name = os.path.basename(out.rstrip(os.sep))
+    bdir = os.path.join(out, "buildings")
+    rows = list(_csv.DictReader(open(os.path.join(out, f"{name}_placements.csv"),
+                                     encoding="utf-8")))
+    garages = [r["file"] for r in rows if r["kind"] == "garage"]
+    check(garages, "the town has a garage to check")
+
+    tiles = []
+    for fname in garages:
+        text = open(os.path.join(bdir, fname), encoding="utf-8").read()
+        tiles += [int(t) for t in re.findall(
+            r'<object type="door"[^/]*Tile="(\d+)"', text)]
+    garage_tiles = [t for t in tiles if t in GARAGE_DOOR]
+    check(len(garage_tiles) >= 3 and set(garage_tiles) == set(GARAGE_DOOR),
+          f"a garage gets one wide garage door, all three segments "
+          f"({len(garage_tiles)} tiles, {sorted(set(garage_tiles))})")
 
 def check_repair(check, out: str) -> None:
     """A project broken at its edges, as older versions and hand edits leave
@@ -4118,6 +4150,7 @@ def main(argv: list[str]) -> int:
         check_squares(check)
         check_house_plan(check)
         check_porch_lights(check, out)
+        check_garage_door(check, out)
         check_repair(check, out)
         from knoxbuild.world import Placement, Zone, render_pzw
         edge = render_pzw(2, 2, "m.bmp", [Placement("a.tbx", 10, 599, 3, 3),
