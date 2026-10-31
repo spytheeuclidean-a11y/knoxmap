@@ -312,6 +312,63 @@ body.rotate-dragging * {
 }
 .preset-card.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
+.osm-source-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.osm-source-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 8px;
+  background: var(--field);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  transition: border-color .15s, background .15s;
+}
+.osm-source-card:hover {
+  border-color: var(--accent);
+}
+.osm-source-card.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.osm-source-card b {
+  font-size: 13px;
+  margin-top: 3px;
+  font-weight: 600;
+}
+.osm-source-card small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.osm-source-card.is-on small {
+  color: var(--text);
+}
+.osm-source-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--line);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.osm-source-card.is-on .osm-source-badge {
+  background: var(--accent);
+  color: #121510;
+}
+
 #advanced summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 #advanced-body { margin-top: 8px; }
 .setting { margin-bottom: 10px; }

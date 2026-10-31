@@ -96,6 +96,7 @@ const fx = (() => {
       $('.gen-kicker', el).textContent = 'Generating terrain';
       $('#gen-stage').textContent = 'Contacting OpenStreetMap…';
       $('#gen-detail').textContent = '';
+      $('#gen-bar').parentElement.classList.remove('is-indeterminate');
       $('#gen-bar').style.width = '4%';
       started = Date.now();
       clearInterval(clockTimer);
@@ -105,12 +106,14 @@ const fx = (() => {
       }, 500);
     },
     update(p) {
+      $('#gen-bar').parentElement.classList.toggle('is-indeterminate', p.stage === 'osm' && p.total === 0);
       if (p.stage === 'osm') {
         const total = p.total || 1;
         const done = p.done || 0;
         $('#gen-stage').textContent = 'Downloading map data';
-        $('#gen-detail').textContent = total > 1 ? `Part ${done + 1} of ${total}` : '';
-        $('#gen-bar').style.width = `${Math.max(6, Math.round(8 + 62 * done / total))}%`;
+        $('#gen-detail').textContent = p.note || (total > 1 ? `Part ${done + 1} of ${total}` : '');
+        $('#gen-bar').style.width = p.total === 0 ? '35%'
+          : `${Math.max(6, Math.round(8 + 62 * done / total))}%`;
       } else if (p.stage === 'roads') {
         $('#gen-stage').textContent = 'Routing the roads';
         $('#gen-detail').textContent = `${(p.done || 0).toLocaleString()} of ${(p.total || 0).toLocaleString()} stretches`;
@@ -122,6 +125,7 @@ const fx = (() => {
       }
     },
     done(summary) {
+      $('#gen-bar').parentElement.classList.remove('is-indeterminate');
       $('.gen-kicker').textContent = 'Done';
       $('#gen-stage').textContent = summary || '';
       $('#gen-detail').textContent = '';
@@ -129,6 +133,7 @@ const fx = (() => {
       this.hide(600);
     },
     fail(message) {
+      $('#gen-bar').parentElement.classList.remove('is-indeterminate');
       $('.gen-kicker').textContent = 'Failed';
       $('#gen-stage').textContent = message.length > 160 ? message.slice(0, 157) + '…' : message;
       $('#gen-detail').textContent = '';

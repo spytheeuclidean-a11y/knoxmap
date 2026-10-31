@@ -158,20 +158,18 @@ def landmarks(south: float, west: float, north: float, east: float,
                 r = requests.post(endpoint, data={"data": query},
                                   headers=HEADERS,
                                   timeout=(osm.CONNECT_TIMEOUT_S, 60))
-            if r.status_code in (401, 403, 451):
-                osm._refuse(endpoint)
-                last_err = RuntimeError(f"{endpoint} -> {r.status_code}")
-                continue
-            if r.status_code == 429 or r.status_code >= 500:
-                osm._note_down(endpoint, osm._retry_after(r))
-                last_err = RuntimeError(f"{endpoint} -> {r.status_code}")
-                continue
-            r.raise_for_status()
+            payload = osm.response_payload(r)
             osm._note_up(endpoint)
-            return _parse(r.json(), limit)
+            return _parse(payload, limit)
+        except osm.OverpassError as exc:
+            if exc.refused:
+                osm._refuse(endpoint)
+            elif exc.busy:
+                osm._note_down(endpoint, exc.retry_after)
+            last_err = RuntimeError(f"{endpoint}: {exc}")
         except (requests.RequestException, ValueError) as exc:
-            last_err = exc
-            continue
+            osm._note_down(endpoint)
+            last_err = RuntimeError(f"{endpoint}: {exc}")
     raise RuntimeError(f"All Overpass endpoints failed: {last_err}")
 
 

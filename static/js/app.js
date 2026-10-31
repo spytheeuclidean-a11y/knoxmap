@@ -1441,13 +1441,77 @@ document.getElementById('healthBtn').addEventListener('click', async () => {
   }
 });
 
-// ---- map data server -----------------------------------------------------------
+// ---- map data server & osm_source ----------------------------------------------
+
+const OSM_SOURCE_DESCS = {
+  overpass: {
+    title_ru: '⚡ Overpass API — Онлайн-запросы',
+    desc_ru: 'Скачивает выделенный фрагмент с серверов ниже. При перегрузке делает ограниченное число повторов и сохраняет полученные части карты. Если серверы недоступны, выбери Auto или Geofabrik.',
+    title_en: '⚡ Overpass API — Online queries',
+    desc_en: 'Downloads the selected area from the servers below. Busy servers get a limited number of retries; downloaded parts are kept. If the servers are unreachable, choose Auto or Geofabrik.',
+  },
+  auto: {
+    title_ru: '⚙ Авто (Auto)',
+    desc_ru: 'Читает региональные данные Geofabrik, если установлен pyosmium. Файл скачивается один раз и сохраняется. Во время чтения показан текущий этап и число проверенных объектов. Если этот источник недоступен, используется Overpass.',
+    title_en: '⚙ Auto mode',
+    desc_en: 'Reads regional Geofabrik data when pyosmium is installed. The file is downloaded once and cached. Reading reports its current stage and object count. Falls back to Overpass if the extract is unavailable.',
+  },
+  extract: {
+    title_ru: '📦 Geofabrik — Локальные данные',
+    desc_ru: 'Скачивает и сохраняет файл региона Geofabrik, затем выбирает из него объекты для выделенной области. После загрузки работает без Overpass. Первое чтение большого региона требует времени; текущий этап отображается в окне.',
+    title_en: '📦 Geofabrik — Local data',
+    desc_en: 'Downloads and caches a Geofabrik region, then selects objects for your area. Works without Overpass after the download. The first read of a large region takes time; the current stage is shown in the window.',
+  },
+};
+
+let currentOsmSource = 'overpass';
+
+function setOsmSourceUI(source, saveToServer = true) {
+  if (!OSM_SOURCE_DESCS[source]) source = 'overpass';
+  currentOsmSource = source;
+
+  const cards = document.querySelectorAll('.osm-source-card');
+  cards.forEach(card => {
+    const isThis = card.dataset.source === source;
+    card.classList.toggle('is-on', isThis);
+    card.setAttribute('aria-checked', isThis ? 'true' : 'false');
+  });
+
+  const isRu = (document.getElementById('language') && document.getElementById('language').value === 'russian')
+    || (document.documentElement.lang === 'ru');
+  const info = OSM_SOURCE_DESCS[source];
+  const descEl = document.getElementById('osmSourceDesc');
+  if (descEl) {
+    descEl.innerHTML = `<b>${escapeHtml(isRu ? info.title_ru : info.title_en)}</b><br>${escapeHtml(isRu ? info.desc_ru : info.desc_en)}`;
+  }
+
+  if (saveToServer) {
+    fetch('/api/overpass', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ osm_source: source }),
+    }).then(r => r.json()).then(() => {
+      note('overpassNote', isRu ? `Режим данных карты: ${source}` : `Map data source set to ${source}`, 'ok');
+    }).catch(err => {
+      note('overpassNote', err.message, 'bad');
+    });
+  }
+}
+
+document.querySelectorAll('.osm-source-card').forEach(card => {
+  card.addEventListener('click', () => {
+    setOsmSourceUI(card.dataset.source, true);
+  });
+});
 
 (async function loadOverpass() {
   try {
     const d = await (await fetch('/api/overpass')).json();
     document.getElementById('overpassList').value = (d.endpoints || []).join('\n');
-  } catch (_) { /* the public servers are used either way */ }
+    setOsmSourceUI(d.osm_source || 'overpass', false);
+  } catch (_) {
+    setOsmSourceUI('overpass', false);
+  }
 })();
 
 document.getElementById('overpassSave').addEventListener('click', async () => {
@@ -1456,7 +1520,10 @@ document.getElementById('overpassSave').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/overpass', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoints: document.getElementById('overpassList').value }),
+      body: JSON.stringify({
+        endpoints: document.getElementById('overpassList').value,
+        osm_source: currentOsmSource,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
