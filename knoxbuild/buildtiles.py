@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from .buildroofs import upper_layers
 
@@ -38,6 +39,7 @@ class Building:
     furniture: list[dict] = field(default_factory=list)
 
 
+@lru_cache(maxsize=None)     # millions of calls per compile over a few thousand names
 def tile_name(name: str) -> str:
     """BuildingEd writes numbers padded to three digits, the lot files do not:
     walls_exterior_house_02_064 is walls_exterior_house_02_64 there."""

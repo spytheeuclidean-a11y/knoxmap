@@ -54,11 +54,12 @@ def merge_stack(ground: list[str], building: list[str], has_room: bool) -> list[
 
 
 def _free_gb() -> float:
-    try:
-        import psutil
-        return psutil.virtual_memory().available / 2 ** 30
-    except Exception:  # noqa: BLE001 - without psutil, assume enough for a few
-        return 8.0
+    from tools.compile_map import _free_memory_gb
+    return _free_memory_gb() or 8.0      # unknown: assume enough for a few
+
+
+# A row worker peaked near 600 MB on a 418-cell town (West_Union, 196 lots in its widest row).
+GB_PER_ROW_WORKER = 1
 
 
 MARGIN = 8     # tiles a building's output can reach past the lot the project gives it
@@ -221,7 +222,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                       if ty - MARGIN < hi and ty + bh + MARGIN > lo])
     os.makedirs(out, exist_ok=True)
     if workers is None:
-        workers = max(1, min(os.cpu_count() or 1, int(_free_gb() // 2) or 1))
+        workers = max(1, min(os.cpu_count() or 1, int(_free_gb() // GB_PER_ROW_WORKER) or 1))
     written = 0
     if workers == 1:
         for i, cy in enumerate(cys):
