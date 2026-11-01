@@ -64,6 +64,17 @@ NAMED_CLASSES = {"road_major", "road_medium", "road_minor", "road_service",
                  "pedestrian"}
 SIMPLIFY = 0.5     # tiles; the map is drawn far smaller than one tile per pixel
 
+# Points in one <street> of streets.xml, at most. Project Zomboid (Build 42) builds
+# each street's outline for the paper map in one shared 3 KB buffer
+# (IsoMetaGrid.clipperBuffer, in WorldMapStreet.createPolygon and
+# clipToObscuredCells) and never makes it bigger there. A street of more than
+# about 190 points overflows it: BufferOverflowException is thrown inside the
+# map's render, and the whole map window - streets, legend, buttons - draws
+# nothing for as long as that street is under the mouse, so the M map looks
+# broken for the rest of the session. Long country roads in OpenStreetMap get
+# there. 32 keeps a piece's outline and its triangles under 3 KB even with every corner mitred.
+# The map joins pieces of one name that share an end, so a road still highlights as one.
+MAX_STREET_POINTS = 32
 
 # Labels: the style layer each goes on and how large, as the vanilla
 # Muldraugh annotations use them.
@@ -305,6 +316,19 @@ def _write_worldmap(path: str, features: list[tuple[Polygon, str, str]],
             f.write("\n </cell>\n")
         f.write("</world>\n")
     return len(by_cell)
+    
+def _street_pieces(coords: list, most: int = MAX_STREET_POINTS) -> list[list]:
+    """`coords` cut into runs of at most `most` points, each starting on the last
+    one's final point, so together they are the same line (see MAX_STREET_POINTS)."""
+    if len(coords) <= most:
+        return [coords]
+    pieces, i = [], 0
+    while i < len(coords) - 1:
+        pieces.append(coords[i:i + most])
+        i += most - 1
+    return pieces
+
+
 
 
 def _write_streets(path: str, streets: dict[str, list[tuple[LineString, float]]]) -> int:
@@ -324,10 +348,11 @@ def _write_streets(path: str, streets: dict[str, list[tuple[LineString, float]]]
                 line = line.simplify(SIMPLIFY)
                 if line.length < 10:
                     continue
-                pts = "\n".join(f'            <point x="{x + ox:.1f}" y="{y + oy:.1f}"/>'
-                                for x, y in line.coords)
-                f.write(f'    <street name={quoteattr(name)} width="{width}">\n'
-                        f'        <points>\n{pts}\n        </points>\n    </street>\n')
-                count += 1
+                for coords in _street_pieces(list(line.coords)):
+                    pts = "\n".join(f'            <point x="{x + ox:.1f}" y="{y + oy:.1f}"/>'
+                                    for x, y in coords)
+                    f.write(f'    <street name={quoteattr(name)} width="{width}">\n'
+                            f'        <points>\n{pts}\n        </points>\n    </street>\n')
+                    count += 1
         f.write("</streets>\n")
     return count
