@@ -101,7 +101,8 @@ class Salons(unittest.TestCase):
         for plan, idx, furniture in self.rooms():
             roles = [f[0] for f in furniture]
             with self.subTest(roles=roles):
-                self.assertGreaterEqual(roles.count("office_chair"), 4)
+                # Salon chairs now, a station at each mirror on a side wall.
+                self.assertGreaterEqual(roles.count("salon_chair"), 4)
 
     def test_no_bookcases_or_chests_in_a_salon(self):
         for erika in (False, True):

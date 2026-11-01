@@ -4488,6 +4488,10 @@ for _kind in list(ROOM_STYLE) + list(STOCKROOMS):
     if (_kind in STOCKROOMS or _kind.endswith("storage")) and _kind not in CENTRE_GROUPS:
         CENTRE_GROUPS[_kind] = STOCK_GROUP
 # Commercial kitchens are fitted with counters wall to wall, like a home's.
+# Rooms of a business laid out by their trade (interiors.furnish_*), not by
+# the wishlist round the walls.
+TRADE_LAYOUTS = {"bar": "furnish_bar", "laundry": "furnish_laundromat",
+                 "gym": "furnish_gym", "church": "furnish_church"}
 KITCHENS = {"kitchen", "openplan", "breakroom", "restaurantkitchen", "pizzakitchen", "burgerkitchen",
             "dinerkitchen", "chinesekitchen", "sushikitchen", "mexicankitchen", "seafoodkitchen",
             "cafekitchen", "bakerykitchen", "icecreamkitchen"}
@@ -4520,6 +4524,9 @@ _SIDE_OF_VECTOR = {(1, 0): "E", (-1, 0): "W", (0, 1): "S", (0, -1): "N"}
 _OPPOSITE_SIDE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 
 
+LIVING_GROUP_MIN_TILES = 16
+
+
 def _furnish_living(plan: Plan, idx: int, room: Room,
                     occupied: set[tuple[int, int]],
                     keep_clear: set[tuple[int, int]],
@@ -4531,7 +4538,7 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
     if none does, and the room is laid out the old way."""
     cells = {(x, y) for y in range(room.y0, room.y1 + 1)
              for x in range(room.x0, room.x1 + 1) if _room_at(plan, x, y) == idx}
-    if len(cells) < 20:
+    if len(cells) < LIVING_GROUP_MIN_TILES:
         return False
     sofa = palette.get("sofa", "sofa")
     armchair = palette.get("armchair", "armchair")
@@ -4553,7 +4560,7 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
         origin = (bounds[ox_name], bounds[oy_name])
         length = (room.x1 - room.x0 + 1) if along[0] else (room.y1 - room.y0 + 1)
         depth = (room.y1 - room.y0 + 1) if along[0] else (room.x1 - room.x0 + 1)
-        if depth < 5 or length < 3:
+        if depth < 4 or length < 3:
             continue
 
         def tile(a, d, origin=origin, along=along, into=into):
@@ -4570,6 +4577,9 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
     options.sort(key=lambda o: o[:4])
 
     for _blocked, _outside, _d, side, tile, length, depth, along in options:
+        # Four deep is the television, a step, the table and the sofa back
+        # to the far wall: two in five living rooms are that narrow or under
+        # twenty tiles, and got the sofa and the table wherever they fell.
         sofa_d = 4 if depth >= 6 else 3
         centre = length // 2
         spots = sorted(range(1, length - 1), key=lambda a: (abs(a - centre), a))
@@ -4657,12 +4667,160 @@ def _furnish_middle(plan: Plan, idx: int, room: Room,
     return placed
 
 
+# A kitchen's working run along one wall, by how much wall there is: the fridge
+# at the end, the stove with worktop either side of it, the sink in the
+# worktop. "sink" is the household's kitchen sink, set into a counter later.
+KITCHEN_RUNS = (("fridge", "counter", "stove", "counter", "sink"),
+                ("fridge", "stove", "counter", "sink"))
+
+
+def _kitchen_run(plan: Plan, idx: int, slots, occupied: set, no_go: set,
+                 wishlist: list, counter: str, side_rank: dict, keeps_open=None) -> bool:
+    """Fridge, stove and sink in one run of worktop along a wall.
+
+    Placed one at a time wherever a wall had room, only a third of kitchens
+    had the three in one connected run, and two in five had the stove hard
+    against the sink. Takes the longest run the best wall offers - the
+    plumbing wall first, as the wishlist would - and leaves the room as it
+    was when no wall is long enough."""
+    want = {
+        "fridge": next((w for w in wishlist if w.startswith("fridge")), None),
+        "stove": next((w for w in wishlist if w.startswith("stove")), None),
+        "sink": next((w for w in wishlist if _is_sink(w)), None),
+        "counter": counter,
+    }
+    if not (want["fridge"] and want["stove"] and want["sink"])             or any(want[k] not in C.FURNITURE for k in want):
+        return False
+    inward = {"N": (0, 1), "S": (0, -1), "W": (1, 0), "E": (-1, 0)}
+    by_wall: dict = {}
+    for x, y, facing in slots:
+        line = y if facing in ("N", "S") else x
+        by_wall.setdefault((facing, line), []).append((x, y))
+    runs = []
+    for (facing, _line), tiles in by_wall.items():
+        along = sorted(tiles, key=lambda t: t[0] if facing in ("N", "S") else t[1])
+        run = [along[0]]
+        for t in along[1:]:
+            prev = run[-1]
+            if abs(t[0] - prev[0]) + abs(t[1] - prev[1]) == 1:
+                run.append(t)
+            else:
+                runs.append((facing, run))
+                run = [t]
+        runs.append((facing, run))
+    runs.sort(key=lambda fr: (side_rank.get(fr[0], 9), -len(fr[1])))
+
+    # The fridge and stove a tile off every doorway: doors slide off corners
+    # after the room is furnished, and a stove beside one ended up in the way
+    # and was taken out. Worktop may run up to the door.
+    near_door = {(x + dx, y + dy) for x, y in _door_tiles(plan)
+                 for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+
+    def usable(t, facing, key):
+        fx, fy = inward[facing]
+        front = (t[0] + fx, t[1] + fy)
+        if key in ("fridge", "stove") and (t in near_door or front in near_door):
+            return False
+        return (t not in occupied and t not in no_go and _room_at(plan, *t) == idx
+                and front not in occupied and _room_at(plan, *front) == idx)
+
+    for pattern in KITCHEN_RUNS:
+        n = len(pattern)
+        for facing, run in runs:
+            for i in range(len(run) - n + 1):
+                tiles = run[i:i + n]
+                # The fridge at whichever end of the run is nearer a corner.
+                order = pattern if i <= len(run) - n - i else pattern[::-1]
+                if not all(usable(t, facing, k) for t, k in zip(tiles, order)):
+                    order = order[::-1]
+                    if not all(usable(t, facing, k) for t, k in zip(tiles, order)):
+                        continue
+                if keeps_open and not keeps_open(set(tiles)):
+                    continue
+                fx, fy = inward[facing]
+                for (x, y), key in zip(tiles, order):
+                    role = want[key]
+                    orient = _facing(role, facing)
+                    plan.furniture.append((role, x, y, orient))
+                    occupied.add((x, y))
+                    if _needs_front(role):
+                        occupied.add((x + fx, y + fy))
+                for key in ("fridge", "stove", "sink"):
+                    wishlist.remove(want[key])
+                for _ in range(order.count("counter")):
+                    if counter in wishlist:
+                        wishlist.remove(counter)
+                return True
+    return False
+
+
+def _pair_up(plan: Plan, idx: int, occupied: set, no_go: set, keeps_open=None) -> None:
+    """What goes with a piece, where the room laid the piece out on its own:
+    a coffee table a step in front of a sofa, chairs round a dining table, a
+    lamp on a desk someone sits at. A sofa set against a wall by the wishlist
+    had no table (two in three), and an open-plan flat's sofa almost never."""
+    def free(cells) -> bool:
+        return all(_room_at(plan, *c) == idx and c not in occupied and c not in no_go
+                   for c in cells) and (keeps_open is None or keeps_open(set(cells)))
+
+    mine = [f for f in plan.furniture if _room_at(plan, f[1], f[2]) == idx]
+    roles = {f[0] for f in mine}
+    for role, x, y, o in mine:
+        if (role == "sofa" or role.startswith("sofa_")) and "coffee_table" not in roles                 and "coffee_table" in C.FURNITURE and o in _STEP:
+            sx, sy = _STEP[_OPPOSITE[o]]
+            t_or = "N" if o in ("N", "S") else "W"
+            ax, ay = (1, 0) if o in ("N", "S") else (0, 1)      # along the sofa
+            gap = [(cx + sx, cy + sy) for cx, cy in _cells_for(role, x, y, o)]
+            if not all(_room_at(plan, *g) == idx and g not in occupied for g in gap):
+                continue
+            # Squarely in front, else half a seat to either side.
+            for k in (0, -1, 1):
+                at = (x + 2 * sx + k * ax, y + 2 * sy + k * ay)
+                cells = _cells_for("coffee_table", *at, t_or)
+                if free(cells):
+                    plan.furniture.append(("coffee_table", at[0], at[1], t_or))
+                    occupied.update(cells)
+                    roles.add("coffee_table")
+                    break
+    tables = [f for f in mine if f[0] in SEATS_AT]
+    if tables:
+        taken = {c for f in plan.furniture if _blocks(f[0]) for c in _cells_for(*f)}
+        for role, tx, ty, orient in tables:
+            seats = sum(1 for f in plan.furniture if f[0] == "chair" and any(
+                abs(f[1] - cx) + abs(f[2] - cy) == 1 for cx, cy in _cells_for(role, tx, ty, orient)))
+            for cell in _cells_for(role, tx, ty, orient):
+                for (dx, dy), side in _BESIDE:
+                    c = (cell[0] + dx, cell[1] + dy)
+                    if seats >= SEATS_AT[role] or c in taken or not free([c]):
+                        continue
+                    plan.furniture.append(("chair", c[0], c[1], _facing("chair", side)))
+                    taken.add(c)
+                    occupied.add(c)
+                    seats += 1
+    chairs = {(f[1], f[2]) for f in plan.furniture if f[0] == "office_chair"}
+    lit = {(f[1], f[2]) for f in plan.furniture if f[0] == "lamp"}
+    for role, x, y, o in mine:
+        if role not in DESK_ROLES or o not in _STEP or "lamp" not in C.FURNITURE:
+            continue
+        cells = _cells_for(role, x, y, o)
+        sx, sy = _STEP[_OPPOSITE[o]]
+        if not any((cx + sx, cy + sy) in chairs for cx, cy in cells) or set(cells) & lit:
+            continue
+        # On the end of the desk away from the chair's middle.
+        lx, ly = cells[-1]
+        plan.furniture.append(("lamp", lx, ly, o))
+        lit.add((lx, ly))
+
+
 # Every piece in a centre group needs its own clear block and a tile of aisle
 # all round the group, so in a kitchen four tiles across only the bare table
 # ever fitted: 0.17 chairs a kitchen against the game's 1.10. A chair is
 # tucked against the table, not given an aisle of its own, so they go on after
 # the group is down.
 TABLE_SEATS = 2
+# A dining table is set for four, one each end and one each long side: the
+# game's own are, and two chairs round one read as a table pushed aside.
+SEATS_AT = {"dining_table": 4}
 _BESIDE = (((-1, 0), "W"), ((1, 0), "E"), ((0, -1), "N"), ((0, 1), "S"))
 
 
@@ -4683,7 +4841,7 @@ def _seat_the_table(plan: Plan, idx: int, keep_clear: set[tuple[int, int]],
         seats = already
         for cell in _cells_for(role, tx, ty, orient):
             for (dx, dy), side in _BESIDE:
-                if seats >= TABLE_SEATS:
+                if seats >= SEATS_AT.get(role, TABLE_SEATS):
                     break
                 x, y = cell[0] + dx, cell[1] + dy
                 if (x, y) in taken or (x, y) in keep_clear or _room_at(plan, x, y) != idx:
@@ -4912,6 +5070,10 @@ def _furnish(plan: Plan, rng: random.Random,
     # house, drawn from a seed of this storey's own.
     home_seed = rng.random()
     palettes: dict[int, dict[str, str]] = {}
+    # Who lives in each home (interiors.household), and which of its rooms
+    # are a child's so far, for a teenager to be given one.
+    households: dict[int, dict] = {}
+    kid_rooms: dict[int, int] = {}
 
     for idx, r in enumerate(plan.rooms, start=1):
         # A lift car has no switch and no furniture: it is a sealed box.
@@ -5080,6 +5242,9 @@ def _furnish(plan: Plan, rng: random.Random,
         classroom = r.kind == "classroom" and plan.kind in CIVIC_KINDS
         eatery = r.kind in interiors.DINING_ROOMS
         salon = r.kind == "aesthetic" and plan.kind not in HOME_KINDS
+        trade = (TRADE_LAYOUTS.get(r.kind)
+                 if plan.kind not in HOME_KINDS and plan.kind != "apartment" else None)
+        trade_fitted = False
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
         if r.kind in ("garage", "mechanic") and interiors.furnish_service_bay(
                 plan, idx, r, rng, door_tiles, keep_clear,
@@ -5093,6 +5258,10 @@ def _furnish(plan: Plan, rng: random.Random,
                 plan, idx, r, rng, occupied, keep_clear, keeps_open)
         elif salon:
             base = interiors.furnish_salon(plan, idx, r, rng, occupied, no_go, keeps_open)
+        elif trade is not None:
+            got = getattr(interiors, trade)(plan, idx, r, rng, occupied, no_go, keeps_open)
+            if got is not None:
+                base, trade_fitted = got, True
         elif eatery:
             base = interiors.furnish_dining(plan, idx, r, rng, occupied,
                                             stair_tiles | walk, door_tiles, street,
@@ -5157,6 +5326,14 @@ def _furnish(plan: Plan, rng: random.Random,
         # rather than an extra on top.
         if r.kind == "kitchen" and rng.random() < LAUNDRY_IN_KITCHEN:
             base = base + ["washer"]
+        if plan.kind in HOME_KINDS and not r.is_core:
+            home = households.get(r.unit)
+            if home is None:
+                seed = plan.profile.seed if plan.profile else home_seed
+                home = households[r.unit] = interiors.household(
+                    random.Random(f"{seed}:{r.unit}:household"), plan)
+            base = interiors.for_household(base, r, home, kid_rooms, random.Random(
+                f"{home_seed}:{idx}:who"))
         # One piece per four tiles, which is 2.5 per 10 m2 - about what a
         # living room or a bedroom holds. A room packed with furniture by
         # its nature gets more: Knox County's classrooms run to 8.2 pieces
@@ -5166,7 +5343,7 @@ def _furnish(plan: Plan, rng: random.Random,
         if plan.profile:
             per = max(1, round(per * (1.18 - 0.36 * plan.profile.clutter)))
         target = max(len(base), min(40, r.area // per))
-        if (eatery or salon or commercial_kitchen or office_fitted
+        if (eatery or salon or commercial_kitchen or office_fitted or trade_fitted
                 or r.kind in {"bathroom", "theatre"}):
             target = len(base)       # fitted out; nothing more to scatter
         wishlist = []
@@ -5229,7 +5406,7 @@ def _furnish(plan: Plan, rng: random.Random,
             # The middle, with an aisle round it the wall pieces must leave
             # free; placed after them, it almost never found room.
             before = len(plan.furniture)
-            if not office and not eatery:
+            if not office and not eatery and not trade_fitted:
                 _furnish_middle(plan, idx, r, occupied, keep_clear, pal, keeps_open)
             # The center group already supplied its focal pieces; do not add
             # them again from the room wishlist.
@@ -5333,12 +5510,22 @@ def _furnish(plan: Plan, rng: random.Random,
         # A bed goes head to a wall between its bedside tables.
         if r.kind in ("bedroom", "kidsbedroom"):
             bed = next((role for role in wishlist if role in (pal.get("double_bed"), pal.get("bed"))
-                        or role.startswith(("double_bed", "bed"))), None)
+                        or role.startswith(("double_bed", "bed", "bunk_bed"))), None)
             if bed and interiors.bed_against_wall(plan, idx, r, slots, occupied, no_go,
-                                                  bed, "sidetable", keeps_open):
+                                                  bed, "nightstand", keeps_open):
                 wishlist.remove(bed)
                 if "sidetable" in wishlist:
                     wishlist.remove("sidetable")
+                # The bedside lamp on a bedside table, not on a chest of its
+                # own somewhere else in the room.
+                stand = next((f for f in plan.furniture if f[0] == "nightstand"
+                              and _room_at(plan, f[1], f[2]) == idx), None)
+                if stand and "lamp" in wishlist:
+                    plan.furniture.append(("lamp", stand[1], stand[2], stand[3]))
+                    wishlist.remove("lamp")
+        if r.kind in ("kitchen", "openplan") and not commercial_kitchen:
+            _kitchen_run(plan, idx, slots, occupied, no_go, wishlist,
+                         pal.get("counter", "counter"), side_rank, keeps_open)
         for role in [x for x in wishlist if FR.priority(x, r.kind) == FR.ESSENTIAL]:
             place(role)
         if not centre_first:
@@ -5356,6 +5543,7 @@ def _furnish(plan: Plan, rng: random.Random,
             _counter_runs(plan, idx, slots, occupied, no_go, stair_tiles,
                           pal.get("counter", "counter"), area=r.area, rng=rng,
                           keeps_open=keeps_open)
+        _pair_up(plan, idx, occupied, no_go, keeps_open)
         _stand_on_something(plan, idx, r, pal)
 
 
@@ -5974,9 +6162,13 @@ POCKET_TILES = 2
 # window and a bed under the bedroom one are what Knox County does, and taking
 # them out cost 78 baths and 247 beds in 200 houses.
 def _under_a_window(role: str) -> bool:
+    # Low chests too - the dressers and bedside drawers are all IsLow in the
+    # game, the same as a table - and the lamp that stands on one. Moved off
+    # their window squares in full bedrooms and living rooms, they had nowhere
+    # to go and were the pieces the clear-up threw out most.
     return (role in {"bath", "bath_mat", "sofa", "table", "coffee_table",
-                     "sidetable", "desk", "bench"}
-            or role.startswith(("bed", "double_bed", "sofa_", "counter")))
+                     "sidetable", "desk", "bench", "nightstand", "lamp"}
+            or role.startswith(("bed", "double_bed", "sofa_", "counter", "dresser")))
 
 
 # A cost (essentials, secondary, decoration) packed into one int that sorts
@@ -6435,7 +6627,6 @@ def _off_narrow_spots(building: "Building") -> int:
 
 
 DESK_ROLES = {"desk", "desk_dark", "desk_long", "desk_long_pale"}
-_STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
 _OPPOSITE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 
 

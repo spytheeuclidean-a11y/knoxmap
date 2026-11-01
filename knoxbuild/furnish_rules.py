@@ -11,7 +11,7 @@ DECORATION_ROLES = (
     "bath_mat", "corkboard")
 
 _KITCHEN = ("fridge", "stove", "kitchen_sink", "counter")
-_BED = ("double_bed", "bed")
+_BED = ("double_bed", "bed", "bunk_bed")
 ESSENTIALS = {
     "bathroom": ("toilet", "sink", "bath", "shower"),
     "kitchen": _KITCHEN,

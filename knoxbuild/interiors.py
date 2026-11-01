@@ -704,21 +704,44 @@ def furnish_salon(plan, idx: int, room, rng: random.Random, occupied: set,
         if washed >= 2:
             break
         washed += wash_wall(Frame(cells, f), OPPOSITE[f])
-    # Styling chairs, a clear tile all round each, in rows across the floor.
+    # Styling stations: a salon chair a step out from a mirror on the wall,
+    # facing it, side by side along a north or west wall (the walls a
+    # mirror hangs on). The chairs used to stand in rows in the open floor,
+    # office chairs turned to the basins.
+    chair = "salon_chair" if "salon_chair" in C.FURNITURE else "office_chair"
+    want = max(2, room.area // SALON_TILES_PER_CHAIR)
     chairs = 0
+    for wall in ("W", "N"):
+        if wall in (front, back):
+            continue
+        sx, sy = STEP[OPPOSITE[wall]]
+        for i, (x, y) in enumerate(_against(plan, idx, cells, wall)[1:-1]):
+            if chairs >= want:
+                continue
+            if (x, y) in occupied or (x + sx, y + sy) in occupied:
+                continue
+            if not _put(plan, idx, chair, x + sx, y + sy, OPPOSITE[wall], occupied, no_go,
+                        keeps_open):
+                continue
+            occupied.add((x, y))             # the station's own step to the mirror
+            _hang(plan, idx, "mirror", x, y, wall)
+            chairs += 1
+    # Where no side wall takes them: in rows across the floor, as before.
     for d in range(frame.depth - 3, 1, -3):
         for a in range(2, frame.length - 1, 3):
-            if chairs >= max(2, room.area // SALON_TILES_PER_CHAIR):
+            if chairs >= want:
                 break
             x, y = frame.xy(a, d)
-            orient = L._facing("office_chair", back)
-            got = _fits(plan, idx, "office_chair", x, y, orient, no_go | occupied)
-            if got is None or (keeps_open and not keeps_open(set(got))):
-                continue
-            plan.furniture.append(("office_chair", x, y, orient))
-            occupied.update(got)
-            chairs += 1
-    return ["mirror", "mirror", "mirror", "plant"]
+            chairs += _put(plan, idx, chair, x, y, L._facing(chair, back), occupied, no_go,
+                           keeps_open)
+    # A hood dryer for a big salon, against a wall.
+    if chairs >= 3 and "hair_dryer" in C.FURNITURE:
+        for side in (back, "W", "N", "E", "S"):
+            if side != front and any(
+                    _put(plan, idx, "hair_dryer", x, y, side, occupied, no_go, keeps_open)
+                    for x, y in _against(plan, idx, cells, side)[1:-1]):
+                break
+    return ["mirror", "plant"]
 
 
 # A home's own furniture: one choice per flat (or per storey of a house) for
@@ -778,6 +801,18 @@ def bed_against_wall(plan, idx: int, room, slots, occupied: set, door_tiles: set
         by_side.setdefault(facing, []).append((x, y))
     order = sorted(by_side, key=lambda s: (any(not L._room_at(plan, x + STEP[s][0], y + STEP[s][1])
                                                 for x, y in by_side[s]), -len(by_side[s])))
+    has_tables = side_table and side_table in C.FURNITURE
+
+    def table_fits(fx, fy, t_or, taken):
+        tc = L._cells_for(side_table, fx, fy, t_or)
+        return all(c not in taken and c not in door_tiles and L._room_at(plan, *c) == idx
+                   for c in tc) and (keeps_open is None or keeps_open(tc))
+
+    # Every spot that takes the bed, in order of preference, and then the
+    # first with room for a table each side, else one, else none: the first
+    # spot that took the bed was often in a corner with no room beside it,
+    # and a bed with a table each side was one in five.
+    spots = []
     for side in order:
         orient = L._facing(bed, side)
         if orient != side:
@@ -801,27 +836,34 @@ def bed_against_wall(plan, idx: int, room, slots, occupied: set, door_tiles: set
             if keeps_open and not keeps_open(got):
                 continue
             if side in ("N", "S"):
-                edge_y = y
-                flank = [(ax - 1, edge_y), (ax + w + 1, edge_y)]
+                flank = [(ax - 1, y), (ax + w + 1, y)]
             else:
-                edge_x = x
-                flank = [(edge_x, ay - 1), (edge_x, ay + h + 1)]
-            plan.furniture.append((bed, ax, ay, orient))
-            occupied.update(got)
-            occupied.update(foot)
-            # A bedside table with no sprite for this wall is left out rather
-            # than drawn facing its own back; the bed still gets its wall.
-            if side_table and side_table in C.FURNITURE \
-                    and not (side in ("S", "E") and side_table in L.NORTH_WEST_ONLY):
-                t_or = L._facing(side_table, side)
-                for fx, fy in flank:
-                    tc = L._cells_for(side_table, fx, fy, t_or)
-                    if all(c not in occupied and c not in door_tiles and L._room_at(plan, *c) == idx
-                           for c in tc) and (keeps_open is None or keeps_open(tc)):
-                        plan.furniture.append((side_table, fx, fy, t_or))
-                        occupied.update(tc)
-            return True
-    return False
+                flank = [(x, ay - 1), (x, ay + h + 1)]
+            t_or = L._facing(side_table, side) if has_tables else None
+            fits = 0
+            if has_tables and t_or == side:
+                taken = occupied | set(got) | foot
+                fits = sum(table_fits(fx, fy, t_or, taken) for fx, fy in flank)
+            spots.append((fits, bed, ax, ay, orient, got, foot, flank, t_or))
+            if fits == 2:
+                break
+        if spots and spots[-1][0] == 2:
+            break
+    if not spots:
+        return False
+    best = max(range(len(spots)), key=lambda i: (spots[i][0], -i))
+    _fits_n, bed, ax, ay, orient, got, foot, flank, t_or = spots[best]
+    plan.furniture.append((bed, ax, ay, orient))
+    occupied.update(got)
+    occupied.update(foot)
+    # A bedside table with no sprite for this wall is left out rather than
+    # drawn facing its own back; the bed still gets its wall.
+    if has_tables and t_or == orient:
+        for fx, fy in flank:
+            if table_fits(fx, fy, t_or, occupied):
+                plan.furniture.append((side_table, fx, fy, t_or))
+                occupied.update(L._cells_for(side_table, fx, fy, t_or))
+    return True
 
 
 # Eating places. A dining room was chairs pushed against its walls - in a
@@ -1046,3 +1088,252 @@ def furnish_dining(plan, idx: int, room, rng: random.Random, occupied: set,
         L._place_group(plan, idx, room, [g for g in SMALL_TABLE_SET if g[0] in C.FURNITURE],
                        1, occupied, set(door_tiles), keeps_open)
     return ["plant", "painting", "plant"]
+
+
+# ---- trades with a layout of their own --------------------------------------
+#
+# Bars, laundromats, gyms and churches used to get the generic wishlist round
+# the walls: a bar with three shelves and a painting, a church with two chairs
+# and a table. Each is laid out here the way the trade is, from pieces read off
+# the game's own tiles (tools/game_pieces.py). A function returns what is left
+# for the walls, or None when the room is too small, and the room is then
+# furnished the old way.
+
+def _against(plan, idx: int, cells: set, side: str) -> list[tuple[int, int]]:
+    """This room's tiles with a wall on `side`, in order along that wall."""
+    L = _layout()
+    dx, dy = STEP[side]
+    tiles = [(x, y) for x, y in cells if L._room_at(plan, x + dx, y + dy) != idx]
+    return sorted(tiles, key=lambda t: (t[0], t[1]) if side in ("N", "S") else (t[1], t[0]))
+
+
+def _put(plan, idx, role, x, y, orient, occupied: set, no_go: set, keeps_open=None) -> bool:
+    if role not in C.FURNITURE or orient not in C.FURNITURE[role]:
+        return False
+    got = _fits(plan, idx, role, x, y, orient, no_go | occupied)
+    if got is None or (keeps_open and not keeps_open(set(got))):
+        return False
+    plan.furniture.append((role, x, y, orient))
+    occupied.update(got)
+    return True
+
+
+def _hang(plan, idx, role, x, y, wall: str) -> bool:
+    """A wall piece on (x, y) against `wall`, unless something hangs there."""
+    L = _layout()
+    if wall not in ("N", "W") and role in L.NORTH_WEST_ONLY:
+        return False
+    edge = L._wall_edge(x, y, wall)
+    if edge in plan.wall_pieces or role not in C.FURNITURE:
+        return False
+    plan.furniture.append((role, x, y, L._facing(role, wall)))
+    plan.wall_pieces.add(edge)
+    return True
+
+
+BAR_MIN_TILES = 30
+
+
+def furnish_bar(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                keeps_open=None) -> list[str] | None:
+    """The bar along the back: bottle shelves on the wall, a step for whoever
+    serves, the counter open at both ends, and stools along its front. A pool
+    table in the floor if there is room for it and the players, a jukebox and
+    an arcade cabinet against the walls."""
+    cells = _cells(plan, idx, room)
+    if len(cells) < BAR_MIN_TILES:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+    if frame.depth < 6 or frame.length < 5:
+        return None
+    d_shelf, d_counter, d_stool = frame.depth - 1, frame.depth - 3, frame.depth - 4
+    counters = 0
+    for a in range(1, frame.length - 1):
+        x, y = frame.xy(a, d_counter)
+        counters += _put(plan, idx, "bar_counter", x, y, back, occupied, no_go, keeps_open)
+    if counters < 2:
+        return None
+    for a in range(1, frame.length - 1):
+        _put(plan, idx, "bar_shelf", *frame.xy(a, d_shelf), back, occupied, no_go, keeps_open)
+        # The serving step stays floor.
+        occupied.add(frame.xy(a, frame.depth - 2))
+    for a in range(1, frame.length - 1, 2):
+        _put(plan, idx, "bar_stool", *frame.xy(a, d_stool), front, occupied, no_go, keeps_open)
+    # A pool table needs a cue's length round it: a clear ring of two.
+    if frame.depth >= 11 and frame.length >= 7:
+        orient = "N" if frame.along_x else "W"
+        for a in range(2, frame.length - 3):
+            x, y = frame.xy(a, 3)
+            ring = {(x + dx, y + dy) for dx in range(-2, 4) for dy in range(-2, 4)}
+            if all(c in cells and c not in occupied and c not in no_go for c in ring) \
+                    and _put(plan, idx, "pool_table", x, y, orient, occupied, no_go, keeps_open):
+                occupied.update(ring)
+                break
+    for role in ("jukebox", "arcade"):
+        done = False
+        for side in ("N", "W", "E", "S"):
+            if done or side == front or side not in C.FURNITURE.get(role, {}):
+                continue
+            done = any(_put(plan, idx, role, x, y, side, occupied, no_go, keeps_open)
+                       for x, y in _against(plan, idx, cells, side)[1:-1])
+    return ["plant", "painting"]
+
+
+def furnish_laundromat(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                       keeps_open=None) -> list[str] | None:
+    """Washers down one long wall and dryers down the other, a folding table
+    in the middle, a chair or two to wait on."""
+    cells = _cells(plan, idx, room)
+    if len(cells) < 20:
+        return None
+    long_a = max(STEP, key=lambda s: len(_against(plan, idx, cells, s)))
+    placed = 0
+    for side, role in ((long_a, "coin_washer"), (OPPOSITE[long_a], "coin_dryer")):
+        fx, fy = STEP[OPPOSITE[side]]
+        for x, y in _against(plan, idx, cells, side):
+            front = (x + fx, y + fy)
+            if front in occupied or front not in cells:
+                continue
+            if _put(plan, idx, role, x, y, side, occupied, no_go, keeps_open):
+                occupied.add(front)      # its door opens onto the floor
+                placed += 1
+    if placed < 3:
+        return None
+    return ["table", "chair", "chair", "plant", "shelf"]
+
+
+def furnish_gym(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                keeps_open=None) -> list[str] | None:
+    """Treadmills in a row facing a mirrored wall, weight machines in rows
+    behind them with room to step round each."""
+    cells = _cells(plan, idx, room)
+    if len(cells) < 30:
+        return None
+    # Mirrors on a north or west wall, the treadmills facing it.
+    wall = max(("N", "W"), key=lambda s: len(_against(plan, idx, cells, s)))
+    line = _against(plan, idx, cells, wall)
+    for x, y in line[1:-1]:
+        _hang(plan, idx, "mirror", x, y, wall)
+    # A treadmill is drawn facing west or north only: it stands with its
+    # back to the east or south, running towards the mirrors.
+    run_orient = "E" if wall == "W" else "S"
+    sx, sy = STEP[OPPOSITE[wall]]
+    machines = 0
+    for i, (x, y) in enumerate(line[1:-1]):
+        if i % 2 == 0:
+            machines += _put(plan, idx, "treadmill", x + sx, y + sy, run_orient, occupied,
+                             no_go, keeps_open)
+    weights = [w for w in ("weight_machine", "weight_machine_alt") if w in C.FURNITURE]
+    frame = Frame(cells, wall)
+    for d in range(5, frame.depth - 1, 3):
+        for a in range(1, frame.length - 1, 3):
+            x, y = frame.xy(a, d)
+            machines += _put(plan, idx, rng.choice(weights), x, y, wall, occupied, no_go,
+                             keeps_open)
+    if machines < 2:
+        return None
+    return ["shelf", "plant", "water_cooler"]
+
+
+def furnish_church(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                   keeps_open=None) -> list[str] | None:
+    """The altar at the far end from the door, and pews in rows facing it
+    either side of an aisle down the middle."""
+    cells = _cells(plan, idx, room)
+    if len(cells) < 30:
+        return None
+    door = _front_side(plan, idx, cells, None)
+    # The altar faces the door when it can; the game draws it facing south
+    # or east only, so where the far wall is a south or east one it goes on
+    # a north or west wall instead and the pews turn to face it.
+    altars = C.FURNITURE.get("altar", {})
+    back = OPPOSITE[door]
+    if back not in altars:
+        back = next((w for w in ("N", "W") if w in altars and w != door), back)
+    front = OPPOSITE[back]
+    frame = Frame(cells, front)
+    if frame.length < 9 or frame.depth < 7:
+        return None
+    mid = frame.length // 2
+    if back in altars:
+        _put(plan, idx, "altar", *frame.xy(mid, frame.depth - 2), back, occupied, no_go,
+             keeps_open)
+    else:
+        _put(plan, idx, "table", *frame.xy(mid, frame.depth - 2),
+             "N" if frame.along_x else "W", occupied, no_go, keeps_open)
+    # Pews have their backs to the door and face the altar: three seats each,
+    # an aisle down the middle and along both walls.
+    pews = 0
+    for d in range(2, frame.depth - 4, 2):
+        for a0 in (mid - 4, mid + 2):
+            if a0 < 1 or a0 + 2 > frame.length - 2:
+                continue
+            x, y = min(frame.xy(a0 + k, d) for k in range(3))
+            pews += _put(plan, idx, "pew", x, y, front, occupied, no_go, keeps_open)
+    if pews < 2:
+        return None
+    return ["plant", "painting", "shelf"]
+
+
+# ---- who lives here -----------------------------------------------------------
+#
+# A home's rooms used to be the same whoever lived in them. A household is
+# drawn once per home (per flat, or per house: the building's own seed, so
+# every storey agrees) and changes what its rooms hold: a child's room gets a
+# poster and, with a brother or sister, a bunk bed; a teenager's a desk and
+# posters instead of a plant and a picture; an older couple's living room a
+# second armchair and plants.
+
+FAMILY_SHARE = {None: 0.55, "house": 0.55, "apartment": 0.35}
+RETIRED_SHARE = 0.18
+# An older building has more of its first owners still in it.
+RETIRED_OLD_BUILDING = 0.14
+OLD_BUILDING_YEARS = 40
+TEEN_SHARE = 0.45
+SIBLINGS_SHARE = 0.4
+# A bunk bed and room to climb into it.
+BUNK_MIN_TILES = 12
+# A bedroom this small in a family home is a child's.
+CHILD_ROOM_MAX_TILES = 14
+
+
+def household(rng: random.Random, plan) -> dict:
+    """{"kind": "family" | "retired" | "adults", "teen": bool, "siblings": bool}."""
+    age = getattr(plan.profile, "age", 0) or 0
+    retired = RETIRED_SHARE + (RETIRED_OLD_BUILDING if age >= OLD_BUILDING_YEARS else 0)
+    roll = rng.random()
+    family = FAMILY_SHARE.get(plan.kind, 0.3)
+    kind = "family" if roll < family else "retired" if roll < family + retired else "adults"
+    return {"kind": kind, "teen": kind == "family" and rng.random() < TEEN_SHARE,
+            "siblings": kind == "family" and rng.random() < SIBLINGS_SHARE}
+
+
+def for_household(base: list[str], room, home: dict, kid_rooms: dict,
+                  rng: random.Random) -> list[str]:
+    """The room's wishlist for who lives there."""
+    posters = list(getattr(C, "POSTERS", ()))
+    kind = room.kind
+    if home["kind"] == "retired":
+        if kind == "livingroom":
+            return base + ["armchair", "plant", "plant"]
+        return base
+    if home["kind"] != "family":
+        return base
+    child = kind == "kidsbedroom" or (kind == "bedroom" and room.area <= CHILD_ROOM_MAX_TILES)
+    if not child:
+        return base
+    nth = kid_rooms.get(room.unit, 0)
+    kid_rooms[room.unit] = nth + 1
+    out = list(base)
+    if home["teen"] and nth == 0:
+        # The eldest's room: a desk to work at, and posters on the walls.
+        out = [r for r in out if r not in ("plant", "painting")]
+        out += ["desk", "office_chair"] + ([rng.choice(posters), rng.choice(posters)] if posters else [])
+        return out
+    if home["siblings"] and room.area >= BUNK_MIN_TILES and "bunk_bed" in C.FURNITURE:
+        out = ["bunk_bed" if r in ("bed", "double_bed") else r for r in out]
+    if posters:
+        out = [rng.choice(posters) if r == "painting" else r for r in out]
+    return out

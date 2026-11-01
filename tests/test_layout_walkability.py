@@ -20,9 +20,11 @@ class FurnishedRoomWalkability(unittest.TestCase):
         self.assertNotEqual(shelves[0][1:3], (0, 2))
 
     def test_window_square_is_cleared_when_nothing_can_move(self):
+        # Boxed in by fridges: a dresser may stand at a window now (it is
+        # low), so one beside the bookshelf would simply trade places with it.
         room = layout.Room(0, 0, 2, 2, kind="livingroom")
         furniture = [("bookshelf", 0, 1, "W")]
-        furniture += [("dresser", x, y, "N")
+        furniture += [("fridge", x, y, "N")
                       for x, y in ((0, 0), (2, 0), (2, 1), (0, 2), (1, 2), (2, 2))]
         plan = layout.Plan(
             3, 3, rooms=[room], grid=[[1] * 3 for _ in range(3)],
