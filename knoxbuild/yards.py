@@ -27,10 +27,11 @@ from generator import pz_colors as C
 
 from .bitmaps import read_rgb, same_colour
 
-PATH_MAX_TILES = 40
-# A farmhouse stands well back from its road. Its drive runs that far, and the
-# front path only has to reach the drive.
-DRIVE_MAX_TILES = 120
+# A farmhouse stands well back from its road, and its drive and front path run
+# that far. The path stops at the drive when it meets it first. On Piqua 383
+# houses were a median 61 tiles from the pavement with no straight drive.
+PATH_MAX_TILES = 120
+GARAGE_DRIVE_MAX_TILES = 40
 # Who gets a front path, a stoop and a porch light. Only houses get the drive
 # and the yard: flats and public buildings have lots of their own. On Piqua
 # 91% of the flats had no way to the street before this.
@@ -263,7 +264,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             strip = []
             # From DRIVE_EXTRA tiles back along the house to the pavement.
             t = -DRIVE_EXTRA
-            while t < DRIVE_MAX_TILES:
+            while t < PATH_MAX_TILES:
                 line = []
                 for k in range(DRIVE_WIDTH):
                     if dx:
@@ -279,7 +280,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                     break
                 strip.extend(line)
                 t += 1
-            if strip and t < DRIVE_MAX_TILES:
+            if strip and t < PATH_MAX_TILES:
                 for x, y in strip:
                     paint(x, y, C.DARK_ASPHALT)
                     paved_at[y * w + x] = True
@@ -478,7 +479,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             if road_at[y * w + x]:
                 end = (x, y)
                 break
-            if distance >= PATH_MAX_TILES:
+            if distance >= GARAGE_DRIVE_MAX_TILES:
                 continue
             for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
                 nx, ny = x + dx, y + dy

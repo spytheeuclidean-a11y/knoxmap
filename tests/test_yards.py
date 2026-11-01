@@ -39,15 +39,17 @@ def _building(folder, name):
                 f'<object type="door" x="3" y="0" dir="N"/></floor></building>')
 
 
-def _paint(width, height, buildings):
+def _paint(width, height, buildings, water=()):
     """Lawn with a pavement along the top two rows; return the painted ground.
 
-    `buildings` is (kind, tile_x, tile_y) per building."""
+    `buildings` is (kind, tile_x, tile_y) per building, `water` (x, y) tiles."""
     with tempfile.TemporaryDirectory() as out:
         os.mkdir(os.path.join(out, "buildings"))
         ground = np.zeros((height, width, 3), dtype=np.uint8)
         ground[:, :] = C.MEDIUM_GRASS
         ground[:2, :] = C.PALE_CONCRETE
+        for x, y in water:
+            ground[y, x] = C.WATER
         Image.fromarray(ground).save(os.path.join(out, "t.bmp"), format="BMP")
         Image.fromarray(np.zeros_like(ground)).save(os.path.join(out, "t_veg.bmp"),
                                                    format="BMP")
@@ -79,6 +81,13 @@ class FrontPaths(unittest.TestCase):
         self.assertTrue(drive[2:62].any(axis=1).all(),
                         "the drive does not reach the pavement")
         self.assertTrue(_stone(ground, 13, 61), "no path from the door")
+
+    def test_a_house_far_back_with_no_drive_still_gets_a_path(self):
+        # A stream with one footbridge-wide gap: no straight drive gets across.
+        stream = [(x, 30) for x in range(30) if x != 13]
+        ground = _paint(30, 80, [("house", 10, 62)], water=stream)
+        for y in range(2, 62):
+            self.assertTrue(_stone(ground, 13, y), f"no path at (13, {y})")
 
     def test_a_path_goes_around_the_neighbours_back_yard(self):
         alone = _paint(40, 40, [("house", 10, 4)])
