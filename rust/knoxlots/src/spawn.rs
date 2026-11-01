@@ -32,13 +32,13 @@ impl Grey<'_> {
         self.pixels[py * self.width + px] as u32
     }
 
-    /// The intensity byte for the chunk at (`chunk_x`, `chunk_y`), counted in chunks
-    /// from the picture's top-left corner (the world's origin).
-    pub fn chunk_intensity(&self, chunk_x: i64, chunk_y: i64) -> u8 {
+    /// The intensity byte for the chunk whose north-west tile is (`tile_x`, `tile_y`),
+    /// counted in tiles from the picture's top-left corner (the world's origin).
+    pub fn chunk_intensity(&self, tile_x: i64, tile_y: i64) -> u8 {
         let mut sum = 0u32;
         for dy in 0..CHUNK as i64 {
             for dx in 0..CHUNK as i64 {
-                sum += self.at(chunk_x * CHUNK as i64 + dx, chunk_y * CHUNK as i64 + dy);
+                sum += self.at(tile_x + dx, tile_y + dy);
             }
         }
         (sum / (CHUNK * CHUNK) as u32) as u8
@@ -61,10 +61,13 @@ mod tests {
         // Chunk (0,0) covers tiles 0..8: all inside the 3-pixel -> 3.
         assert_eq!(g.chunk_intensity(0, 0), 3);
         // Chunk (1,0) covers tiles 8..16 x 0..8: columns 8,9 are 3, 10..15 are 0 -> 3*2*8/64 = 0.75 -> 0.
-        assert_eq!(g.chunk_intensity(1, 0), 0);
+        assert_eq!(g.chunk_intensity(8, 0), 0);
+        // Off the chunk grid, as under a map at an odd cell: tiles 4..12 x 0..8 has
+        // columns 4..9 in the 3-pixel -> 3*6*8/64 = 2.25 -> 2.
+        assert_eq!(g.chunk_intensity(4, 0), 2);
         // Beyond the picture, and before it.
-        assert_eq!(g.chunk_intensity(50, 50), 0);
-        assert_eq!(g.chunk_intensity(-1, -1), 0);
+        assert_eq!(g.chunk_intensity(400, 400), 0);
+        assert_eq!(g.chunk_intensity(-8, -8), 0);
         assert_eq!(index(2, 5), 69);
     }
 }

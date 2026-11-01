@@ -83,7 +83,8 @@ fn manifest_is_checked() {
     assert_eq!((m.origin_x, m.spawn_map.as_deref(), m.field_a), (21000, Some("z.bmp"), 8));
     assert_eq!(Manifest::parse(&m.write()).unwrap(), m);
     assert!(Manifest::parse("origin_x = 8\n").is_err(), "no format line");
-    assert!(Manifest::parse("format = knoxlots-source 1\norigin_x = 5\n").is_err(), "not a chunk multiple");
+    // A map at an odd cell: 71 * 300 is 4 tiles off the chunk grid, and is fine.
+    assert_eq!(Manifest::parse("format = knoxlots-source 1\norigin_x = 21300\n").unwrap().origin_x, 21300);
     assert!(Manifest::parse("format = knoxlots-source 1\nbogus = 1\n").is_err(), "unknown setting");
     assert!(Manifest::parse("format = knoxlots-source 2\n").is_err(), "unknown format");
 }

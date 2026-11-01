@@ -63,9 +63,6 @@ impl Manifest {
         if !format_seen {
             return Err("the first setting must be: format = knoxlots-source 1".into());
         }
-        if m.origin_x % 8 != 0 || m.origin_y % 8 != 0 {
-            return Err("origin_x and origin_y must be multiples of 8 (a chunk)".into());
-        }
         Ok(m)
     }
 
@@ -95,13 +92,17 @@ pub fn zombie_bytes(k: &KCell, m: &Manifest, spawn_map: Option<&GreyImage>) -> V
     }
     let Some(img) = spawn_map else { return vec![0; CHUNK_VALUES] };
     let grey = img.view();
-    // The cell's west and north edges in chunks from the picture's corner.
-    let base_x = (k.cell_x as i64 * 256 - m.origin_x) / 8;
-    let base_y = (k.cell_y as i64 * 256 - m.origin_y) / 8;
+    // The cell's west and north edges in tiles from the picture's corner. In
+    // tiles, not chunks: a world origin is a whole number of 300-tile cells,
+    // and an odd one is 4 tiles off the 8-tile chunk grid, so counting it in
+    // chunks refused every map placed at an odd cell.
+    let base_x = k.cell_x as i64 * 256 - m.origin_x;
+    let base_y = k.cell_y as i64 * 256 - m.origin_y;
     let mut out = vec![0u8; CHUNK_VALUES];
     for cx in 0..CHUNKS {
         for cy in 0..CHUNKS {
-            out[spawn::index(cx, cy)] = grey.chunk_intensity(base_x + cx as i64, base_y + cy as i64);
+            out[spawn::index(cx, cy)] = grey.chunk_intensity(base_x + (cx * spawn::CHUNK) as i64,
+                                                             base_y + (cy * spawn::CHUNK) as i64);
         }
     }
     out
