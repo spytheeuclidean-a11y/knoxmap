@@ -1,5 +1,38 @@
 # Changelog
 
+## 1.8.3.2
+
+- **Maps placed at an odd cell compile.** "origin_x and origin_y must be
+  multiples of 8 (a chunk)" stopped every map placed or moved to an odd world
+  cell: a cell is 300 tiles, 4 off the 8-tile chunk grid. The compiler now
+  works in tiles there.
+- **One wood per home.** A bedroom no longer has a black table, dark dressers
+  and a pale bookcase: a house is furnished in one wood (white, light, dark or
+  black) and each flat in its own. New low tables and dining tables in those
+  woods, from the game's own tiles.
+- **No bathroom halls.** Churches, libraries, schools and fire stations had
+  bathrooms of up to 95 tiles. A bathroom over 30 tiles keeps a bathroom's
+  worth and the rest is a store room.
+- **No empty tiny houses.** A two-storey house under 9 tiles across had its
+  stairs down the middle and nothing anywhere. Its stairs now go where there
+  is room beside them, or it is one storey.
+- **The small things**, in about the shares Knox County's houses have them: a
+  coffee maker, toaster and clock in kitchens; a bin, hamper and mirror over
+  the basin in bathrooms; a lamp on every bedside chest, a vanity, a cot in a
+  baby's room; a radio, clock and air vent in living rooms; a telephone, coat
+  rack and door mat by the front door; boxes in closets and stockrooms; a sale
+  sign in shops.
+- **Rooms.** Big houses are cut into proper rooms, windows keep clear of
+  furniture, and no room is reached only through a bathroom. Kitchens work
+  (fridge, stove and sink on one run); bars, laundromats, gyms, churches and
+  salons are fitted out as such; homes are furnished for who lives there.
+- **Gas stations** have the game's own Fossoil canopy; drinks machines stand on
+  west and north walls only, facing in.
+- **The M map no longer goes blank** over a long road (Zombaxx, #60): long
+  streets are written in joined pieces the game can draw. Needs regenerating.
+- **Rotate a selection**, choose where OSM data comes from, steadier downloads,
+  and a Russian translation (Sp0nge-bob, #58).
+
 ## 1.8.3.1
 
 - **Compiling is about three times faster.** Building the cells before the Rust
