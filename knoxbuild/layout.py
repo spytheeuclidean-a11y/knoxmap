@@ -1332,6 +1332,8 @@ BIG_HOUSE_FILL = ["closet", "livingroom", "laundry", "office", "storage",
 # Rooms a cut may clip away: what is left of one is folded into the room
 # beside it or kept as a closet. The hall too, unless it is the landing.
 HOUSE_LOSABLE = {"hall", "laundry", *HOUSE_TOP_UP}
+# What a too-big closet is called instead, smallest first.
+CLOSET_GROWS_INTO = ("storage", "office")
 # Shuffles of a programme cut as a whole box before it sheds a room, and of
 # the bare programme before the floor falls back: a 3x3 bathroom lands
 # clear of a turned footprint's corners only so often.
@@ -1508,6 +1510,14 @@ def _house_by_kind(plan: Plan, level: int, levels: int,
                      if area >= HOUSE_BIG_FLOOR else None)
             if rooms is None:
                 rooms = split_by_targets(box, kinds, rng, area=area, touch=landing)
+            for r in rooms or ():
+                if r.kind == "closet" and too_big(r):
+                    # A closet the cut made room-sized is the spare room it
+                    # looks like: a big floor failed on these more than on
+                    # anything else, and went to the plain splitter.
+                    tiles = sum(map(len, _pieces(r, floor)))
+                    r.kind = next((k for k in CLOSET_GROWS_INTO
+                                   if tiles <= HOUSE_OVERSIZE * SIZES[k].hi), r.kind)
             kept = [r for r in rooms or () if r.kind not in losable]
             big = any(map(too_big, kept))
             # One hall cannot touch every bedroom of a large house, and the
@@ -3254,6 +3264,68 @@ def _doors(plan: Plan, rng: random.Random) -> None:
                 if spot and spot[0] not in plan.doors:
                     plan.doors.append(spot[0])
                     break
+    _swap_through_bathrooms(plan)
+
+
+# What a room reached only through its bathroom becomes when the two swap,
+# if the bathroom's space is too small for what it was.
+SMALLER_KIND = {"bedroom": "kidsbedroom"}
+# Rooms of a home that may change places with their bathroom. A hotel's guest
+# room and its closet are cut as a pair and stay as they are.
+SWAPS_WITH_BATHROOM = {"bedroom", "kidsbedroom", "kitchen", "office", "storage",
+                       "dining", "laundry"}
+
+
+def _swap_through_bathrooms(plan: Plan) -> int:
+    """Swap a room reached only through a bathroom with that bathroom.
+
+    The second-door pass above cannot help a room whose only other walls are
+    the outside, the corridor or another flat - most of them flat bedrooms
+    and kitchens, 0.73% of rooms. The bathroom is then the inner one, an
+    en-suite, and the room gets the bathroom's door onto the rest of the
+    home. Only where the bathroom's space is big enough for the room (a
+    bedroom may become a child's one) and the room's not too big for a
+    bathroom."""
+    def links() -> dict[int, set[int]]:
+        out: dict[int, set[int]] = {}
+        for x, y, d in plan.doors:
+            a = _room_at(plan, x - 1, y) if d == "W" else _room_at(plan, x, y - 1)
+            b = _room_at(plan, x, y)
+            if a and b and a != b:
+                out.setdefault(a, set()).add(b)
+                out.setdefault(b, set()).add(a)
+        return out
+
+    area: dict[int, int] = {}
+    for row in plan.grid:
+        for v in row:
+            if v:
+                area[v] = area.get(v, 0) + 1
+    swapped = 0
+    link = links()
+    for i, room in enumerate(plan.rooms, 1):
+        if room.kind not in SWAPS_WITH_BATHROOM or room.is_shaft or room.is_core:
+            continue
+        through = link.get(i, set())
+        if len(through) != 1:
+            continue
+        b = next(iter(through))
+        bath = plan.rooms[b - 1]
+        if bath.kind != "bathroom" or bath.unit != room.unit or len(link.get(b, ())) < 2:
+            continue
+        kind = room.kind
+        if kind not in SIZES or area.get(i, 0) > HOUSE_OVERSIZE * SIZES["bathroom"].hi:
+            continue
+        # Room for its furniture, not only its least floor: a bedroom of 14
+        # tiles in an odd shape had no space for the bed.
+        if area.get(b, 0) < SIZES[kind].target:
+            kind = SMALLER_KIND.get(kind, kind)
+            if area.get(b, 0) < SIZES[kind].target:
+                continue
+        room.kind, bath.kind = "bathroom", kind
+        swapped += 1
+        link = links()
+    return swapped
 
 
 def _room_at(plan: Plan, x: int, y: int) -> int:
@@ -4041,6 +4113,30 @@ def _place_windows(building: "Building", kind: str | None,
                 except KeyError:
                     cells = [(fx, fy)]
                 blocked |= {_wall_edge(cx, cy, fd) for cx, cy in cells}
+        # Edges with a dresser, shelf or lamp behind them. A window there has
+        # its square cleared, and in a full room the piece has nowhere else
+        # to go and is thrown away: nine in ten of the pieces the clear-up
+        # took out stood at a window. A house window moves along its wall to
+        # a clear stretch when there is one; a room gets its window anyway.
+        behind = set()
+        cover = set()
+        for role, fx, fy, fd in storey.furniture:
+            if _blocks(role):
+                cover.update(_tiles_under(role, fx, fy, fd))
+            if _blocks(role) and not _under_a_window(role):
+                for cx, cy in _tiles_under(role, fx, fy, fd):
+                    behind |= {(cx, cy, "N"), (cx, cy + 1, "N"), (cx, cy, "W"), (cx + 1, cy, "W")}
+
+        def hemmed(edge) -> bool:
+            """A window whose square has furniture both sides of it along the
+            wall: the gap between two dressers, a pocket nobody can open it
+            from."""
+            x, y, d = edge
+            sides = ((x - 1, y), (x + 1, y), (x - 1, y - 1), (x + 1, y - 1)) if d == "N"                 else ((x, y - 1), (x, y + 1), (x - 1, y - 1), (x - 1, y + 1))
+            return (sides[0] in cover and sides[1] in cover) or (sides[2] in cover and sides[3] in cover)
+
+        def worse(edge) -> int:
+            return 2 if edge in behind else 1 if hemmed(edge) else 0
         # No window where a tile carries both a west and a north wall - the
         # inside corner of every step down a diagonal side. BuildingEd draws
         # that corner as one piece; a window there replaced it with a window
@@ -4101,7 +4197,7 @@ def _place_windows(building: "Building", kind: str | None,
                      for x, y, d, ix, iy in wall}
             for edge in sorted(under):
                 spot = where.get(edge)
-                if spot is None or edge in blocked or not spaced(*edge):
+                if spot is None or edge in blocked or worse(edge) or not spaced(*edge):
                     continue
                 idx = storey.grid[spot[1]][spot[0]]
                 if not idx:
@@ -4134,7 +4230,8 @@ def _place_windows(building: "Building", kind: str | None,
                         i = int((k + 0.5) * len(wall) / max(1, n))
                         # The nearest spot to the even spacing that is clear
                         # of doors, corners and the other windows.
-                        for j in sorted(range(1, len(wall) - 1), key=lambda j: abs(j - i)):
+                        for j in sorted(range(1, len(wall) - 1),
+                                        key=lambda j: (worse(wall[j]), abs(j - i))):
                             edge = wall[j]
                             if edge not in blocked and spaced(*edge):
                                 add(edge)
@@ -4174,8 +4271,8 @@ def _place_windows(building: "Building", kind: str | None,
                 # A straight wall keeps its corners clear; a one- or two-tile
                 # step of a diagonal wall has no corners to spare.
                 inner = wall[1:-1] if len(wall) >= MIN_WALL_FOR_WINDOW else wall
-                candidates = sorted(inner, key=lambda e: abs(
-                    wall.index(e) - len(wall) // 2))
+                candidates = sorted(inner, key=lambda e: (worse(e), abs(
+                    wall.index(e) - len(wall) // 2)))
                 spot = next((e for e in candidates if e not in blocked and spaced(*e)), None)
                 if spot is not None:
                     add(spot)
