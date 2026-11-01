@@ -113,3 +113,27 @@ class Salons(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class VendingMachines(unittest.TestCase):
+    def test_every_machine_faces_into_the_shop(self):
+        # The game draws drinks machines facing east or south only. The catalog
+        # gave east and south walls the east-facing sprites too: one faced into
+        # the wall, the other sideways. Now they stand where they face the room.
+        machines = 0
+        for seed in range(16):
+            for street in ("S", "N", "E", "W"):
+                for kind in ("conveniencestore", "gasstore"):
+                    plan = layout.build_building(width=20, height=14, kind="shop", seed=seed,
+                                                 levels=1, street=street,
+                                                 uses=[(kind, "storage")]).storeys[0]
+                    for role, x, y, o in plan.furniture:
+                        if role not in ("vending", "vending_snacks"):
+                            continue
+                        machines += 1
+                        self.assertIn(o, ("W", "N"))
+                        fx, fy = (x + 1, y) if o == "W" else (x, y + 1)
+                        self.assertTrue(0 <= fx < plan.width and 0 <= fy < plan.height
+                                        and plan.grid[fy][fx] == plan.grid[y][x],
+                                        (kind, street, seed, role, x, y, o))
+        self.assertGreater(machines, 10)

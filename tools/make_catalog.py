@@ -605,6 +605,14 @@ def main(argv: list[str]) -> int:
 
     layers: dict[str, str] = {}
     furniture = {role: find_furniture(a) for role, a in ROLES.items()}
+    # BuildingEd pairs the drinks machines' east and south entries with
+    # accessories_01_028-031, but the game tags all four Facing E: one against
+    # an east wall faced into it, one against a south wall faced sideways. The
+    # game draws no machine facing west or north, so they stand on west and
+    # north walls only (layout.NORTH_WEST_ONLY picks that up).
+    for role in ("vending", "vending_snacks"):
+        for orient in ("E", "S"):
+            furniture[role].pop(orient, None)
     # Which layer each piece lives on. A light switch, a painting or a mirror
     # belongs on the WallFurniture layer; written without a layer it becomes
     # floor furniture standing in the middle of the tile.

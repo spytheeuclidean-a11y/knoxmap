@@ -498,6 +498,7 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
     stands = bool(front_roles) and all(r == "shop_bin" for r in front_roles)
     wanted = (min(MAX_STANDS, frame.length // 3) if stands else FRONT_PIECES) if front_roles else 0
     queue = [front_roles[n % len(front_roles)] for n in range(wanted)]
+    aside: list[str] = []
     # Fresh produce in a shop that is not a grocery: a few stands of it.
     queue += ["shop_bin"] * spec.get("produce", 0)
     for a in range(1, frame.length - 1, 2 if stands or not front_roles else 3):
@@ -508,10 +509,27 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
         orient = L._facing(role, side)
         if orient != side:
             queue.pop(0)            # no sprite that way round: leave it out
+            if role.startswith("vending"):
+                aside.append(role)
             continue
         x, y = frame.xy(a, 1)
         if put(role, x, y, orient):
             queue.pop(0)
+    # The game draws drinks machines facing east and south only, so a shop
+    # fronting south or east cannot stand one at its window facing in. It gets
+    # one against a west or north wall instead, as near the front as there is
+    # room, rather than none.
+    for role in aside[:1]:
+        # nearest the front first: its step points out through the front wall
+        fx, fy = STEP[front]
+        spots = sorted(cells, key=lambda c: (-(c[0] * fx + c[1] * fy), c))
+        for x, y in spots:
+            o = next((o for o in ("W", "N")
+                      if o in C.FURNITURE[role]
+                      and (x + STEP[o][0], y + STEP[o][1]) not in cells
+                      and (x - STEP[o][0], y - STEP[o][1]) in cells), None)
+            if o and put(role, x, y, o):
+                break
     return True
 
 
