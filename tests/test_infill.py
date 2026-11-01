@@ -91,6 +91,31 @@ class Houses(unittest.TestCase):
         self.assertEqual(a, b)
 
 
+class FarWalls(unittest.TestCase):
+    # E-429518, a town in Sicily: the building past a gap met the street at a
+    # corner and its wall measured 20 m beyond the gap's last station. The
+    # lots ran off the end of the gap and generate failed on an empty min().
+    def scan(self, n=40):
+        import numpy as np
+        from generator.rendering.infill import STEP_M
+        s = np.arange(STEP_M / 2, n * STEP_M, STEP_M)
+        zero, one = np.zeros(n), np.ones(n)
+        return {"s": s, "x": s, "y": zero, "tx": one, "ty": zero, "nx": zero, "ny": -one,
+                "ax": s, "ay": zero, "hard": one * 40, "near_b": one * np.inf,
+                "which": -one}
+
+    def test_a_wall_far_past_the_gap_is_not_trusted(self):
+        from generator.rendering.infill import STEP_M, _lots_for_gap
+        house = {"width": 30.0, "depth": 12.0, "setback": 4.0, "area": 360.0,
+                 "kind": "house", "levels": None}
+        i0, i1 = 10, 13
+        got = _lots_for_gap(self.scan(), i0, i1, [house, house], [], [40.0] * 40,
+                            False, i0 * STEP_M - 1, (i1 + 1) * STEP_M + 20)
+        for corners in (got[0] if got else []):
+            xs = [x for x, _ in corners]
+            self.assertLessEqual(max(xs), (i1 + 1) * STEP_M + 1e-6)
+
+
 class Downtown(unittest.TestCase):
     def test_a_street_wall_is_filled_wall_to_wall(self):
         # shops standing 0.5 tile off the pavement edge (y = 150 - 6.3)

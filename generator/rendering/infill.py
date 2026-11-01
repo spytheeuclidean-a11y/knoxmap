@@ -307,8 +307,17 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     # width from it, ends against a road or nothing keep a little less.
     inset_l = 0.4 if wall else (SIDE_GAP_M + EDGE_SLACK_M if left else 1.5)
     inset_r = 0.4 if wall else (SIDE_GAP_M + EDGE_SLACK_M if right else 1.5)
-    start = (i0 * STEP_M if lo is None else lo) + inset_l
-    end = ((i1 + 1) * STEP_M if hi is None else hi) - inset_r
+    # A neighbour's wall is trusted only within a station of the gap's end:
+    # that is the rounding it is there to settle. Further off, the building
+    # meets the street at a corner - a bend, a slanted outline - and its wall
+    # can lie twenty metres past the gap.
+    edge0, edge1 = i0 * STEP_M, (i1 + 1) * STEP_M
+    if lo is not None and abs(lo - edge0) <= STEP_M:
+        edge0 = lo
+    if hi is not None and abs(hi - edge1) <= STEP_M:
+        edge1 = hi
+    start = edge0 + inset_l
+    end = edge1 - inset_r
     span = end - start
     if span < MIN_LOT_M:
         return []
@@ -333,9 +342,9 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
         a = start + k * (bw + gap)
         b = a + bw
         # which stations this lot spans, for the room behind it and the angle
-        lo = max(i0, int(a // STEP_M))
-        hi = min(i1, int(b // STEP_M))
-        room = min(hard_free[lo:hi + 1])
+        k0 = min(max(i0, int(a // STEP_M)), i1)
+        k1 = max(min(i1, int(b // STEP_M)), k0)
+        room = min(hard_free[k0:k1 + 1])
         d = min(depth, room - setback - REAR_CLEAR_M)
         if d < MIN_DEPTH_M:
             continue
