@@ -61,6 +61,30 @@ class Forecourt(unittest.TestCase):
         self.assertIn(kit["fascia_n"], text)
         self.assertEqual(text.count("<floor>"), 3)        # the roof is two floors up
 
+    def test_a_mapped_canopy_gets_its_roof(self):
+        # A canopy OpenStreetMap draws, a little askew on a turned map: pumps
+        # under it, a roof over them, and the forecourt one rectangle of
+        # tarmac rather than the outline's jagged inside.
+        d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(d, "buildings"))
+        ground = np.zeros((90, 120, 3), np.uint8)
+        ground[:] = C.MEDIUM_GRASS
+        Image.fromarray(ground).save(os.path.join(d, "m.bmp"), format="BMP")
+        outline = [(40.0, 30.0), (64.0, 31.0), (63.6, 41.0), (39.6, 40.0)]
+        _p, count = pumps.place_pumps(d, "m", os.path.join(d, "buildings"),
+                                      np.zeros((90, 120), bool), [], [],
+                                      canopies=[outline], metres_per_tile=1.0)
+        self.assertGreaterEqual(count, 2)
+        text = "".join(open(os.path.join(d, "buildings", f), encoding="utf-8").read()
+                       for f in os.listdir(os.path.join(d, "buildings")))
+        self.assertTrue(any(pumps.CANOPY[b]["pillar"][0] in text for b in pumps.CANOPY))
+        self.assertEqual(text.count("<floor>"), 3)
+        g = read_rgb(os.path.join(d, "m.bmp"))
+        box = g[30:41, 40:64]
+        paved = ((box == np.array(C.DARK_ASPHALT)).all(axis=2)
+                 | (box == np.array(C.PALE_CONCRETE)).all(axis=2))
+        self.assertTrue(paved.all())
+
     def test_canopy_is_built_as_the_muldraugh_station(self):
         # The game's own Fossoil station (Muldraugh, cell 41,38): islands at
         # x 117-125 on rows 32 and 39, read back from its lot files.
