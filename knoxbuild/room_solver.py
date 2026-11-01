@@ -1681,6 +1681,8 @@ def to_building(lay: Layout, seed: int = 0, profile=None, party: dict | None = N
             L._clear_for_stairs(storeys[lvl], *lay.stairs)
             L._clear_for_stairs(storeys[lvl + 1], *lay.stairs)
     L._clear_the_way(building)
+    from . import interiors
+    interiors.one_wood(building, random.Random(f"{seed}:wood"))
     return building
 
 

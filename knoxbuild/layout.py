@@ -5588,7 +5588,8 @@ def _needs_surface(role: str) -> bool:
 # 125, but a coffee table's is at 172. A lamp on a coffee table floated a
 # quarter of a tile above it. Knox County stands 180 of its 270 table lamps on
 # furniture_storage_01, a bedside chest, and not one of them on a low table.
-LOW_TABLES = {"table", "sidetable", "coffee_table"}
+LOW_TABLES = {"table", "sidetable", "coffee_table",
+              "low_table_tan", "low_table_black", "low_table_white"}
 # What goes under one instead. Both of these are tiles the game itself puts
 # lamps on (furniture_storage_01 8 and 12).
 NIGHTSTANDS = ("dresser", "dresser_alt")
@@ -6168,7 +6169,8 @@ def _under_a_window(role: str) -> bool:
     # to go and were the pieces the clear-up threw out most.
     return (role in {"bath", "bath_mat", "sofa", "table", "coffee_table",
                      "sidetable", "desk", "bench", "nightstand", "lamp"}
-            or role.startswith(("bed", "double_bed", "sofa_", "counter", "dresser")))
+            or role.startswith(("bed", "double_bed", "sofa_", "counter", "dresser",
+                                "low_table_")))
 
 
 # A cost (essentials, secondary, decoration) packed into one int that sorts
@@ -6849,6 +6851,8 @@ def build_building(width: int, height: int, levels: int = 1,
     # Last of all, because it is the furnished building that has to be
     # walkable, not the plan.
     _clear_the_way(building)
+    from . import interiors
+    interiors.one_wood(building, random.Random(f"{seed}:wood"))
     return building
 
 

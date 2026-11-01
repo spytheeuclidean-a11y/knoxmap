@@ -790,6 +790,92 @@ def palette(rng: random.Random, profile=None) -> dict[str, str]:
     return out
 
 
+# A home's wooden furniture is all one wood. The palette above picks the
+# wardrobe, dresser and beds on their own, and the bookcase, tables and
+# bedside chest were the same for everyone, so one bedroom had a black table,
+# dark dressers and a pale bookcase. A house gets one wood throughout; a
+# block of flats one per flat. Each kind of piece maps to the one in this
+# home's wood; a kind a wood has no piece for is left as it is.
+#
+# A piece only changes to one of the same height (the game's Surface), or a
+# lamp stood on it floats or sinks: a bedside chest is a 34 chest of drawers
+# in every wood, never the 15 low table furniture_storage_01 also has.
+TONE_KIND = {
+    **{r: "wardrobe" for r in CHOICES["wardrobe"]},
+    **{r: "dresser" for r in CHOICES["dresser"]},
+    "nightstand": "nightstand",
+    "bookshelf": "bookshelf", "shelf_1": "bookshelf", "shelf_2": "bookshelf",
+    **{r: "double_bed" for r in CHOICES["double_bed"]},
+    **{r: "bed" for r in CHOICES["bed"]},
+    "coffee_table": "low_table", "sidetable": "low_table",
+    "dining_table": "dining_table",
+}
+TONES = {
+    "white": {"wardrobe": "wardrobe", "dresser": "dresser", "nightstand": "dresser",
+              "bookshelf": "shelf_2", "low_table": "low_table_white",
+              "dining_table": "dining_table_white",
+              # No bed is white: a painted room has the black metal frame.
+              "double_bed": "double_bed_black", "bed": "bed"},
+    "light": {"wardrobe": "wardrobe_tan", "dresser": "dresser_tan", "nightstand": "nightstand",
+              "bookshelf": "shelf_2", "low_table": "low_table_tan",
+              "dining_table": "dining_table_oak", "double_bed": "double_bed_alt", "bed": "bed_alt"},
+    "dark": {"wardrobe": "wardrobe_pale", "dresser": "dresser_alt", "nightstand": "dresser_alt",
+             "bookshelf": "bookshelf", "double_bed": "double_bed", "bed": "bed_plain"},
+    "black": {"wardrobe": "wardrobe_black", "dresser": "dresser_black",
+              "nightstand": "dresser_black", "low_table": "low_table_black",
+              "double_bed": "double_bed_black", "bed": "bed",
+              # The game has no black bookcase: a black chest of drawers on
+              # the same tile instead of a dark one in a black room.
+              "bookshelf": "dresser_black"},
+}
+# Dark wood is drawn twice as often as each of the others.
+TONE_WEIGHTS = {"white": 1, "light": 1, "dark": 2, "black": 1}
+# A table looks the same from any side, so it may take whichever of the new
+# piece's sprites fits where the old one stood.
+_TONE_ANY_SIDE = {"low_table", "dining_table"}
+
+
+def _in_tone(role: str, x: int, y: int, orient: str, tone: dict) -> tuple | None:
+    """(role, orient) of the piece in this wood that fits on the old one's
+    tiles, or None to leave it."""
+    kind = TONE_KIND.get(role)
+    new = tone.get(kind)
+    if not new or new == role or new not in C.FURNITURE:
+        return None
+    cells = _layout()._cells_for
+    under = set(cells(role, x, y, orient))
+    sides = [orient] + ([o for o in C.FURNITURE[new] if o != orient]
+                        if kind in _TONE_ANY_SIDE else [])
+    for side in sides:
+        if side in C.FURNITURE[new] and set(cells(new, x, y, side)) <= under:
+            return new, side
+    return None
+
+
+def one_wood(building, rng: random.Random) -> None:
+    """Every home in `building` furnished in one wood: the whole building if
+    it is a house, each flat of a block of flats."""
+    L = _layout()
+    tones: dict = {}
+    for lvl, plan in enumerate(building.storeys):
+        if plan.kind not in L.HOME_KINDS:
+            continue
+        flats = plan.kind == "apartment"
+        out = []
+        for role, x, y, orient in plan.furniture:
+            room = plan.grid[y][x] if 0 <= y < plan.height and 0 <= x < plan.width else 0
+            unit = plan.rooms[room - 1].unit if room else 0
+            got = None
+            if role in TONE_KIND and not (flats and not unit):
+                key = (lvl, unit) if flats else None
+                if key not in tones:
+                    tones[key] = TONES[rng.choices(list(TONE_WEIGHTS),
+                                                   weights=list(TONE_WEIGHTS.values()))[0]]
+                got = _in_tone(role, x, y, orient, tones[key])
+            out.append((got[0], x, y, got[1]) if got else (role, x, y, orient))
+        plan.furniture = out
+
+
 def bed_against_wall(plan, idx: int, room, slots, occupied: set, door_tiles: set,
                      bed: str, side_table: str | None, keeps_open=None) -> bool:
     """A bed with its head to a wall and a bedside table on each side, on the

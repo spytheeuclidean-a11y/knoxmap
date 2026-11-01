@@ -43,6 +43,14 @@ GAME_PIECES = {
     "weight_machine_alt": ("recreational_sports_01", [44, 45, 46, 47], "Furniture"),
     # Children's rooms.
     "bunk_bed": ("furniture_bedding_01", [84, 85, 86, 87], "Furniture"),
+    # A home's tables in its other woods (interiors.TONES): low tables the
+    # height of the coffee table (Surface 15), and white and light oak dining
+    # tables.
+    "low_table_tan": ("furniture_tables_low_01", [16, 17], "Furniture"),
+    "low_table_black": ("furniture_tables_low_01", [18, 19], "Furniture"),
+    "low_table_white": ("furniture_tables_low_01", [20, 21], "Furniture"),
+    "dining_table_white": ("furniture_tables_high_01", [44, 45, 46, 47], "Furniture"),
+    "dining_table_oak": ("furniture_tables_high_01", [60, 61, 62, 63], "Furniture"),
 }
 # A bar stool is round: the one sprite, whichever way.
 ROUND = {"bar_stool": ("location_restaurant_bar_01_26", "Furniture")}

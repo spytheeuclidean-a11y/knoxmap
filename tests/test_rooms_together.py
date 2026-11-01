@@ -7,8 +7,9 @@ table 19% to 74%, a sofa with a coffee table 34% to 51%, dining tables 2.0 to
 """
 import random
 import unittest
+from unittest import mock
 
-from knoxbuild import layout as L
+from knoxbuild import interiors as I, layout as L
 
 
 def near(a, b, d=1):
@@ -23,8 +24,12 @@ class RoomsTogether(unittest.TestCase):
         rng = random.Random(3)
         for i in range(30):
             kind = rng.choice([None, None, "apartment"])
-            b = L.build_building(rng.randint(10, 22), rng.randint(9, 18),
-                                 levels=rng.choice((1, 2)), seed=i, kind=kind)
+            # Where pieces stand, not which wood they are in: the wood pass
+            # (interiors.one_wood) swaps a bedside chest for a dresser of the
+            # home's wood, which these would not know from any other dresser.
+            with mock.patch.object(I, "one_wood", lambda *a: None):
+                b = L.build_building(rng.randint(10, 22), rng.randint(9, 18),
+                                     levels=rng.choice((1, 2)), seed=i, kind=kind)
             for s in b.storeys:
                 for idx, r in enumerate(s.rooms, 1):
                     fs = [f for f in s.furniture if 0 <= f[2] < s.height and 0 <= f[1] < s.width
@@ -68,6 +73,23 @@ class RoomsTogether(unittest.TestCase):
             runs += all(any(pieces[j] is k for j in seen) for k in key)
         self.assertGreater(total, 20)
         self.assertGreater(runs / total, 0.38)
+
+
+class OneWood(unittest.TestCase):
+    def test_a_house_is_one_wood(self):
+        # The wood of every piece only one wood has; a house with any two
+        # woods among them is mixed.
+        woods = {}
+        for wood, pieces in I.TONES.items():
+            for role in pieces.values():
+                woods.setdefault(role, set()).add(wood)
+        mixed = 0
+        for seed in range(30):
+            b = L.build_building(14, 12, levels=2, seed=seed, kind="house")
+            seen = {next(iter(woods[f[0]])) for s in b.storeys for f in s.furniture
+                    if len(woods.get(f[0], ())) == 1}
+            mixed += len(seen) > 1
+        self.assertEqual(mixed, 0)
 
 
 if __name__ == "__main__":
