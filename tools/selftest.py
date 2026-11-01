@@ -425,6 +425,27 @@ def check_split_large(check) -> None:
           and sum(u.tiles for u in units) == whole.tiles,
           f"a building past max_size is cut into units that fit, not dropped "
           f"({len(units)} units, longest side {longest})")
+          
+def check_long_streets(check) -> None:
+    """No <street> in streets.xml longer than the game can draw.
+
+    Build 42 builds each street's outline for the M map in one shared 3 KB
+    buffer and never grows it there; a street of ~190 points or more throws
+    BufferOverflowException inside the map's render and blanks the whole map
+    window. OpenStreetMap country roads reach that (648 points, Hollister).
+    """
+    from knoxbuild.worldmap import MAX_STREET_POINTS, _street_pieces
+
+    road = [(float(i), float(i % 7)) for i in range(648)]
+    pieces = _street_pieces(road)
+    rebuilt = pieces[0] + [p for piece in pieces[1:] for p in piece[1:]]
+    check(max(len(p) for p in pieces) <= MAX_STREET_POINTS and min(len(p) for p in pieces) >= 2
+          and rebuilt == road and all(a[-1] == b[0] for a, b in zip(pieces, pieces[1:]))
+          and _street_pieces(road[:5]) == [road[:5]],
+          f"a long street is written as joined pieces the map can draw "
+          f"({len(pieces)} pieces of at most {MAX_STREET_POINTS} points)")
+
+
 
 
 def check_mapped_rooms(check) -> None:
@@ -4194,6 +4215,7 @@ def main(argv: list[str]) -> int:
         check_street_zombies(check)
         check_dwellings(check)
         check_split_large(check)
+        check_long_streets(check)
         check_mapped_rooms(check)
         check_giant_outline(check, work)
         check_stop(check)
@@ -4335,7 +4357,11 @@ def main(argv: list[str]) -> int:
         props = {p.get("value") for p in root.iter("property")}
         check("Residential" in props and "CommunityServices" in props,
               "buildings on the paper map, by kind")
-        ET.parse(os.path.join(out, "streets.xml"))
+        from knoxbuild.worldmap import MAX_STREET_POINTS
+        streets = ET.parse(os.path.join(out, "streets.xml")).getroot()
+        longest = max((len(s.findall(".//point")) for s in streets.iter("street")), default=0)
+        check(longest <= MAX_STREET_POINTS,
+              f"no street on the paper map too long for the game to draw ({longest} points)")
         notes = open(os.path.join(out, "worldmap-annotations.lua"), encoding="utf-8").read()
         check("OpenStreetMap contributors" in notes, "OpenStreetMap credit on the in-game map")
         check("Selftest School" in notes or "Selftest Church" in notes, "landmarks labelled")
