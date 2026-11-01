@@ -56,9 +56,35 @@ class Forecourt(unittest.TestCase):
                           [(50, 20, 18, 8, "S")], [], metres_per_tile=2.0)
         text = "".join(open(os.path.join(d, "buildings", f), encoding="utf-8").read()
                        for f in os.listdir(os.path.join(d, "buildings")))
-        self.assertIn(pumps.CANOPY_ROOF, text)
-        self.assertIn(pumps.CANOPY_POST, text)
-        self.assertEqual(text.count("<floor>"), 2)        # the roof is a floor up
+        kit = [pumps.CANOPY[b] for b in pumps.CANOPY if pumps.CANOPY[b]["pillar"][0] in text][0]
+        self.assertIn(kit["edge"], text)
+        self.assertIn(kit["fascia_n"], text)
+        self.assertEqual(text.count("<floor>"), 3)        # the roof is two floors up
+
+    def test_canopy_is_built_as_the_muldraugh_station(self):
+        # The game's own Fossoil station (Muldraugh, cell 41,38): islands at
+        # x 117-125 on rows 32 and 39, read back from its lot files.
+        tiles = pumps.canopy_tiles([(117, 32, 125, 32), (117, 39, 125, 39)], "fossoil",
+                                   lambda x, y: True)
+        at = {}
+        for x, y, z, _layer, tile in tiles:
+            at.setdefault((x, y, z), set()).add(tile)
+        f = "location_shop_fossoil_01_"
+        roof = {(x, y) for (x, y, z) in at if z == 2}
+        self.assertEqual(roof, {(x, y) for x in range(116, 129) for y in range(30, 42)})
+        self.assertEqual(at[(116, 30, 2)], {f + "38"})
+        self.assertEqual(at[(120, 35, 2)], {f + "39"})
+        for px, py in ((116, 32), (126, 32), (116, 39), (126, 39)):
+            for z in (0, 1):
+                self.assertEqual(at[(px, py, z)], {f + "4"})
+                self.assertEqual(at[(px + 1, py, z)], {f + "6"})
+                self.assertEqual(at[(px, py + 1, z)], {f + "5"})
+                self.assertEqual(at[(px + 1, py + 1, z)], {f + "7"})
+        self.assertEqual({(x, y) for (x, y, z), t in at.items() if z == 1 and f + "40" in t},
+                         {(x, 42) for x in range(116, 129)})
+        self.assertEqual({(x, y) for (x, y, z), t in at.items() if z == 1 and f + "41" in t},
+                         {(129, y) for y in range(30, 42)})
+        self.assertEqual(at[(129, 42, 1)], {f + "42"})
 
     def test_deep_forecourt_gets_two_islands(self):
         for mpt in (1.0, 2.0):
