@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.8.3.1
+
+- **Compiling is about three times faster.** Building the cells before the Rust
+  compiler runs used only 4 of a PC's cores whatever it had, because it could
+  not read how much memory was free. It now reads it the way the rest of
+  KnoxMap does and runs a worker per GB free, up to one per core. On a
+  418-cell town this took 320 s down to 110 s, with byte-identical lot files.
+- **No more "moved since it was last compiled" from a compile you just ran.**
+  Ticking Standalone moves the map to cell 0,0; done while the map was
+  compiling, the compile finished under the old place and the install refused
+  it. The map cannot be moved, or made standalone, while it compiles, and the
+  Standalone note says it moves the map. Every move is now written to the log.
+- **Offices.** A whiteboard no longer has a window through it: windows keep
+  off every tile a wall piece covers, not just its first. Each desk's chair is
+  pulled up to it, facing it, instead of standing on its own across the room.
+- **Nothing in a one-tile spot.** A room's one-tile-wide tail or one-square
+  nub gets no furniture: no counters and sink down a kitchen's narrow end, no
+  toilet in a bathroom's nub, where nobody could stand to use them.
+
 ## 1.8.3
 
 - **Fill gaps in streets** (`generator/rendering/infill.py`, setting
