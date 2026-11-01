@@ -4031,6 +4031,16 @@ def _place_windows(building: "Building", kind: str | None,
         # whatever is left.
         under = set(building.storeys[level - 1].windows) if level else set()
         blocked = set(getattr(storey, "wall_pieces", set())) | storey.party
+        # Every tile of whatever hangs on a wall, not only the one it is anchored
+        # on: wall_pieces holds one edge per piece, so a three-tile whiteboard
+        # kept a window off its first tile and had one through the other two.
+        for role, fx, fy, fd in storey.furniture:
+            if _is_wall_piece(role):
+                try:
+                    cells = _cells_for(role, fx, fy, fd)
+                except KeyError:
+                    cells = [(fx, fy)]
+                blocked |= {_wall_edge(cx, cy, fd) for cx, cy in cells}
         # No window where a tile carries both a west and a north wall - the
         # inside corner of every step down a diagonal side. BuildingEd draws
         # that corner as one piece; a window there replaced it with a window
@@ -4963,7 +4973,11 @@ def _furnish(plan: Plan, rng: random.Random,
             pal = palettes[r.unit] = interiors.palette(
                 random.Random(f"{home_seed}:{r.unit}"), profile=plan.profile)
         _, _, base = ROOM_STYLE[r.kind]
-        occupied: set[tuple[int, int]] = set()
+        # A one-tile-wide spot takes nothing standing (see _off_narrow_spots).
+        # Counted as taken from the start, the piece goes somewhere it can be
+        # used instead of being placed there and thrown out afterwards.
+        occupied: set[tuple[int, int]] = {
+            (x, y) for x, y in room_cells if _narrow(plan.grid, x, y)}
         office = r.kind == "office" and plan.kind not in HOUSE_LIKE_KINDS
         office_fitted = False
         classroom = r.kind == "classroom" and plan.kind in CIVIC_KINDS
@@ -6284,6 +6298,103 @@ def _thin_clutter(building: "Building") -> int:
     return removed
 
 
+def _narrow(grid, x: int, y: int) -> bool:
+    """A room tile with its own room on neither side across one axis: a strip
+    one tile wide, or a single square sticking out of the room."""
+    idx = grid[y][x]
+    h, w = len(grid), len(grid[0])
+
+    def mine(nx, ny):
+        return 0 <= nx < w and 0 <= ny < h and grid[ny][nx] == idx
+    return (not mine(x - 1, y) and not mine(x + 1, y)) or \
+        (not mine(x, y - 1) and not mine(x, y + 1))
+
+
+def _off_narrow_spots(building: "Building") -> int:
+    """Nothing stands on a tile of a room that is one tile wide.
+
+    A kitchen with a one-tile tail had its counters and sink run down it, with
+    the outside on one side and the hall wall on the other, and a bathroom's
+    one-square nub took the toilet: nowhere to stand to use either, and the
+    spot read as a mistake in the game (Piqua, 2026-10-31). What hangs on the
+    walls stays; what stood on a piece that goes, goes with it."""
+    removed = 0
+    for storey in building.storeys:
+        grid, w, h = storey.grid, storey.width, storey.height
+        gone = {i for i, (role, fx, fy, orient) in enumerate(storey.furniture)
+                if _blocks(role) and not role.startswith("elevator")
+                and any(0 <= cx < w and 0 <= cy < h and grid[cy][cx]
+                        and _narrow(grid, cx, cy)
+                        for cx, cy in _tiles_under(role, fx, fy, orient))}
+        if not gone:
+            continue
+        cells = {c for i in gone for c in _tiles_under(*storey.furniture[i])}
+        gone |= {i for i, (role, fx, fy, _o) in enumerate(storey.furniture)
+                 if (fx, fy) in cells and (_needs_surface(role)
+                                           or role in ("wall_cabinet", "microwave"))}
+        storey.furniture = [f for i, f in enumerate(storey.furniture) if i not in gone]
+        removed += len(gone)
+    return removed
+
+
+DESK_ROLES = {"desk", "desk_dark", "desk_long", "desk_long_pale"}
+_STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
+_OPPOSITE = {"N": "S", "S": "N", "W": "E", "E": "W"}
+
+
+def _seat_the_desks(building: "Building") -> int:
+    """Put each desk's office chair at it, as if someone sat there.
+
+    A desk too big for the middle of a room goes against a wall, and its chair
+    was then placed on its own wherever a wall had room, two tiles off or
+    across the office. A chair not already at a desk moves to a free tile on
+    the desk's open side, facing it; no chair is added."""
+    moved = 0
+    # The flight and the tile at either end of it, on every floor it touches.
+    stairs = set()
+    for x, y, d in building.stairs:
+        dx, dy = (0, 1) if d == "N" else (1, 0)
+        stairs |= {(x + dx * i, y + dy * i) for i in range(-1, STAIR_RUN + 1)}
+    for storey in building.storeys:
+        grid, w, h = storey.grid, storey.width, storey.height
+        furn = storey.furniture
+        taken = {c for role, x, y, o in furn if _blocks(role)
+                 for c in _tiles_under(role, x, y, o)}
+        doors = _door_tiles(storey)
+        # The squares either side of a window are kept clear to open it.
+        doors |= {t for x, y, d in storey.windows
+                  for t in ((x, y), (x, y - 1) if d == "N" else (x - 1, y))}
+
+        def room(x, y):
+            return grid[y][x] if 0 <= x < w and 0 <= y < h else 0
+
+        def fronts(i):
+            role, x, y, o = furn[i]
+            sx, sy = _STEP[_OPPOSITE[o]]
+            return [(cx + sx, cy + sy) for cx, cy in _tiles_under(role, x, y, o)]
+
+        desks = [i for i, f in enumerate(furn) if f[0] in DESK_ROLES and f[3] in _STEP]
+        seated = {c for i in desks for c in fronts(i)}
+        chairs = [i for i, f in enumerate(furn) if f[0] == "office_chair"]
+        for d in desks:
+            if any((furn[c][1], furn[c][2]) in fronts(d) for c in chairs):
+                continue
+            here = room(furn[d][1], furn[d][2])
+            loose = [c for c in chairs if (furn[c][1], furn[c][2]) not in seated
+                     and room(furn[c][1], furn[c][2]) == here]
+            spot = next((t for t in fronts(d) if room(*t) == here and t not in taken
+                         and t not in doors and t not in stairs), None)
+            if not loose or spot is None:
+                continue
+            c = min(loose, key=lambda c: abs(furn[c][1] - spot[0]) + abs(furn[c][2] - spot[1]))
+            taken.discard((furn[c][1], furn[c][2]))
+            furn[c] = ("office_chair", spot[0], spot[1], _OPPOSITE[furn[d][3]])
+            taken.add(spot)
+            seated.add(spot)
+            moved += 1
+    return moved
+
+
 def _clear_the_way(building: "Building") -> int:
     """Take out whatever stands between a doorway and the rooms behind it.
 
@@ -6312,7 +6423,13 @@ def _clear_the_way(building: "Building") -> int:
             storey.furniture = [f for i, f in enumerate(storey.furniture)
                                 if i not in gone]
             removed += len(gone)
+    # Last, after the windows have moved pieces off their squares: a piece stood
+    # against another wall can land on a one-tile spot.
+    removed += _off_narrow_spots(building)
     _thin_clutter(building)
+    # Last, so nothing moves a chair away again; it only takes a free tile that
+    # is not a doorway's or a window's, so the way through stays open.
+    _seat_the_desks(building)
     return removed
 
 
