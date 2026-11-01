@@ -1,5 +1,6 @@
 """Map data from a downloaded regional extract instead of live Overpass queries."""
 import os
+import struct
 import sys
 import tempfile
 import time
@@ -75,6 +76,24 @@ class FilterReading(unittest.TestCase):
         f = extract.Filter('node["place"~"^(city|town)$"]["population"]')
         self.assertTrue(f.matches("node", {"place": "town", "population": "9"}))
         self.assertFalse(f.matches("node", {"place": "town"}))
+
+
+class GeometryBounds(unittest.TestCase):
+    def test_short_and_long_lines_in_either_byte_order(self):
+        for count in (2, 64, 65, 1000):
+            for endian, marker in (("<", 1), (">", 0)):
+                points = [(float(i - 20), float(10 - i)) for i in range(count)]
+                wkb = struct.pack(endian + "BII", marker, 2, count)
+                wkb += struct.pack(endian + f"{count * 2}d", *[v for p in points for v in p])
+                with self.subTest(count=count, endian=endian):
+                    self.assertEqual(extract._line_bounds(wkb.hex()),
+                                     (-20., float(11 - count), float(count - 21), 10.))
+
+    def test_invalid_or_different_geometries_are_rejected(self):
+        for wkb in (b'', b'\x01', struct.pack('<BII', 1, 2, 0),
+                    struct.pack('<BII', 1, 3, 1)):
+            with self.subTest(wkb=wkb), self.assertRaises(ValueError):
+                extract._line_bounds(wkb.hex())
 
 
 class WhichExtract(unittest.TestCase):
@@ -188,6 +207,15 @@ class ReadingAnExtract(unittest.TestCase):
     def test_what_is_wanted_and_inside_comes_out(self):
         got = {(e["type"], e["id"]) for e in self.read((9.99, 19.99, 10.03, 20.03))}
         self.assertEqual(got, {("node", 5), ("way", 100), ("relation", 200)})
+
+    def test_a_file_scan_reports_activity_without_a_guessed_percentage(self):
+        reports = []
+        with mock.patch.object(extract, "_download", return_value=self.path):
+            extract.elements(9.99, 19.99, 10.03, 20.03,
+                             regions=[{"name": "test"}],
+                             progress=lambda done, total, note: reports.append((done, total, note)))
+        self.assertTrue(any(total == 0 and "reading the map data" in note
+                            for _done, total, note in reports))
 
     def test_what_is_far_away_is_left_out(self):
         got = {(e["type"], e["id"]) for e in self.read((9.99, 19.99, 10.002, 20.002))}

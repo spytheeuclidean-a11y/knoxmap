@@ -94,7 +94,7 @@ class Manners(unittest.TestCase):
     def test_the_probe_reads_the_status_page_not_a_query(self):
         seen = []
         with mock.patch.object(osm.requests, "get",
-                               lambda url, **kw: (seen.append(url), reply(200))[1]), \
+                               lambda url, **kw: (seen.append(url), reply(200, text="Connected as: 123\nRate limit: 2"))[1]), \
                 mock.patch.object(osm.requests, "post", side_effect=AssertionError("query")):
             self.assertTrue(osm._probe(A, 40.0, -74.0))
         self.assertEqual(seen, ["https://a.example/api/status"])

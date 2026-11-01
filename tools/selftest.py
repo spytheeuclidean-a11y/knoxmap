@@ -2229,6 +2229,7 @@ def check_overpass_blank(check) -> None:
         first_host = _osm.OVERPASS_ENDPOINTS[0].split("/")[2]
 
         # A part-finished query is a failure, not an empty tile.
+        _osm._cooling.clear()
         replies = {first_host: Reply({**EMPTY, "remark":
                    'runtime error: Query timed out in "query" after 90 s.'})}
         try:
@@ -3352,9 +3353,12 @@ def check_overpass_setting(check, work: str) -> None:
         for bad in ("ftp://x/y", "not a url", {"a": 1}, ["javascript:alert(1)"]):
             check(client.post("/api/overpass", json={"endpoints": bad}).status_code == 400,
                   f"{str(bad)[:24]!r} is refused")
-        check(client.post("/api/overpass", json=[1]).get_json()["using"] == osm.OVERPASS_ENDPOINTS
-              and osm.OVERPASS_ENDPOINTS == list(osm._DEFAULT_ENDPOINTS),
-              "an empty answer goes back to the public servers")
+        check(client.post("/api/overpass", json=[1]).get_json()["using"] == [mine]
+              and osm.OVERPASS_ENDPOINTS == [mine],
+              "an invalid body does not change the selected servers")
+        check(client.post("/api/overpass", json={"endpoints": []}).get_json()["using"]
+              == list(osm._DEFAULT_ENDPOINTS),
+              "an explicitly empty server list goes back to the public servers")
 
         # The status list: one row per server, from a stand-in probe.
         was_probe = osm._probe
@@ -4019,6 +4023,18 @@ def main(argv: list[str]) -> int:
     check = Checks()
     work = tempfile.mkdtemp(prefix="knoxmap-selftest-")
     os.environ["KNOXMAP_LOG_DIR"] = os.path.join(work, "logs")
+    # The fake servers assume the shipped list, irrespective of the user's
+    # selected server or persisted refusals. Keep every test write temporary.
+    from generator import osm as _test_osm
+    saved_urls = list(_test_osm.OVERPASS_ENDPOINTS)
+    saved_state = [dict(d) for d in (_test_osm._cooling, _test_osm._fails, _test_osm._refused)]
+    saved_refused_file = _test_osm._refused_file
+    saved_source = os.environ.get("KNOXMAP_OSM_SOURCE")
+    _test_osm.set_endpoints(None)
+    for state in (_test_osm._cooling, _test_osm._fails, _test_osm._refused):
+        state.clear()
+    _test_osm._refused_file = lambda: os.path.join(work, "overpass_refused.json")
+    os.environ["KNOXMAP_OSM_SOURCE"] = "overpass"
     try:
         from generator import renderer
         from knoxbuild.build import build
@@ -4677,6 +4693,15 @@ def main(argv: list[str]) -> int:
         traceback.print_exc()
         check(False, "ran to the end without an error")
     finally:
+        _test_osm.set_endpoints(saved_urls)
+        for state, saved in zip((_test_osm._cooling, _test_osm._fails, _test_osm._refused), saved_state):
+            state.clear()
+            state.update(saved)
+        _test_osm._refused_file = saved_refused_file
+        if saved_source is None:
+            os.environ.pop("KNOXMAP_OSM_SOURCE", None)
+        else:
+            os.environ["KNOXMAP_OSM_SOURCE"] = saved_source
         if keep:
             print(f"kept in {work}")
         else:

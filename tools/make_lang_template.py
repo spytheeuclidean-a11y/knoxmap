@@ -54,6 +54,71 @@ PRESET_ERRORS = (
     "The preset outline could not be read.",
     "The preset needs map settings.",
 )
+
+# Runtime messages use named placeholders; the translator keeps their names.
+EXTRA_MESSAGES = (
+    'Rotate area',
+    'Rotate area (drag to rotate, Shift to snap, or click to turn 45°)',
+    'Shape area',
+    'Map area',
+    'Cells',
+    'Tiles',
+    'Bitmap',
+    'MB',
+    'km²',
+    'OSM query',
+    'OSM queries',
+    'OpenStreetMap data source',
+    'Online queries',
+    'Extract / Live',
+    'Regional dump',
+    'Overpass server addresses',
+    'Fast',
+    'Default',
+    'Offline',
+    'Auto',
+    '⚡ Overpass API — Online queries',
+    'Downloads the selected area from the servers below. Busy servers get a limited number of retries; downloaded parts are kept. If the servers are unreachable, choose Auto or Geofabrik.',
+    '⚙ Auto mode',
+    'Reads regional Geofabrik data when pyosmium is installed. The file is downloaded once and cached. Reading reports its current stage and object count. Falls back to Overpass if the extract is unavailable.',
+    '📦 Geofabrik — Local data',
+    'Downloads and caches a Geofabrik region, then selects objects for your area. Works without Overpass after the download. The first read of a large region takes time; the current stage is shown in the window.',
+    'Map data source set to {source}',
+    'Only the drawn shape is built:',
+    '{area} km²',
+    '(bounding box: {area} km², {columns}×{rows} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.',
+    'reading the relations',
+    'reading the map data',
+    'reading the map data: {count} tagged nodes and ways checked',
+    'reading the rest of the larger areas',
+    'finding the OpenStreetMap extract that covers this place',
+    'reading the {region} extract',
+    'downloading the {region} extract from Geofabrik, {downloaded} of {total} MB',
+    'downloading the {region} extract from Geofabrik, {downloaded} MB',
+    'no extract ({reason}) - asking the Overpass servers instead',
+    'the Overpass servers are busy — waiting {seconds}s, then trying again ({attempt} of {attempts})',
+    'the Overpass servers did not answer — {count} of {total} tiles come from an earlier download and may be out of date',
+    'server is resting',
+    'expected Overpass JSON, received {details}',
+    'invalid Overpass JSON: missing elements list',
+    'partial answer — {details}',
+    'every Overpass endpoint failed — {details}',
+    'the Overpass servers are resting after refusing or failing to answer',
+    'the Overpass servers are resting after refusing or failing to answer - asking again in about {seconds}s',
+    '"{url}" is not an http(s) server address.',
+    'The OpenStreetMap extract could not be used: {reason}',
+    'All Overpass endpoints failed: {details}',
+    'Lookup failed: {details}',
+    'no answer within {seconds}s',
+    'The free OpenStreetMap servers are busy or not answering right now. KnoxMap already retried. Wait a few minutes and press Generate again; anything that did download is kept, so the next try is faster. A smaller area also helps.',
+    'That area has more map data than the public servers will send in one go. Pick a smaller area and try again.',
+    'KnoxMap could not reach the OpenStreetMap servers. Check your internet connection, then try again.',
+    '{message} Details: {details}',
+    'OSM query failed: {details}',
+    'The map would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works. {details}',
+    '{count} of {total} map tiles would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works, and a smaller area always does. {details}',
+)
+
 # Anything that is code rather than words: a selector, a path, a template.
 CODE = re.compile(r"^[#./]|[\[\]{}<>$`|]|https?:|^\w+-\w+$")
 
@@ -94,7 +159,7 @@ def script_strings(paths) -> list[str]:
     for path in paths:
         text = open(path, encoding="utf-8").read()
         for quote in ("'", '"'):
-            for piece in re.findall(rf"{quote}([^{quote}\\\n]{{6,220}}){quote}", text):
+            for piece in re.findall(rf"{quote}([^{quote}\\\n]{{6,1000}}){quote}", text):
                 piece = piece.strip()
                 if is_words(piece) and re.search(r"[A-Za-z]{2,}\s+[A-Za-z]", piece):
                     found.append(piece)
@@ -102,7 +167,7 @@ def script_strings(paths) -> list[str]:
 
 
 def main() -> int:
-    strings = page_strings(PAGE) + script_strings(SCRIPTS) + list(PRESET_ERRORS)
+    strings = page_strings(PAGE) + script_strings(SCRIPTS) + list(PRESET_ERRORS) + list(EXTRA_MESSAGES)
     seen, lines = set(), []
     for text in strings:
         if text in SKIP or text in seen or "=" in text:

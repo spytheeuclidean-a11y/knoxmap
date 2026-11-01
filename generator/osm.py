@@ -15,6 +15,7 @@ import re
 import threading
 import time
 import zlib
+from urllib.parse import urlsplit, urlunsplit
 from concurrent import futures
 from dataclasses import dataclass, field
 from typing import Iterable, Sequence
@@ -39,6 +40,41 @@ def _config_list(key: str) -> list:
     return []
 
 
+def normalise_endpoints(urls: Sequence[str]) -> list[str]:
+    """Accept service roots as well as interpreter URLs, including saved ones.
+
+    z/lz4 are backends of overpass-api.de, not three independent services.
+    Keeping aliases used to spend the same timeout and quota three times.
+    """
+    out = []
+    for raw in urls:
+        url = str(raw).strip()
+        if not url:
+            continue
+        p = urlsplit(url)
+        if p.scheme not in ("http", "https") or not p.hostname or p.username or p.password:
+            raise ValueError(f'"{url}" is not an http(s) server address.')
+        host = p.hostname.lower()
+        known = {
+            "z.overpass-api.de": "overpass-api.de",
+            "lz4.overpass-api.de": "overpass-api.de",
+            "kumi.systems": "overpass.kumi.systems",
+            "openstreetmap.fr": "overpass.openstreetmap.fr",
+        }
+        netloc = known.get(host, p.netloc)
+        path = p.path.rstrip("/")
+        if host == "maps.mail.ru" and path in ("", "/osm/tools/overpass", "/api"):
+            path = "/osm/tools/overpass/api/interpreter"
+        elif not path or path == "/api":
+            path = "/api/interpreter"
+        elif not path.endswith("/interpreter"):
+            path += "/interpreter" if path.endswith("/api") else "/api/interpreter"
+        clean = urlunsplit((p.scheme, netloc, path, "", ""))
+        if clean not in out:
+            out.append(clean)
+    return out
+
+
 _DEFAULT_ENDPOINTS = [
     "https://overpass-api.de/api/interpreter",
     "https://overpass.kumi.systems/api/interpreter",
@@ -58,7 +94,10 @@ _DEFAULT_ENDPOINTS = [
     "https://overpass.maprva.org/api/interpreter",
     "https://ethiopia.overpass.openplaceguide.org/api/interpreter",
 ]
-OVERPASS_ENDPOINTS = _config_list("overpass_endpoints") or _DEFAULT_ENDPOINTS
+try:
+    OVERPASS_ENDPOINTS = normalise_endpoints(_config_list("overpass_endpoints")) or list(_DEFAULT_ENDPOINTS)
+except ValueError:
+    OVERPASS_ENDPOINTS = list(_DEFAULT_ENDPOINTS)
 # overpass.openstreetmap.fr answers every query with 403 "This service is only
 # available to white-listed usages". It was tried once per tile, and on the
 # tiles whose turn it was it pushed the work onto whatever came next.
@@ -95,7 +134,7 @@ def set_endpoints(urls: Sequence[str] | None) -> list:
     The settings window saves the same list to knoxmap_config.json, which is
     what the next start reads."""
     global OVERPASS_ENDPOINTS, ANSWERING_ENDPOINTS
-    OVERPASS_ENDPOINTS = [u for u in (urls or []) if u] or list(_DEFAULT_ENDPOINTS)
+    OVERPASS_ENDPOINTS = normalise_endpoints(urls or []) or list(_DEFAULT_ENDPOINTS)
     ANSWERING_ENDPOINTS = [e for e in OVERPASS_ENDPOINTS
                            if not any(h in e for h in BLANK_ONLY_HOSTS)]
     try:
@@ -239,8 +278,8 @@ def endpoint_ready(endpoint: str) -> bool:
     return not (_is_refused(endpoint) or _is_cooling(endpoint))
 
 
-CONNECT_TIMEOUT_S = 10
-PROBE_TIMEOUT_S = 8
+CONNECT_TIMEOUT_S = 5
+PROBE_TIMEOUT_S = 25
 
 
 def _status_url(endpoint: str) -> str:
@@ -259,7 +298,8 @@ def _probe(endpoint: str, lat: float, lon: float) -> bool:
                              timeout=(CONNECT_TIMEOUT_S, PROBE_TIMEOUT_S))
         if r.status_code in (401, 403, 451):
             _refuse(endpoint)
-        return r.status_code == 200
+        return r.status_code == 200 and any(
+            marker in r.text.lower() for marker in ("connected as:", "rate limit:", "slots available"))
     except (requests.RequestException, ValueError):
         return False
 
@@ -286,21 +326,21 @@ def check_endpoints(south: float, west: float, north: float, east: float) -> Non
 def _endpoint_order(first: int) -> list:
     """Which instances to ask, best first.
 
-    The ones answering come first, rotated so concurrent tiles spread out. An
-    instance on cooldown is left out entirely - unless they all are, when there
-    is nothing to do but ask anyway. The blank-only instance is always last.
+    Ready instances are rotated so concurrent tiles spread out. Instances on
+    cooldown or refusing queries stay out, including when all of them are down.
+    Regional instances are only tried after a ready global service.
     """
     spin = first % max(1, len(ANSWERING_ENDPOINTS))
     spun = ANSWERING_ENDPOINTS[spin:] + ANSWERING_ENDPOINTS[:spin]
-    # Resting moves an instance to the back of the queue; it does not take it
-    # out. Dropping it altogether cost a player a town: one instance was
-    # resting after a timeout, the other stopped answering too, and the tile
-    # gave up having never asked the first. A rest is a guess about a server
-    # we cannot see, so it may reorder the asking and must not end it. When
-    # anything is answering the resting one is never reached anyway.
     ready = [e for e in spun if endpoint_ready(e)]
-    return (ready + [e for e in OVERPASS_ENDPOINTS
-                     if e not in ANSWERING_ENDPOINTS and endpoint_ready(e)])
+    # A regional mirror cannot confirm that an arbitrary place is empty.
+    # If no global service is ready, wait rather than repeatedly asking the
+    # same failed services (or downloading blank tiles from another region).
+    if not ready:
+        return []
+    extra = [e for e in OVERPASS_ENDPOINTS
+             if e not in ANSWERING_ENDPOINTS and endpoint_ready(e)]
+    return ready + extra
 
 
 # Whether an empty answer has to be confirmed by another instance before the
@@ -494,7 +534,9 @@ class OverpassError(RuntimeError):
 # status it uses for a syntax error. Reading the status alone turns "your area
 # is too big for this server" into "Bad Request", which sends you looking for a
 # bug in a query that is perfectly valid. The reason is in the body.
-_TOO_BIG = ("timed out", "out of memory", "runtime error")
+_TOO_BIG = ("timed out", "out of memory")
+_BUSY = ("rate_limited", "server is probably too busy", "dispatcher_client::request_read",
+         "dispatcher::request_read")
 # ...except when the query really is malformed. Splitting the bbox cannot fix
 # a syntax error, it just asks four times and fails four times.
 _MY_FAULT = ("parse error", "unknown type", "static error")
@@ -529,37 +571,56 @@ def _ask(endpoint: str, query: str, timeout: int) -> list[OSMFeature]:
     # A host that is down never completes the connection; waiting the whole
     # query timeout to learn that cost 100 s per dead instance per tile.
     with _one_at_a_time(endpoint):
+        # Another tile can have failed while this one waited for the host.
+        if not endpoint_ready(endpoint):
+            raise OverpassError("server is resting", busy=True)
         r = requests.post(endpoint, data={"data": query}, headers=HEADERS,
                           timeout=(CONNECT_TIMEOUT_S, timeout + 10))
+    return _parse(response_payload(r))
+
+
+def response_payload(r) -> dict:
+    """Read an Overpass reply, including HTML gateways and partial JSON errors."""
     if r.status_code == 200:
-        payload = r.json()
+        try:
+            payload = r.json()
+        except ValueError:
+            raise OverpassError(
+                "expected Overpass JSON, received " + (_error_text(r.text) or "an empty response"),
+                busy=True) from None
+        if not isinstance(payload, dict) or not isinstance(payload.get("elements"), list):
+            raise OverpassError("invalid Overpass JSON: missing elements list", busy=True)
         # A query that runs out of time or memory part way through does not
         # fail: Overpass sends HTTP 200 with whatever it had gathered and puts
         # the reason in "remark". Reading only the status took that for a
         # finished tile, so a town downloaded "successfully" with half its
         # streets missing and nothing anywhere said so.
         remark = str(payload.get("remark") or "")
-        if any(s in remark.lower() for s in _TOO_BIG):
+        if remark:
+            busy = any(s in remark.lower() for s in _BUSY)
             raise OverpassError(f"partial answer — {' '.join(remark.split())}",
-                                too_big=True)
-        return _parse(payload)
+                                too_big=not busy and any(s in remark.lower() for s in _TOO_BIG),
+                                busy=busy)
+        return payload
     # Classify on the whole body, report a trimmed version of it. Doing both
     # from the trimmed text is what stopped over-large areas re-splitting: the
     # markers sit well past the doctype, so nothing ever looked too big.
     whole = r.text.lower()
     message = _error_text(r.text)
-    too_big = (any(s in whole for s in _TOO_BIG)
+    busy = any(s in whole for s in _BUSY)
+    too_big = (not busy and any(s in whole for s in _TOO_BIG)
                and not any(s in whole for s in _MY_FAULT))
     raise OverpassError(f"HTTP {r.status_code}"
                         + (f" — {message}" if message else ""),
                         too_big=too_big,
-                        busy=r.status_code == 429 or 500 <= r.status_code < 600,
+                        busy=busy or r.status_code == 429 or 500 <= r.status_code < 600,
                         retry_after=_retry_after(r),
                         refused=r.status_code in (401, 403, 451))
 
 
 def fetch_features(south: float, west: float, north: float, east: float,
-                   timeout: int = 60, first: int = 0) -> list[OSMFeature]:
+                   timeout: int = 60, first: int = 0,
+                   should_stop=None) -> list[OSMFeature]:
     """Run the Overpass query against the first endpoint that answers.
 
     `first` rotates which endpoint is tried first, so concurrent tiles spread
@@ -574,19 +635,24 @@ def fetch_features(south: float, west: float, north: float, east: float,
     errors: list[str] = []
     too_big = False
     timed_out = False
+    busy = False
     blank = 0
     real_blank = 0
     order = _endpoint_order(first)
     for endpoint in order:
+        knoxstop.check(should_stop, "the download")
+        if not endpoint_ready(endpoint):
+            continue
         host = endpoint.split("/")[2]
         try:
             feats = _ask(endpoint, query, timeout)
         except OverpassError as exc:
             errors.append(f"{host}: {exc}")
             too_big = too_big or exc.too_big
+            busy = busy or exc.busy
             if exc.refused:
                 _refuse(endpoint)
-            elif exc.busy:
+            elif exc.busy and not _is_cooling(endpoint):
                 _note_down(endpoint, exc.retry_after)
         except requests.Timeout:
             errors.append(f"{host}: no answer within {timeout + 10}s")
@@ -627,7 +693,7 @@ def fetch_features(south: float, west: float, north: float, east: float,
             busy=True)
     raise OverpassError("every Overpass endpoint failed — "
                         + "; ".join(errors), too_big=too_big,
-                        timed_out=timed_out)
+                        timed_out=timed_out, busy=busy)
 
 
 def explain(exc: BaseException) -> str:
@@ -741,7 +807,7 @@ def _flat(points):
 
 
 def fetch_features_tiled(south: float, west: float, north: float, east: float,
-                         max_tile_km2: float = 30.0, timeout: int = 90,
+                         max_tile_km2: float = 30.0, timeout: int = 30,
                          progress=None, should_stop=None) -> list[OSMFeature]:
     """Fetch a large bbox as a grid of smaller Overpass queries.
 
@@ -787,7 +853,9 @@ def fetch_features_tiled(south: float, west: float, north: float, east: float,
     # always works" is what the failure tells people to do. A 6.8 km2 town
     # failed after one pass while a city got three.
 
-    check_endpoints(south, west, north, east)
+    # A status page is diagnostic, not a prerequisite for a query: some
+    # working mirrors do not expose it, and probing every host added another
+    # full round of timeouts before a map even started downloading.
 
     d_lat = (north - south) / steps
     d_lon = (east - west) / steps
@@ -822,7 +890,8 @@ def fetch_features_tiled(south: float, west: float, north: float, east: float,
             kept = _tile_cache_get(box)
             if kept is not None:
                 return index, kept, None
-            got = _fetch_splitting(s0, w0, n0, e0, timeout, first=index)
+            stop = {"should_stop": should_stop} if should_stop else {}
+            got = _fetch_splitting(s0, w0, n0, e0, timeout, first=index, **stop)
             _tile_cache_put(box, got)
             return index, got, None
         except OverpassError as exc:
@@ -928,7 +997,7 @@ TIMEOUT_SPLIT_DEPTH = 1
 # inside the same busy spell, so the retry mostly failed the way the first try
 # had. The error people saw told them to wait a few minutes and try again,
 # which worked - this is the program doing that itself.
-TILE_ATTEMPTS = 4
+TILE_ATTEMPTS = 3
 RETRY_PAUSE_S = 45
 RETRY_PAUSE_MAX_S = 180
 
@@ -940,7 +1009,7 @@ def _retry_pause(attempt: int) -> int:
 
 def _fetch_splitting(south: float, west: float, north: float, east: float,
                      timeout: int, depth: int = 0,
-                     first: int = 0) -> list[OSMFeature]:
+                     first: int = 0, should_stop=None) -> list[OSMFeature]:
     """Fetch one tile, quartering it if the servers say it is too heavy.
 
     How much a bbox costs depends on what is inside it, not its size, so a
@@ -949,9 +1018,11 @@ def _fetch_splitting(south: float, west: float, north: float, east: float,
     return instantly. Giving up there loses the whole map. Splitting only the
     tile that failed costs three extra requests and keeps everything else.
     """
+    stop = {"should_stop": should_stop} if should_stop else {}
+    knoxstop.check(should_stop, "the download")
     try:
         return fetch_features(south, west, north, east, timeout=timeout,
-                              first=first)
+                              first=first, **stop)
     except OverpassError as exc:
         area = _area_km2(south, west, north, east)
         heavy = exc.too_big or (exc.timed_out and depth < TIMEOUT_SPLIT_DEPTH
@@ -963,7 +1034,7 @@ def _fetch_splitting(south: float, west: float, north: float, east: float,
     out: list[OSMFeature] = []
     for s0, n0 in ((south, mid_lat), (mid_lat, north)):
         for w0, e0 in ((west, mid_lon), (mid_lon, east)):
-            out += _fetch_splitting(s0, w0, n0, e0, timeout, depth + 1, first)
+            out += _fetch_splitting(s0, w0, n0, e0, timeout, depth + 1, first, **stop)
             time.sleep(1)
     return out
 

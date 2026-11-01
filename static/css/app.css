@@ -186,6 +186,81 @@ input[readonly] { background: var(--bg); color: var(--muted); }
 path.sel-rect { cursor: move; }
 .sel-dragging, .sel-dragging .leaflet-interactive { cursor: grabbing !important; }
 
+/* ---- Selection rotation handle (Photoshop style) ---- */
+.rotate-handle-icon-container {
+  background: transparent !important;
+  border: none !important;
+}
+
+.rotate-handle-wrapper {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.rotate-handle-btn {
+  pointer-events: auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--panel, #1d201b);
+  border: 1.5px solid var(--accent, #a5e266);
+  color: var(--accent, #a5e266);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  transition: transform 0.12s ease, background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+  padding: 0;
+  outline: none;
+  z-index: 2;
+}
+
+.rotate-handle-btn:hover {
+  background: var(--hover, #2b3027);
+  border-color: #b7ea80;
+  color: #ffffff;
+  transform: scale(1.15);
+  box-shadow: 0 3px 10px rgba(165, 226, 102, 0.4);
+}
+
+.rotate-handle-btn:active,
+body.rotate-dragging .rotate-handle-btn {
+  cursor: grabbing !important;
+  background: #353c30;
+  transform: scale(1.15);
+}
+
+.rotate-handle-badge {
+  position: absolute;
+  top: -24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--panel, #1d201b);
+  border: 1px solid var(--accent, #a5e266);
+  color: var(--text, #e6e5de);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  font-family: var(--mono, monospace);
+  z-index: 10;
+}
+
+body.rotate-dragging,
+body.rotate-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+}
+
 /* ---- area panel ------------------------------------------------------------------ */
 .coords { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
 .coords label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
@@ -236,6 +311,63 @@ path.sel-rect { cursor: move; }
   border-radius: 4px; padding: 5px 0; cursor: pointer; color: var(--text);
 }
 .preset-card.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.osm-source-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.osm-source-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 8px 8px;
+  background: var(--field);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  transition: border-color .15s, background .15s;
+}
+.osm-source-card:hover {
+  border-color: var(--accent);
+}
+.osm-source-card.is-on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.osm-source-card b {
+  font-size: 13px;
+  margin-top: 3px;
+  font-weight: 600;
+}
+.osm-source-card small {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.osm-source-card.is-on small {
+  color: var(--text);
+}
+.osm-source-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: var(--line);
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+.osm-source-card.is-on .osm-source-badge {
+  background: var(--accent);
+  color: #121510;
+}
 
 #advanced summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 #advanced-body { margin-top: 8px; }

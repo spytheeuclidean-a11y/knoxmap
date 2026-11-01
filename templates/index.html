@@ -95,6 +95,28 @@
     <section class="panel" id="overpassCard">
       <details id="overpassPanel">
         <summary>Map data server</summary>
+
+        <div class="field-label" style="font-weight: 600; margin-bottom: 6px;">OpenStreetMap data source</div>
+        <div class="osm-source-cards" id="osmSourceCards" role="radiogroup" aria-label="OpenStreetMap data source">
+          <button type="button" class="osm-source-card is-on" data-source="overpass">
+            <span class="osm-source-badge">Fast</span>
+            <b>Overpass API</b>
+            <small>Online queries</small>
+          </button>
+          <button type="button" class="osm-source-card" data-source="auto">
+            <span class="osm-source-badge">Default</span>
+            <b>Auto</b>
+            <small>Extract / Live</small>
+          </button>
+          <button type="button" class="osm-source-card" data-source="extract">
+            <span class="osm-source-badge">Offline</span>
+            <b>Geofabrik</b>
+            <small>Regional dump</small>
+          </button>
+        </div>
+        <div id="osmSourceDesc" class="stat-note" style="margin-top: 6px; margin-bottom: 12px; font-size: 12px; line-height: 1.45;"></div>
+
+        <h4>Overpass server addresses</h4>
         <p class="hint">Map data is downloaded from public OpenStreetMap servers. Large or
           repeated downloads should use your own: list its address below, one per line
           (see docs/SELF_HOSTING_OVERPASS.md). Leave it empty for the public ones.</p>

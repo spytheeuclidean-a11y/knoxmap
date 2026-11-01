@@ -180,7 +180,7 @@ def generate():
     if features is None:
         _set_progress(map_name, stage="osm", done=0, total=1)
         def _progress(i, total, note=""):
-            _set_progress(map_name, stage="osm", done=i - 1, total=total,
+            _set_progress(map_name, stage="osm", done=max(0, i - 1), total=total,
                           note=note)
 
         try:
