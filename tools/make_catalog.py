@@ -605,10 +605,25 @@ def main(argv: list[str]) -> int:
 
     layers: dict[str, str] = {}
     furniture = {role: find_furniture(a) for role, a in ROLES.items()}
+    # BuildingEd pairs the drinks machines' east and south entries with
+    # accessories_01_028-031, but the game tags all four Facing E: one against
+    # an east wall faced into it, one against a south wall faced sideways. The
+    # game draws no machine facing west or north, so they stand on west and
+    # north walls only (layout.NORTH_WEST_ONLY picks that up).
+    for role in ("vending", "vending_snacks"):
+        for orient in ("E", "S"):
+            furniture[role].pop(orient, None)
     # Which layer each piece lives on. A light switch, a painting or a mirror
     # belongs on the WallFurniture layer; written without a layer it becomes
     # floor furniture standing in the middle of the tile.
     furniture_layers = {role: layers[a] for role, a in ROLES.items()}
+    # A bedside chest of drawers, one tile and all four ways round: the game's
+    # "Bedroom" drawers, furniture_storage_01_48-51 (Facing S, E, W, N), keyed
+    # by the wall each stands against. The low table used for "sidetable" is
+    # two tiles with no east or south sprite, so a bed on those walls had none.
+    furniture["nightstand"] = {o: {"0,0": f"furniture_storage_01_{n:03d}"}
+                               for o, n in (("N", 48), ("W", 49), ("E", 50), ("S", 51))}
+    furniture_layers["nightstand"] = "Furniture"
     erika = erika_roles(furniture, furniture_layers)
 
     # Wall and floor palettes. Every building used to share one exterior wall
@@ -917,6 +932,9 @@ def main(argv: list[str]) -> int:
         f.write("SPECIAL_STYLES = " + pprint.pformat(special_styles, width=100, sort_dicts=False) + "\n")
         f.write("\nSPECIAL_STYLE_VARIANTS = "
                 + pprint.pformat(special_variants, width=100, sort_dicts=False) + "\n")
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import game_pieces
+        f.write(game_pieces.block())
 
     print(f"wrote {out_path}: {len(tile_entries)} tile entries, "
           f"{len(furniture)} furniture roles, {len(colors)} room colours")

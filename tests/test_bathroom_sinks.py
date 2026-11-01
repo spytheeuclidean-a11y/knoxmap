@@ -26,5 +26,26 @@ class BathroomSinkSupport(unittest.TestCase):
                          ["counter", "kitchen_sink"])
 
 
+class BathroomSize(unittest.TestCase):
+    def test_a_big_bathroom_becomes_a_bathroom_and_a_store(self):
+        room = layout.Room(0, 0, 15, 7, kind="bathroom")
+        plan = layout.Plan(16, 8, rooms=[room], grid=[[1] * 16 for _ in range(8)])
+        layout._trim_bathroom(plan, 0)
+        self.assertEqual([r.kind for r in plan.rooms], ["bathroom", "storage"])
+        self.assertLessEqual(plan.rooms[0].area, layout.BATHROOM_MAX_AREA)
+        self.assertEqual(sum(row.count(1) for row in plan.grid), plan.rooms[0].area)
+
+    def test_no_public_building_has_a_bathroom_hall(self):
+        for kind in ("church", "library", "school", "fire"):
+            for seed in range(8):
+                b = layout.build_building(19 + seed, 15 + seed, levels=2, seed=seed,
+                                          kind=kind, commercial=True)
+                for s in b.storeys:
+                    for i, r in enumerate(s.rooms, 1):
+                        if r.kind == "bathroom":
+                            self.assertLessEqual(sum(row.count(i) for row in s.grid), 40,
+                                                 (kind, seed))
+
+
 if __name__ == "__main__":
     unittest.main()

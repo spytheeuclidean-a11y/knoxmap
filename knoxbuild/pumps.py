@@ -55,14 +55,75 @@ LANE_M = 4.0
 REAR_CLEAR_M = 2.5
 # One island's worth of tiles beyond the last pump at each end.
 ISLAND_OVERHANG = 1
-# The roof over an island, as the game's own stations have: a flat slab one
-# floor up, a tile wider than the island either side, on a post at each
-# corner. The slab is a pale paving tile on the floor layer of level 1 - which
-# is what a flat roof is to the game - and the posts the plain pole from the
-# station's own tile sheet.
-CANOPY_ROOF = "floors_exterior_tilesandstone_01_3"
-CANOPY_POST = "location_shop_fossoil_01_56"
-CANOPY_OVERHANG = 1
+# The roof over the islands, built as the game's own Fossoil station in
+# Muldraugh is (cell 41,38): the slab is two floors up (level 2), the
+# station's fabric floor tiles white round the edge and blue inside; a fascia
+# hangs on level 1 along its south and east edges; and it stands on square
+# cinderblock pillars two storeys tall, one at each end of every island, each
+# drawn as four wall pieces round one tile. Gas2Go's sheet has its own pillars
+# and fascia but no roof tile, so its slab is plain white.
+CANOPY_LEVEL = 2
+CANOPY = {
+    "fossoil": {"edge": "location_shop_fossoil_01_38", "fill": "location_shop_fossoil_01_39",
+                "pillar": ("location_shop_fossoil_01_4", "location_shop_fossoil_01_6",
+                           "location_shop_fossoil_01_5", "location_shop_fossoil_01_7"),
+                "fascia_n": "location_shop_fossoil_01_40", "fascia_w": "location_shop_fossoil_01_41",
+                "fascia_corner": "location_shop_fossoil_01_42"},
+    "gas2go": {"edge": "location_shop_fossoil_01_38", "fill": "location_shop_fossoil_01_38",
+               "pillar": ("location_shop_gas2go_01_2", "location_shop_gas2go_01_0",
+                          "location_shop_gas2go_01_1", "location_shop_gas2go_01_3"),
+               "fascia_n": "location_shop_gas2go_01_40", "fascia_w": "location_shop_gas2go_01_41",
+               "fascia_corner": "location_shop_gas2go_01_43"},
+}
+# Tiles of roof past the pillars on the far side, as on the Muldraugh station.
+CANOPY_REACH = 2
+
+
+def canopy_tiles(islands: list[tuple[int, int, int, int]], brand: str,
+                 inside) -> list[tuple[int, int, int, str, str]]:
+    """The roof, fascia and pillars over islands given as world-tile boxes
+    (x0, y0, x1, y1, inclusive), each one tile thick. `inside(x, y)` says
+    whether a tile may be drawn on."""
+    kit = CANOPY[brand]
+    out = []
+    roof: set[tuple[int, int]] = set()
+    boxes = []
+    for x0, y0, x1, y1 in islands:
+        along_x = x1 - x0 >= y1 - y0
+        # A pillar is the tile at its anchor walled round: north-west corner
+        # there, the west wall of the tile east of it, the north wall of the
+        # tile south of it, and the corner post diagonally beyond.
+        ends = ([(x0 - 1, y0), (x1 + 1, y0)] if along_x else [(x0, y0 - 1), (x0, y1 + 1)])
+        for px, py in ends:
+            for z in range(CANOPY_LEVEL):
+                for (dx, dy), tile in zip(((0, 0), (1, 0), (0, 1), (1, 1)), kit["pillar"]):
+                    if inside(px + dx, py + dy):
+                        out.append((px + dx, py + dy, z, "Walls", tile))
+        boxes.append((min(e[0] for e in ends), min(e[1] for e in ends),
+                      max(e[0] for e in ends) + 1, max(e[1] for e in ends) + 1, along_x))
+    # One slab over every pillar, reaching past them as the Muldraugh one
+    # does: two tiles on the side away from the islands' line ends, one on
+    # the far side, none past the first pillar's end.
+    if boxes:
+        along_x = boxes[0][4]
+        bx0, by0 = min(bb[0] for bb in boxes), min(bb[1] for bb in boxes)
+        bx1, by1 = max(bb[2] for bb in boxes), max(bb[3] for bb in boxes)
+        if along_x:
+            rx0, rx1, ry0, ry1 = bx0, bx1 + 1, by0 - CANOPY_REACH, by1 + 1
+        else:
+            rx0, rx1, ry0, ry1 = bx0 - CANOPY_REACH, bx1 + 1, by0, by1 + 1
+        roof = {(x, y) for x in range(rx0, rx1 + 1) for y in range(ry0, ry1 + 1) if inside(x, y)}
+    for x, y in roof:
+        edge = any(n not in roof for n in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)))
+        out.append((x, y, CANOPY_LEVEL, "Floor", kit["edge" if edge else "fill"]))
+        south, east = (x, y + 1) not in roof, (x + 1, y) not in roof
+        if south and inside(x, y + 1):
+            out.append((x, y + 1, CANOPY_LEVEL - 1, "Walls2", kit["fascia_n"]))
+        if east and inside(x + 1, y):
+            out.append((x + 1, y, CANOPY_LEVEL - 1, "Walls2", kit["fascia_w"]))
+        if south and east and (x + 1, y + 1) not in roof and inside(x + 1, y + 1):
+            out.append((x + 1, y + 1, CANOPY_LEVEL - 1, "Walls2", kit["fascia_corner"]))
+    return out
 
 # A car in the game is two tiles across and four or five long whatever the
 # map's scale, so these are not allowed to shrink with it: at least this many
@@ -186,6 +247,7 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
         blocked[y:y + h, x:x + w] = True
         occupied[y:y + h, x:x + w] = True
         px0, py0, pw, ph = pumps_at or (x, y, w, h)
+        islands: list[tuple[int, int, int, int]] = []
         # Along the shop front when it is known, else along the long way.
         along_x = side in ("N", "S") if side in SIDES else pw >= ph
         length = pw if along_x else ph
@@ -220,20 +282,12 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                 tiles.append((px, py, 0, "Furniture", PUMPS[brand]["x" if along_x else "y"]))
                 pumps += 1
             if side in SIDES:
-                t0 = max(0, start - CANOPY_OVERHANG - ISLAND_OVERHANG)
-                t1 = min(length - 1, start + (count - 1) * PUMP_SPACING
-                         + CANOPY_OVERHANG + ISLAND_OVERHANG)
-                d0, d1 = max(1, d - 1), min(depth - 1, d + 1)
-                for t in range(t0, t1 + 1):
-                    for dd in range(d0, d1 + 1):
-                        rx, ry = at(t, dd)
-                        if 0 <= rx < W and 0 <= ry < H:
-                            tiles.append((rx, ry, 1, "Floor", CANOPY_ROOF))
-                for t in (t0, t1):
-                    for dd in (d0, d1):
-                        rx, ry = at(t, dd)
-                        if 0 <= rx < W and 0 <= ry < H:
-                            tiles.append((rx, ry, 0, "Furniture", CANOPY_POST))
+                t0, t1 = start - ISLAND_OVERHANG, start + (count - 1) * PUMP_SPACING + ISLAND_OVERHANG
+                (ax, ay), (bx, by) = at(max(0, t0), d), at(min(length - 1, t1), d)
+                islands.append((min(ax, bx), min(ay, by), max(ax, bx), max(ay, by)))
+        if islands:
+            tiles.extend(canopy_tiles(islands, brand,
+                                      lambda x, y: 0 <= x < W and 0 <= y < H))
 
     def brand_for(x, y):
         return "fossoil" if (x * 7 + y * 13) % 2 else "gas2go"

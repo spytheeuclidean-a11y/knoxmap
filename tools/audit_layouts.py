@@ -23,10 +23,11 @@ from knoxbuild.layout import ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, STAIR_RUN,
 # Doors with no free tile to step onto, and rooms entered only through a
 # bathroom, each as a share of what could have them. Measured over 200
 # buildings: 1 door in 23,000, and 75 rooms in 7,800 (apartment bedrooms, mostly,
-# whose only other wall is the outside). A rise means furnishing or the door
-# tree has started boxing people in.
+# whose only other wall is the outside). Since such a room swaps places with
+# its bathroom (layout._swap_through_bathrooms), 42 in 22,270 over 400. A rise
+# means furnishing or the door tree has started boxing people in.
 DOORS_BOXED_IN_BUDGET = 0.0005
-ROOMS_VIA_BATHROOM_BUDGET = 0.02
+ROOMS_VIA_BATHROOM_BUDGET = 0.005
 
 # Doors left on a corner, as a share of all doors. It was 1.69% before they
 # were moved off; anything near that means the moving has stopped working.

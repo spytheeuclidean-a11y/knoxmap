@@ -24,7 +24,8 @@ field_a = 8           # optional; two header values that have always been 8
 field_b = 8
 ```
 
-`origin_x` and `origin_y` must be multiples of 8. The spawn map is an uncompressed 8- or
+`origin_x` and `origin_y` are any whole number of tiles (a world origin of 300-tile cells
+is 4 tiles off the 8-tile chunk grid at an odd cell). The spawn map is an uncompressed 8- or
 24-bit BMP, one pixel to 10 x 10 tiles, from the world's north-west corner.
 
 ## `cell_<x>_<y>.kcell`
