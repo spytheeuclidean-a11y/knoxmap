@@ -160,6 +160,21 @@ the address, and `&outline=1` to take its real boundary.
   <img src="docs/images/shape_circle.png" alt="A circle around Times Square: only the circle is built" width="420"/>
 </p>
 
+## Map data sources
+
+**Auto** reads a cached Geofabrik regional extract when pyosmium is installed,
+and falls back to Overpass if the extract is unavailable. A regional file can
+be hundreds of megabytes; the first download and scan take longer than a small
+online query. The reading stage reports object counts, not a percentage of
+the compressed file. Rebuilding a generated map reuses its saved map data.
+
+**Overpass API** downloads just the selected area. It keeps completed tiles,
+respects failed servers' cooldowns and retries at most three passes. Server
+roots entered in Settings are expanded to interpreter URLs; aliases of the
+same public service count as one server. A responding status page does not
+guarantee a free query slot. If all servers are unavailable, choose Auto or
+Geofabrik rather than repeatedly starting the same online download.
+
 ## Tuning a map
 
 Open **Fine tuning** under *Style*:

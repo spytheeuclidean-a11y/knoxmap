@@ -205,35 +205,41 @@ def api_overpass():
     import knoxpaths
 
     if request.method == "POST":
-        raw = _json_body().get("endpoints")
-        if raw is None or raw == "":
-            raw = []
-        if isinstance(raw, str):
-            raw = re.split(r"[\s,;]+", raw)
-        if not isinstance(raw, list):
-            return jsonify({"error": "Give the servers as a list of addresses."}), 400
-        urls = []
-        for item in raw:
-            url = str(item).strip()
-            if not url:
-                continue
-            parsed = urllib.parse.urlparse(url)
-            if parsed.scheme not in ("http", "https") or not parsed.netloc:
-                return jsonify({"error": f"\"{url}\" is not an http(s) address."}), 400
-            if url not in urls:
-                urls.append(url)
-        if len(urls) > 8:
-            return jsonify({"error": "At most 8 servers."}), 400
-        knoxpaths.update_config({"overpass_endpoints": urls})
-        osm.set_endpoints(urls)
-        log.info("overpass servers: %s", urls or "the public ones")
+        body = _json_body()
+        if "osm_source" in body:
+            src = str(body["osm_source"]).strip().lower()
+            if src in ("auto", "overpass", "extract"):
+                knoxpaths.update_config({"osm_source": src})
+                log.info("osm source set to %s", src)
+
+        if "endpoints" in body:
+            raw = body.get("endpoints")
+            if raw is None or raw == "":
+                raw = []
+            if isinstance(raw, str):
+                raw = re.split(r"[\s,;]+", raw)
+            if not isinstance(raw, list):
+                return jsonify({"error": "Give the servers as a list of addresses."}), 400
+            try:
+                urls = osm.normalise_endpoints(raw)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+            if len(urls) > 8:
+                return jsonify({"error": "At most 8 servers."}), 400
+            knoxpaths.update_config({"overpass_endpoints": urls})
+            osm.set_endpoints(urls)
+            log.info("overpass servers: %s", urls or "the public ones")
     try:
-        configured = knoxpaths.load_config().get("overpass_endpoints")
+        cfg = knoxpaths.load_config()
+        configured = cfg.get("overpass_endpoints")
+        current_source = cfg.get("osm_source") or "auto"
     except Exception:  # noqa: BLE001
         configured = None
+        current_source = "auto"
     return jsonify({"endpoints": [str(u) for u in configured] if isinstance(configured, list) else [],
                     "using": list(osm.OVERPASS_ENDPOINTS),
-                    "public": list(osm._DEFAULT_ENDPOINTS)})
+                    "public": list(osm._DEFAULT_ENDPOINTS),
+                    "osm_source": current_source if current_source in ("auto", "overpass", "extract") else "auto"})
 
 
 @bp.route("/api/overpass/status")

@@ -17,10 +17,12 @@ from __future__ import annotations
 import json
 import os
 import re
+import struct
 import tempfile
 import time
 
 import requests
+from shapely import from_wkb
 
 import knoxpaths
 import knoxstop
@@ -222,6 +224,27 @@ def _overlaps(b, south, west, north, east) -> bool:
     return not (b[2] < south or b[0] > north or b[3] < west or b[1] > east)
 
 
+def _line_bounds(hex_wkb: str) -> tuple[float, float, float, float]:
+    """Bounds of the 2D LineString produced by osmium's WKBFactory.
+
+    GEOS decoding a hex string for every distant way dominated a regional
+    scan. Decode hex in C first; short lines need only four extrema, while
+    long ones are faster in GEOS's binary reader. Neither creates point dicts.
+    """
+    data = bytes.fromhex(hex_wkb)
+    if len(data) < 9 or data[0] not in (0, 1):
+        raise ValueError("invalid WKB LineString")
+    order = "<" if data[0] else ">"
+    kind, count = struct.unpack_from(order + "II", data, 1)
+    if kind != 2 or not count or len(data) != 9 + count * 16:
+        raise ValueError("expected a 2D WKB LineString")
+    if count > 64:
+        return from_wkb(data).bounds
+    points = struct.unpack_from(f"{order}{count * 2}d", data, 9)
+    xs, ys = points[::2], points[1::2]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
 def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict]:
     """The elements of one extract that the filters want and that touch the box,
     as Overpass's `out geom` writes them."""
@@ -240,21 +263,37 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
 
     elements: list[dict] = []
     try:
+        keys = sorted({key for f in filters for key, _want in f.tests})
+        factory = osmium.geom.WKBFactory()
+        last_report = time.monotonic()
+
+        def heartbeat(note):
+            nonlocal last_report
+            knoxstop.check(should_stop, "the download")
+            now = time.monotonic()
+            if now - last_report >= 1:
+                # Object counts are not percentages of a compressed PBF.
+                # The old estimate saturated at 70 (71 in the UI) and then
+                # looked frozen for the rest of a hundred-million-node scan.
+                say(None, note)
+                last_report = now
+
         # 1. The relations, which come last in the file and are read on their
         # own: which ones the filters want, and which ways they are made of.
-        say(5, "reading the relations")
+        say(None, "reading the relations")
         relations: dict[int, dict] = {}
         member_of: dict[int, list[int]] = {}
-        for i, rel in enumerate(osmium.FileProcessor(path, osmium.osm.RELATION)):
+        for i, rel in enumerate(osmium.FileProcessor(path, osmium.osm.RELATION)
+                                .with_filter(osmium.filter.KeyFilter(*keys))):
             if i % 20000 == 0:
                 knoxstop.check(should_stop, "the download")
-            tags = rel.tags
+            tags = dict(rel.tags)
             if not wanted(filters, "relation", tags):
                 continue
             ways = [(m.ref, m.role) for m in rel.members if m.type == "w"]
             if not ways:
                 continue
-            relations[rel.id] = {"tags": {t.k: t.v for t in tags}, "members": ways}
+            relations[rel.id] = {"tags": tags, "members": ways}
             for ref, _role in ways:
                 member_of.setdefault(ref, []).append(rel.id)
 
@@ -262,15 +301,14 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
         # and touches the box; a way a wanted relation is made of is kept for
         # the relation when it touches the box (the rest are fetched below if
         # the relation turns out to).
-        say(15, "reading the map data")
+        say(None, "reading the map data")
         geometry: dict[int, list] = {}
         touches: set[int] = set()
         for i, obj in enumerate(osmium.FileProcessor(path, osmium.osm.NODE | osmium.osm.WAY)
-                                .with_locations(locations)):
-            if i % 200000 == 0:
-                knoxstop.check(should_stop, "the download")
-                if i % 2000000 == 0 and i:
-                    say(15 + min(55, i // 2000000), "reading the map data")
+                                .with_locations(locations)
+                                .with_filter(osmium.filter.KeyFilter(*keys).enable_for(osmium.osm.NODE))):
+            if i % 1000 == 0:
+                heartbeat(f"reading the map data: {i:,} tagged nodes and ways checked")
             if obj.is_node():
                 if not obj.tags or not (south <= obj.location.lat <= north
                                         and west <= obj.location.lon <= east):
@@ -280,9 +318,21 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
                                      "lat": obj.location.lat, "lon": obj.location.lon,
                                      "tags": {t.k: t.v for t in obj.tags}})
                 continue
-            tags = obj.tags
-            own = wanted(filters, "way", tags) if tags else False
             in_relation = obj.id in member_of
+            if not obj.tags and not in_relation:
+                continue
+            # Reject distant ways in native code. Building a Python dict for
+            # every vertex of every road/forest in the entire region used to
+            # dominate this pass, even for a map of a few streets.
+            try:
+                min_lon, min_lat, max_lon, max_lat = _line_bounds(factory.create_linestring(obj))
+            except (RuntimeError, ValueError):
+                pass  # incomplete node locations: preserve the old fallback
+            else:
+                if not _overlaps((min_lat, min_lon, max_lat, max_lon), south, west, north, east):
+                    continue
+            tags = dict(obj.tags)
+            own = wanted(filters, "way", tags) if tags else False
             if not own and not in_relation:
                 continue
             pts, lo_la, lo_lo, hi_la, hi_lo = [], 90.0, 180.0, -90.0, -180.0
@@ -299,7 +349,7 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
                 continue
             if own:
                 elements.append({"type": "way", "id": obj.id,
-                                 "tags": {t.k: t.v for t in tags}, "geometry": pts})
+                                 "tags": tags, "geometry": pts})
             if in_relation:
                 touches.add(obj.id)
                 geometry[obj.id] = pts
@@ -310,15 +360,19 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
         missing = {ref for rid in chosen for ref, _r in relations[rid]["members"]
                    if ref not in geometry}
         if missing:
-            say(75, "reading the rest of the larger areas")
+            say(None, "reading the rest of the larger areas")
             # Nodes are read too, because the locations are built from them.
             for i, way in enumerate(osmium.FileProcessor(path, osmium.osm.NODE | osmium.osm.WAY)
-                                    .with_locations(locations)):
-                if i % 200000 == 0:
+                                    .with_locations(locations)
+                                    .with_filter(osmium.filter.EntityFilter(osmium.osm.WAY))
+                                    .with_filter(osmium.filter.IdFilter(missing))):
+                if i % 1000 == 0:
                     knoxstop.check(should_stop, "the download")
-                if way.is_way() and way.id in missing:
-                    geometry[way.id] = [{"lat": n.location.lat, "lon": n.location.lon}
-                                        for n in way.nodes if n.location.valid()]
+                geometry[way.id] = [{"lat": n.location.lat, "lon": n.location.lon}
+                                    for n in way.nodes if n.location.valid()]
+                missing.discard(way.id)
+                if not missing:
+                    break
         for rid in sorted(chosen):
             rel = relations[rid]
             members = [{"type": "way", "ref": ref, "role": role, "geometry": geometry[ref]}
@@ -349,18 +403,21 @@ def elements(south: float, west: float, north: float, east: float, filters=None,
             raise osm.OverpassError(f"{name}={value:g} is outside ±{limit:g}.")
     filters = parse_filters(filters if filters is not None else osm.OVERPASS_FILTERS)
 
-    def say(pct: int, note: str) -> None:
-        osm._say(progress, pct + 1, 100, note)
+    def say(pct: int | None, note: str) -> None:
+        # File scans have no known object count; total=0 asks the UI for an
+        # activity indicator instead of an invented completion percentage.
+        osm._say(progress, pct + 1 if pct is not None else 0,
+                 100 if pct is not None else 0, note)
 
     if regions is None:
-        say(0, "finding the OpenStreetMap extract that covers this place")
+        say(None, "finding the OpenStreetMap extract that covers this place")
         regions = regions_for(south, west, north, east, _index())
     if not regions:
         raise ExtractUnavailable("no Geofabrik extract covers this place")
     out: dict[tuple[str, int], dict] = {}
     for region in regions:
         path = _download(region, say, should_stop)
-        say(5, f"reading the {region['name']} extract")
+        say(None, f"reading the {region['name']} extract")
         for el in _read(path, filters, (south, west, north, east), say, should_stop):
             out[(el["type"], el["id"])] = el
     return list(out.values())

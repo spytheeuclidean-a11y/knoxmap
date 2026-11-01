@@ -75,14 +75,374 @@ const drawControl = new L.Control.Draw({
 map.addControl(drawControl);
 
 let currentRect = null;
+let rotateHandleMarker = null;
+let rotateHandleStem = null;
+let isRotatingSelection = false;
+
+function calculatePivot(layer) {
+  const crs = map.options.crs || L.CRS.EPSG3857;
+  if (layer instanceof L.Circle) {
+    return layer.getLatLng();
+  }
+  const pts = flattenLatLngs(getShapeLatLngs(layer));
+  if (!pts.length) return layer.getBounds().getCenter();
+  let sumX = 0, sumY = 0;
+  for (const pt of pts) {
+    const p = crs.project(pt);
+    sumX += p.x;
+    sumY += p.y;
+  }
+  return crs.unproject(L.point(sumX / pts.length, sumY / pts.length));
+}
 
 function setSelection(layer) {
   drawnItems.clearLayers();
   currentRect = layer;
+  currentRect._rotationAngle = 0;
+  currentRect._pivot = calculatePivot(layer);
+  currentRect._origPoints = getShapeLatLngs(currentRect);
   makeSelectionDraggable(layer);
   drawnItems.addLayer(currentRect);
   updateBboxFields();
+  updateRotateHandle();
 }
+
+// ---- rotate the selection (Photoshop style) ------------------------------------
+function rotateSingleLatLng(ll, pivot, rad) {
+  const crs = map.options.crs || L.CRS.EPSG3857;
+  const pPivot = crs.project(pivot);
+  const p = crs.project(ll);
+  const dx = p.x - pPivot.x;
+  const dy = p.y - pPivot.y;
+  // Pure rigid clockwise rotation in projected Web Mercator coordinates:
+  // Zero distortion, zero drift, center point is 100% frozen in place.
+  const rx = dx * Math.cos(rad) + dy * Math.sin(rad);
+  const ry = -dx * Math.sin(rad) + dy * Math.cos(rad);
+  return crs.unproject(L.point(pPivot.x + rx, pPivot.y + ry));
+}
+
+function rotateShapeCoords(item, pivot, rad) {
+  if (Array.isArray(item)) {
+    return item.map(child => rotateShapeCoords(child, pivot, rad));
+  }
+  return rotateSingleLatLng(item, pivot, rad);
+}
+
+function flattenLatLngs(items) {
+  const out = [];
+  function walk(x) {
+    if (Array.isArray(x)) {
+      for (const item of x) walk(item);
+    } else if (x && typeof x.lat === 'number') {
+      out.push(x);
+    }
+  }
+  walk(items);
+  return out;
+}
+
+function getShapeLatLngs(layer) {
+  if (layer instanceof L.Rectangle) {
+    const b = layer.getBounds();
+    return [
+      L.latLng(b.getNorth(), b.getWest()),
+      L.latLng(b.getNorth(), b.getEast()),
+      L.latLng(b.getSouth(), b.getEast()),
+      L.latLng(b.getSouth(), b.getWest()),
+    ];
+  }
+  if (layer instanceof L.Circle) {
+    const c = layer.getLatLng();
+    const r = layer.getRadius();
+    const pts = [];
+    for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * 2 * Math.PI;
+      const dLat = (r * Math.cos(a)) / 111320;
+      const dLon = (r * Math.sin(a)) / (111320 * Math.cos(c.lat * Math.PI / 180));
+      pts.push(L.latLng(c.lat + dLat, wrapLon(c.lng + dLon)));
+    }
+    return pts;
+  }
+  if (layer instanceof L.Polygon) {
+    const raw = layer.getLatLngs();
+    return Array.isArray(raw[0]) ? raw[0] : raw;
+  }
+  return [];
+}
+
+function getShapeTopExtentPx(origPoints, pivot) {
+  const cPt = map.latLngToLayerPoint(pivot);
+  let maxUpPx = 25;
+  for (const pt of flattenLatLngs(origPoints)) {
+    const p = map.latLngToLayerPoint(pt);
+    const up = cPt.y - p.y;
+    if (up > maxUpPx) maxUpPx = up;
+  }
+  return maxUpPx;
+}
+
+function calcRotateHandlePositions(pivot, origPoints, angle) {
+  const cPt = map.latLngToLayerPoint(pivot);
+  const maxUpPx = getShapeTopExtentPx(origPoints, pivot);
+  const stemLen = 24;
+  const handleRadius = maxUpPx + stemLen;
+
+  const alpha = -Math.PI / 2 + angle;
+  const dx = Math.cos(alpha);
+  const dy = Math.sin(alpha);
+
+  const hPt = L.point(cPt.x + handleRadius * dx, cPt.y + handleRadius * dy);
+  const sPt = L.point(cPt.x + maxUpPx * dx, cPt.y + maxUpPx * dy);
+
+  return {
+    handleLatLng: map.layerPointToLatLng(hPt),
+    stemStartLatLng: map.layerPointToLatLng(sPt),
+    cPt, maxUpPx, stemLen, handleRadius
+  };
+}
+
+function removeRotateHandle() {
+  if (rotateHandleMarker) {
+    map.removeLayer(rotateHandleMarker);
+    rotateHandleMarker = null;
+  }
+  if (rotateHandleStem) {
+    map.removeLayer(rotateHandleStem);
+    rotateHandleStem = null;
+  }
+}
+
+function updateRotateHandle() {
+  if (!currentRect || !drawnItems.hasLayer(currentRect)) {
+    removeRotateHandle();
+    return;
+  }
+
+  if (!currentRect._pivot) {
+    currentRect._pivot = calculatePivot(currentRect);
+    currentRect._origPoints = getShapeLatLngs(currentRect);
+    currentRect._rotationAngle = 0;
+  }
+
+  const pos = calcRotateHandlePositions(
+    currentRect._pivot,
+    currentRect._origPoints,
+    currentRect._rotationAngle || 0
+  );
+
+  if (!rotateHandleStem) {
+    rotateHandleStem = L.polyline([pos.stemStartLatLng, pos.handleLatLng], {
+      color: '#a5e266',
+      weight: 2,
+      opacity: 0.9,
+      interactive: false,
+      zIndexOffset: 1900,
+    }).addTo(map);
+  } else {
+    rotateHandleStem.setLatLngs([pos.stemStartLatLng, pos.handleLatLng]);
+  }
+
+  if (!rotateHandleMarker) {
+    createRotateHandle(pos.handleLatLng);
+  } else {
+    rotateHandleMarker.setLatLng(pos.handleLatLng);
+    attachRotateHandleEvents(rotateHandleMarker);
+  }
+}
+
+function createRotateHandle(latlng) {
+  if (rotateHandleMarker) {
+    map.removeLayer(rotateHandleMarker);
+    rotateHandleMarker = null;
+  }
+
+  const icon = L.divIcon({
+    className: 'rotate-handle-icon-container',
+    html: `
+      <div class="rotate-handle-wrapper">
+        <div class="rotate-handle-badge" style="display: none;">0°</div>
+        <button type="button" class="rotate-handle-btn" title="Rotate area (drag to rotate, Shift to snap, or click to turn 45°)" aria-label="Rotate area">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19"/>
+          </svg>
+        </button>
+      </div>
+    `,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+
+  rotateHandleMarker = L.marker(latlng, {
+    icon: icon,
+    interactive: true,
+    zIndexOffset: 2000,
+  }).addTo(map);
+
+  attachRotateHandleEvents(rotateHandleMarker);
+}
+
+function rotateSelectionBy(deg) {
+  if (!currentRect) return;
+  if (!currentRect._pivot) {
+    currentRect._pivot = calculatePivot(currentRect);
+    currentRect._origPoints = getShapeLatLngs(currentRect);
+    currentRect._rotationAngle = 0;
+  }
+  const angle = (currentRect._rotationAngle || 0) + (deg * Math.PI / 180);
+  currentRect._rotationAngle = angle;
+
+  const rotated = rotateShapeCoords(currentRect._origPoints, currentRect._pivot, angle);
+
+  if (currentRect instanceof L.Rectangle || currentRect instanceof L.Circle) {
+    const pivot = currentRect._pivot;
+    const origPoints = currentRect._origPoints;
+    drawnItems.removeLayer(currentRect);
+    currentRect = L.polygon(rotated, SEL_STYLE);
+    currentRect._pivot = pivot;
+    currentRect._origPoints = origPoints;
+    currentRect._rotationAngle = angle;
+    makeSelectionDraggable(currentRect);
+    drawnItems.addLayer(currentRect);
+  } else {
+    currentRect.setLatLngs(rotated);
+  }
+
+  updateBboxFields();
+  updateRotateHandle();
+}
+
+function attachRotateHandleEvents(marker) {
+  const el = marker.getElement();
+  if (!el || el._rotateEventsAttached) return;
+  el._rotateEventsAttached = true;
+
+  const btn = el.querySelector('.rotate-handle-btn');
+  const badge = el.querySelector('.rotate-handle-badge');
+  if (!btn) return;
+
+  L.DomEvent.disableClickPropagation(btn);
+  L.DomEvent.disableScrollPropagation(btn);
+
+  btn.addEventListener('contextmenu', (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    rotateSelectionBy(-45);
+  });
+
+  btn.addEventListener('mousedown', (ev) => {
+    if (ev.button !== 0) return;
+    if (!currentRect) return;
+    L.DomEvent.stop(ev);
+    L.DomEvent.preventDefault(ev);
+
+    isRotatingSelection = true;
+    map.dragging.disable();
+    const mapBox = map.getContainer();
+    mapBox.classList.add('rotate-dragging');
+    document.body.classList.add('rotate-dragging');
+
+    if (!currentRect._pivot) {
+      currentRect._pivot = calculatePivot(currentRect);
+      currentRect._origPoints = getShapeLatLngs(currentRect);
+      currentRect._rotationAngle = 0;
+    }
+
+    const pivot = currentRect._pivot;
+    const cPt = map.latLngToLayerPoint(pivot);
+    const startMousePt = map.mouseEventToLayerPoint(ev);
+    const startMouseAngle = Math.atan2(startMousePt.y - cPt.y, startMousePt.x - cPt.x);
+    const startAngle = currentRect._rotationAngle || 0;
+
+    const maxUpPx = getShapeTopExtentPx(currentRect._origPoints, pivot);
+    const stemLen = 24;
+    const handleRadius = maxUpPx + stemLen;
+
+    let moved = false;
+
+    const onMove = (e) => {
+      const curMousePt = map.mouseEventToLayerPoint(e);
+      if (!moved && Math.hypot(curMousePt.x - startMousePt.x, curMousePt.y - startMousePt.y) < 3) return;
+      moved = true;
+
+      const curMouseAngle = Math.atan2(curMousePt.y - cPt.y, curMousePt.x - cPt.x);
+      let delta = curMouseAngle - startMouseAngle;
+
+      if (e.shiftKey) {
+        const snapStep = Math.PI / 12; // 15 degrees
+        delta = Math.round(delta / snapStep) * snapStep;
+      }
+
+      const angle = startAngle + delta;
+      currentRect._rotationAngle = angle;
+
+      let deg = (angle * 180 / Math.PI) % 360;
+      if (deg > 180) deg -= 360;
+      if (deg < -180) deg += 360;
+
+      if (badge) {
+        badge.style.display = 'block';
+        badge.textContent = `${deg >= 0 ? '+' : ''}${deg.toFixed(1)}°`;
+      }
+
+      const rotated = rotateShapeCoords(currentRect._origPoints, pivot, angle);
+
+      if (currentRect instanceof L.Rectangle || currentRect instanceof L.Circle) {
+        const origPivot = currentRect._pivot;
+        const origPoints = currentRect._origPoints;
+        drawnItems.removeLayer(currentRect);
+        currentRect = L.polygon(rotated, SEL_STYLE);
+        currentRect._pivot = origPivot;
+        currentRect._origPoints = origPoints;
+        currentRect._rotationAngle = angle;
+        makeSelectionDraggable(currentRect);
+        drawnItems.addLayer(currentRect);
+      } else {
+        currentRect.setLatLngs(rotated);
+      }
+
+      const alpha = -Math.PI / 2 + angle;
+      const dx = Math.cos(alpha);
+      const dy = Math.sin(alpha);
+
+      const hPt = L.point(cPt.x + handleRadius * dx, cPt.y + handleRadius * dy);
+      const sPt = L.point(cPt.x + maxUpPx * dx, cPt.y + maxUpPx * dy);
+
+      const hLatLng = map.layerPointToLatLng(hPt);
+      const sLatLng = map.layerPointToLatLng(sPt);
+
+      marker.setLatLng(hLatLng);
+      if (rotateHandleStem) {
+        rotateHandleStem.setLatLngs([sLatLng, hLatLng]);
+      }
+
+      updateBboxFields();
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove, true);
+      window.removeEventListener('mouseup', onUp, true);
+      map.dragging.enable();
+      mapBox.classList.remove('rotate-dragging');
+      document.body.classList.remove('rotate-dragging');
+      isRotatingSelection = false;
+
+      if (badge) badge.style.display = 'none';
+
+      if (!moved) {
+        rotateSelectionBy(45);
+        return;
+      }
+
+      updateBboxFields();
+      updateRotateHandle();
+    };
+
+    window.addEventListener('mousemove', onMove, true);
+    window.addEventListener('mouseup', onUp, true);
+  });
+}
+
+map.on('zoomend', updateRotateHandle);
 
 // ---- drag the selection --------------------------------------------------------
 // Press on the chosen area and drag it to somewhere else; the size and shape
@@ -102,6 +462,7 @@ function makeSelectionDraggable(layer) {
   layer.on('mousedown', (ev) => {
     const oe = ev.originalEvent;
     if (oe && oe.button !== undefined && oe.button !== 0) return;
+    if (isRotatingSelection) return;
     if (selDrawing || map.getContainer().classList.contains('lasso-armed')) return;
     if (layer.editing && layer.editing.enabled && layer.editing.enabled()) return;
     if (!drawnItems.hasLayer(layer)) return;
@@ -110,6 +471,8 @@ function makeSelectionDraggable(layer) {
     const isCircle = layer instanceof L.Circle;
     const startLL = ev.latlng;
     const start = isCircle ? layer.getLatLng() : layer.getLatLngs();
+    const startPivot = currentRect && currentRect._pivot ? L.latLng(currentRect._pivot.lat, currentRect._pivot.lng) : null;
+    const startOrigPoints = currentRect && currentRect._origPoints ? shiftLatLngs(currentRect._origPoints, 0, 0) : null;
     let moved = false;
     map.dragging.disable();
     map.getContainer().classList.add('sel-dragging');
@@ -122,7 +485,14 @@ function makeSelectionDraggable(layer) {
       moved = true;
       if (isCircle) layer.setLatLng(L.latLng(start.lat + dLat, start.lng + dLng));
       else layer.setLatLngs(shiftLatLngs(start, dLat, dLng));
+      if (currentRect && startPivot) {
+        currentRect._pivot = L.latLng(startPivot.lat + dLat, startPivot.lng + dLng);
+      }
+      if (currentRect && startOrigPoints) {
+        currentRect._origPoints = shiftLatLngs(startOrigPoints, dLat, dLng);
+      }
       updateBboxFields();
+      updateRotateHandle();
     };
     const up = () => {
       map.off('mousemove', move);
@@ -130,6 +500,7 @@ function makeSelectionDraggable(layer) {
       map.dragging.enable();
       map.getContainer().classList.remove('sel-dragging');
       if (moved) updateBboxFields();
+      updateRotateHandle();
     };
     map.on('mousemove', move);
     document.addEventListener('mouseup', up, true);
@@ -244,6 +615,13 @@ function selectionShape() {
 // Area inside the selection in km², on a local flat projection: plenty for
 // town-sized shapes.
 function selectionAreaKm2() {
+  if (!currentRect) return null;
+  if (currentRect instanceof L.Rectangle) {
+    const b = currentRect.getBounds();
+    const s = b.getSouth(), n = b.getNorth();
+    const w = b.getWest(), e = b.getEast();
+    return haversineKm(s, w, s, e) * haversineKm(s, w, n, w);
+  }
   const shape = selectionShape();
   if (!shape) return null;
   const polys = shape.type === 'Polygon' ? [shape.coordinates] : shape.coordinates;
@@ -262,10 +640,14 @@ function selectionAreaKm2() {
   }
   return total;
 }
-map.on(L.Draw.Event.EDITED, () => updateBboxFields());
+map.on(L.Draw.Event.EDITED, () => {
+  updateBboxFields();
+  updateRotateHandle();
+});
 map.on(L.Draw.Event.DELETED, () => {
   currentRect = null;
   clearBboxFields();
+  updateRotateHandle();
 });
 
 // Leaflet reports coordinates *unwrapped* once the map has been panned across
@@ -335,23 +717,29 @@ function updateBboxFields() {
   const fill = Math.min(100, (area / BIG_AREA_KM2) * 100);
   const takes = durationText(generateSeconds(area, tilesX * tilesY));
 
+  const shapeKm2 = selectionAreaKm2();
+  const shapeVal = shapeKm2 !== null ? shapeKm2 : area;
+
   stats.className = heavy.length ? 'warn' : (slow ? 'warn' : 'ok');
   stats.innerHTML = `
     <div class="tiles">
-      ${fx.tile(area, 'km²', 'area', area < 10 ? 2 : 1)}
+      ${fx.tile(shapeVal, 'km²', 'Shape area', shapeVal < 10 ? 2 : 1)}
+      ${fx.tile(area, 'km²', 'Map area', area < 10 ? 2 : 1)}
       <div class="tile"><div class="v"><span data-count="${cellsX}">0</span><small>×</small><span
-        data-count="${cellsY}">0</span></div><div class="k">cells</div></div>
-      ${fx.tile(tilesX * tilesY / 1e6, 'M', 'tiles', 2)}
-      ${fx.tile(queries, '', queries === 1 ? 'osm query' : 'osm queries')}
+        data-count="${cellsY}">0</span></div><div class="k">Cells</div></div>
+      ${fx.tile(tilesX * tilesY / 1e6, 'M', 'Tiles', 2)}
+      ${fx.tile(queries, '', queries === 1 ? 'OSM query' : 'OSM queries')}
+      ${fx.tile(Math.round(pixelsMB), 'MB', 'Bitmap', 0)}
     </div>
     <div class="meter">
       <div class="meter-top"><span>~${Math.round(widthM)} × ${Math.round(heightM)} m · ${bitmap} of bitmap · ~${buildGB} GB to add buildings · ${takes} to generate</span>
         <span>${fill < 1 ? '<1' : Math.round(fill)}% of limit</span></div>
       <div class="bar"><div class="bar-fill" style="width:${fill}%"></div></div>
     </div>
-    ${selectionAreaKm2() !== null ? `<div class="stat-note shape">Only the drawn shape is built:
-      <b>${selectionAreaKm2().toFixed(2)} km²</b> of this ${area.toFixed(2)} km² box. Outside it the land
-      turns back to countryside, with the main roads and rivers running on.</div>` : ''}
+    ${selectionShape() !== null && shapeKm2 !== null ? `<div class="stat-note shape">
+      Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b>
+      (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.
+    </div>` : ''}
     ${heavy.length ? `<div class="stat-note warn">${heavy.join(' ')}
       You can still build it — this is a heads-up, not a wall.
       ${fitScale ? `<button type="button" class="use-scale" data-scale="${fitScale.mpt}">Use ${fitScale.mpt} m/tile
@@ -424,6 +812,7 @@ function clearBboxFields() {
   document.getElementById('landmarksBtn').disabled = true;
   document.getElementById('landmark-results').innerHTML = '';
   fx.resetFrom('area');
+  updateRotateHandle();
 }
 
 // The scale is typed, so it can be empty, half-typed or out of range. Whole
@@ -1075,13 +1464,73 @@ document.getElementById('healthBtn').addEventListener('click', async () => {
   }
 });
 
-// ---- map data server -----------------------------------------------------------
+// ---- map data server & osm_source ----------------------------------------------
+
+const OSM_SOURCE_DESCS = {
+  overpass: {
+    title: '⚡ Overpass API — Online queries',
+    description: 'Downloads the selected area from the servers below. Busy servers get a limited number of retries; downloaded parts are kept. If the servers are unreachable, choose Auto or Geofabrik.',
+  },
+  auto: {
+    title: '⚙ Auto mode',
+    description: 'Reads regional Geofabrik data when pyosmium is installed. The file is downloaded once and cached. Reading reports its current stage and object count. Falls back to Overpass if the extract is unavailable.',
+  },
+  extract: {
+    title: '📦 Geofabrik — Local data',
+    description: 'Downloads and caches a Geofabrik region, then selects objects for your area. Works without Overpass after the download. The first read of a large region takes time; the current stage is shown in the window.',
+  },
+};
+
+let currentOsmSource = 'overpass';
+
+function setOsmSourceUI(source, saveToServer = true) {
+  if (!OSM_SOURCE_DESCS[source]) source = 'overpass';
+  currentOsmSource = source;
+
+  const cards = document.querySelectorAll('.osm-source-card');
+  cards.forEach(card => {
+    const isThis = card.dataset.source === source;
+    card.classList.toggle('is-on', isThis);
+    card.setAttribute('aria-checked', isThis ? 'true' : 'false');
+  });
+
+  const info = OSM_SOURCE_DESCS[source];
+  const descEl = document.getElementById('osmSourceDesc');
+  if (descEl) {
+    descEl.innerHTML = `<b>${escapeHtml(info.title)}</b><br>${escapeHtml(info.description)}`;
+  }
+
+  if (saveToServer) {
+    fetch('/api/overpass', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ osm_source: source }),
+    }).then(async r => {
+      const data = await r.json();
+      if (!r.ok) throw apiError(data, r);
+    }).then(() => {
+      const name = { overpass: 'Overpass API', auto: 'Auto', extract: 'Geofabrik' }[source];
+      note('overpassNote', `Map data source set to ${name}`, 'ok');
+    }).catch(err => {
+      note('overpassNote', err.message, 'bad');
+    });
+  }
+}
+
+document.querySelectorAll('.osm-source-card').forEach(card => {
+  card.addEventListener('click', () => {
+    setOsmSourceUI(card.dataset.source, true);
+  });
+});
 
 (async function loadOverpass() {
   try {
     const d = await (await fetch('/api/overpass')).json();
     document.getElementById('overpassList').value = (d.endpoints || []).join('\n');
-  } catch (_) { /* the public servers are used either way */ }
+    setOsmSourceUI(d.osm_source || 'overpass', false);
+  } catch (_) {
+    setOsmSourceUI('overpass', false);
+  }
 })();
 
 document.getElementById('overpassSave').addEventListener('click', async () => {
@@ -1090,7 +1539,10 @@ document.getElementById('overpassSave').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/overpass', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ endpoints: document.getElementById('overpassList').value }),
+      body: JSON.stringify({
+        endpoints: document.getElementById('overpassList').value,
+        osm_source: currentOsmSource,
+      }),
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
