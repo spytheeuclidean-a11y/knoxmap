@@ -2115,6 +2115,41 @@ ONE_OF_A_KIND = {"library", "gym", "kitchen", "diningroom", "lobby",
                  "evidenceroom", "security", "breakroom"}
 
 
+# A bathroom bigger than this keeps a bathroom's worth at one end and the
+# rest becomes a store room. Churches, libraries, schools and fire stations
+# had bathrooms of up to 95 tiles: a row of toilets along one wall of an
+# empty tiled hall. A public toilet with its stalls fits in this.
+BATHROOM_MAX_AREA = 30
+
+
+def _trim_bathroom(plan: Plan, idx: int) -> None:
+    """Cut an oversized bathroom down to BATHROOM_MAX_AREA, the rest storage."""
+    r = plan.rooms[idx]
+    if r.kind != "bathroom" or r.is_core or r.is_shaft or r.area <= BATHROOM_MAX_AREA:
+        return
+    if r.w >= r.h:
+        keep = max(MIN_ROOM, BATHROOM_MAX_AREA // r.h)
+        if r.w - keep < MIN_ROOM:
+            return
+        new = Room(r.x0 + keep, r.y0, r.x1, r.y1, kind="storage", unit=r.unit)
+        r.x1 = new.x0 - 1
+    else:
+        keep = max(MIN_ROOM, BATHROOM_MAX_AREA // r.w)
+        if r.h - keep < MIN_ROOM:
+            return
+        new = Room(r.x0, r.y0 + keep, r.x1, r.y1, kind="storage", unit=r.unit)
+        r.y1 = new.y0 - 1
+    cells = [(x, y) for y in range(new.y0, new.y1 + 1) for x in range(new.x0, new.x1 + 1)
+             if plan.grid[y][x] == idx + 1]
+    if len(cells) < MIN_ROOM * MIN_ROOM:
+        # The building's outline leaves too little of it there: keep it whole.
+        r.x1, r.y1 = new.x1, new.y1
+        return
+    plan.rooms.append(new)
+    for x, y in cells:
+        plan.grid[y][x] = len(plan.rooms)
+
+
 def _split_to_size(plan: Plan, rng: random.Random) -> None:
     """Cut a room that is far bigger than its kind ever is into rooms of it.
 
@@ -2129,6 +2164,7 @@ def _split_to_size(plan: Plan, rng: random.Random) -> None:
     placed on the rooms that actually exist.
     """
     for idx in range(len(plan.rooms)):
+        _trim_bathroom(plan, idx)
         room = plan.rooms[idx]
         want = ROOM_MEDIAN_AREA.get(room.kind)
         if (want is None or room.is_core or room.is_shaft
@@ -5923,7 +5959,7 @@ def _pick_corridor(width: int, height: int, mask: list[list[bool]] | None,
 
 
 def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
-               rng: random.Random, street: str | None = None
+               rng: random.Random, street: str | None = None, min_gap: int = 1
                ) -> tuple[int, int, int, int] | None:
     """Reserve a stair shaft: the same rectangle on every storey.
 
@@ -5934,6 +5970,10 @@ def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
     With the street known the stairs go at the back against a side wall,
     where a shop or a restaurant keeps its stairs; in the middle of the floor,
     a terrace of narrow shops had a flight of stairs in the middle of every one.
+
+    The floor left on each side of the shaft is none or at least `min_gap`
+    tiles: a house five tiles wide had its stairs down the middle and every
+    room a one-tile strip round them, with nowhere to put a single piece.
     """
     shapes = [(CORE_WIDE, STAIR_RUN + 1), (STAIR_RUN + 1, CORE_WIDE)]
     best: list[tuple[int, int, int, int]] = []
@@ -5947,6 +5987,9 @@ def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
                         mask[y][x]
                         for y in range(y0, y0 + ch)
                         for x in range(x0, x0 + cw)):
+                    continue
+                if any(0 < g < min_gap for g in (x0, width - (x0 + cw),
+                                                 y0, height - (y0 + ch))):
                     continue
                 # Central, so the flight is not jammed against the windows.
                 score = (abs((x0 + cw / 2) - width / 2)
@@ -6781,7 +6824,11 @@ def build_building(width: int, height: int, levels: int = 1,
         core = _pick_corridor(width, height, mask, rng,
                               CORRIDOR_WIDTHS if kind == "school" else NARROW_CORRIDOR_WIDTHS)
     if core is None and levels > 1:
-        core = _pick_core(width, height, mask, rng, street)
+        # A small house has no room for the strip beside its stairs to be
+        # folded into, so the strip has to be a room of its own or nothing.
+        small = min(width, height) < CORE_WIDE + 2 * MIN_ROOM
+        core = _pick_core(width, height, mask, rng, street,
+                          min_gap=MIN_ROOM if kind in HOUSE_LIKE_KINDS and small else 1)
     if levels > 1 and core is None:
         levels = 1          # nowhere to put a staircase, so one floor it is
 

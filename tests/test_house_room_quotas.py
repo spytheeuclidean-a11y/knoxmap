@@ -1,7 +1,7 @@
 import unittest
 from collections import Counter
 
-from knoxbuild.layout import build_building
+from knoxbuild.layout import _blocks, build_building
 
 
 class HouseRoomQuotas(unittest.TestCase):
@@ -22,6 +22,20 @@ class HouseRoomQuotas(unittest.TestCase):
         self.assertLessEqual(counts["bedroom"] + counts["kidsbedroom"], 2)
         self.assertLessEqual(counts["bathroom"], 1)
         self.assertEqual(counts["bathroom"], 1)
+
+
+class TinyHouses(unittest.TestCase):
+    def test_every_storey_of_a_tiny_house_is_furnished(self):
+        # A two-storey house of 5x8 had the stairs down its middle and every
+        # room a one-tile strip round them; 7x7 and under, each floor was the
+        # stair hall alone. Neither had a stick of furniture.
+        for w in range(5, 10):
+            for h in range(5, 10):
+                for seed in range(3):
+                    b = build_building(w, h, levels=2, seed=seed, kind="house")
+                    for lvl, s in enumerate(b.storeys):
+                        self.assertTrue(any(_blocks(f[0]) for f in s.furniture),
+                                        (w, h, seed, lvl))
 
 
 if __name__ == "__main__":
