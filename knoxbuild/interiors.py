@@ -809,9 +809,13 @@ TONE_KIND = {
     **{r: "bed" for r in CHOICES["bed"]},
     "coffee_table": "low_table", "sidetable": "low_table",
     "dining_table": "dining_table",
+    # The mirrored vanity is light wood: in any other home it is that home's
+    # chest of drawers, the same height.
+    "vanity": "vanity",
 }
 TONES = {
     "white": {"wardrobe": "wardrobe", "dresser": "dresser", "nightstand": "dresser",
+              "vanity": "dresser",
               "bookshelf": "shelf_2", "low_table": "low_table_white",
               "dining_table": "dining_table_white",
               # No bed is white: a painted room has the black metal frame.
@@ -820,9 +824,11 @@ TONES = {
               "bookshelf": "shelf_2", "low_table": "low_table_tan",
               "dining_table": "dining_table_oak", "double_bed": "double_bed_alt", "bed": "bed_alt"},
     "dark": {"wardrobe": "wardrobe_pale", "dresser": "dresser_alt", "nightstand": "dresser_alt",
+             "vanity": "dresser_alt",
              "bookshelf": "bookshelf", "double_bed": "double_bed", "bed": "bed_plain"},
     "black": {"wardrobe": "wardrobe_black", "dresser": "dresser_black",
               "nightstand": "dresser_black", "low_table": "low_table_black",
+              "vanity": "dresser_black",
               "double_bed": "double_bed_black", "bed": "bed",
               # The game has no black bookcase: a black chest of drawers on
               # the same tile instead of a dark one in a black room.
@@ -1379,6 +1385,9 @@ RETIRED_OLD_BUILDING = 0.14
 OLD_BUILDING_YEARS = 40
 TEEN_SHARE = 0.45
 SIBLINGS_SHARE = 0.4
+# A family with a baby: the first child's room that is not the teenager's
+# gets a cot instead of a bed.
+BABY_SHARE = 0.25
 # A bunk bed and room to climb into it.
 BUNK_MIN_TILES = 12
 # A bedroom this small in a family home is a child's.
@@ -1393,7 +1402,8 @@ def household(rng: random.Random, plan) -> dict:
     family = FAMILY_SHARE.get(plan.kind, 0.3)
     kind = "family" if roll < family else "retired" if roll < family + retired else "adults"
     return {"kind": kind, "teen": kind == "family" and rng.random() < TEEN_SHARE,
-            "siblings": kind == "family" and rng.random() < SIBLINGS_SHARE}
+            "siblings": kind == "family" and rng.random() < SIBLINGS_SHARE,
+            "baby": kind == "family" and rng.random() < BABY_SHARE}
 
 
 def for_household(base: list[str], room, home: dict, kid_rooms: dict,
@@ -1418,8 +1428,115 @@ def for_household(base: list[str], room, home: dict, kid_rooms: dict,
         out = [r for r in out if r not in ("plant", "painting")]
         out += ["desk", "office_chair"] + ([rng.choice(posters), rng.choice(posters)] if posters else [])
         return out
-    if home["siblings"] and room.area >= BUNK_MIN_TILES and "bunk_bed" in C.FURNITURE:
+    if home.get("baby") and not home.get("cot") and "crib" in C.FURNITURE:
+        home["cot"] = True
+        out = ["crib" if r in ("bed", "double_bed") else r for r in out]
+    elif home["siblings"] and room.area >= BUNK_MIN_TILES and "bunk_bed" in C.FURNITURE:
         out = ["bunk_bed" if r in ("bed", "double_bed") else r for r in out]
     if posters:
         out = [rng.choice(posters) if r == "painting" else r for r in out]
     return out
+
+
+# The small things a home has, measured over the houses of Muldraugh, West
+# Point, Riverside and Rosewood: a waste bin in 24% of kitchens and 8% of
+# bathrooms, a coffee maker in 13% of kitchens and a toaster in 10%, a small
+# mirror over the basin in about one bathroom in five. Each is a share of
+# rooms, so not every kitchen is the same kitchen.
+KITCHEN_BIN = 0.3
+BATHROOM_BIN = 0.15
+COFFEE_MAKER = 0.35
+TOASTER = 0.25
+KITCHEN_CLOCK = 0.3
+BASIN_MIRROR = 0.5
+LIVING_RADIO = 0.3
+# A bedroom's second chest is a mirrored vanity this often (TONES makes it
+# the home's own chest where the home is not light wood).
+VANITY = 0.3
+# What a toaster or a coffee maker stands on (Surface 34, as they need).
+WORKTOPS = ("counter",)
+
+
+def extras(base: list[str], room, rng: random.Random) -> list[str]:
+    """A home room's wishlist with its vanity."""
+    if room.kind == "bedroom" and rng.random() < VANITY:
+        return ["vanity" if r == "dresser_alt" else r for r in base]
+    return base
+
+
+def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
+               no_go: set, keeps_open) -> None:
+    """Small things on what the room already has: a coffee maker and a
+    toaster on the worktop and a clock on the wall above it, a mirror over
+    the basin, a radio on a living room chest. The one thing on the floor is
+    a waste bin, and only on a square against a wall that keeps_open allows:
+    on the wishlist it took the wall an essential wanted, and the clear-up
+    threw out six more sinks, stoves and counters."""
+    L = _layout()
+    mine = [f for f in plan.furniture if L._room_at(plan, f[1], f[2]) == idx]
+    topped = {(x, y) for role, x, y, _o in mine
+              if L._needs_surface(role) and not L._is_wall_piece(role)}
+    walls = set(door_edges)
+    for role, x, y, o in plan.furniture:
+        if L._is_wall_piece(role):
+            walls |= {L._wall_edge(cx, cy, o) for cx, cy in L._cells_for(role, x, y, o)}
+
+    def free(starts):
+        return [(x, y, o) for role, x, y, o in mine
+                if role.startswith(starts) and (x, y) not in topped]
+
+    def stand(item, spots) -> None:
+        spots = [s for s in spots if s[2] in C.FURNITURE.get(item, {})]
+        if spots:
+            x, y, o = rng.choice(spots)
+            plan.furniture.append((item, x, y, o))
+            topped.add((x, y))
+
+    def hang(item, spots) -> None:
+        spots = [s for s in spots if s[2] in C.FURNITURE.get(item, {})
+                 and L._wall_edge(*s) not in walls]
+        if spots:
+            x, y, o = rng.choice(spots)
+            plan.furniture.append((item, x, y, o))
+            walls.add(L._wall_edge(x, y, o))
+
+    def bin_spot() -> None:
+        taken = {c for role, x, y, o in plan.furniture
+                 if L._blocks(role) and L._room_at(plan, x, y) == idx
+                 for c in L._cells_for(role, x, y, o)}
+        spots = [(x, y) for y in range(room.y0, room.y1 + 1)
+                 for x in range(room.x0, room.x1 + 1)
+                 if plan.grid[y][x] == idx and (x, y) not in taken
+                 and (x, y) not in no_go and not L._narrow(plan.grid, x, y)
+                 and any(L._room_at(plan, x + dx, y + dy) != idx
+                         for dx, dy in STEP.values())]
+        rng.shuffle(spots)
+        for x, y in spots:
+            if keeps_open is None or keeps_open([(x, y)]):
+                plan.furniture.append(("bin", x, y, "N"))
+                return
+
+    if room.kind in ("kitchen", "openplan"):
+        if rng.random() < KITCHEN_BIN:
+            bin_spot()
+        worktop = [(x, y, o) for role, x, y, o in mine if role.startswith(WORKTOPS)]
+        if rng.random() < COFFEE_MAKER:
+            stand("coffee_maker", free(WORKTOPS))
+        if rng.random() < TOASTER:
+            stand("toaster", free(WORKTOPS))
+        if rng.random() < KITCHEN_CLOCK:
+            hang("clock", worktop)
+    elif room.kind == "bathroom":
+        if rng.random() < BATHROOM_BIN:
+            bin_spot()
+        if rng.random() < BASIN_MIRROR and not any(f[0].startswith("mirror") for f in mine):
+            hang("mirror_small", [(x, y, o) for role, x, y, o in mine if L._is_sink(role)])
+    elif room.kind == "livingroom" and rng.random() < LIVING_RADIO:
+        # Every chest in a living room is there to hold a lamp or the
+        # television, so the radio takes the place of a second lamp.
+        lamps = [n for n, f in enumerate(plan.furniture)
+                 if f[0] == "lamp" and L._room_at(plan, f[1], f[2]) == idx]
+        if len(lamps) >= 2:
+            n = rng.choice(lamps)
+            _role, x, y, o = plan.furniture[n]
+            plan.furniture[n] = ("radio", x, y, o)

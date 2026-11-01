@@ -92,5 +92,26 @@ class OneWood(unittest.TestCase):
         self.assertEqual(mixed, 0)
 
 
+class SmallThings(unittest.TestCase):
+    def test_small_things_stand_on_something(self):
+        # A coffee maker, a toaster and a radio each on a worktop or a chest,
+        # and some of every kind across a few dozen homes.
+        seen = set()
+        for seed in range(40):
+            b = L.build_building(16 + seed % 8, 13 + seed % 6, levels=2, seed=seed,
+                                 kind=(None, "apartment")[seed % 2])
+            for s in b.storeys:
+                under = {c: role for role, x, y, o in s.furniture
+                         if not L._is_wall_piece(role) and not L._needs_surface(role)
+                         for c in L._cells_for(role, x, y, o)}
+                for role, x, y, _o in s.furniture:
+                    if role in ("coffee_maker", "toaster", "radio"):
+                        self.assertTrue(under.get((x, y)) and under[(x, y)] not in L.LOW_TABLES,
+                                        (seed, role, x, y))
+                    seen.add(role)
+        self.assertLessEqual({"coffee_maker", "toaster", "radio", "bin", "clock",
+                              "mirror_small"}, seen)
+
+
 if __name__ == "__main__":
     unittest.main()

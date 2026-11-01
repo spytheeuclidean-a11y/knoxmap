@@ -51,9 +51,22 @@ GAME_PIECES = {
     "low_table_white": ("furniture_tables_low_01", [20, 21], "Furniture"),
     "dining_table_white": ("furniture_tables_high_01", [44, 45, 46, 47], "Furniture"),
     "dining_table_oak": ("furniture_tables_high_01", [60, 61, 62, 63], "Furniture"),
+    # The small things a home has (interiors.dress_room): a toaster and a
+    # coffee maker on the worktop, a radio on a chest, a mirrored vanity in a
+    # bedroom, a cot in a baby's room, and a small mirror over a basin and a
+    # clock over a worktop on the north and west walls.
+    "coffee_maker": ("appliances_cooking_01", [56, 57, 58, 59], "Furniture"),
+    "toaster": ("appliances_cooking_01", [32, 33], "Furniture"),
+    "radio": ("appliances_radio_01", [0, 1, 2, 3], "Furniture"),
+    "vanity": ("furniture_storage_01", [40, 41, 42, 43], "Furniture"),
+    "crib": ("furniture_bedding_01", [88, 89, 90, 91], "Furniture"),
+    "mirror_small": ("walls_decoration_01", [10, 11], "WallFurniture"),
+    "clock": ("walls_decoration_01", [104, 105], "WallFurniture"),
 }
 # A bar stool is round: the one sprite, whichever way.
-ROUND = {"bar_stool": ("location_restaurant_bar_01_26", "Furniture")}
+ROUND = {"bar_stool": ("location_restaurant_bar_01_26", "Furniture"),
+         # A kitchen's or a bathroom's waste bin.
+         "bin": ("trashcontainers_01_20", "Furniture")}
 # Posters for a teenager's room: walls_decoration_05 0-7 face south (a north
 # wall) and 8-15 are the same posters facing east (a west wall).
 POSTERS = [(f"walls_decoration_05_{n:03d}", f"walls_decoration_05_{n + 8:03d}") for n in range(8)]
