@@ -156,6 +156,69 @@ def _spawn_tiles(project_dir: str, limit: int) -> list[tuple[int, int]]:
     return [spots[i] for i in chosen]
 
 
+# The new-game spawn picker draws a map with no image of its own from its
+# paper-map data, and to do that it sizes the "visited" overlay from a world
+# that has not been loaded yet: IsoMetaGrid still holds its 10,000,000 and
+# -10,000,000 placeholders, the size comes to -127246320, and the picker
+# throws NegativeArraySizeException and draws nothing (WorldMapVisited,
+# MapSpawnSelect.lua). Knox County avoids it by shipping a picture,
+# spawnSelectImagePyramid.zip, which the picker shows instead. So do these:
+# the map's own top-down preview, cut the same way - 256-pixel tiles named
+# tile<column>x<row>.png, each level half the one before, down to three
+# tiles a side. The picker only needs an overview, so it is drawn at most
+# this many pixels across rather than Knox County's 158 MB.
+SPAWN_PICTURE_MAX_PX = 4096
+PYRAMID_TILE = 256
+
+
+def write_spawn_pyramid(project_dir: str, map_dir: str) -> bool:
+    """spawnSelectImagePyramid.zip from the map's preview. False without one."""
+    import io
+    import zipfile
+
+    from PIL import Image
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from tools.terrain_source import project_origin
+
+    name = os.path.basename(os.path.normpath(project_dir))
+    preview = os.path.join(project_dir, f"{name}_preview.png")
+    if not os.path.exists(preview):
+        return False
+    Image.MAX_IMAGE_PIXELS = None          # a town's preview is a pixel a tile
+    with Image.open(preview) as src:
+        w, h = src.size                    # tiles: the preview is one pixel to a tile
+        scale = min(1.0, SPAWN_PICTURE_MAX_PX / max(w, h))
+        image = src.convert("RGBA").resize(
+            (max(1, round(w * scale)), max(1, round(h * scale))), Image.LANCZOS)
+    ox, oy = project_origin(project_dir)
+    with zipfile.ZipFile(os.path.join(map_dir, "spawnSelectImagePyramid.zip"), "w",
+                         zipfile.ZIP_STORED) as z:
+        z.writestr("pyramid.txt", "VERSION=1\n"
+                   f"bounds={ox} {oy} {ox + w} {oy + h}\n"
+                   f"imageSize={image.width} {image.height}\n"
+                   "minFilter=linear\nmagFilter=linear\n")
+        level = 0
+        while True:
+            cols = -(-image.width // PYRAMID_TILE)
+            rows = -(-image.height // PYRAMID_TILE)
+            z.writestr(f"{level}/", b"")
+            for cx in range(cols):
+                for cy in range(rows):
+                    tile = Image.new("RGBA", (PYRAMID_TILE, PYRAMID_TILE), (0, 0, 0, 0))
+                    tile.paste(image.crop((cx * PYRAMID_TILE, cy * PYRAMID_TILE,
+                                           min(image.width, (cx + 1) * PYRAMID_TILE),
+                                           min(image.height, (cy + 1) * PYRAMID_TILE))))
+                    raw = io.BytesIO()
+                    tile.save(raw, format="PNG")
+                    z.writestr(f"{level}/tile{cx}x{cy}.png", raw.getvalue())
+            if cols <= 3 and rows <= 3:
+                break
+            image = image.resize((max(1, -(-image.width // 2)), max(1, -(-image.height // 2))),
+                                 Image.LANCZOS)
+            level += 1
+    return True
+
+
 def write_spawnpoints(project_dir: str, map_dir: str, limit: int = 8) -> int:
     """Write spawnpoints.lua, without which the map is not a startable region.
 
@@ -498,6 +561,34 @@ KnoxMap is not made, endorsed or supported by The Indie Stone.
 # game's own maximum had been left at 3 GB; nothing had told them to look.
 BIG_MAP_CELLS = 40
 
+# Every save, the game writes each room's and each building's state - seen,
+# explored, alarmed, lights on - into map_meta.bin through one 10 MB buffer
+# that never grows (SliceY.SliceBuffer, IsoMetaGrid.savePart): 8 bytes a
+# cell, 10 a room, 23 a building. Hamburg's 1.6 million rooms came to 21 MB,
+# and every save and hot-save threw BufferOverflowException and wrote
+# nothing. Knox County itself is 1.2 MB, which a map that is not standalone
+# shares the buffer with. The budget leaves room for what else goes in.
+SAVE_BUFFER = 10_485_760
+META_BUDGET = 9_000_000
+META_CELL, META_ROOM, META_BUILDING = 8, 10, 23
+KNOX_COUNTY_META = 1_160_348
+
+
+def save_bytes(cells: list[str]) -> int:
+    """What this map's cells put in the game's map_meta.bin buffer."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from tools.building_stats import read_header
+    total = 0
+    for path in cells:
+        if not path.endswith(".lotheader"):
+            continue
+        try:
+            _names, _lo, _hi, rooms, buildings = read_header(path)
+        except Exception:  # noqa: BLE001 - an unreadable header counts as nothing
+            continue
+        total += META_CELL + META_ROOM * len(rooms) + META_BUILDING * len(buildings)
+    return total
+
 
 def write_server_setup(mod_root: str, mod_id: str, name: str,
                        map_folder: str, needs_erika: bool = False,
@@ -810,6 +901,7 @@ def package(project_dir: str, name: str, mod_id: str,
     zone_counts = {}
     if not any(os.path.basename(e) == "objects.lua" for e in extras):
         zone_counts = write_objects(project_dir, map_dir)
+    spawn_picture = write_spawn_pyramid(project_dir, map_dir)
 
     # Build 42 scans version folders, and each needs its own copy of mod.info —
     # a root-only one leaves the mod invisible in the in-game Mods menu. An
@@ -857,6 +949,8 @@ def package(project_dir: str, name: str, mod_id: str,
         extra_names.append(f"objects.lua ({zone_counts.get('ParkingStall', 0)} parking stalls, "
                            f"{zone_counts.get('TownZone', 0)} town zones)")
     extra_names.append(f"Spawn Selector support ({n_pois} places)")
+    if spawn_picture:
+        extra_names.append("spawnSelectImagePyramid.zip (the map's picture for the spawn picker)")
     extra_names.append(f"SERVER SETUP.txt and server/{regions}")
     saves = worlds_already_made()
     if saves:
@@ -874,6 +968,13 @@ def package(project_dir: str, name: str, mod_id: str,
     if big_map:
         extra_names.append("HOW TO PLAY.txt - a map this size needs more memory "
                            "than the game gives itself; the file says how")
+    meta = save_bytes(cells) + (0 if is_standalone else KNOX_COUNTY_META)
+    if meta > META_BUDGET:
+        extra_names.append(
+            f"WARNING: too many rooms for the game to save - {meta / 1e6:.1f} MB of "
+            f"building state against the {SAVE_BUFFER / 1e6:.1f} MB the game writes it "
+            f"through. Every save will fail to store which buildings are explored or "
+            f"alarmed. Generate a smaller area, or at a larger scale (metres per tile).")
     return mod_root, n_cells, extra_names
 
 
