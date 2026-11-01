@@ -1441,8 +1441,9 @@ def for_household(base: list[str], room, home: dict, kid_rooms: dict,
 # The small things a home has, measured over the houses of Muldraugh, West
 # Point, Riverside and Rosewood: a waste bin in 24% of kitchens and 8% of
 # bathrooms, a coffee maker in 13% of kitchens and a toaster in 10%, a small
-# mirror over the basin in about one bathroom in five. Each is a share of
-# rooms, so not every kitchen is the same kitchen.
+# mirror over the basin in about one bathroom in five, cardboard boxes in 14%
+# of closets, an air vent on the wall of 12-16% of bedrooms and living rooms.
+# Each is a share of rooms, so not every kitchen is the same kitchen.
 KITCHEN_BIN = 0.3
 BATHROOM_BIN = 0.15
 COFFEE_MAKER = 0.35
@@ -1450,11 +1451,25 @@ TOASTER = 0.25
 KITCHEN_CLOCK = 0.3
 BASIN_MIRROR = 0.5
 LIVING_RADIO = 0.3
+LIVING_CLOCK = 0.2
+WALL_VENT = 0.14
+HAMPER = 0.2
+LAUNDRY_HAMPER = 0.5
+CLOSET_BOXES = 0.4
+COAT_RACK = 0.5
+HALL_PHONE = 0.4
+DOOR_MAT = 0.7
+SALE_SIGN = 0.5
 # A bedroom's second chest is a mirrored vanity this often (TONES makes it
 # the home's own chest where the home is not light wood).
 VANITY = 0.3
 # What a toaster or a coffee maker stands on (Surface 34, as they need).
 WORKTOPS = ("counter",)
+# A bedside chest: what bed_against_wall puts beside a bed, in any wood.
+BEDSIDE = ("dresser", "nightstand", "vanity")
+BEDS = ("double_bed", "bed", "bunk_bed", "crib")
+# Kinds of building whose store rooms get boxes: homes, and shops' stockrooms.
+BOXED_KINDS = {None, "house", "apartment", "shop", "retail", "mall"}
 
 
 def extras(base: list[str], room, rng: random.Random) -> list[str]:
@@ -1468,11 +1483,14 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
                no_go: set, keeps_open) -> None:
     """Small things on what the room already has: a coffee maker and a
     toaster on the worktop and a clock on the wall above it, a mirror over
-    the basin, a radio on a living room chest. The one thing on the floor is
-    a waste bin, and only on a square against a wall that keeps_open allows:
-    on the wishlist it took the wall an essential wanted, and the clear-up
-    threw out six more sinks, stoves and counters."""
+    the basin, a radio or a telephone in place of a spare lamp, a lamp on
+    every bedside chest, a mat inside the front door. What does stand on the
+    floor - a bin, a hamper, boxes, a coat rack, a shop's sale sign - goes
+    only on a square against a wall that keeps_open allows: on the wishlist
+    a bin took the wall an essential wanted, and the clear-up threw out six
+    more sinks, stoves and counters."""
     L = _layout()
+    home = plan.kind in L.HOME_KINDS
     mine = [f for f in plan.furniture if L._room_at(plan, f[1], f[2]) == idx]
     topped = {(x, y) for role, x, y, _o in mine
               if L._needs_surface(role) and not L._is_wall_piece(role)}
@@ -1480,6 +1498,14 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
     for role, x, y, o in plan.furniture:
         if L._is_wall_piece(role):
             walls |= {L._wall_edge(cx, cy, o) for cx, cy in L._cells_for(role, x, y, o)}
+    cells = [(x, y) for y in range(room.y0, room.y1 + 1)
+             for x in range(room.x0, room.x1 + 1) if plan.grid[y][x] == idx]
+    entries = []
+    for x, y, d in plan.doors:
+        a, b = ((x, y - 1), (x, y)) if d == "N" else ((x - 1, y), (x, y))
+        rooms = (L._room_at(plan, *a), L._room_at(plan, *b))
+        if idx in rooms:
+            entries.append((a if rooms[0] == idx else b, d, 0 in rooms))
 
     def free(starts):
         return [(x, y, o) for role, x, y, o in mine
@@ -1500,25 +1526,57 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
             plan.furniture.append((item, x, y, o))
             walls.add(L._wall_edge(x, y, o))
 
-    def bin_spot() -> None:
+    def on_walls(sides=tuple(STEP)) -> list:
+        """Every square of this room against one of its walls, with the wall."""
+        return [(x, y, side) for x, y in cells for side in sides
+                if L._room_at(plan, x + STEP[side][0], y + STEP[side][1]) != idx]
+
+    def floor_spot(item, near=()) -> bool:
+        """`item` on a free square against a wall, its back to the wall,
+        nearest to `near` if given."""
+        if item not in C.FURNITURE:
+            return False
         taken = {c for role, x, y, o in plan.furniture
                  if L._blocks(role) and L._room_at(plan, x, y) == idx
                  for c in L._cells_for(role, x, y, o)}
-        spots = [(x, y) for y in range(room.y0, room.y1 + 1)
-                 for x in range(room.x0, room.x1 + 1)
-                 if plan.grid[y][x] == idx and (x, y) not in taken
-                 and (x, y) not in no_go and not L._narrow(plan.grid, x, y)
-                 and any(L._room_at(plan, x + dx, y + dy) != idx
-                         for dx, dy in STEP.values())]
+        # Nor in front of anything opened from the front: a cooler's door, a
+        # fridge, a wardrobe.
+        taken |= {(cx + STEP[OPPOSITE[o]][0], cy + STEP[OPPOSITE[o]][1])
+                  for role, x, y, o in plan.furniture
+                  if L._room_at(plan, x, y) == idx and L._needs_front(role)
+                  for cx, cy in L._cells_for(role, x, y, o)}
+        spots = [(x, y, side) for x, y, side in on_walls()
+                 if side in C.FURNITURE[item] and (x, y) not in taken
+                 and (x, y) not in no_go and not L._narrow(plan.grid, x, y)]
         rng.shuffle(spots)
-        for x, y in spots:
+        if near:
+            spots.sort(key=lambda s: min(abs(s[0] - a) + abs(s[1] - b) for a, b in near))
+        for x, y, side in spots:
             if keeps_open is None or keeps_open([(x, y)]):
-                plan.furniture.append(("bin", x, y, "N"))
-                return
+                plan.furniture.append((item, x, y, side))
+                return True
+        return False
+
+    def swap_lamp(item, keep: int = 1) -> None:
+        """`item` in place of one of this room's lamps, leaving it `keep`."""
+        lamps = [n for n, f in enumerate(plan.furniture)
+                 if f[0] == "lamp" and L._room_at(plan, f[1], f[2]) == idx]
+        if len(lamps) > keep and item in C.FURNITURE:
+            n = rng.choice(lamps)
+            _role, x, y, o = plan.furniture[n]
+            plan.furniture[n] = (item, x, y, L._facing(item, o))
+
+    if not home:
+        if room.kind in STORES and rng.random() < SALE_SIGN:
+            floor_spot("sale_sign", near=[t for t, _d, _out in entries])
+        if room.kind.endswith("storage") and plan.kind in BOXED_KINDS:
+            for _ in range(rng.randint(1, 3)):
+                floor_spot(rng.choice(("box", "box_battered")))
+        return
 
     if room.kind in ("kitchen", "openplan"):
         if rng.random() < KITCHEN_BIN:
-            bin_spot()
+            floor_spot("bin")
         worktop = [(x, y, o) for role, x, y, o in mine if role.startswith(WORKTOPS)]
         if rng.random() < COFFEE_MAKER:
             stand("coffee_maker", free(WORKTOPS))
@@ -1528,15 +1586,87 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
             hang("clock", worktop)
     elif room.kind == "bathroom":
         if rng.random() < BATHROOM_BIN:
-            bin_spot()
+            floor_spot("bin")
+        if rng.random() < HAMPER:
+            floor_spot("hamper")
         if rng.random() < BASIN_MIRROR and not any(f[0].startswith("mirror") for f in mine):
             hang("mirror_small", [(x, y, o) for role, x, y, o in mine if L._is_sink(role)])
-    elif room.kind == "livingroom" and rng.random() < LIVING_RADIO:
+    elif room.kind == "laundry":
+        if rng.random() < LAUNDRY_HAMPER:
+            floor_spot("hamper")
+    elif room.kind == "livingroom":
         # Every chest in a living room is there to hold a lamp or the
         # television, so the radio takes the place of a second lamp.
-        lamps = [n for n, f in enumerate(plan.furniture)
-                 if f[0] == "lamp" and L._room_at(plan, f[1], f[2]) == idx]
-        if len(lamps) >= 2:
-            n = rng.choice(lamps)
-            _role, x, y, o = plan.furniture[n]
-            plan.furniture[n] = ("radio", x, y, o)
+        if rng.random() < LIVING_RADIO:
+            swap_lamp("radio")
+        if rng.random() < LIVING_CLOCK:
+            hang("clock", on_walls(("N", "W")))
+        if rng.random() < WALL_VENT:
+            hang("wall_vent", on_walls(("N", "W")))
+    elif room.kind in ("bedroom", "kidsbedroom"):
+        _bedside_lamps(plan, idx, mine, topped)
+        if rng.random() < WALL_VENT:
+            hang("wall_vent", on_walls(("N", "W")))
+    elif room.kind in ("closet", "storage"):
+        if rng.random() < CLOSET_BOXES:
+            for _ in range(rng.randint(1, 2)):
+                floor_spot(rng.choice(("box", "box_battered")))
+    elif room.kind == "hall" and rng.random() < HALL_PHONE:
+        # The telephone table in the hall: the phone takes the chest a hall
+        # lamp stood on.
+        swap_lamp("phone", keep=0)
+
+    # Inside every outside door: a mat, and a coat rack beside it where the
+    # door opens into a hall or a living room.
+    for (ix, iy), d, outside in entries:
+        if not outside:
+            continue
+        if rng.random() < DOOR_MAT:
+            _door_mat(plan, idx, ix, iy, d)
+        if room.kind in ("hall", "livingroom", "openplan") and rng.random() < COAT_RACK:
+            floor_spot("coat_rack", near=[(ix, iy)])
+
+
+def _door_mat(plan, idx: int, x: int, y: int, d: str) -> None:
+    """A two-tile mat on the floor inside a door in wall `d`, along the wall,
+    where both its tiles are this room's and no other rug is down."""
+    L = _layout()
+    if "door_mat" not in C.FURNITURE:
+        return
+    rugs = {c for role, fx, fy, o in plan.furniture
+            if C.FURNITURE_LAYERS.get(role) == "FloorFurniture"
+            for c in L._cells_for(role, fx, fy, o)}
+    for ax, ay in ((x, y), (x - 1, y) if d == "N" else (x, y - 1)):
+        got = L._cells_for("door_mat", ax, ay, d)
+        if all(L._room_at(plan, *c) == idx and c not in rugs for c in got):
+            plan.furniture.append(("door_mat", ax, ay, d))
+            return
+
+
+def _bedside_lamps(plan, idx: int, mine: list, topped: set) -> None:
+    """A lamp on every bedside chest. A lamp of this room standing on a chest
+    of its own away from the beds moves to the bedside instead, and the chest
+    it stood on (put there only to hold it) goes, so the room is no fuller."""
+    L = _layout()
+    beds = [f for f in mine if f[0].startswith(BEDS)]
+    if not beds:
+        return
+    by_bed = set()
+    for f in beds:
+        under = set(L._tiles_under(*f))
+        by_bed |= {(x + dx, y + dy) for x, y in under for dx, dy in STEP.values()} - under
+    bare = [(x, y, o) for role, x, y, o in mine
+            if role.startswith(BEDSIDE) and (x, y) in by_bed and (x, y) not in topped]
+    for x, y, o in bare:
+        away = [n for n, f in enumerate(plan.furniture)
+                if f[0] == "lamp" and L._room_at(plan, f[1], f[2]) == idx
+                and (f[1], f[2]) not in by_bed]
+        if not away:
+            return
+        _l, lx, ly, _lo = plan.furniture[away[0]]
+        held = [m for m, f in enumerate(plan.furniture)
+                if (f[1], f[2]) == (lx, ly) and f[0].startswith(L.NIGHTSTANDS)]
+        drop = {away[0]} | set(held[:1])
+        plan.furniture[:] = [f for m, f in enumerate(plan.furniture) if m not in drop]
+        plan.furniture.append(("lamp", x, y, L._facing("lamp", o)))
+        topped.add((x, y))

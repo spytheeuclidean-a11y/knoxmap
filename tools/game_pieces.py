@@ -62,11 +62,26 @@ GAME_PIECES = {
     "crib": ("furniture_bedding_01", [88, 89, 90, 91], "Furniture"),
     "mirror_small": ("walls_decoration_01", [10, 11], "WallFurniture"),
     "clock": ("walls_decoration_01", [104, 105], "WallFurniture"),
+    # The rest of a home's and a shop's (interiors.dress_room): a telephone,
+    # a coat rack by the door, cardboard boxes in a closet or a stockroom, a
+    # laundry hamper, an air vent on the wall, a sale sign in a shop.
+    "phone": ("location_business_office_generic_02", [0, 1, 2, 3], "Furniture"),
+    "coat_rack": ("location_community_school_01", [36, 37, 38, 39], "Furniture"),
+    "box": ("trashcontainers_01", [24, 25], "Furniture"),
+    "box_battered": ("trashcontainers_01", [26, 27], "Furniture"),
+    "hamper": ("appliances_laundry_01", [24, 25], "Furniture"),
+    "wall_vent": ("rooftop_furniture", [34, 35], "WallFurniture"),
+    "sale_sign": ("location_shop_generic_01", [70, 71], "Furniture"),
 }
 # A bar stool is round: the one sprite, whichever way.
 ROUND = {"bar_stool": ("location_restaurant_bar_01_26", "Furniture"),
          # A kitchen's or a bathroom's waste bin.
          "bin": ("trashcontainers_01_20", "Furniture")}
+# The door mat has no Facing in the game's definitions: its two halves are
+# laid out as the bath mat's are (floors_rugs_01 48-51), so it is set the same.
+FIXED = {"door_mat": ({"W": {"0,0": "floors_rugs_01_059", "0,1": "floors_rugs_01_058"},
+                       "N": {"0,0": "floors_rugs_01_056", "1,0": "floors_rugs_01_057"}},
+                      "FloorFurniture")}
 # Posters for a teenager's room: walls_decoration_05 0-7 face south (a north
 # wall) and 8-15 are the same posters facing east (a west wall).
 POSTERS = [(f"walls_decoration_05_{n:03d}", f"walls_decoration_05_{n + 8:03d}") for n in range(8)]
@@ -108,6 +123,9 @@ def build(path: str | None = None) -> tuple[dict, dict]:
         layers[role] = layer
     for role, (tile, layer) in ROUND.items():
         furniture[role] = {o: {"0,0": tile} for o in ("W", "N", "E", "S")}
+        layers[role] = layer
+    for role, (piece, layer) in FIXED.items():
+        furniture[role] = piece
         layers[role] = layer
     for i, (north, west) in enumerate(POSTERS):
         furniture[f"poster_{i}"] = {"N": {"0,0": north}, "W": {"0,0": west}}

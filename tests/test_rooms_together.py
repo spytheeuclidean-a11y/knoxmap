@@ -105,12 +105,13 @@ class SmallThings(unittest.TestCase):
                          if not L._is_wall_piece(role) and not L._needs_surface(role)
                          for c in L._cells_for(role, x, y, o)}
                 for role, x, y, _o in s.furniture:
-                    if role in ("coffee_maker", "toaster", "radio"):
+                    if role in ("coffee_maker", "toaster", "radio", "phone"):
                         self.assertTrue(under.get((x, y)) and under[(x, y)] not in L.LOW_TABLES,
                                         (seed, role, x, y))
                     seen.add(role)
         self.assertLessEqual({"coffee_maker", "toaster", "radio", "bin", "clock",
-                              "mirror_small"}, seen)
+                              "mirror_small", "phone", "coat_rack", "door_mat",
+                              "wall_vent", "hamper", "box"}, seen)
 
 
 if __name__ == "__main__":

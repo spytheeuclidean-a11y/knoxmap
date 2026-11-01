@@ -4374,7 +4374,7 @@ SWITCHES_APART = 7
 # sprites, and every room needs one, so it may go anywhere.)
 # Pieces that read the same whichever wall they are against: a table has no
 # front, so the north sprite on a south wall is not wrong, it is just a table.
-_EITHER_WAY = {"table", "coffee_table", "dining_table", "diner_table", "crib",
+_EITHER_WAY = {"table", "coffee_table", "dining_table", "diner_table", "crib", "door_mat",
                "picnic_table", "pizza_table", "bath_mat", "rug", "rug_small",
                "rug_wide", "shag_rug", "roof_ac", "roof_vent", "roof_hatch",
                "elevator_door"}
@@ -5263,6 +5263,8 @@ def _furnish(plan: Plan, rng: random.Random,
         # the till by the door - not from a list pushed against its walls.
         if r.kind in interiors.STORES and interiors.furnish_store(
                 plan, idx, r, rng, door_tiles, stair_tiles | walk, street):
+            interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
+                                 door_edges, no_go, keeps_open)
             continue
         pal = palettes.get(r.unit)
         if pal is None:
@@ -5583,7 +5585,7 @@ def _furnish(plan: Plan, rng: random.Random,
                           keeps_open=keeps_open)
         _pair_up(plan, idx, occupied, no_go, keeps_open)
         _stand_on_something(plan, idx, r, pal)
-        if plan.kind in HOME_KINDS and not r.is_core:
+        if not r.is_core:
             interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
                                  door_edges, no_go, keeps_open)
 
@@ -5599,7 +5601,7 @@ def _furnish(plan: Plan, rng: random.Random,
 # the sink variety and every one of them hung in the air, because the set was
 # a list of the two that existed at the time.
 SURFACE_ROLES = {"kitchen_sink", "sink", "lamp", "tv", "register",
-                 "coffee_maker", "toaster", "radio"}
+                 "coffee_maker", "toaster", "radio", "phone"}
 
 
 def _is_sink(role: str) -> bool:
@@ -6218,7 +6220,8 @@ def _under_a_window(role: str) -> bool:
     # to go and were the pieces the clear-up threw out most.
     return (role in {"bath", "bath_mat", "sofa", "table", "coffee_table",
                      "sidetable", "desk", "bench", "nightstand", "lamp",
-                     "radio", "coffee_maker", "toaster", "bin"}
+                     "radio", "coffee_maker", "toaster", "bin", "phone", "box",
+                     "box_battered", "hamper", "sale_sign"}
             or role.startswith(("bed", "double_bed", "sofa_", "counter", "dresser",
                                 "low_table_")))
 
