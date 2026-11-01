@@ -5068,6 +5068,7 @@ async function putMapAt(body) {
       fx.toast('ok', 'Map placed', `It will be built at cell ${out.map.x},${out.map.y}.`);
     }
   } catch (err) {
+    placeFields();      // a refused change leaves the checkbox as it really is
     placeNote(err.message, true);
   }
 }

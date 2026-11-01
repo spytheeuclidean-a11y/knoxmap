@@ -74,8 +74,18 @@ def api_placement(name: str):
         return jsonify({"error": "Bad map name."}), 400
     if request.method == "GET":
         return jsonify(P.layout(str(map_dir), map_dir.name, str(CACHE_DIR)))
+    # A compile reads the map's place once, when it starts: moving the map under
+    # it leaves lots named for the old place, refused at install as "moved".
+    from web.jobs import _COMPILE, _PROGRESS_LOCK
+    with _PROGRESS_LOCK:
+        compiling = _COMPILE.get(map_dir.name, {}).get("state") in ("running", "stopping")
+    if compiling:
+        return jsonify({"error": "The map is compiling. Move it, or change Standalone, "
+                                 "once the compile has finished."}), 409
     if request.method == "DELETE":
         done = P.unplace(str(map_dir), map_dir.name)
+        log.info("placement %s: automatic, now cell %s (was %s)",
+                 map_dir.name, done["origin"], done["was"])
         out = P.layout(str(map_dir), map_dir.name)
         out["moved"] = done
         return jsonify(out)
@@ -84,11 +94,14 @@ def api_placement(name: str):
         if "standalone" in body and body.get("cell_x") is None:
             done = P.set_standalone(str(map_dir), map_dir.name,
                                     body.get("standalone") is True)
+            log.info("placement %s: standalone %s, now cell %s (was %s)", map_dir.name,
+                     body.get("standalone") is True, done["origin"], done["was"])
             out = P.layout(str(map_dir), map_dir.name)
             out["moved"] = done
             return jsonify(out)
         done = P.move(str(map_dir), map_dir.name,
                       (body.get("cell_x"), body.get("cell_y")))
+        log.info("placement %s: now cell %s (was %s)", map_dir.name, done["origin"], done["was"])
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except OSError as exc:
