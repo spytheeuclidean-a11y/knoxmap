@@ -161,14 +161,20 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
             continue
         levels = levels_for(t, footprint_m2, site_m2, settings.max_basement_depth)
         inside = _inside(row["mask"])
-        tries = [(0, 0, inside)]
-        if t == "installation" and site is not None:
-            tries.insert(0, _site_mask(site, row, inside, size))
+        # Under its own footprint an installation's building has a building's
+        # basement: the first one on a site takes the bunker under all of it,
+        # and an estate of warehouses is not a stack of bunkers.
+        tries = [(t, levels, 0, 0, inside) if t != "installation" else
+                 ("large", levels_for("large", footprint_m2, 0, settings.max_basement_depth),
+                  0, 0, inside)]
+        if t == "installation":
+            whole = _site_mask(site, row, inside, size) if site is not None else (0, 0, inside)
+            tries.insert(0, (t, levels, *whole))
         spec = None
-        for dx, dy, mask in tries:
-            if mask.any() and underground.fits(row["x0"] + dx, row["y0"] + dy, mask, levels):
-                underground.take(row["x0"] + dx, row["y0"] + dy, mask, levels)
-                spec = BasementSpec(t, kind, levels, dx, dy, mask)
+        for got, deep, dx, dy, mask in tries:
+            if mask.any() and underground.fits(row["x0"] + dx, row["y0"] + dy, mask, deep):
+                underground.take(row["x0"] + dx, row["y0"] + dy, mask, deep)
+                spec = BasementSpec(got, kind, deep, dx, dy, mask)
                 break
         out.append(spec)
     return out

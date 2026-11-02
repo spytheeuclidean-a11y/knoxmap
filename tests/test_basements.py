@@ -125,6 +125,9 @@ class Reserving(unittest.TestCase):
         self.assertGreater(int(specs[0].mask.sum()), 1000)
         self.assertEqual(int(specs[1].mask.sum()), 8 * 8)
         self.assertIsNone(specs[2])
+        # Under its own footprint it is a building's basement, not the base's bunker.
+        self.assertEqual((specs[0].tier, specs[1].tier), ("installation", "large"))
+        self.assertEqual(specs[1].levels, levels_for("large", 100, 0, 8))
 
     def test_share_zero_reserves_no_house_basement(self):
         rows = [row("house", 10 * i, 10, 6, 6) for i in range(20)]
