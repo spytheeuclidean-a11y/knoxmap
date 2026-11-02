@@ -316,6 +316,10 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
         under &= ~blocked[y0:y1, x0:x1]
         if under.sum() < 12:
             continue
+        # The whole box the outline sits in, not only the squares wholly
+        # inside it: on a turned map the outline is a little askew, and its
+        # inside alone was a jagged patch of tarmac cut across the forecourt.
+        under = ~blocked[y0:y1, x0:x1]
         ground[y0:y1, x0:x1][under] = C.DARK_ASPHALT
         if veg is not None:
             veg[y0:y1, x0:x1][under] = 0
@@ -327,13 +331,31 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
         length = cw if along_x else ch
         count = max(1, min(MAX_PUMPS, (length - 2) // PUMP_SPACING))
         step = length / count
+        islands = []
         for r in rows:
+            row = []
             for k in range(count):
                 t = int(step * (k + 0.5))
                 xx, yy = (t, r) if along_x else (r, t)
                 if under[yy, xx]:
                     tiles.append((x0 + xx, y0 + yy, 0, "Furniture", PUMPS[brand]["x" if along_x else "y"]))
                     placed += 1
+                    row.append(t)
+            if not row:
+                continue
+            # The island's concrete under the pumps, and the canopy over it:
+            # a mapped canopy used to get pumps and no roof at all.
+            t0 = max(0, min(row) - ISLAND_OVERHANG)
+            t1 = min(length - 1, max(row) + ISLAND_OVERHANG)
+            for t in range(t0, t1 + 1):
+                xx, yy = (t, r) if along_x else (r, t)
+                if under[yy, xx]:
+                    ground[y0 + yy, x0 + xx] = C.PALE_CONCRETE
+            islands.append((x0 + t0, y0 + r, x0 + t1, y0 + r) if along_x
+                           else (x0 + r, y0 + t0, x0 + r, y0 + t1))
+        if islands:
+            tiles.extend(canopy_tiles(islands, brand,
+                                      lambda x, y: 0 <= x < W and 0 <= y < H))
         pumps += placed
         blocked[y0:y1, x0:x1] |= under
         occupied[y0:y1, x0:x1] |= under

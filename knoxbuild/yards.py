@@ -27,7 +27,15 @@ from generator import pz_colors as C
 
 from .bitmaps import read_rgb, same_colour
 
-PATH_MAX_TILES = 40
+# A farmhouse stands well back from its road, and its drive and front path run
+# that far. The path stops at the drive when it meets it first. On Piqua 383
+# houses were a median 61 tiles from the pavement with no straight drive.
+PATH_MAX_TILES = 120
+GARAGE_DRIVE_MAX_TILES = 40
+# Who gets a front path, a stoop and a porch light. Only houses get the drive
+# and the yard: flats and public buildings have lots of their own. On Piqua
+# 91% of the flats had no way to the street before this.
+FRONT_PATH_KINDS = ("house", "apartment", "church", "civic", "medical", "library")
 DRIVE_WIDTH = 3
 DRIVE_EXTRA = 5          # how far the drive runs past the front of the house
 YARD_DEPTH = 9           # back yard, from the back wall to the back fence
@@ -199,14 +207,15 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     # disk, so it is done on threads up front; the loop below still runs in
     # order, which keeps the random choices the same.
     from concurrent.futures import ThreadPoolExecutor
-    house_files = [r["file"] for r in rows if r.get("kind") == "house"]
+    house_files = [r["file"] for r in rows if r.get("kind") in FRONT_PATH_KINDS]
     with ThreadPoolExecutor(max_workers=8) as pool:
         door_lists = dict(zip(house_files, pool.map(
             lambda f: _outside_doors(os.path.join(out_dir, "buildings", f)),
             house_files)))
     for row in rows:
-        if row.get("kind") != "house":
+        if row.get("kind") not in FRONT_PATH_KINDS:
             continue
+        home = row["kind"] == "house"
         doors = door_lists[row["file"]]
         if not doors:
             continue
@@ -239,52 +248,18 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         if not free(sx, sy):
             continue
 
-        # The path, shortest way to the pavement, straight out of the door first.
-        prev = {(sx, sy): None}
-        queue = deque([(sx, sy, 0)])
-        end = None
-        order = [(dx, dy)] + [d for d in ((1, 0), (-1, 0), (0, 1), (0, -1)) if d != (dx, dy)]
-        while queue:
-            x, y, n = queue.popleft()
-            if paved_at[y * w + x]:
-                end = (x, y)
-                break
-            if n >= PATH_MAX_TILES:
-                continue
-            for ddx, ddy in order:
-                nx, ny = x + ddx, y + ddy
-                if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in prev \
-                        and (crossable_at[ny * w + nx] or paved_at[ny * w + nx]):
-                    prev[(nx, ny)] = (x, y)
-                    queue.append((nx, ny, n + 1))
-        if end is None:
-            continue
-        walk = []
-        step = prev[end]
-        while step is not None:
-            walk.append(step)
-            step = prev[step]
-        for x, y in walk:
-            paint(x, y, C.PAVING_STONE)
-        # A stoop: the slab either side of the door step as well.
-        for k in (-1, 1):
-            if free(sx + px * k, sy + py * k):
-                paint(sx + px * k, sy + py * k, C.PAVING_STONE)
-        # The mailbox, beside the path where it reaches the pavement.
-        if walk:
-            mx, my = walk[0]
-            for k in (1, -1):
-                if free(mx + px * k, my + py * k):
-                    put(mx + px * k, my + py * k, C.MAILBOX)
-                    break
-
         # The drive: beside the house, from the street past the front wall.
-        if dx:   # street to the east or west; the front runs north-south
+        # Ahead of the path, so that a house far back from the street can walk
+        # to its own drive.
+        if not home:
+            lanes = []
+        elif dx:   # street to the east or west; the front runs north-south
             front = bx0 + (bw if dx > 0 else -1)
             lanes = [(by0 + bh + 1, 1), (by0 - DRIVE_WIDTH - 1, 1)]
         else:
             front = by0 + (bh if dy > 0 else -1)
             lanes = [(bx0 + bw + 1, 1), (bx0 - DRIVE_WIDTH - 1, 1)]
+        drive_tiles = set()
         for start, _ in lanes:
             strip = []
             # From DRIVE_EXTRA tiles back along the house to the pavement.
@@ -308,6 +283,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             if strip and t < PATH_MAX_TILES:
                 for x, y in strip:
                     paint(x, y, C.DARK_ASPHALT)
+                    paved_at[y * w + x] = True
+                drive_tiles.update(strip)
                 if drives is not None:
                     # The strip starts beside the house: its first five rows.
                     top = strip[:DRIVE_WIDTH * 5]
@@ -317,6 +294,50 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 bx, by = strip[0]
                 put(bx - px, by - py, C.BIN)
                 break
+
+        # The path, shortest way to the pavement or the drive, straight out of
+        # the door first. It never crosses ground already painted for another
+        # building: a neighbour's stoop, patio or vegetable bed.
+        prev = {(sx, sy): None}
+        queue = deque([(sx, sy, 0)])
+        end = None
+        order = [(dx, dy)] + [d for d in ((1, 0), (-1, 0), (0, 1), (0, -1)) if d != (dx, dy)]
+        while queue:
+            x, y, n = queue.popleft()
+            if paved_at[y * w + x]:
+                end = (x, y)
+                break
+            if n >= PATH_MAX_TILES:
+                continue
+            for ddx, ddy in order:
+                nx, ny = x + ddx, y + ddy
+                if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in prev \
+                        and (paved_at[ny * w + nx] or free(nx, ny)):
+                    prev[(nx, ny)] = (x, y)
+                    queue.append((nx, ny, n + 1))
+        if end is None:
+            continue
+        walk = []
+        step = prev[end]
+        while step is not None:
+            walk.append(step)
+            step = prev[step]
+        for x, y in walk:
+            paint(x, y, C.PAVING_STONE)
+        # A stoop: the slab either side of the door step as well.
+        for k in (-1, 1):
+            if free(sx + px * k, sy + py * k):
+                paint(sx + px * k, sy + py * k, C.PAVING_STONE)
+        # The mailbox, beside the path where it reaches the street.
+        if home and walk and end not in drive_tiles:
+            mx, my = walk[0]
+            for k in (1, -1):
+                if free(mx + px * k, my + py * k):
+                    put(mx + px * k, my + py * k, C.MAILBOX)
+                    break
+        if not home:
+            dressed += 1
+            continue
 
         # The back yard. Knox County's are lived in: a patio by the back door
         # with a grill and a table, a washing line, a vegetable bed, all
@@ -428,6 +449,11 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                         row = "N" if y == ys_[0] else "S" if y == ys_[-1] else "M"
                         paint(x, y, C.DIRT)
                         veg[y, x] = frame[(col, row)]
+            # Behind the fence: no later path or drive runs through it.
+            for u in range(width):
+                for v in range(depth):
+                    x, y = at(u, v)
+                    claimed_bytes[y * w + x] = 1
         dressed += 1
 
     for row in rows:
@@ -453,7 +479,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             if road_at[y * w + x]:
                 end = (x, y)
                 break
-            if distance >= PATH_MAX_TILES:
+            if distance >= GARAGE_DRIVE_MAX_TILES:
                 continue
             for dx, dy in ((0, -1), (-1, 0), (1, 0), (0, 1)):
                 nx, ny = x + dx, y + dy

@@ -149,6 +149,16 @@ def _pieces(rings, cell_x, cell_y):
 # the start wraps negative and every outline after it fails to load. Knox
 # County's densest cell has about 1600. A packed city centre can have more.
 CELL_POINT_BUDGET = 15000
+# The triangles are kept the same way: every outline's triangles go into one
+# buffer per cell whose start the game also keeps as a 16-bit number
+# (WorldMapGeometry.triangulate), so past 32767 indices the start wraps
+# negative and WorldMapRenderer.fillPolygon reads outside the buffer - the M
+# map stops drawing and throws every frame ("forgot to call endRun()"). A
+# polygon of n points is about 3n indices, so the point budget alone let a
+# packed city cell reach 45,000 (Hamburg). A road is triangulated again at
+# each of the five zoom levels it is simplified for, so it counts six times.
+CELL_INDEX_BUDGET = 30000
+HIGHWAY_COPIES = 6
 # What goes first when a cell is over it: the small things.
 KEEP_ORDER = ("water", "highway", "railway", "building", "natural")
 
@@ -157,9 +167,20 @@ def _points(piece) -> int:
     return sum(len(ring) for ring in piece)
 
 
+def _indices(piece, props) -> int:
+    """Triangle indices the game will keep for this outline (see CELL_INDEX_BUDGET)."""
+    copies = HIGHWAY_COPIES if any(k == "highway" for k, _ in props) else 1
+    return 3 * _points(piece) * copies
+
+
+def _fits(features: list) -> bool:
+    return (sum(_points(p) for p, _ in features) <= CELL_POINT_BUDGET
+            and sum(_indices(p, props) for p, props in features) <= CELL_INDEX_BUDGET)
+
+
 def _within_budget(features: list) -> list:
     """A cell's features, simplified and then thinned until they fit."""
-    if sum(_points(p) for p, _ in features) <= CELL_POINT_BUDGET:
+    if _fits(features):
         return features
     for tolerance in (0.75, 1.5, 3.0):
         simpler = []
@@ -174,7 +195,7 @@ def _within_budget(features: list) -> list:
             for cleaned in _clean([r.coords for r in [shape.exterior, *shape.interiors]]):
                 simpler.append((cleaned, props))
         features = simpler
-        if sum(_points(p) for p, _ in features) <= CELL_POINT_BUDGET:
+        if _fits(features):
             return features
 
     def rank(item):
@@ -185,12 +206,13 @@ def _within_budget(features: list) -> list:
         ys = [y for _, y in piece[0]]
         return (kind, -(max(xs) - min(xs)) * (max(ys) - min(ys)))
 
-    kept, total = [], 0
+    kept, total, tris = [], 0, 0
     for item in sorted(features, key=rank):
-        n = _points(item[0])
-        if total + n <= CELL_POINT_BUDGET:
+        n, t = _points(item[0]), _indices(*item)
+        if total + n <= CELL_POINT_BUDGET and tris + t <= CELL_INDEX_BUDGET:
             kept.append(item)
             total += n
+            tris += t
     return kept
 
 

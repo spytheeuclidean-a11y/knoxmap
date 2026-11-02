@@ -2069,6 +2069,15 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           f"rest inferred from footprint")
     print(f"  rooms               : {total_rooms}")
     print(f"  furniture pieces    : {total_furn}")
+    # The game saves every room's and building's state through one 10 MB
+    # buffer (tools/make_map_mod.py, META_BUDGET); said here as well as at
+    # install, before an hour of compiling a map whose saves will fail.
+    from tools.make_map_mod import META_BUDGET, META_BUILDING, META_ROOM
+    meta = META_ROOM * total_rooms + META_BUILDING * len(rows)
+    if meta > META_BUDGET:
+        print(f"  WARNING             : {meta / 1e6:.1f} MB of rooms and buildings for the "
+              f"game to save, past the {META_BUDGET / 1e6:.0f} MB it can; every save will "
+              f"fail to store them. Generate a smaller area, or at a larger scale.")
     if gun_cache:
         print(f"guaranteed rifle      : {gun_cache['kind']} - "
               f"{gun_cache['name'] or gun_cache['building']}")
