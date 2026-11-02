@@ -168,3 +168,149 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
                 break
         out.append(spec)
     return out
+
+
+# --- laying one out ----------------------------------------------------------
+
+# Where the stairs down may start, best first: through a hall, past the
+# laundry, and only then out of a kitchen. A big building also takes a stair in
+# any room but a bathroom or a bedroom.
+STAIR_ROOMS = ("hall", "corridor", "lobby", "laundry", "storage", "office", "kitchen",
+               "dining", "livingroom")
+NOT_STAIR_ROOMS = {"bathroom", "bedroom", "kidsbedroom"}
+
+
+@dataclass
+class Basement:
+    building: object      # layout.Building, its storeys bottom first
+    dx: int
+    dy: int
+    levels: int
+
+
+def _run(x: int, y: int, d: str) -> list[tuple[int, int]]:
+    """The squares a flight and its landings take (layout.STAIR_RUN)."""
+    from .layout import STAIR_RUN
+    return [(x, y + i) if d == "N" else (x + i, y) for i in range(STAIR_RUN)]
+
+
+def _top(x: int, y: int, d: str) -> list[tuple[int, int]]:
+    """What a flight from below takes of the floor it rises to: the square a
+    player steps off at, then the three over the steps (buildtiles._stair_squares)."""
+    return _run(x, y, d)[:4]
+
+
+def _core(x: int, y: int, d: str) -> tuple[int, int, int, int]:
+    """The shaft around a flight, as layout._stairs_in_core reads one back."""
+    from .layout import STAIR_RUN
+    if d == "N":
+        return (x - 1, y - 1, x + 1, y + STAIR_RUN - 1)
+    return (x - 1, y - 1, x + STAIR_RUN - 1, y + 1)
+
+
+def find_stair_spot(ground, under: np.ndarray, kinds: tuple[str, ...] | None,
+                    avoid: set) -> tuple[int, int, str] | None:
+    """(x, y, dir) on the ground floor where a flight can come up from below.
+
+    The square a player steps off at and the three left open over the steps
+    (_top) lie in one room of `kinds` (None: any room but a bathroom or a
+    bedroom), off every door and `avoid`; the shaft below lies inside `under`
+    (the basement's squares, in the ground floor's tiles). The first spot that
+    moves no furniture wins, rooms taken in the order of `kinds`."""
+    from .layout import _cells_for, _is_wall_piece
+    grid = ground.grid
+    h, w = len(grid), len(grid[0]) if grid else 0
+    blocked = set(avoid) | set(ground.void) | set(ground.holes)
+    for x, y, d in ground.doors:
+        blocked |= {(x, y), (x, y - 1) if d == "N" else (x - 1, y)}
+    furnished = {c for f in ground.furniture if not _is_wall_piece(f[0])
+                 for c in _cells_for(f[0], f[1], f[2], f[3])}
+
+    def room_kind(x, y):
+        v = grid[y][x]
+        return ground.rooms[v - 1].kind if v else None
+
+    def ok(x, y, d):
+        run = _top(x, y, d)
+        if any(not (0 <= a < w and 0 <= b < h) or (a, b) in blocked for a, b in run):
+            return False
+        first = grid[run[0][1]][run[0][0]]
+        if first == 0 or any(grid[b][a] != first for a, b in run):
+            return False
+        x0, y0, x1, y1 = _core(x, y, d)
+        uh, uw = under.shape
+        return (0 <= x0 and 0 <= y0 and x1 < uw and y1 < uh
+                and bool(under[y0:y1 + 1, x0:x1 + 1].all()))
+
+    spots = [(x, y, d) for y in range(h) for x in range(w) for d in ("N", "W")
+             if room_kind(x, y) and ok(x, y, d)]
+    order = kinds or STAIR_ROOMS
+
+    def rank(spot):
+        kind = room_kind(spot[0], spot[1])
+        if kinds is None and kind in NOT_STAIR_ROOMS:
+            return None
+        place = order.index(kind) if kind in order else (len(order) if kinds is None else None)
+        if place is None:
+            return None
+        return (place, bool(set(_top(*spot)) & furnished))
+
+    ranked = [(r, s) for s in spots if (r := rank(s)) is not None]
+    return min(ranked)[1] if ranked else None
+
+
+def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement | None:
+    """Lay out `spec` under `parent` (a layout.Building), or None when the
+    ground floor has nowhere for the stairs. On success the parent's ground
+    floor is cleared over the flight and opened (Plan.holes)."""
+    from .layout import Building, _cells_for, _clear_for_stairs, _is_wall_piece, build_plan
+    ground = parent.storeys[0]
+    h, w = spec.mask.shape
+    # The basement's squares in the parent's tiles.
+    under = np.zeros((parent.height, parent.width), dtype=bool)
+    for y in range(parent.height):
+        by = y - spec.dy
+        if 0 <= by < h:
+            for x in range(parent.width):
+                bx = x - spec.dx
+                if 0 <= bx < w:
+                    under[y, x] = spec.mask[by, bx]
+    avoid = {c for s in parent.stairs for c in _run(*s)}
+    kinds = STAIR_ROOMS if spec.tier == "house" else None
+    spot = find_stair_spot(ground, under, kinds, avoid)
+    if spot is None:
+        return None
+    sx, sy, d = spot
+    here = (sx - spec.dx, sy - spec.dy, d)
+    core = _core(*here)
+    mask = spec.mask.tolist()
+    storeys = [build_plan(w, h, seed=seed + 977 * i, kind=f"basement_{spec.kind}",
+                          mask=mask, ground=False, settings=settings, core=core,
+                          level=i, levels=spec.levels + 1, stairs=here,
+                          corridor=spec.tier == "installation")
+               for i in range(spec.levels)]
+    for st in storeys:
+        st.windows = []
+        _clear_for_stairs(st, *here)
+    building = Building(width=w, height=h, storeys=storeys, stairs=[here] * spec.levels)
+    top = set(_top(sx, sy, d))
+    ground.furniture = [f for f in ground.furniture if _is_wall_piece(f[0])
+                        or not (set(_cells_for(f[0], f[1], f[2], f[3])) & top)]
+    ground.holes |= set(_top(sx, sy, d)[1:])
+    return Basement(building, spec.dx, spec.dy, spec.levels)
+
+
+def basement_style(style: dict | None) -> dict:
+    """The building's style with concrete walls and floors: the industrial kit."""
+    from . import catalog as C
+    plant = C.SPECIAL_STYLES["industrial"]
+    out = dict(style or {})
+    out.update(exterior=plant["exterior"], interior=plant["interior"], floor=plant["floor"],
+               roof=None, trim=None, shutters=None, grime=None, windows_by_levels=None)
+    out.setdefault("name", "basement")
+    return out
+
+
+def render_basement(b: Basement, label: str, style: dict | None) -> str:
+    from .tbx import render_tbx
+    return render_tbx(b.building, label, basement_style(style), roof=False)

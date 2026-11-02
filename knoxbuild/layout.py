@@ -447,6 +447,21 @@ SPECIAL_MIXES = {
     "military":   (["armystorage", "office", "bedroom", "armystorage",
                     "bathroom", "kitchen", "bedroom"],
                    ["bedroom", "bedroom", "armystorage", "storage", "office"]),
+    # Basements (knoxbuild/basements.py), from the rooms the game already
+    # furnishes: a house's cellar is laundry, storage, a workshop and a rec
+    # room; a base's bunker is stores, bunks and offices.
+    "basement_house":      (["laundry", "storage", "garage", "livingroom"],
+                            ["storage", "livingroom"]),
+    "basement_school":     (["janitor", "storage"], ["storage"]),
+    "basement_medical":    (["storage", "janitor"], ["storage"]),
+    "basement_police":     (["prisoncells", "policestorage"], ["prisoncells", "storage"]),
+    "basement_mall":       (["storage", "office"], ["storage"]),
+    "basement_civic":      (["storage", "office"], ["storage"]),
+    "basement_industrial": (["storage", "warehouse"], ["warehouse", "storage"]),
+    "basement_church":     (["storage", "kitchen"], ["storage"]),
+    "basement_military":   (["armystorage", "bedroom", "office", "storage", "kitchen",
+                             "bathroom"],
+                            ["armystorage", "bedroom", "storage", "office"]),
     "shed":       (["shed"], ["shed"]),
     # A shopping centre, measured off Muldraugh 54_22: a third of the floor
     # is concourse, and the rest is units of 150-400 tiles - clothes,
@@ -7052,7 +7067,12 @@ KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 16.0, "shed": 20.0, "church": 12.0
                    "shop": 2.0, "school": 9.0, "civic": 2.5,
                    "restaurant": 1.5, "medical": 1.3, "offices": 3.0,
                    "police": 2.0, "library": 8.0, "fire": 4.0,
-                   "military": 4.0}
+                   "military": 4.0,
+                   # A bunker under a whole base is thousands of tiles a level.
+                   "basement_military": 6.0, "basement_industrial": 6.0,
+                   "basement_mall": 4.0, "basement_school": 3.0,
+                   "basement_medical": 2.0, "basement_civic": 2.0,
+                   "basement_police": 2.0, "basement_church": 3.0}
 # A shop's ground floor is a sales floor or a few: rooms the size of a house's
 # cut a grocery into cupboards no rows of shelving fit in.
 SHOP_FLOOR_SCALE = 4.0

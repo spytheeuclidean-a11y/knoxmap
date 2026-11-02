@@ -6,7 +6,10 @@ from types import SimpleNamespace
 import numpy as np
 from shapely.geometry import box as shape_box
 
-from knoxbuild.basements import Underground, levels_for, reserve, tier
+from knoxbuild.basements import (BasementSpec, Underground, _inside, levels_for,
+                                 plan_basement, render_basement, reserve, tier)
+from knoxbuild.buildtiles import parse_tbx
+from knoxbuild.layout import build_building
 from knoxbuild.buildheader import placed_rooms
 from knoxbuild.settings import Settings
 
@@ -143,6 +146,60 @@ class SiteShapes(unittest.TestCase):
         self.assertTrue(index.shape_around(10, 10).equals(town))
         self.assertIsNone(index.shape_around(900, 900))
         self.assertIsNone(AreaIndex([]).shape_around(1, 1))
+
+
+def house_spec(parent):
+    mask = np.ones((parent.height, parent.width), dtype=bool)
+    return BasementSpec("house", "house", 1, 0, 0, _inside(mask))
+
+
+def steps(x, y, d):
+    return {(x, y + 1 + i) for i in range(3)} if d == "N" else {(x + 1 + i, y) for i in range(3)}
+
+
+class Planning(unittest.TestCase):
+    def test_a_house_basement_stairs_land_in_a_ground_floor_room(self):
+        parent = build_building(12, 10, seed=3)
+        b = plan_basement(parent, house_spec(parent), 3, Settings())
+        self.assertIsNotNone(b)
+        sx, sy, d = b.building.stairs[-1]
+        px, py = sx + b.dx, sy + b.dy
+        self.assertNotEqual(parent.storeys[0].grid[py][px], 0)
+        self.assertTrue(steps(px, py, d) <= parent.storeys[0].holes)
+        kinds = {r.kind for r in b.building.rooms}
+        self.assertTrue(kinds <= {"laundry", "storage", "garage", "livingroom", "hall"}, kinds)
+
+    def test_no_spot_no_basement(self):
+        parent = build_building(4, 4, seed=1)
+        self.assertIsNone(plan_basement(parent, house_spec(parent), 1, Settings()))
+        self.assertEqual(parent.storeys[0].holes, set())
+
+    def test_a_basement_has_no_windows_or_outside_doors(self):
+        parent = build_building(12, 10, seed=3)
+        b = plan_basement(parent, house_spec(parent), 3, Settings())
+        for st in b.building.storeys:
+            self.assertEqual(st.windows, [])
+            for x, y, d in st.doors:
+                ox, oy = (x, y - 1) if d == "N" else (x - 1, y)
+                inside = [0 <= yy < len(st.grid) and 0 <= xx < len(st.grid[0]) and st.grid[yy][xx] != 0
+                          for xx, yy in ((x, y), (ox, oy))]
+                self.assertTrue(all(inside), (x, y, d))
+
+    def test_an_installation_has_one_stair_core_through_every_level(self):
+        parent = build_building(20, 14, kind="military", seed=5)
+        spec = BasementSpec("installation", "military", 4, -10, -8,
+                            np.ones((30, 40), dtype=bool))
+        b = plan_basement(parent, spec, 5, Settings())
+        self.assertEqual(len(b.building.storeys), 4)
+        self.assertEqual(len(b.building.stairs), 4)
+        self.assertEqual(len(set(b.building.stairs)), 1)
+
+    def test_the_rendered_basement_has_no_roof_floor(self):
+        parent = build_building(12, 10, seed=3)
+        b = plan_basement(parent, house_spec(parent), 3, Settings())
+        tbx = parse_tbx(render_basement(b, "t", None))
+        self.assertEqual(len(tbx.floors), 1)
+        self.assertTrue(any(o.get("type") == "stairs" for o in tbx.floors[0].objects))
 
 
 if __name__ == "__main__":
