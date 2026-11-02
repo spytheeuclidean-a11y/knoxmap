@@ -121,5 +121,24 @@ class BasementLotsCompile(unittest.TestCase):
         self.assertEqual((levels[west][0], levels[east][0]), (-2, -2))
 
 
+    def test_a_cell_s_levels_cover_every_room_it_lists(self):
+        """A basement's rooms are listed in its building's north-west cell,
+        which need not hold any of its squares."""
+        project = self._copy("east")
+        name, tx, ty, _lv, w, h = read_lots(project)[0]
+        ox, oy = project_origin(project)
+        bx = ((ox + tx) // SIDE + 1) * SIDE - ox          # the next cell east
+        shutil.copy(os.path.join(project, "buildings", f"{name}.tbx"),
+                    os.path.join(project, "buildings", f"{name}_bsmt.tbx"))
+        _add_lot(project, f"{name}_bsmt.tbx", bx, ty, w, h, -1)
+        compile_rust(project)
+        for path in glob.glob(os.path.join(project, "lots", "*.lotheader")):
+            _names, lo, hi, rooms, _b = read_header(path)
+            zs = [r[1] for r in rooms]
+            if zs:
+                self.assertTrue(lo <= min(zs) and max(zs) <= hi,
+                                f"{os.path.basename(path)}: levels {lo}..{hi}, rooms {sorted(set(zs))}")
+
+
 if __name__ == "__main__":
     unittest.main()

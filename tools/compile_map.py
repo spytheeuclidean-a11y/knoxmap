@@ -837,7 +837,7 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
         # BuildingEd cannot read them (knoxbuild/basements.py), and the repair
         # below would drop the houses over them along with them.
         raise RuntimeError("This map has basements, which only knoxlots can compile. Build "
-                           "knoxlots (rust/knoxlots), or set Basements to 0 and build again.")
+                           "knoxlots (rust/knoxlots), or set Deepest basement to 0 and build again.")
     exe_path = Path(exe) if exe else DEFAULT_EXE
     if not exe_path.exists():
         raise FileNotFoundError(f"PZWorldEd_cli not found at {exe_path}")

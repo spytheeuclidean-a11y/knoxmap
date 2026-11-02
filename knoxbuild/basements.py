@@ -23,6 +23,9 @@ CHURCH_MIN_M2 = 600
 LARGE_TWO_LEVELS_M2 = 3_000
 INSTALLATION_SITE_M2 = 50_000          # an industrial site this big goes deep
 SITE_M2_PER_LEVEL = 20_000
+# A works' plant rooms, not a bunker: an estate's levels added a third of a big
+# port city's save buffer (the game's room table, tools/make_map_mod.save_bytes).
+INDUSTRIAL_MAX_LEVELS = 2
 # ponytail: a square crop centred on the parent; follow the site's own shape if
 # a big base's basement looks cut off.
 INSTALLATION_MAX_TILES = 40_000        # per level, so a base is not one building of thousands of rooms
@@ -43,12 +46,15 @@ def tier(kind: str | None, footprint_m2: float, site_m2: float) -> str | None:
     return None
 
 
-def levels_for(tier: str, footprint_m2: float, site_m2: float, max_depth: int) -> int:
+def levels_for(tier: str, footprint_m2: float, site_m2: float, max_depth: int,
+               kind: str | None = None) -> int:
     if tier == "house":
         return 1
     if tier == "large":
         return 2 if footprint_m2 >= LARGE_TWO_LEVELS_M2 else 1
     deepest = min(max_depth, -BOTTOM_LEVEL)
+    if kind == "industrial":
+        deepest = min(deepest, INDUSTRIAL_MAX_LEVELS)
     return max(2, min(1 + int(site_m2 // SITE_M2_PER_LEVEL), deepest))
 
 
@@ -143,8 +149,20 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
     stands in (areas.AreaIndex), or is None. `size` is the map, in tiles."""
     underground = underground or Underground()
     share = settings.basement_share * (0.25 if region in EAST_ASIA else 1.0)
-    out: list[BasementSpec | None] = []
-    for row in rows:
+    out: list[BasementSpec | None] = [None] * len(rows)
+    if settings.max_basement_depth < 1:
+        return out
+    # Bases first, biggest building first, so the bunker under a site goes to
+    # its barracks and not to a guard hut too small to take the stairs; the
+    # rest in build order. The house share is rolled in build order regardless.
+    rolls = [rng.random() for _ in rows]
+
+    def first(i):
+        r = rows[i]
+        return (0, -int(np.count_nonzero(r["mask"]))) if r["kind"] in ("military", "industrial") else (1, 0)
+
+    for i in sorted(range(len(rows)), key=first):
+        row = rows[i]
         kind = row["kind"] or "house"
         fitted = np.zeros((row["h"], row["w"]), dtype=bool)
         m = np.asarray(row["mask"], dtype=bool)[:row["h"], :row["w"]]
@@ -156,10 +174,9 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
             site = areas.shape_around(row["x0"] + row["w"] / 2, row["y0"] + row["h"] / 2)
         site_m2 = site.area * m2_per_tile if site is not None else 0.0
         t = tier(kind, footprint_m2, site_m2)
-        if t is None or (t == "house" and rng.random() >= share):
-            out.append(None)
+        if t is None or (t == "house" and rolls[i] >= share):
             continue
-        levels = levels_for(t, footprint_m2, site_m2, settings.max_basement_depth)
+        levels = levels_for(t, footprint_m2, site_m2, settings.max_basement_depth, kind)
         inside = _inside(row["mask"])
         # Under its own footprint an installation's building has a building's
         # basement: the first one on a site takes the bunker under all of it,
@@ -176,7 +193,7 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
                 underground.take(row["x0"] + dx, row["y0"] + dy, mask, deep)
                 spec = BasementSpec(got, kind, deep, dx, dy, mask)
                 break
-        out.append(spec)
+        out[i] = spec
     return out
 
 

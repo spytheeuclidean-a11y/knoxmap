@@ -936,7 +936,7 @@ const SETTING_LABELS = {
   style_oddity:        ['Odd one out', 'How often a building breaks from its block.'],
   parking_density:     ['Parking', 'Vehicles only ever spawn in a parking stall.'],
   basement_share:      ['Basements', 'The share of houses with a basement. Schools, hospitals, police stations and the like always get one.'],
-  max_basement_depth:  ['Deepest basement', 'Levels a military base or a big industrial site may go down, up to 32.'],
+  max_basement_depth:  ['Deepest basement', 'Levels a military base may go down, up to 32. 0 builds no basements at all.'],
 };
 
 let settingsMeta = null;

@@ -137,9 +137,13 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
         for (wx, wy, z), bt in world.items():
             if z != 0 and wx0 <= wx < wx0 + SIDE and wy0 <= wy < wy0 + SIDE:
                 stacks[(wx - wx0, wy - wy0, z)] = bt
-        min_z = min((z for _, _, z in stacks), default=0)
-        min_z = min(min_z, 0)
-        nlev = max((z for _, _, z in stacks), default=0) + 1 - min_z
+        # A building's rooms are listed in the cell of its north-west corner,
+        # which need not hold a square of its basement: the cell's levels
+        # cover what its room table names as well as its squares.
+        rooms, buildings = cell_tables(cx, cy, placed, origin)
+        levels_used = [z for _, _, z in stacks] + [r["z"] for r in rooms]
+        min_z = min(min(levels_used, default=0), 0)
+        nlev = max(levels_used, default=0) + 1 - min_z
         depth = max((len(st) for st in stacks.values()), default=1)
         names: list[str] = []
         index: dict[str, int] = {}
@@ -151,7 +155,6 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
                     i = index[t] = len(names) + 1
                     names.append(t)
                 arrays[z - min_z][k][yy, xx] = i
-        rooms, buildings = cell_tables(cx, cy, placed, origin)
         room_tuples = [(r["name"], r["z"], [tuple(x) for x in r["rects"]], []) for r in rooms]
         data = cell_source(cx, cy, names, arrays, min_z=min_z, rooms=room_tuples,
                            buildings=buildings)

@@ -44,7 +44,7 @@ class BasementSettings(unittest.TestCase):
 
     def test_depth_stops_at_the_game_s_bottom_level(self):
         self.assertEqual(Settings.from_dict({"max_basement_depth": 40}).max_basement_depth, 32)
-        self.assertEqual(Settings.from_dict({"max_basement_depth": 0}).max_basement_depth, 1)
+        self.assertEqual(Settings.from_dict({"max_basement_depth": -3}).max_basement_depth, 0)
 
     def test_share_is_a_fraction(self):
         self.assertEqual(Settings.from_dict({"basement_share": 3}).basement_share, 1.0)
@@ -396,6 +396,27 @@ class NoGhostRooms(unittest.TestCase):
             for st in below.building.storeys:
                 owned = Counter(v for row in st.grid for v in row if v)
                 self.assertEqual([n for n in range(1, len(st.rooms) + 1) if not owned[n]], [])
+
+
+class ReviewFixes(unittest.TestCase):
+    def test_depth_zero_turns_every_basement_off(self):
+        rows = [row("house", 10, 10, 12, 10), row("school", 40, 10, 20, 20),
+                row("military", 80, 10, 20, 20)]
+        got = reserve(rows, Settings(basement_share=1.0, max_basement_depth=0), None, None,
+                      random.Random(1), (200, 200))
+        self.assertEqual(got, [None, None, None])
+
+    def test_an_industrial_estate_stays_shallow(self):
+        self.assertEqual(levels_for("installation", 500, 130_000, 8, kind="industrial"), 2)
+        self.assertEqual(levels_for("installation", 500, 130_000, 8, kind="military"), 7)
+
+    def test_the_biggest_building_on_a_site_takes_the_bunker(self):
+        sites = Sites((0, 0, 200, 200))
+        rows = [row("military", 20, 20, 4, 4),      # a guard hut, first in build order
+                row("military", 100, 100, 30, 20)]  # the barracks
+        specs = reserve(rows, Settings(), None, sites, random.Random(1), (300, 300))
+        self.assertEqual(specs[1].tier, "installation")
+        self.assertNotEqual(getattr(specs[0], "tier", None), "installation")
 
 
 if __name__ == "__main__":
