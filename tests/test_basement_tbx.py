@@ -36,5 +36,13 @@ class BasementTbx(unittest.TestCase):
         self.assertTrue(any(o.get("type") == "stairs" for o in b.floors[0].objects))
 
 
+    def test_no_roof_even_when_the_style_has_one(self):
+        from knoxbuild.catalog import HOUSE_STYLES
+        style = next(s for s in HOUSE_STYLES if s.get("roof"))
+        b = parse_tbx(render_tbx(_small(1), "t", style, roof=False))
+        self.assertEqual(len(b.floors), 1)
+        self.assertFalse(any(o.get("type") == "roof" for f in b.floors for o in f.objects))
+
+
 if __name__ == "__main__":
     unittest.main()

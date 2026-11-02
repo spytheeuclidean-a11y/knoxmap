@@ -288,13 +288,13 @@ def render_tbx(plan: Plan | Building, name: str,
         shutters_idx = _add(entries, style.get("shutters"))
         grime_idx = _add(entries, style.get("grime"))
         if style.get("roof"):
-            roof = style["roof"]
-            if roof.get("slopes"):
-                slope_idx = _add(entries, roof["slopes"])
-            top_idx = _add(entries, roof["tops"])
-            peaked = bool(roof.get("peaked"))
+            kit = style["roof"]
+            if kit.get("slopes"):
+                slope_idx = _add(entries, kit["slopes"])
+            top_idx = _add(entries, kit["tops"])
+            peaked = bool(kit.get("peaked"))
             # 30-degree roofs only where the gable ends have 30-degree tiles.
-            roof30 = "CapPeak30S1" in ((roof.get("caps") or {}).get("tiles") or {})                 and "Slope30S1" in ((roof.get("slopes") or {}).get("tiles") or {})
+            roof30 = "CapPeak30S1" in ((kit.get("caps") or {}).get("tiles") or {})                 and "Slope30S1" in ((kit.get("slopes") or {}).get("tiles") or {})
         if style.get("shop_front"):
             entry, curtains = style["shop_front"]
             front_idx = _add(entries, entry)
