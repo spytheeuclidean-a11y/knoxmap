@@ -206,6 +206,9 @@ class Placement:
     # one's upper-floor wall with them when it was laid first (a wall missing over a
     # neighbour's roof). Laid after, its wall is added to what is there.
     levels: int = 1
+    # The level its first floor stands on: below 0 for a basement
+    # (knoxbuild/basements.py), whose top floor is at -1.
+    base_level: int = 0
 
     @property
     def cell_x(self) -> int:
@@ -354,7 +357,7 @@ def render_pzw(cells_x: int, cells_y: int, bmp_name: str,
         for p in sorted(by_cell.get((cx, cy), []),
                         key=lambda q: (q.on_top, q.levels, q.offset_y, q.offset_x)):
             out.append(
-                f'  <lot x="{p.offset_x}" y="{p.offset_y}" level="0"'
+                f'  <lot x="{p.offset_x}" y="{p.offset_y}" level="{p.base_level}"'
                 f' width="{p.width}" height="{p.height}"'
                 f' map={quoteattr(p.tbx_path)}/>')
         for z in zones_by_cell.get((cx, cy), []):
