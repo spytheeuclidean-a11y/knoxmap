@@ -148,8 +148,10 @@ def _walkway(cells, terminals):
 
 
 def keeps_floor_open(cells, blocked, walk, new, pocket):
-    """True if placing `new` leaves the walkway untouched and every cut-off
-    patch of free floor holds at most `pocket` tiles."""
+    """True if placing `new` leaves the walkway untouched and the cut-off
+    patches of free floor hold at most `pocket` tiles between them. Counted
+    one patch at a time, a dresser that shut a bedroom off from its doorway
+    passed: it left pockets of 2, 2 and 1 behind."""
     if new & walk:
         return False
     free = cells - blocked - new
@@ -173,7 +175,7 @@ def keeps_floor_open(cells, blocked, walk, new, pocket):
         keep = next(c for c in comps if main in c)
     else:
         keep = max(comps, key=len)  # comps are in min-tile order: ties go to the smallest
-    return all(len(c) <= pocket for c in comps if c is not keep)
+    return sum(len(c) for c in comps if c is not keep) <= pocket
 
 class OpenFloor:
     """keeps_floor_open for one room as its pieces go in. The free floor's
@@ -201,8 +203,10 @@ class OpenFloor:
             return
         self.free -= gone
         for t in gone:
-            self.size[self.patch.pop(t)] -= 1
-        self.bad = {n for n in self.bad if self.size[n] > self.pocket}
+            n = self.patch.pop(t)
+            self.size[n] -= 1
+            if n != self.keep:
+                self.off -= 1
 
     def _splits(self, gone, new):
         """Whether taking `new` off the free floor might cut a patch in two."""
@@ -239,8 +243,7 @@ class OpenFloor:
             self.size.append(k)
         anchor = self.walk & free
         self.keep = self.patch[min(anchor)] if anchor else None
-        self.bad = {n for n, k in enumerate(self.size)
-                    if n != self.keep and k > self.pocket}
+        self.off = sum(k for n, k in enumerate(self.size) if n != self.keep)
 
     def keeps_open(self, new):
         new = set(new)
@@ -252,14 +255,8 @@ class OpenFloor:
             return keeps_floor_open(self.cells, self.blocked, self.walk, new, self.pocket)
         gone = new & self.free
         if not gone:
-            return not self.bad
+            return self.off <= self.pocket
         if self._splits(gone, new):
             return keeps_floor_open(self.cells, self.blocked, self.walk, new, self.pocket)
         # No patch is cut in two: each one the new tiles touch just shrinks.
-        lost = {}
-        for t in gone:
-            lost[self.patch[t]] = lost.get(self.patch[t], 0) + 1
-        if any(self.size[n] - lost.get(n, 0) > self.pocket for n in self.bad):
-            return False
-        return all(self.size[n] - k <= self.pocket
-                   for n, k in lost.items() if n != self.keep)
+        return self.off - sum(self.patch[t] != self.keep for t in gone) <= self.pocket

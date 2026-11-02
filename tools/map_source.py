@@ -40,7 +40,7 @@ def read_lots(project: str):
         m = re.match(r'\s*<cell x="(\d+)" y="(\d+)"', line)
         if m:
             cell = (int(m[1]), int(m[2]))
-        m = re.search(r'<lot x="(\d+)" y="(\d+)" level="(\d+)" width="(\d+)" height="(\d+)" '
+        m = re.search(r'<lot x="(\d+)" y="(\d+)" level="(-?\d+)" width="(\d+)" height="(\d+)" '
                       r'map="buildings/([^"]+)\.tbx"', line)
         if m and cell:
             lots.append((m[6], cell[0] * 300 + int(m[1]), cell[1] * 300 + int(m[2]), int(m[3]),
@@ -118,7 +118,8 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
         inside = inside[1:-1, 1:-1]
         order = stack_order(layers)
 
-        # the stacks of the cell: level 0 is ground and buildings, above it buildings only
+        # the stacks of the cell: level 0 is ground and buildings, above and below it
+        # (basements) buildings only
         stacks: dict[tuple[int, int, int], list[str]] = {}
         for yy in range(SIDE):
             for xx in range(SIDE):
@@ -134,9 +135,15 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
                 if st:
                     stacks[(xx, yy, 0)] = st
         for (wx, wy, z), bt in world.items():
-            if z > 0 and wx0 <= wx < wx0 + SIDE and wy0 <= wy < wy0 + SIDE:
+            if z != 0 and wx0 <= wx < wx0 + SIDE and wy0 <= wy < wy0 + SIDE:
                 stacks[(wx - wx0, wy - wy0, z)] = bt
-        nlev = max((z for _, _, z in stacks), default=0) + 1
+        # A building's rooms are listed in the cell of its north-west corner,
+        # which need not hold a square of its basement: the cell's levels
+        # cover what its room table names as well as its squares.
+        rooms, buildings = cell_tables(cx, cy, placed, origin)
+        levels_used = [z for _, _, z in stacks] + [r["z"] for r in rooms]
+        min_z = min(min(levels_used, default=0), 0)
+        nlev = max(levels_used, default=0) + 1 - min_z
         depth = max((len(st) for st in stacks.values()), default=1)
         names: list[str] = []
         index: dict[str, int] = {}
@@ -147,10 +154,10 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
                 if i is None:
                     i = index[t] = len(names) + 1
                     names.append(t)
-                arrays[z][k][yy, xx] = i
-        rooms, buildings = cell_tables(cx, cy, placed, origin)
+                arrays[z - min_z][k][yy, xx] = i
         room_tuples = [(r["name"], r["z"], [tuple(x) for x in r["rects"]], []) for r in rooms]
-        data = cell_source(cx, cy, names, arrays, rooms=room_tuples, buildings=buildings)
+        data = cell_source(cx, cy, names, arrays, min_z=min_z, rooms=room_tuples,
+                           buildings=buildings)
         with open(os.path.join(out, f"cell_{cx}_{cy}.kcell"), "wb") as f:
             f.write(data)
         written += 1
@@ -205,7 +212,8 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
     # Only the rooms are kept; the parsed buildings go.
     parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
         read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
-    placed = placed_rooms([(b, tx, ty, lv) for b, tx, ty, lv in parsed if b.floors])
+    kept = [(t, (b, tx, ty, lv)) for (t, *_), (b, tx, ty, lv) in zip(lots, parsed) if b.floors]
+    placed = placed_rooms([lot for _t, lot in kept])
     reach = [(b.width, b.height) for b, *_ in parsed]
     del parsed
 

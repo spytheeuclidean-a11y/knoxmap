@@ -181,6 +181,18 @@ class FloorStaysOpen(unittest.TestCase):
     def test_nothing_new(self):
         self.assertIs(keeps_floor_open(self.cells, set(), self.walk, set(), 2), True)
 
+    def test_small_pockets_add_up(self):
+        """An upstairs bedroom in Piqua: a 4x3 room whose doors open off a
+        one-wide strip at x=3. A double bed and a dresser at the foot left
+        pockets of two squares each; a second dresser at (3, 2), on the one
+        square joining room and strip, shut the room off in pockets of 2, 2
+        and 1, none of them over the limit alone."""
+        cells = rect(4, 3) | {(3, 3), (3, 4), (3, 5)}
+        walk = {(3, 3), (3, 4), (3, 5)}
+        bed = {(1, 0), (2, 0), (1, 1), (2, 1)}
+        blocked = bed | {(3, 0), (0, 2)}
+        self.assertIs(keeps_floor_open(cells, blocked, walk, {(3, 2)}, 2), False)
+
     def test_open_floor_answers_as_keeps_floor_open(self):
         # The incremental check must give the same answer for every query, so
         # a seed lays out the same rooms with it as without.

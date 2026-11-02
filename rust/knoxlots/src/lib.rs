@@ -45,6 +45,10 @@ impl<'a> Reader<'a> {
         Ok(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
     }
 
+    pub fn i32(&mut self) -> Result<i32, String> {
+        Ok(self.u32()? as i32)
+    }
+
     pub fn u64(&mut self) -> Result<u64, String> {
         let b = self.bytes(8)?;
         let mut a = [0u8; 8];
@@ -64,4 +68,25 @@ impl<'a> Reader<'a> {
 
 pub(crate) fn put_u32(out: &mut Vec<u8>, v: u32) {
     out.extend_from_slice(&v.to_le_bytes());
+}
+
+pub(crate) fn put_i32(out: &mut Vec<u8>, v: i32) {
+    out.extend_from_slice(&v.to_le_bytes());
+}
+
+/// Build 42's levels: 32 below ground and 32 from the ground up.
+pub const BOTTOM_LEVEL: i32 = -32;
+pub const TOP_LEVEL: i32 = 31;
+
+/// An error for a level range the game cannot load.
+pub fn check_levels(min_z: i32, max_z: i32) -> Result<(), String> {
+    for z in [min_z, max_z] {
+        if !(BOTTOM_LEVEL..=TOP_LEVEL).contains(&z) {
+            return Err(format!("level {z} is outside {BOTTOM_LEVEL}..{TOP_LEVEL}"));
+        }
+    }
+    if max_z < min_z {
+        return Err(format!("levels {min_z} to {max_z}"));
+    }
+    Ok(())
 }

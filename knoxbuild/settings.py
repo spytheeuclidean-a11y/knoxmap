@@ -147,6 +147,14 @@ class Settings:
     # Scales how many ParkingStall zones are found. Vehicles only ever spawn
     # inside one, so this is the dial for how many cars are in the streets.
     parking_density: float = 1.0
+
+    # --- basements (knoxbuild/basements.py) --------------------------------
+    # The share of houses with a cellar; a quarter of it in China, Japan and
+    # Korea. Schools, hospitals, military bases and the like always get one.
+    basement_share: float = 0.4
+    # How many levels a military base may go down; 0 is no basements at all.
+    # Build 42's lowest level is -32.
+    max_basement_depth: int = 8
     # How each building outline is fitted to the tile grid: the dominant wall direction, keeping the shape.
     building_alignment: str = "rectilinear"
 
@@ -237,6 +245,8 @@ LIMITS = {
     "neighbourhood_tiles": (20, 2000),
     "style_oddity": (0.0, 1.0),
     "parking_density": (0.0, 4.0),
+    "basement_share": (0.0, 1.0),
+    "max_basement_depth": (0, 32),
     # Not a range at all - the page asks /api/settings for the options -
     # but every knob gets an entry so the settings form can be built blind.
     "arch_style": (0, 3),

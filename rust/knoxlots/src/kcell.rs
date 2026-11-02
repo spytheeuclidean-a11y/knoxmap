@@ -3,10 +3,10 @@
 //! Little-endian. Names carry their length instead of a newline so any text fits.
 //!
 //! ```text
-//! "KCEL"  u32 version (1)  u32 cell_x  u32 cell_y     the 256-tile cell, as in 83_2
-//! u32 min_z  u32 levels
+//! "KCEL"  u32 version (1; 2 when min_z < 0)  u32 cell_x  u32 cell_y     the 256-tile cell, as in 83_2
+//! i32 min_z  u32 levels                            min_z -32..31
 //! u32 names, then each: u16 length, UTF-8 bytes        tile names, any order, no repeats
-//! u32 rooms, then each: u16 length + name, u32 z, u32 rects, rects*(x y w h),
+//! u32 rooms, then each: u16 length + name, i32 z, u32 rects, rects*(x y w h),
 //!                       u32 objects, objects*(a b c)   cell tile coordinates
 //! u32 buildings, then each: u32 k, k * u32             indexes into the rooms
 //! u8 zombie_flag; if 1, 1024 bytes of zombie intensity (else taken from the spawn map)
@@ -22,7 +22,7 @@
 
 use crate::cell::{Cell, Square, SIDE};
 use crate::header::{Room, CHUNK_VALUES};
-use crate::{put_u32, Reader};
+use crate::{check_levels, put_i32, put_u32, Reader};
 
 pub const MAGIC: &[u8; 4] = b"KCEL";
 const NONE: u32 = 0xFFFF_FFFF;
@@ -31,7 +31,7 @@ const NONE: u32 = 0xFFFF_FFFF;
 pub struct KCell {
     pub cell_x: u32,
     pub cell_y: u32,
-    pub min_z: u32,
+    pub min_z: i32,
     pub rooms: Vec<Room>,
     pub buildings: Vec<Vec<u32>>,
     pub zombie: Option<Vec<u8>>,
@@ -55,9 +55,13 @@ impl KCell {
     pub fn write(&self) -> Result<Vec<u8>, String> {
         let mut o = Vec::new();
         o.extend_from_slice(MAGIC);
-        for v in [1, self.cell_x, self.cell_y, self.min_z, self.squares.levels as u32] {
-            put_u32(&mut o, v);
-        }
+        // Below ground is version 2, so a compiler from before basements
+        // refuses the file instead of writing a level the game cannot read.
+        put_u32(&mut o, if self.min_z < 0 { 2 } else { 1 });
+        put_u32(&mut o, self.cell_x);
+        put_u32(&mut o, self.cell_y);
+        put_i32(&mut o, self.min_z);
+        put_u32(&mut o, self.squares.levels as u32);
         put_u32(&mut o, self.squares.names.len() as u32);
         for n in &self.squares.names {
             put_str(&mut o, n)?;
@@ -65,7 +69,7 @@ impl KCell {
         put_u32(&mut o, self.rooms.len() as u32);
         for room in &self.rooms {
             put_str(&mut o, &room.name)?;
-            put_u32(&mut o, room.z);
+            put_i32(&mut o, room.z);
             put_u32(&mut o, room.rects.len() as u32);
             room.rects.iter().flatten().for_each(|&v| put_u32(&mut o, v));
             put_u32(&mut o, room.objects.len() as u32);
@@ -118,13 +122,14 @@ impl KCell {
             return Err("not a cell source file".into());
         }
         let version = r.u32()?;
-        if version != 1 {
+        if version != 1 && version != 2 {
             return Err(format!("cell source version {version} is not known"));
         }
-        let (cell_x, cell_y, min_z, levels) = (r.u32()?, r.u32()?, r.u32()?, r.u32()? as usize);
+        let (cell_x, cell_y, min_z, levels) = (r.u32()?, r.u32()?, r.i32()?, r.u32()? as usize);
         if levels == 0 || levels > 64 {
             return Err(format!("{levels} levels"));
         }
+        check_levels(min_z, min_z + levels as i32 - 1)?;
         let n = r.u32()? as usize;
         let mut names = Vec::with_capacity(n.min(1 << 20));
         for _ in 0..n {
@@ -134,7 +139,7 @@ impl KCell {
         let mut rooms = Vec::with_capacity(nr.min(1 << 20));
         for _ in 0..nr {
             let name = get_str(&mut r)?;
-            let z = r.u32()?;
+            let z = r.i32()?;
             let nrect = r.u32()? as usize;
             let mut rects = Vec::with_capacity(nrect.min(1 << 16));
             for _ in 0..nrect {

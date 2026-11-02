@@ -36,6 +36,11 @@ and building tables, optionally the 1024 zombie bytes, then every square of ever
 (level by level, row by row, x within a row) as run-length records: a run of empty
 squares, or a square with its room value and a list of tile names, bottom first.
 
+Levels run from `min_z` (signed) up, and must stay inside Build 42's -32..31. A cell
+with any level below ground (a basement) is version 2, so a compiler from before
+basements refuses it rather than writing a level the game cannot read; every other cell
+is version 1, byte for byte as before. Room `z` is signed too.
+
 A cell with no zombie bytes gets them from the spawn map (floor of the mean over each
 8 x 8 chunk); with neither, zero.
 

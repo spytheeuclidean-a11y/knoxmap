@@ -872,7 +872,10 @@ def one_wood(building, rng: random.Random) -> None:
             room = plan.grid[y][x] if 0 <= y < plan.height and 0 <= x < plan.width else 0
             unit = plan.rooms[room - 1].unit if room else 0
             got = None
-            if role in TONE_KIND and not (flats and not unit):
+            # A bathroom keeps its shelves: the black wood has no bookcase and
+            # turned a bathroom shelf into a chest of drawers.
+            bathroom = room and plan.rooms[room - 1].kind == "bathroom"
+            if role in TONE_KIND and not (flats and not unit) and not bathroom:
                 key = (lvl, unit) if flats else None
                 if key not in tones:
                     tones[key] = TONES[rng.choices(list(TONE_WEIGHTS),
@@ -1540,10 +1543,10 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
                  if L._blocks(role) and L._room_at(plan, x, y) == idx
                  for c in L._cells_for(role, x, y, o)}
         # Nor in front of anything opened from the front: a cooler's door, a
-        # fridge, a wardrobe.
+        # fridge, a wardrobe - or of a toilet, sat on from there.
         taken |= {(cx + STEP[OPPOSITE[o]][0], cy + STEP[OPPOSITE[o]][1])
                   for role, x, y, o in plan.furniture
-                  if L._room_at(plan, x, y) == idx and L._needs_front(role)
+                  if L._room_at(plan, x, y) == idx and (L._needs_front(role) or role == "toilet")
                   for cx, cy in L._cells_for(role, x, y, o)}
         spots = [(x, y, side) for x, y, side in on_walls()
                  if side in C.FURNITURE[item] and (x, y) not in taken

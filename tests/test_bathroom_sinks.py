@@ -49,3 +49,34 @@ class BathroomSize(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BathroomFloor(unittest.TestCase):
+    def houses(self):
+        for seed in range(60):
+            for w, h in ((17, 7), (12, 10), (14, 12)):
+                b = layout.build_building(w, h, seed=seed)
+                for st in b.storeys:
+                    yield seed, st
+
+    def test_a_bathroom_has_no_dresser(self):
+        for seed, st in self.houses():
+            for role, x, y, o in st.furniture:
+                r = layout._room_at(st, x, y)
+                if r and st.rooms[r - 1].kind == "bathroom":
+                    self.assertFalse(role.startswith("dresser"), (seed, role, x, y))
+
+    def test_only_the_bathroom_s_own_fittings_stand_in_front_of_a_toilet(self):
+        """A tight bathroom may have its basin there; nothing else."""
+        from knoxbuild import furnish_rules as FR
+        for seed, st in self.houses():
+            solid = {c: role for role, x, y, o in st.furniture if layout._blocks(role)
+                     for c in layout._cells_for(role, x, y, o)}
+            for role, x, y, o in st.furniture:
+                if role != "toilet" or o not in layout._STEP:
+                    continue
+                front = solid.get((x - layout._STEP[o][0], y - layout._STEP[o][1]))
+                if front is not None:
+                    self.assertTrue(front.startswith("counter")
+                                    or FR.priority(front, "bathroom") == FR.ESSENTIAL,
+                                    (seed, x, y, o, front))

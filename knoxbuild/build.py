@@ -376,6 +376,18 @@ def looks_like_apartment(tags: dict, area_tiles: int, rng,
     return rng.random() < settings.apartment_chance
 
 
+def flats_by_height(special: str | None, levels: int, btag: str, area_tiles: int,
+                    settings: Settings) -> bool:
+    """Whether a building left a house turns out a block of flats once its
+    storeys are known. looks_like_apartment rolls for a big untagged building
+    with no height, and one the roll left a house still got its storeys from
+    its footprint: Piqua had 154 houses three and four storeys up, the
+    biggest 54 x 35, each floor sixteen offices, sixteen storerooms and eight
+    laundries. Three storeys up is flats, as a measured height already is."""
+    return (special is None and levels >= 3 and btag not in HOUSE_TAGS
+            and area_tiles >= settings.apartment_footprint)
+
+
 # Metres of building per storey, for turning a height= into a floor count.
 # OSM's own convention, and close enough to the game's floor spacing.
 METRES_PER_LEVEL = 3.0
@@ -1209,13 +1221,21 @@ def _party_walls(owner: np.ndarray, me: int, x0: int, y0: int, mask: np.ndarray,
     return out
 
 
+# A job's fields up to its party walls; a BasementSpec (or None) follows.
+JOB_FIELDS = 21
+
+
 def _make_one(job: tuple) -> tuple:
     """Lay out one building and write its .tbx. Returns (storeys, rooms,
-    furniture, error): a building that cannot be laid out is left out with the
-    reason, instead of stopping the other two thousand."""
+    furniture, error, escalators, basement): a building that cannot be laid out
+    is left out with the reason, instead of stopping the other two thousand.
+    `basement` is what basements.plan_basement made of the job's last element
+    (a BasementSpec), written beside the building as <name>_bsmt.tbx, or None."""
     (w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street, retail,
         uses, hotel, entrances, profile, mapped, garage_door, preset_file,
-        party) = job
+        party, *rest) = job
+    basement = rest[0] if rest else None
+    job = job[:JOB_FIELDS]          # what the room solver reads, without the basement
     if preset_file:
         # A building somebody built by hand, used as it was built. Nothing is
         # re-rendered and nothing is stretched: the file that was saved is the
@@ -1228,10 +1248,10 @@ def _make_one(job: tuple) -> tuple:
         except OSError as exc:
             return (0, 0, 0, f"{os.path.basename(path)}: the preset "
                              f"{os.path.basename(preset_file)} could not be "
-                             f"read ({exc})", [])
+                             f"read ({exc})", [], None)
         from . import presets as P
         about = P.measure(text) or {"storeys": 1, "rooms": 0}
-        return (about["storeys"], about["rooms"], 0, None, [])
+        return (about["storeys"], about["rooms"], 0, None, [], None)
     try:
         # a house planned whole by the room solver (Settings.room_solver), when
         # it is on and the house fits; anything else is laid out as always
@@ -1248,16 +1268,32 @@ def _make_one(job: tuple) -> tuple:
                                   retail=retail, uses=uses, hotel=hotel, party=party,
                                   entrances=entrances, profile=profile,
                                   mapped=mapped, garage_door=garage_door)
+        below = None
+        if basement is not None:
+            from . import basements
+            # Before the house is written: the stairs down open its ground floor.
+            below = basements.plan_basement(plan, basement, seed, settings)
         text = render_tbx(plan, label, style)
+        below_text = (basements.render_basement(below, f"{label} basement", style)
+                      if below is not None else None)
     except Exception:  # noqa: BLE001
         import traceback
         return (0, 0, 0, f"{os.path.basename(path)} ({kind or 'house'}, {w}x{h}, "
-                         f"{levels} storeys): {traceback.format_exc()}", [])
+                         f"{levels} storeys): {traceback.format_exc()}", [], None)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
+    info = None
+    if below is not None:
+        below_path = path[:-len(".tbx")] + "_bsmt.tbx"
+        with open(below_path, "w", encoding="utf-8") as f:
+            f.write(below_text)
+        info = {"file": os.path.basename(below_path), "tier": basement.tier,
+                "dx": below.dx, "dy": below.dy, "w": below.building.width,
+                "h": below.building.height, "levels": below.levels,
+                "rooms": len(below.building.rooms)}
     return (len(plan.storeys), len(plan.rooms),
             sum(len(s.furniture) for s in plan.storeys), None,
-            list(plan.escalators))
+            list(plan.escalators), info)
 
 
 # Below this many buildings, starting worker processes costs more than it saves.
@@ -1341,7 +1377,7 @@ def _make_all(jobs: list[tuple], tick=None) -> list[tuple[int, int, int]]:
     # the room solver's houses solved before the pool starts, so each worker
     # only reads its cache (nothing when the room_solver setting is off)
     from . import room_solver
-    room_solver.prepare(jobs)
+    room_solver.prepare([job[:JOB_FIELDS] for job in jobs])
     workers = int(os.environ.get("KNOXBUILD_WORKERS") or
                   max(1, min(12, (os.cpu_count() or 2) - 2)))
     if workers <= 1 or len(jobs) < PARALLEL_FROM:
@@ -1724,6 +1760,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             levels = max(1, min(top, int(round(nearby)) +
                                 style_rng.choice((-1, 0, 0, 1))))
             from_near += 1
+        if flats_by_height(special, levels, btag, fp.tiles, here):
+            special = "apartment"
+            commercial = True
         if hotel:
             special = "apartment"      # its flats are guest rooms
         elif any(back == "theatre" for _front, back in uses):
@@ -1840,6 +1879,22 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         jobs[j] = jobs[j] + (_party_walls(owner, j, d[2], d[3], d[6].mask,
                                           [job[2] for job in jobs]),)
 
+    # Basements, in build order from their own random stream, so a town keeps
+    # the same ones (knoxbuild/basements.py). A building somebody made by
+    # hand gets none: its ground floor is not ours to cut stairs into.
+    from . import basements
+    from tools.compile_map import default_backend
+    if default_backend() != "rust":
+        print("basements            : none - only knoxlots compiles them, and it is not built")
+    specs = [None] * len(jobs) if default_backend() != "rust" else basements.reserve(
+        [{"kind": "preset" if job[19] else (d[8] or "house"),
+          "x0": d[2], "y0": d[3], "w": d[4], "h": d[5],
+          "mask": d[6].mask}
+         for job, d in zip(jobs, decided)],
+        settings, region, areas, random.Random(f"{settings.seed}:basements"),
+        (proj.width, proj.height), metres_per_tile * metres_per_tile)
+    jobs = [job + (spec,) for job, spec in zip(jobs, specs)]
+
     # Every decision above is made in order, from one random stream, so the
     # town comes out the same each time. What is left - laying out rooms and
     # writing the files - depends only on each building's own seed, so it runs
@@ -1851,11 +1906,15 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     todo = []
     for j, d in enumerate(decided):
         old = earlier.get(d[0])
+        below = (old or {}).get("result", [None] * 5)[4:5]
+        below = below[0] if below else None
         if (old and old.get("key") == keys[j] and d[0] in earlier_files
-                and os.path.exists(os.path.join(bdir, d[0]))):
-            storeys, rooms, furniture, escalators = old["result"]
+                and os.path.exists(os.path.join(bdir, d[0]))
+                and (jobs[j][JOB_FIELDS] is None
+                     or (below is not None and below["file"] in earlier_files))):
+            storeys, rooms, furniture, escalators = old["result"][:4]
             results[j] = (storeys, rooms, furniture, None,
-                          [tuple(e) for e in escalators])
+                          [tuple(e) for e in escalators], below)
         else:
             todo.append(j)
     reused = len(jobs) - len(todo)
@@ -1870,9 +1929,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     for j, result in zip(todo, _make_all([jobs[j] for j in todo], laid_out)):
         results[j] = result
 
+    basement_counts = {"house": 0, "large": 0, "installation": 0}
     for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
          style, mask, real_name), (storeys, rooms, furniture, error,
-                                   escalators) in zip(decided, results):
+                                   escalators, below) in zip(decided, results):
         if error:
             failed_buildings.append(error)
             continue
@@ -1885,6 +1945,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                                                           west=True))
         p = Placement(f"buildings/{fname}", x0, y0, w, h, levels=storeys)
         placements.append(p)
+        if below is not None:
+            placements.append(Placement(f"buildings/{below['file']}", x0 + below["dx"],
+                                        y0 + below["dy"], below["w"], below["h"],
+                                        levels=below["levels"], base_level=-below["levels"]))
+            basement_counts[below["tier"]] += 1
         peopled.append((x0, y0, fp.mask, storeys, special or "house"))
         outlines.append((px, special or "house", real_name))
         rows.append({
@@ -1908,10 +1973,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     # Remember what was made, and clear out what was left from before and not
     # written this time.
-    entries = {d[0]: {"key": keys[j], "result": [r_[0], r_[1], r_[2], r_[4]]}
+    entries = {d[0]: {"key": keys[j], "result": [r_[0], r_[1], r_[2], r_[4], r_[5]]}
                for j, (d, r_) in enumerate(zip(decided, results)) if not r_[3]}
     _write_cache(out_dir, code, entries)
-    for stale in earlier_files - set(entries):
+    below_files = {r_[5]["file"] for r_ in results if not r_[3] and r_[5]}
+    for stale in earlier_files - set(entries) - below_files:
         try:
             os.remove(os.path.join(bdir, stale))
         except OSError:
@@ -2069,6 +2135,15 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           f"rest inferred from footprint")
     print(f"  rooms               : {total_rooms}")
     print(f"  furniture pieces    : {total_furn}")
+    # The game saves every room's and building's state through one 10 MB
+    # buffer (tools/make_map_mod.py, META_BUDGET); said here as well as at
+    # install, before an hour of compiling a map whose saves will fail.
+    from tools.make_map_mod import META_BUDGET, META_BUILDING, META_ROOM
+    meta = META_ROOM * total_rooms + META_BUILDING * len(rows)
+    if meta > META_BUDGET:
+        print(f"  WARNING             : {meta / 1e6:.1f} MB of rooms and buildings for the "
+              f"game to save, past the {META_BUDGET / 1e6:.0f} MB it can; every save will "
+              f"fail to store them. Generate a smaller area, or at a larger scale.")
     if gun_cache:
         print(f"guaranteed rifle      : {gun_cache['kind']} - "
               f"{gun_cache['name'] or gun_cache['building']}")
@@ -2084,6 +2159,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"graves, army stores  : {prop_counts['graves']} graves, "
           f"{prop_counts['dumps']} stacks of stores")
     print(f"porch lights         : {len(porch_lights)} by front doors")
+    print(f"basements            : {basement_counts['house']} houses, "
+          f"{basement_counts['large']} large, {basement_counts['installation']} installations "
+          f"({sum(s is not None for s in specs) - sum(basement_counts.values())} without a stair spot)")
     print(f"fences                : {fence_tiles} fence tiles in "
           f"{len(fence_placements)} lots")
     print(f"bridges, monuments    : {raised['bridges']} bridges, "

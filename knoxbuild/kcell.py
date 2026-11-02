@@ -51,7 +51,8 @@ def cell_source(cell_x: int, cell_y: int, names: list[str], levels: list[list[np
                 min_z: int = 0, rooms=(), buildings=(), zombie: bytes | None = None) -> bytes:
     """The bytes of a `cell_<x>_<y>.kcell` file."""
     out = bytearray(b"KCEL")
-    out += struct.pack("<5I", 1, cell_x, cell_y, min_z, len(levels))
+    # Version 2 below ground, so a knoxlots from before basements refuses it.
+    out += struct.pack("<3IiI", 2 if min_z < 0 else 1, cell_x, cell_y, min_z, len(levels))
     out += struct.pack("<I", len(names))
     for n in names:
         b = n.encode("utf-8")
@@ -59,7 +60,7 @@ def cell_source(cell_x: int, cell_y: int, names: list[str], levels: list[list[np
     out += struct.pack("<I", len(rooms))
     for name, z, rects, objects in rooms:
         b = name.encode("utf-8")
-        out += struct.pack("<H", len(b)) + b + struct.pack("<II", z, len(rects))
+        out += struct.pack("<H", len(b)) + b + struct.pack("<iI", z, len(rects))
         for r in rects:
             out += struct.pack("<4I", *r)
         out += struct.pack("<I", len(objects))

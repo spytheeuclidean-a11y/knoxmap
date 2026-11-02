@@ -29,6 +29,12 @@ class Pieces(unittest.TestCase):
         self.assertEqual(set(C.FURNITURE["pew"]["N"]), {"0,0", "1,0", "2,0"})
         self.assertEqual(set(C.FURNITURE["treadmill"]), {"E", "S"})
 
+    def test_a_plant_is_in_a_pot(self):
+        # d_plants_1 is the outdoor shrub sheet: it grew out of the floor.
+        tiles = {t for side in C.FURNITURE["plant"].values() for t in side.values()}
+        self.assertEqual(set(C.FURNITURE["plant"]), {"W", "N", "E", "S"})
+        self.assertTrue(all(t.startswith("vegetation_indoor_01_") for t in tiles), tiles)
+
 
 class Trades(unittest.TestCase):
     def test_a_bar_has_its_counter_and_stools(self):

@@ -118,6 +118,9 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
                     n = at.get((x + dx, y + dy, k[1] + dz))
                     if n and n[0] != k[0]:
                         lot_parent[lfind(n[0])] = lfind(k[0])
+    # A basement stays a building of its own, as in every map the game ships:
+    # joined to the house above, the game took a player beside the house for
+    # one inside it and took its roof off (knoxbuild/basements.py).
     # a building group: the lots that touch; its corner is that of its first part
     groups: dict[int, list[int]] = {}
     for i in order:

@@ -100,6 +100,16 @@ class AreaIndex:
         Areas nest - a school inside a residential district - and the inner
         one is the one that says what is actually there.
         """
+        best = self._smallest(x, y)
+        return best[1] if best else None
+
+    def shape_around(self, x: float, y: float):
+        """The polygon around() reads its answer from: the site a military
+        base's basement spreads under (knoxbuild/basements.py)."""
+        best = self._smallest(x, y)
+        return best[0] if best else None
+
+    def _smallest(self, x: float, y: float):
         if self._tree is None:
             return None
         point = Point(x, y)
@@ -108,8 +118,8 @@ class AreaIndex:
             shape, props = self._items[int(i)]
             size = self._whole.get(id(props), shape.area)
             if shape.contains(point) and (best is None or size < best[0]):
-                best = (size, props)
-        return best[1] if best else None
+                best = (size, shape, props)
+        return best[1:] if best else None
 
     def kind_for(self, x: float, y: float, tiles: int) -> str | None:
         props = self.around(x, y)
