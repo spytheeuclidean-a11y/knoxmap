@@ -13,6 +13,10 @@ from knoxbuild.buildtiles import parse_tbx
 from knoxbuild.layout import build_building
 from knoxbuild.buildheader import placed_rooms
 from knoxbuild.settings import Settings
+from tools.compile_map import knoxlots_exe
+
+# Only knoxlots compiles basements; without it a build makes none.
+NEEDS_KNOXLOTS = unittest.skipIf(knoxlots_exe() is None, "knoxlots is not built")
 
 
 def row(kind, x0, y0, w, h):
@@ -206,6 +210,7 @@ class Planning(unittest.TestCase):
         self.assertTrue(any(o.get("type") == "stairs" for o in tbx.floors[0].objects))
 
 
+@NEEDS_KNOXLOTS
 class BuildingWithBasements(unittest.TestCase):
     """The whole build: tests/basement_town.py, built and compiled."""
 
@@ -339,6 +344,7 @@ class OnlyKnoxlotsReadsThem(unittest.TestCase):
                 self.assertTrue(validate_tbx.check(path, knoxlots=False), path)
                 self.assertEqual(validate_tbx.check(path, knoxlots=True), [], path)
 
+    @NEEDS_KNOXLOTS
     def test_worlded_refuses_a_map_with_basements(self):
         import os
         from tools.compile_map import compile_map
