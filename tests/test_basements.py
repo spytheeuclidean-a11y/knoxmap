@@ -363,5 +363,37 @@ class OnlyKnoxlotsReadsThem(unittest.TestCase):
         shutil.rmtree(cls._town.work, ignore_errors=True)
 
 
+class NoGhostRooms(unittest.TestCase):
+    def test_every_basement_room_has_squares(self):
+        """The audit's own buildings (tools/audit_layouts.py), as far as the
+        police station whose basement once kept a room with no squares."""
+        import sys
+        from collections import Counter
+        sys.path.insert(0, "tools")
+        import audit_layouts as A
+        rng = random.Random(4242)
+        for i in range(88):
+            kind = A.KINDS[i % len(A.KINDS)]
+            w, h = rng.randint(9, 40), rng.randint(9, 40)
+            roll, mask = rng.random(), None
+            if roll < 0.3:
+                mask = A.irregular_mask(w, h, rng)
+            elif roll < 0.65:
+                fp = A.rotated_mask(rng)
+                if fp is not None:
+                    w, h, mask = fp.width, fp.height, fp.mask_list()
+            levels = rng.choice((1, 2, 3, 4, 5, 6, 8, 12))
+            if i < 87:
+                continue
+            b = build_building(w, h, levels=levels, seed=i, kind=kind, mask=mask,
+                               commercial=kind not in (None, "apartment"))
+            ground = np.array([[bool(v) for v in row] for row in b.storeys[0].grid])
+            spec = BasementSpec("large", kind, 1, 0, 0, _inside(ground))
+            below = plan_basement(b, spec, i, Settings())
+            for st in below.building.storeys:
+                owned = Counter(v for row in st.grid for v in row if v)
+                self.assertEqual([n for n in range(1, len(st.rooms) + 1) if not owned[n]], [])
+
+
 if __name__ == "__main__":
     unittest.main()

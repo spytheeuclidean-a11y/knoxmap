@@ -7342,6 +7342,9 @@ def build_plan(width: int, height: int, commercial: bool = False,
         # The game lights a room from the switch inside it, so one that lost
         # its only switch to an opening is re-wired onto a wall it still has.
         _relight(plan, unlit, edges)
+    # A ragged mask can leave a room with none of its squares (a basement
+    # under an L-shaped police station did): a room nobody can walk into.
+    _renumber(plan)
     return plan
 
 

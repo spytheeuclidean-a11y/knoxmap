@@ -18,6 +18,10 @@ from collections import Counter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import numpy as np  # noqa: E402
+
+from knoxbuild import basements  # noqa: E402
+from knoxbuild.settings import Settings  # noqa: E402
 from knoxbuild.layout import ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, STAIR_RUN, build_building, roof_rects  # noqa: E402
 
 # Doors with no free tile to step onto, and rooms entered only through a
@@ -267,6 +271,30 @@ def audit(building, kind):
     return problems
 
 
+def basement_unreached(basement) -> tuple[int, int]:
+    """(rooms a player coming down the stairs cannot walk to, rooms), over
+    every level of a basement (knoxbuild/basements.py)."""
+    unreached = total = 0
+    for s in basement.building.storeys:
+        n = len(s.rooms)
+        total += n
+        adj = {i: set() for i in range(1, n + 1)}
+        for edge in list(s.doors) + list(getattr(s, "open_edge", ())):
+            pair = door_pair(s, edge)
+            if pair and all(pair) and pair[0] != pair[1]:
+                adj[pair[0]].add(pair[1])
+                adj[pair[1]].add(pair[0])
+        sx, sy, _d = basement.building.stairs[0]
+        start = s.grid[sy][sx] or next((i for i in range(1, n + 1)), 0)
+        seen, stack = {start}, [start]
+        while stack:
+            for nx in adj.get(stack.pop(), set()) - seen:
+                seen.add(nx)
+                stack.append(nx)
+        unreached += n - len(seen - {0})
+    return unreached, total
+
+
 def main(argv):
     count = int(argv[1]) if len(argv) > 1 else 400
     rng = random.Random(4242)
@@ -289,6 +317,20 @@ def main(argv):
         b = build_building(w, h, levels=levels, seed=i, kind=kind, mask=mask,
                            commercial=kind not in (None, "apartment"))
         found = audit(b, kind)
+        # A basement under it, where its kind has one (the cellar of every
+        # house here, not a share of them).
+        area = sum(1 for row in b.storeys[0].grid for v in row if v)
+        t = basements.tier(kind or "house", area, 0)
+        if t is not None and t != "installation":
+            ground = np.array([[bool(v) for v in row] for row in b.storeys[0].grid])
+            spec = basements.BasementSpec(t, kind or "house", basements.levels_for(t, area, 0, 8),
+                                          0, 0, basements._inside(ground))
+            below = basements.plan_basement(b, spec, i, Settings())
+            if below is not None:
+                lost, rooms = basement_unreached(below)
+                stats["stat:basement rooms unreached"] += lost
+                stats["stat:basement rooms"] += rooms
+                stats["stat:basements"] += 1
         label = kind or "house"
         totals[label] += 1
         for k in [k for k in found if k.startswith("stat:")]:
@@ -322,7 +364,9 @@ def main(argv):
           f"{stats['stat:door fronts']} ({boxed:.3f}%)")
     print(f"rooms entered only through a bathroom: "
           f"{stats['stat:room through a bathroom']} of {stats['stat:rooms']} ({via:.2f}%)")
-    over = (stuck > DOORS_ON_CORNERS_BUDGET or boxed > 100 * DOORS_BOXED_IN_BUDGET
+    print(f"basement rooms with no way in: {stats['stat:basement rooms unreached']} of "
+          f"{stats['stat:basement rooms']} ({stats['stat:basements']} basements)")
+    over = (stats["stat:basement rooms unreached"] > 0 or stuck > DOORS_ON_CORNERS_BUDGET or boxed > 100 * DOORS_BOXED_IN_BUDGET
             or via > 100 * ROOMS_VIA_BATHROOM_BUDGET)
     return 1 if problems or over else 0
 

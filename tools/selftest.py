@@ -1997,6 +1997,53 @@ def check_garage_door(check, out: str) -> None:
           f"a garage gets one wide garage door, all three segments "
           f"({len(garage_tiles)} tiles, {sorted(set(garage_tiles))})")
 
+def check_basements(check, out: str) -> None:
+    """Basements (knoxbuild/basements.py). Only knoxlots compiles them, so the
+    town built for WorldEd above has none; built again for knoxlots, some of its
+    houses and its school and barracks get one, compiled to levels below 0,
+    each part of the building over it, its stairs coming up through that floor."""
+    import glob
+    import shutil
+    from knoxbuild.build import build
+    from knoxbuild.settings import Settings
+    from tools.building_stats import read_header
+    from tools.compile_map import compile_rust, knoxlots_exe
+
+    name = os.path.basename(os.path.normpath(out))
+    check(not glob.glob(os.path.join(out, "buildings", "*_bsmt.tbx")),
+          "no basements in a map WorldEd will compile")
+    if knoxlots_exe() is None:
+        return
+    work = tempfile.mkdtemp(prefix="knoxmap-basements-")
+    was = os.environ.get("KNOXMAP_BACKEND")
+    try:
+        os.environ["KNOXMAP_BACKEND"] = "rust"
+        copy = os.path.join(work, name)
+        shutil.copytree(out, copy, ignore=shutil.ignore_patterns("lots", ".knoxlots"))
+        with contextlib.redirect_stdout(io.StringIO()):
+            build(copy, settings=Settings(seed=1))
+            compile_rust(copy)
+        below = sorted(glob.glob(os.path.join(copy, "buildings", "*_bsmt.tbx")))
+        opened = all('type="hole"' in open(p[:-len("_bsmt.tbx")] + ".tbx", encoding="utf-8").read()
+                     for p in below)
+        lowest, joined, orphans = 0, 0, 0
+        for header in glob.glob(os.path.join(copy, "lots", "*.lotheader")):
+            _names, lo, _hi, rooms, buildings = read_header(header)
+            lowest = min(lowest, lo)
+            under = [{rooms[i][1] < 0 for i in b} for b in buildings]
+            joined += sum(1 for u in under if u == {True, False})
+            orphans += sum(1 for u in under if u == {True})
+    finally:
+        if was is None:
+            os.environ.pop("KNOXMAP_BACKEND", None)
+        else:
+            os.environ["KNOXMAP_BACKEND"] = was
+        shutil.rmtree(work, ignore_errors=True)
+    check(below and opened and lowest <= -1 and joined and not orphans,
+          f"a house basement compiles to level -1 and its stairs reach the house "
+          f"({len(below)} basements, down to level {lowest}, {joined} buildings with one, "
+          f"{orphans} on their own)")
+
 def check_repair(check, out: str) -> None:
     """A project broken at its edges, as older versions and hand edits leave
     them, is repaired before compiling instead of stopping it."""
@@ -4200,6 +4247,7 @@ def main(argv: list[str]) -> int:
         import validate_tbx
         bad = [p for p in tbx if validate_tbx.check(p)]
         check(not bad, f"every building passes the editor's rules ({len(tbx)} files)")
+        check_basements(check, out)
         tall = [p for p in tbx if "fixtures_escalators_01_49" in open(p, encoding="utf-8").read()]
         check(len(tall) >= 1, "the seven-storey flats have a lift")
         school = [p for p in tbx if 'InternalName="classroom"' in open(p, encoding="utf-8").read()]
