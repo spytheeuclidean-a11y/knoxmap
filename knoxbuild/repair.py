@@ -37,15 +37,16 @@ _ENTRY = re.compile(r'^(\s*)<(lot|object)\b(.*?)/>\s*$')
 _ATTR = re.compile(r'(\w+)="([^"]*)"')
 
 
-def _check_building(path: Path) -> list[str]:
+def _check_building(path: Path, knoxlots: bool | None = None) -> list[str]:
     tools = Path(__file__).resolve().parent.parent / "tools"
     if str(tools) not in sys.path:
         sys.path.insert(0, str(tools))
     import validate_tbx
-    return validate_tbx.check(str(path))
+    return validate_tbx.check(str(path), knoxlots)
 
 
-def repair_project(pzw: str | os.PathLike, check_buildings: bool = True) -> dict:
+def repair_project(pzw: str | os.PathLike, check_buildings: bool = True,
+                   knoxlots: bool | None = None) -> dict:
     """Repair the project in place. Returns what was done:
     {"moved": n, "dropped": [(what, why), ...], "changed": bool}."""
     path = Path(pzw)
@@ -130,7 +131,7 @@ def repair_project(pzw: str | os.PathLike, check_buildings: bool = True) -> dict
                         checked[ref] = ["the file is missing"]
                     elif check_buildings and ref.lower().endswith(".tbx"):
                         try:
-                            checked[ref] = _check_building(target)
+                            checked[ref] = _check_building(target, knoxlots)
                         except Exception as exc:  # noqa: BLE001 - unreadable counts as broken
                             checked[ref] = [f"could not be read: {exc}"]
                     else:

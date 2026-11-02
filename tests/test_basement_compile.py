@@ -70,7 +70,7 @@ class BasementLotsCompile(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.work = tempfile.mkdtemp(prefix="bsmt-compile-")
-        cls.base = build_town(os.path.join(cls.work, "town"), Settings(seed=1),
+        cls.base = build_town(os.path.join(cls.work, "town"), Settings(seed=1, basement_share=0.0),
                               compile_lots=False)
 
     @classmethod

@@ -146,6 +146,10 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
     out: list[BasementSpec | None] = []
     for row in rows:
         kind = row["kind"] or "house"
+        fitted = np.zeros((row["h"], row["w"]), dtype=bool)
+        m = np.asarray(row["mask"], dtype=bool)[:row["h"], :row["w"]]
+        fitted[:m.shape[0], :m.shape[1]] = m
+        row = {**row, "mask": fitted}
         footprint_m2 = float(np.count_nonzero(row["mask"])) * m2_per_tile
         site = None
         if areas is not None and kind in ("military", "industrial"):

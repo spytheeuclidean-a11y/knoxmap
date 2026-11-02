@@ -833,6 +833,11 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
     pzw = project / f"{project.name}.pzw"
     if not pzw.exists():
         raise FileNotFoundError(f"No {pzw.name} — generate the buildings first.")
+    if "_bsmt.tbx" in pzw.read_text(encoding="utf-8", errors="replace"):
+        # BuildingEd cannot read them (knoxbuild/basements.py), and the repair
+        # below would drop the houses over them along with them.
+        raise RuntimeError("This map has basements, which only knoxlots can compile. Build "
+                           "knoxlots (rust/knoxlots), or set Basements to 0 and build again.")
     exe_path = Path(exe) if exe else DEFAULT_EXE
     if not exe_path.exists():
         raise FileNotFoundError(f"PZWorldEd_cli not found at {exe_path}")
@@ -847,7 +852,7 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
         # stop the whole compile: WorldEd refuses a project over a single one.
         from knoxbuild.repair import repair_project
         try:
-            fixed = repair_project(pzw)
+            fixed = repair_project(pzw, knoxlots=False)
         except Exception:  # noqa: BLE001 - a repair that fails leaves the project as it was
             knoxlog.log.exception("compile %s: checking the project failed", project.name)
         else:

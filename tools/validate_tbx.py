@@ -54,7 +54,17 @@ VALID_ROOF_DEPTHS = {"Zero", "Point5", "One", "OnePoint5", "Two",
                      "TwoPoint5", "Three"}
 
 
-def check(path: str) -> list[str]:
+def check(path: str, knoxlots: bool | None = None) -> list[str]:
+    """Every reason BuildingEd would refuse the file, or [].
+
+    `knoxlots` checks it for KnoxMap's own compiler instead, which also reads a
+    floor's <object type="hole"/> and a basement's top flight rising into the
+    building above (knoxbuild/basements.py); None asks which compiler a
+    compile would use (tools/compile_map.default_backend)."""
+    if knoxlots is None:
+        from tools.compile_map import default_backend
+        knoxlots = default_backend() == "rust"
+    basement = knoxlots and os.path.basename(path).endswith("_bsmt.tbx")
     errs: list[str] = []
     try:
         root = ET.parse(path).getroot()
@@ -148,7 +158,7 @@ def check(path: str) -> list[str]:
                     errs.append(f"{where}: stairs at ({x},{y}) run off the south edge")
                 if o.get("dir") == "W" and x + 5 > w + 1:
                     errs.append(f"{where}: stairs at ({x},{y}) run off the east edge")
-                if level >= len(floors) - 2:
+                if level >= len(floors) - 2 and not basement:
                     errs.append(f"{where}: stairs on the top storey lead nowhere")
             elif typ == "furniture":
                 idx = int(o.get("FurnitureTiles", -1))
@@ -206,6 +216,8 @@ def check(path: str) -> list[str]:
                     n = int(o.get(attr) or 0)
                     if 0 < n <= len(entries) and entries[n - 1].get("category") != cat:
                         errs.append(f"{where}: wall {attr} is {entries[n - 1].get('category')}, not {cat}")
+            elif typ == "hole" and knoxlots:
+                pass
             elif typ not in ("door", "window", "stairs"):
                 errs.append(f"{where}: unknown object type {typ!r}")
 

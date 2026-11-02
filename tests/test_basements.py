@@ -1,4 +1,5 @@
 """Basements: who gets one, how deep, and where it may go (knoxbuild/basements.py)."""
+import os
 import random
 import unittest
 from types import SimpleNamespace
@@ -200,6 +201,166 @@ class Planning(unittest.TestCase):
         tbx = parse_tbx(render_basement(b, "t", None))
         self.assertEqual(len(tbx.floors), 1)
         self.assertTrue(any(o.get("type") == "stairs" for o in tbx.floors[0].objects))
+
+
+class BuildingWithBasements(unittest.TestCase):
+    """The whole build: tests/basement_town.py, built and compiled."""
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        cls.work = tempfile.mkdtemp(prefix="bsmt-build-")
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls.work, ignore_errors=True)
+
+    def _build(self, name, compile_lots=True, **settings):
+        import os
+        from tests.basement_town import build_town
+        return build_town(os.path.join(self.work, name), Settings(seed=1, **settings),
+                          compile_lots=compile_lots)
+
+    @staticmethod
+    def _pzw(out):
+        import glob
+        return open(glob.glob(out + "/*.pzw")[0], encoding="utf-8").read()
+
+    @staticmethod
+    def _bsmt_files(out):
+        import glob
+        return glob.glob(out + "/buildings/*_bsmt.tbx")
+
+    def test_a_town_with_basements_builds_and_compiles(self):
+        import glob
+        from tools.building_stats import read_header
+        from tools.compile_map import knoxlots_exe
+        out = self._build("all", basement_share=1.0)
+        self.assertIn('level="-1"', self._pzw(out))
+        self.assertTrue(self._bsmt_files(out))
+        if knoxlots_exe():
+            lows = [read_header(p)[1] for p in glob.glob(out + "/lots/*.lotheader")]
+            self.assertEqual(min(lows), -1)
+
+    def test_share_zero_leaves_no_basement_lots_behind(self):
+        out = self._build("again", basement_share=1.0)
+        self.assertTrue(self._bsmt_files(out))
+        self._build("again", basement_share=0.0)
+        self.assertNotIn("_bsmt", self._pzw(out))
+        self.assertEqual(self._bsmt_files(out), [])
+
+    def test_a_rebuild_keeps_its_basements(self):
+        out = self._build("twice", basement_share=1.0)
+        first = sorted(self._bsmt_files(out))
+        self._build("twice", basement_share=1.0)
+        self.assertEqual(sorted(self._bsmt_files(out)), first)
+        self.assertEqual(self._pzw(out).count("_bsmt.tbx"), len(first))
+
+    def test_a_cache_entry_from_before_basements_is_laid_out_again(self):
+        import json
+        import os
+        out = self._build("oldcache", basement_share=1.0)
+        path = os.path.join(out, "build_cache.json")
+        data = json.load(open(path, encoding="utf-8"))
+        for entry in data["buildings"].values():
+            entry["result"] = entry["result"][:4]
+        json.dump(data, open(path, "w", encoding="utf-8"))
+        n = len(self._bsmt_files(out))
+        self._build("oldcache", basement_share=1.0)
+        self.assertEqual(len(self._bsmt_files(out)), n)
+        self.assertEqual(self._pzw(out).count("_bsmt.tbx"), n)
+
+    def test_no_basements_same_bytes(self):
+        import json
+        import os
+        from tests.basement_town import digest
+        out = self._build(os.path.join("none", "bsmttown"), basement_share=0.0)   # the baseline's name
+        here = os.path.dirname(os.path.abspath(__file__))
+        want = json.load(open(os.path.join(here, "fixtures", "basements_baseline.json")))
+        self.assertEqual(digest(out), want)
+
+
+class PresetsAndSolver(unittest.TestCase):
+    def test_a_preset_building_gets_no_basement(self):
+        self.assertIsNone(tier("preset", 120, 0))
+        got = reserve([row("preset", 10, 10, 12, 10)], Settings(basement_share=1.0), None, None,
+                      random.Random(1), (100, 100))
+        self.assertEqual(got, [None])
+
+    def test_the_room_solver_never_sees_the_basement(self):
+        import os
+        import tempfile
+        from unittest import mock
+        from knoxbuild import build as B, room_solver
+        seen = []
+
+        def plan_for_job(job, roof=None):
+            seen.append(len(job))
+            return None
+
+        with tempfile.TemporaryDirectory() as d,                 mock.patch.object(room_solver, "wanted", lambda s: True),                 mock.patch.object(room_solver, "plan_for_job", plan_for_job):
+            spec = BasementSpec("house", "house", 1, 0, 0, _inside(np.ones((10, 12), bool)))
+            job = (12, 10, 1, False, 3, None, None, Settings(), None, "t",
+                   os.path.join(d, "t.tbx"), None, False, None, False, None, None, None,
+                   False, None, {}, spec)
+            result = B._make_one(job)
+        self.assertEqual(seen, [B.JOB_FIELDS])
+        self.assertIsNone(result[3], result[3])
+        self.assertEqual(result[5]["file"], "t_bsmt.tbx")
+
+
+class OnlyKnoxlotsReadsThem(unittest.TestCase):
+    """BuildingEd has no hole object and wants a flight's top in the same file;
+    knoxlots reads both (knoxbuild/buildtiles.py). A basement is for knoxlots."""
+
+    def _files(self, d):
+        import os
+        parent = build_building(12, 10, seed=3)
+        b = plan_basement(parent, house_spec(parent), 3, Settings())
+        from knoxbuild.tbx import render_tbx
+        out = {}
+        for name, text in (("t.tbx", render_tbx(parent, "t")),
+                           ("t_bsmt.tbx", render_basement(b, "t", None))):
+            out[name] = os.path.join(d, name)
+            open(out[name], "w", encoding="utf-8").write(text)
+        return out
+
+    def test_the_validator_takes_basements_for_knoxlots_only(self):
+        import sys
+        import tempfile
+        sys.path.insert(0, "tools")
+        import validate_tbx
+        with tempfile.TemporaryDirectory() as d:
+            for path in self._files(d).values():
+                self.assertTrue(validate_tbx.check(path, knoxlots=False), path)
+                self.assertEqual(validate_tbx.check(path, knoxlots=True), [], path)
+
+    def test_worlded_refuses_a_map_with_basements(self):
+        import os
+        from tools.compile_map import compile_map
+        out = BuildingWithBasements._build(self._town, "worlded", basement_share=1.0)
+        with self.assertRaises(RuntimeError) as got:
+            compile_map(out, backend="worlded")
+        self.assertIn("basement", str(got.exception))
+
+    def test_no_basements_when_worlded_would_compile(self):
+        import os
+        from unittest import mock
+        with mock.patch.dict(os.environ, {"KNOXMAP_BACKEND": "worlded"}):
+            out = BuildingWithBasements._build(self._town, "plain", basement_share=1.0,
+                                               compile_lots=False)
+        self.assertEqual(BuildingWithBasements._bsmt_files(out), [])
+
+    @classmethod
+    def setUpClass(cls):
+        import tempfile
+        cls._town = SimpleNamespace(work=tempfile.mkdtemp(prefix="bsmt-only-"))
+
+    @classmethod
+    def tearDownClass(cls):
+        import shutil
+        shutil.rmtree(cls._town.work, ignore_errors=True)
 
 
 if __name__ == "__main__":
