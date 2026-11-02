@@ -236,8 +236,11 @@ TRIM_SHARE = 0.12
 
 
 def render_tbx(plan: Plan | Building, name: str,
-               style: dict | None = None) -> str:
+               style: dict | None = None, roof: bool = True) -> str:
     """Return the complete .tbx document for a plan or a stack of them.
+
+    `roof=False` leaves the roof out, and the roof floor with it: a basement's
+    top storey has the building above it for a ceiling.
 
     `style` supplies this building's own exterior and interior wall materials,
     and optionally a floor that overrides the usual per-room palette. Each .tbx
@@ -635,6 +638,8 @@ def render_tbx(plan: Plan | Building, name: str,
             attrs = [("type", "stairs"), ("x", sx), ("y", sy),
                      ("dir", sdir), ("Tile", C.STAIRS)]
             out.append(f"  <object{_attrs(attrs)}/>")
+        for hx, hy in sorted(getattr(storey, "holes", ())):   # a plan cached before holes
+            out.append(f"  <object{_attrs([('type', 'hole'), ('x', hx), ('y', hy)])}/>")
 
         # Roofs on the top storey only - one on each would bury every floor
         # below under a ceiling of roof tiles - and shaped to the footprint
@@ -652,7 +657,7 @@ def render_tbx(plan: Plan | Building, name: str,
         exposed = [[v if above is None or not (above[y][x] or (x, y) in open_above)
                     else 0
                     for x, v in enumerate(row)] for y, row in enumerate(storey.grid)]
-        if any(any(row) for row in exposed):
+        if roof and any(any(row) for row in exposed):
             rects = roof_rects(exposed)
             for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(
                     rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30):
@@ -702,6 +707,9 @@ def render_tbx(plan: Plan | Building, name: str,
 
         out.append(" </floor>")
 
+    if not roof:
+        out.append("</building>")
+        return "\n".join(out) + "\n"
     # The roof floor: no rooms. It holds the pitched roofs, and the flat roof
     # tops BuildingEd places here from the depth-three roofs below.
     empty = ["\n"]

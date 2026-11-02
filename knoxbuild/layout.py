@@ -97,6 +97,9 @@ class Plan:
     # no room, which is how BuildingEd leaves a square with no floor, and
     # tbx.py counts them as built-over so the storey below is not roofed.
     void: set = field(default_factory=set)
+    # Squares of a room left without floor: the top of a flight rising from a
+    # basement below (knoxbuild/basements.py), written as hole objects.
+    holes: set = field(default_factory=set)
     # The edges of that hole, as (x, y, "W"|"N"): a gallery looks over the
     # floor below across a railing, not a glazed wall. tbx.py draws these as
     # wall runs of fencing.
