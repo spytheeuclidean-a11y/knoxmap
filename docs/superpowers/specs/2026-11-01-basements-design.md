@@ -62,9 +62,11 @@ ceiling lights on:
 ## Structure
 
 Each basement is its own `.tbx`, `buildings/<parent>_bsmt.tbx`, placed as its
-own lot at base level `-levels`, so its top floor is at -1. The game still
-sees one building: the basement's rooms are listed in the parent's
-BuildingDef.
+own lot at base level `-levels`, so its top floor is at -1. The game sees it
+as a building of its own under the parent, as in every map it ships (113
+basements in the vanilla maps, none sharing a BuildingDef with rooms above).
+Listed in the parent's BuildingDef, the game took a player beside the house
+for one inside it and hid the house's roof.
 
 Why its own lot rather than extra storeys in the parent's `.tbx`: an
 installation's basement is larger than any one building's footprint, and
@@ -96,8 +98,8 @@ floor (doors, yards, furnishing). Those stay as they are.
 4. Placement and room tables
    - `.pzw` lots: written and read with signed levels (`level="-?\d+"` in
      `tools/map_source.read_lots` and wherever else the lot is parsed).
-   - `cell_tables` puts every room of a basement lot into its parent's
-     building list. Rooms keep their negative `z`.
+   - `cell_tables` lists a basement lot as a building of its own. Rooms keep
+     their negative `z`.
 5. Compile
    - `tools/map_source.py`: levels below 0 hold building tiles only, no
      terrain. A cell's arrays are indexed `z - min_z`, with `min_z` the
@@ -128,7 +130,7 @@ Each test fails on today's code before the change that makes it pass.
   room at `z = -2` survives; `-33` is refused.
 - Python:
   - A house with a basement compiles to a cell with `min_z = -1`; its
-    basement rooms are in the house's BuildingDef; the ground floor has no
+    basement is a BuildingDef of its own; the ground floor has no
     floor tile over the stair run; the stairs land in a room.
   - A military site of a given area gets the expected number of levels; one
     stair core reaches every level; the basement extends past the building's

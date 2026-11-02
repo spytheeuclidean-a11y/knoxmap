@@ -420,7 +420,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 place(mid, 1, C.TABLE_X0); place(mid + 1, 1, C.TABLE_X1)
                 place(mid, 0, C.CHAIR_N); place(mid + 1, 2, C.CHAIR_S)
             else:
-                place(mid, 1, C.TABLE_Y0); place(mid, 2, C.TABLE_Y1)
+                # The deck chair's halves run along u (north to south here),
+                # as in the other branch; along v they stood side by side.
+                place(mid, 1, C.TABLE_Y0); place(mid + 1, 1, C.TABLE_Y1)
                 place(mid - 1, 1, C.CHAIR_W); place(mid + 1, 2, C.CHAIR_E)
             for x, y in patio_tiles:
                 claimed_bytes[y * w + x] = 1

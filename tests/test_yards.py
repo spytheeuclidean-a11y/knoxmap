@@ -31,18 +31,20 @@ class YardPlacement(unittest.TestCase):
 SIZE = 6   # every test building is 6 x 6 with its door in the north wall
 
 
-def _building(folder, name):
-    """A one-room ground floor with an outside door at (3, 0), facing north."""
+def _building(folder, name, door=(3, 0, "N")):
+    """A one-room ground floor with an outside door, at (3, 0) facing north
+    unless `door` says otherwise."""
     rows = "\n".join(",".join(["1"] * SIZE) for _ in range(SIZE))
     with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
         f.write(f'<building><floor><rooms>\n{rows}\n</rooms>'
-                f'<object type="door" x="3" y="0" dir="N"/></floor></building>')
+                f'<object type="door" x="{door[0]}" y="{door[1]}" dir="{door[2]}"/></floor></building>')
 
 
-def _paint(width, height, buildings, water=()):
-    """Lawn with a pavement along the top two rows; return the painted ground.
+def _paint(width, height, buildings, water=(), veg=False):
+    """Lawn with a pavement along the top two rows; return the painted ground,
+    or the vegetation layer when `veg`.
 
-    `buildings` is (kind, tile_x, tile_y) per building, `water` (x, y) tiles."""
+    `buildings` is (kind, tile_x, tile_y[, door]) per building, `water` (x, y) tiles."""
     with tempfile.TemporaryDirectory() as out:
         os.mkdir(os.path.join(out, "buildings"))
         ground = np.zeros((height, width, 3), dtype=np.uint8)
@@ -55,13 +57,13 @@ def _paint(width, height, buildings, water=()):
                                                    format="BMP")
         occupied = np.zeros((height, width), dtype=bool)
         rows = []
-        for n, (kind, x, y) in enumerate(buildings):
-            _building(os.path.join(out, "buildings"), f"b{n}.tbx")
+        for n, (kind, x, y, *door) in enumerate(buildings):
+            _building(os.path.join(out, "buildings"), f"b{n}.tbx", *door)
             occupied[y:y + SIZE, x:x + SIZE] = True
             rows.append({"file": f"b{n}.tbx", "kind": kind, "building": "yes",
                          "tile_x": x, "tile_y": y, "width": SIZE, "height": SIZE})
         paint_paths(out, "t", rows, occupied)
-        return read_rgb(os.path.join(out, "t.bmp"))
+        return read_rgb(os.path.join(out, "t_veg.bmp" if veg else "t.bmp"))
 
 
 def _stone(ground, x, y):
@@ -95,6 +97,26 @@ class FrontPaths(unittest.TestCase):
         yard = (slice(10, 19), slice(8, 18))   # behind the first house
         self.assertTrue((alone[yard] == both[yard]).all(),
                         "the second house's path was painted over the first one's yard")
+
+
+
+class BackYards(unittest.TestCase):
+    def pieces(self, veg, colour):
+        return {(int(x), int(y)) for y, x in zip(*np.nonzero(np.all(veg == colour, axis=2)))}
+
+    def test_the_deck_chair_s_halves_lie_end_to_end(self):
+        """Each half is half of one sprite: X0 west of X1, Y0 north of Y1.
+        A yard beside the house once got its two halves side by side."""
+        streets = {"N": [("house", 10, 10)],                      # yard behind, to the south
+                   "W": [("house", 10, 10, (0, 3, "W"))],         # yard behind, to the east
+                   "E": [("house", 20, 10, (SIZE, 3, "W"))]}      # yard behind, to the west
+        for door, houses in streets.items():
+            veg = _paint(40, 40, houses, veg=True)
+            x0, x1 = self.pieces(veg, C.TABLE_X0), self.pieces(veg, C.TABLE_X1)
+            y0, y1 = self.pieces(veg, C.TABLE_Y0), self.pieces(veg, C.TABLE_Y1)
+            self.assertTrue(x0 or y0, door)
+            self.assertEqual({(x + 1, y) for x, y in x0}, x1, door)
+            self.assertEqual({(x, y + 1) for x, y in y0}, y1, door)
 
 
 if __name__ == "__main__":

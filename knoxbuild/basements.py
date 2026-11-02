@@ -2,8 +2,8 @@
 bunker under a military base (docs/superpowers/specs/2026-11-01-basements-design.md).
 
 A basement is its own lot, `<parent>_bsmt.tbx`, laid at a level below 0 with its
-top floor at -1; the room tables count its rooms as the parent building's
-(buildheader.placed_rooms). Where each one goes is settled here, in build order,
+top floor at -1, and the room tables keep it a building of its own, apart from
+the one above, as the game's own maps do (buildheader.placed_rooms). Where each one goes is settled here, in build order,
 before the buildings are laid out across processes: one map of the squares
 already taken underground, so no two basements share a square on any level.
 

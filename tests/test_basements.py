@@ -100,7 +100,9 @@ class Reserving(unittest.TestCase):
                 (as_building(specs[0].mask, "storage"), 10 + specs[0].dx, 10 + specs[0].dy, -1),
                 (as_building(specs[1].mask, "storage"), 17 + specs[1].dx, 10 + specs[1].dy, -1)]
         self.assertEqual(len(placed_rooms(lots[:2])), 2)
-        self.assertEqual(len(placed_rooms(lots, joins={2: 0, 3: 1})), 2)
+        # Nor the house above: in the game's maps a basement is always a
+        # building of its own, and joined the house lost its roof.
+        self.assertEqual(len(placed_rooms(lots)), 4)
 
     def test_an_installation_spreads_over_its_site_but_not_past_it(self):
         base = row("military", 40, 40, 10, 8)
@@ -176,6 +178,21 @@ class Planning(unittest.TestCase):
         self.assertTrue(steps(px, py, d) <= parent.storeys[0].holes)
         kinds = {r.kind for r in b.building.rooms}
         self.assertTrue(kinds <= {"laundry", "storage", "garage", "livingroom", "hall"}, kinds)
+
+    def test_a_house_cellar_laundry_is_a_home_s_not_a_laundromat(self):
+        """A house cellar's laundry once got coin washers down one wall and
+        coin dryers down the other; a home has one washer."""
+        found = 0
+        for seed in range(40):
+            parent = build_building(16, 14, seed=seed)
+            b = plan_basement(parent, house_spec(parent), seed, Settings())
+            if b is None or not any(r.kind == "laundry" for r in b.building.rooms):
+                continue
+            found += 1
+            roles = [f[0] for st in b.building.storeys for f in st.furniture]
+            self.assertFalse([r for r in roles if r.startswith("coin_")], seed)
+            self.assertLessEqual(roles.count("washer"), 1, seed)
+        self.assertGreater(found, 0)
 
     def test_no_spot_no_basement(self):
         parent = build_building(4, 4, seed=1)

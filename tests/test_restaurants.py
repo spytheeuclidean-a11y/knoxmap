@@ -47,5 +47,23 @@ class RestaurantsAreFull(unittest.TestCase):
                 self.assertFalse([r for r in roles if r in HOME_PIECES], roles)
 
 
+class BigRestaurants(unittest.TestCase):
+    def test_a_big_restaurant_has_dining_rooms_and_kitchens_their_size(self):
+        """Winans in Piqua, 32 x 41: cut as a shop, its second section became
+        the kitchen, 510 squares of floor with a stove in one corner."""
+        for street in ("W", "S"):
+            for seed in range(6):
+                plan = layout.build_building(
+                    width=32, height=41, kind="restaurant", seed=seed, levels=1,
+                    street=street, uses=[("cafe", "cafekitchen")]).storeys[0]
+                dining = [r for r in plan.rooms if r.kind == "cafe"]
+                kitchens = [r for r in plan.rooms if r.kind == "cafekitchen"]
+                with self.subTest(street=street, seed=seed):
+                    self.assertGreaterEqual(len(dining), 2)
+                    self.assertTrue(kitchens)
+                    for k in kitchens:
+                        self.assertLess(k.area, min(d.area for d in dining) / 2)
+
+
 if __name__ == "__main__":
     unittest.main()

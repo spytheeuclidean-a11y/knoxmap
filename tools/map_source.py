@@ -213,11 +213,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
     parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
         read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
     kept = [(t, (b, tx, ty, lv)) for (t, *_), (b, tx, ty, lv) in zip(lots, parsed) if b.floors]
-    # `<stem>_bsmt` is the basement of `<stem>` (knoxbuild/basements.py).
-    index = {t: i for i, (t, _) in enumerate(kept)}
-    joins = {i: index[t[:-5]] for i, (t, _) in enumerate(kept)
-             if t.endswith("_bsmt") and t[:-5] in index}
-    placed = placed_rooms([lot for _t, lot in kept], joins)
+    placed = placed_rooms([lot for _t, lot in kept])
     reach = [(b.width, b.height) for b, *_ in parsed]
     del parsed
 

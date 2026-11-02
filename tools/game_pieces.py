@@ -81,7 +81,17 @@ ROUND = {"bar_stool": ("location_restaurant_bar_01_26", "Furniture"),
 # laid out as the bath mat's are (floors_rugs_01 48-51), so it is set the same.
 FIXED = {"door_mat": ({"W": {"0,0": "floors_rugs_01_059", "0,1": "floors_rugs_01_058"},
                        "N": {"0,0": "floors_rugs_01_056", "1,0": "floors_rugs_01_057"}},
-                      "FloorFurniture")}
+                      "FloorFurniture"),
+         # A house plant in a floor pot: Ficus, Snake Plant, Dragon Tree and
+         # Cast Iron Plant (vegetation_indoor_01, IsLow, not a tabletop
+         # piece). A pot looks the same from every side, so the wall it
+         # stands by picks the plant. It was d_plants_1_016, an outdoor
+         # shrub with no pot, growing out of the floor.
+         "plant": ({"W": {"0,0": "vegetation_indoor_01_012"},
+                    "N": {"0,0": "vegetation_indoor_01_010"},
+                    "E": {"0,0": "vegetation_indoor_01_009"},
+                    "S": {"0,0": "vegetation_indoor_01_011"}},
+                   "Furniture")}
 # Posters for a teenager's room: walls_decoration_05 0-7 face south (a north
 # wall) and 8-15 are the same posters facing east (a west wall).
 POSTERS = [(f"walls_decoration_05_{n:03d}", f"walls_decoration_05_{n + 8:03d}") for n in range(8)]

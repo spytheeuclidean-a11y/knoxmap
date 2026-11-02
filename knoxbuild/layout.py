@@ -1938,6 +1938,29 @@ def _fit_out_sections(plan: Plan, rng: random.Random, sections: list[int],
             room.kind = "storage"
 
 
+def _dining_sections(plan: Plan, sections: list[int], dining: str, kitchen: str) -> None:
+    """A restaurant too big for one dining room has several, and a kitchen
+    behind each out of the back rooms. Cut as a shop, its second section
+    became the kitchen: in Piqua 510 squares of floor with a stove in one
+    corner, beside a dining room the same size."""
+    adj = _neighbours(plan)
+    back = [j for j, r in enumerate(plan.rooms, 1) if j not in sections
+            and not r.is_core and not r.is_shaft and r.kind != "bathroom"]
+    kitchens: list[int] = []
+    for i in sections:
+        near = [j for j in adj.get(i, {}) if j in back and j not in kitchens]
+        if near:
+            kitchens.append(max(near, key=lambda j: plan.rooms[j - 1].area))
+    if not kitchens and back:
+        kitchens.append(max(back, key=lambda j: plan.rooms[j - 1].area))
+    if not kitchens:
+        return          # no back room to cook in: keep the shop's cut
+    for i in sections:
+        plan.rooms[i - 1].kind = dining
+    for j in kitchens:
+        plan.rooms[j - 1].kind = kitchen
+
+
 def _assign_shop_floor(plan: Plan, rng: random.Random, street: str | None,
                        uses: list[tuple[str, str]] | None, several: bool) -> None:
     """A commercial ground floor: what is on the street in front, what serves
@@ -3773,7 +3796,8 @@ SHELVES = ("shelf", "shelf_1", "shelf_2")
 SHELVING = {
     # Nothing stands along a concourse wall: that edge is the shopfronts.
     "concourse": (),
-    "bathroom": SHELVES + ("dresser",),
+    # No dresser: a chest of drawers by the toilet is a bedroom piece.
+    "bathroom": SHELVES,
     "kitchen": SHELVES,
     "laundry": SHELVES + ("dresser",),
     "livingroom": ("bookshelf",) + SHELVES,
@@ -3828,7 +3852,9 @@ ROOM_DENSITY = {"classroom": 2, "secondaryclassroom": 2, "schoollab": 2,
 # rack and a packing crate in it, which is a stockroom, not a cupboard under
 # the stairs. Barns and sheds are outbuildings and may keep theirs.
 WAREHOUSE_ROLES = {"metal_rack", "crate"}
-HOME_KINDS = {None, "house", "apartment"}
+# A house's cellar is part of the home: without it, its laundry was fitted
+# out as a laundromat, coin washers down one wall and dryers down the other.
+HOME_KINDS = {None, "house", "apartment", "basement_house"}
 # What a home puts in a box room instead.
 HOME_STORE = {"metal_rack": "shelf", "crate": "dresser"}
 CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "military",
@@ -5511,13 +5537,20 @@ def _furnish(plan: Plan, rng: random.Random,
                     if hang(role, x, y, facing):
                         break
                 return
+            # A toilet is sat on from the square before it, and a dresser once
+            # stood there. Only the room's essentials may take it: in a tight
+            # bathroom the basin has nowhere else, and kept off it the basin
+            # went onto the window square and was cleared away.
+            toilet_fronts = set() if FR.priority(role, r.kind) == FR.ESSENTIAL else {
+                (tx - _STEP[o][0], ty - _STEP[o][1]) for t, tx, ty, o in plan.furniture
+                if t == "toilet" and o in _STEP and _room_at(plan, tx, ty) == idx}
             for (x, y, wanted) in floor_slots:
                 if role in NORTH_WEST_ONLY and wanted in ("S", "E"):
                     continue
                 orient = _facing(role, wanted)
                 ax, ay = _wall_anchor(role, x, y, orient, wanted)
                 cells = _cells_for(role, ax, ay, orient)
-                if any(c in occupied or c in no_go for c in cells):
+                if any(c in occupied or c in no_go or c in toilet_fronts for c in cells):
                     continue
                 if any(_room_at(plan, cx, cy) != idx for cx, cy in cells):
                     continue
@@ -7228,6 +7261,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
             uses = [("restaurantdining", "restaurantkitchen")]
         _assign_shop_floor(plan, rng, street, uses,
                            several=(kind == "retail" or (kind == "shop" and len(sections) > 1)))
+        if kind == "restaurant" and len(sections) > 1 and len(uses) == 1:
+            _dining_sections(plan, sections, *uses[0])
         if kind == "shop" and len(sections) > 1:
             _fit_out_sections(plan, rng, sections, uses)
     elif mix_kind == "garage":

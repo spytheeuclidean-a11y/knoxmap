@@ -2039,10 +2039,12 @@ def check_basements(check, out: str) -> None:
         else:
             os.environ["KNOXMAP_BACKEND"] = was
         shutil.rmtree(work, ignore_errors=True)
-    check(below and opened and lowest <= -1 and joined and not orphans,
+    # A basement is a building of its own, as in every map the game ships:
+    # joined to the house above, the game took the house's roof off.
+    check(below and opened and lowest <= -1 and orphans and not joined,
           f"a house basement compiles to level -1 and its stairs reach the house "
-          f"({len(below)} basements, down to level {lowest}, {joined} buildings with one, "
-          f"{orphans} on their own)")
+          f"({len(below)} basements, down to level {lowest}, {orphans} buildings of their own, "
+          f"{joined} joined to the house)")
 
 def check_repair(check, out: str) -> None:
     """A project broken at its edges, as older versions and hand edits leave

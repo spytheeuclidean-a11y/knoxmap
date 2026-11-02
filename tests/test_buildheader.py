@@ -80,16 +80,10 @@ class TableTests(unittest.TestCase):
         self.assertEqual(buildings, [[0], [1]])
 
 
-class BasementJoinTests(unittest.TestCase):
-    def test_basement_rooms_are_in_the_parents_building(self):
-        house = building([[[1, 1], [1, 1]]], names=("hall",))
-        bsmt = building([[[1, 1], [1, 1]]], names=("storage",))
-        out = placed_rooms([(house, 10, 10, 0), (bsmt, 10, 10, -1)], joins={1: 0})
-        self.assertEqual(len(out), 1)
-        self.assertEqual(sorted(e["z"] for e in out[0][2]), [-1, 0])
-        self.assertEqual(out[0][:2], (10, 10))
-
-    def test_without_joins_a_basement_is_its_own_building(self):
+class BasementTests(unittest.TestCase):
+    def test_a_basement_is_its_own_building(self):
+        # As in every map the game ships; joined to the house, the game took
+        # the house's roof off.
         house = building([[[1, 1], [1, 1]]], names=("hall",))
         bsmt = building([[[1, 1], [1, 1]]], names=("storage",))
         self.assertEqual(len(placed_rooms([(house, 10, 10, 0), (bsmt, 10, 10, -1)])), 2)
