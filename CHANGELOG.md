@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.8.4
+
+- **Basements.** Houses (about 4 in 10), schools, hospitals, police, civic
+  buildings, malls, churches and industrial sites get a basement below ground,
+  its stairs coming up through the ground floor. Military bases go 2 to 8
+  levels down under the whole site. Set the share with Basement share and the
+  depth with Max basement depth; depth 0 turns them off. Basements need the
+  knoxlots compiler: with WorldEd the build makes none.
+- **Front paths for everyone.** Flats, churches, civic buildings, clinics and
+  libraries get a path to the pavement, a stoop and a porch light. Paths and
+  drives reach houses set far back, and never run through a neighbour's yard.
+- **Big maps crash less.** The spawn picker no longer crashes on a big map (it
+  now shows the map's picture), the paper map keeps each cell under the game's
+  limit, and you are warned when a map's rooms near the game's 10 MB save
+  buffer.
+- **Apartment blocks.** A big building three or more storeys up is flats, not
+  one house repeated on every floor with sixteen offices and eight laundries.
+- **Restaurants.** A big restaurant has several dining rooms, each with a
+  kitchen behind it, instead of a kitchen as big as the dining room.
+- **Rooms.** House plants are in pots, not shrubs growing out of the floor. No
+  dresser in the bathroom or in front of a toilet, and no furniture shutting a
+  small bedroom off. A house's cellar laundry has one washer, not a
+  laundromat's rows.
+- **Gas stations** with a mapped canopy get the canopy roof over one tidy
+  forecourt.
+- **Back yards:** the deck chair is no longer cut in half.
+
+Regenerate a map, and start a new world, to see these.
+
 ## 1.8.3.2
 
 - **Maps placed at an odd cell compile.** "origin_x and origin_y must be
