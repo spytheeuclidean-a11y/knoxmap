@@ -98,6 +98,11 @@ class BasementLotsCompile(unittest.TestCase):
         self.assertEqual(levels[cell][0], -1)
         others = [lv for c, lv in levels.items() if c != cell]
         self.assertTrue(others and all(lo == 0 for lo, _hi in others))
+        # One building, its rooms on both levels, in the house's own cell.
+        rooms, buildings = read_header(os.path.join(project, "lots", cell))[3:5]
+        joined = [b for b in buildings if {-1, 0} <= {rooms[i][1] for i in b}]
+        self.assertEqual(len(joined), 1)
+        self.assertFalse(any(all(rooms[i][1] == -1 for i in b) for b in buildings))
 
     def test_an_installation_across_a_cell_edge_gives_both_cells_min_z(self):
         project = self._copy("wide")

@@ -65,7 +65,7 @@ def building_rooms(b, tx: int, ty: int, base: int = 0) -> list[dict]:
     return rooms
 
 
-def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
+def placed_rooms(lots, joins: dict[int, int] | None = None) -> list[tuple[int, int, list[dict]]]:
     """Room entries for buildings placed in project order, as cell_tables wants them.
 
     `lots` is [(building, tx, ty, base level)]. WorldEd builds the tables from the composed map:
@@ -118,6 +118,11 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
                     n = at.get((x + dx, y + dy, k[1] + dz))
                     if n and n[0] != k[0]:
                         lot_parent[lfind(n[0])] = lfind(k[0])
+    # A basement is part of the building above it, though no square of one
+    # touches the other on a level (knoxbuild/basements.py). `joins` maps its
+    # lot to its parent's.
+    for i, j in (joins or {}).items():
+        lot_parent[lfind(i)] = lfind(j)
     # a building group: the lots that touch; its corner is that of its first part
     groups: dict[int, list[int]] = {}
     for i in order:
