@@ -116,7 +116,7 @@ pub fn compile_cell(k: &KCell, m: &Manifest, spawn_map: Option<&GreyImage>) -> C
         field_a: m.field_a,
         field_b: m.field_b,
         min_z: k.min_z,
-        max_z: k.min_z + k.squares.levels as u32 - 1,
+        max_z: k.min_z + k.squares.levels as i32 - 1,
         rooms: k.rooms.clone(),
         buildings: k.buildings.clone(),
         chunk_values: zombie_bytes(k, m, spawn_map),

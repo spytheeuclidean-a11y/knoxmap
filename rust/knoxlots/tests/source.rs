@@ -88,3 +88,29 @@ fn manifest_is_checked() {
     assert!(Manifest::parse("format = knoxlots-source 1\nbogus = 1\n").is_err(), "unknown setting");
     assert!(Manifest::parse("format = knoxlots-source 2\n").is_err(), "unknown format");
 }
+
+#[test]
+fn source_below_ground_round_trips_and_compiles() {
+    let mut k = sample();
+    k.min_z = -1;
+    k.rooms[0].z = -1;
+    let bytes = k.write().unwrap();
+    assert_eq!(&bytes[4..8], &2u32.to_le_bytes());
+    let back = KCell::parse(&bytes).unwrap();
+    assert_eq!(back, k);
+    let files = compile_cell(&back, &Manifest::default(), None);
+    let h = Header::parse(&files.header).unwrap();
+    assert_eq!((h.min_z, h.max_z, h.rooms[0].z), (-1, 0, -1));
+}
+
+#[test]
+fn a_source_above_ground_keeps_version_1() {
+    assert_eq!(&sample().write().unwrap()[4..8], &1u32.to_le_bytes());
+}
+
+#[test]
+fn a_source_deeper_than_the_game_is_refused() {
+    let mut k = sample();
+    k.min_z = -33;
+    assert!(KCell::parse(&k.write().unwrap()).unwrap_err().contains("outside -32..31"));
+}

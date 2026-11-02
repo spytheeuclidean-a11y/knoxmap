@@ -83,3 +83,25 @@ fn damaged_files_are_errors_not_panics() {
     assert!(Header::parse(b"nope").is_err());
     assert!(Pack::parse(&[0u8; 40]).is_err());
 }
+
+#[test]
+fn header_with_basement_levels_round_trips() {
+    let mut h = header();
+    h.min_z = -3;
+    h.max_z = 2;
+    h.rooms[0].z = -2;
+    let bytes = h.write();
+    let back = Header::parse(&bytes).unwrap();
+    assert_eq!((back.min_z, back.max_z, back.rooms[0].z), (-3, 2, -2));
+    assert_eq!(back.write(), bytes);
+}
+
+#[test]
+fn levels_below_minus_32_are_refused() {
+    let mut h = header();
+    h.min_z = -33;
+    assert!(Header::parse(&h.write()).unwrap_err().contains("outside -32..31"));
+    let mut h = header();
+    h.max_z = 32;
+    assert!(Header::parse(&h.write()).unwrap_err().contains("outside -32..31"));
+}
