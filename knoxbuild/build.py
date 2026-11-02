@@ -376,6 +376,18 @@ def looks_like_apartment(tags: dict, area_tiles: int, rng,
     return rng.random() < settings.apartment_chance
 
 
+def flats_by_height(special: str | None, levels: int, btag: str, area_tiles: int,
+                    settings: Settings) -> bool:
+    """Whether a building left a house turns out a block of flats once its
+    storeys are known. looks_like_apartment rolls for a big untagged building
+    with no height, and one the roll left a house still got its storeys from
+    its footprint: Piqua had 154 houses three and four storeys up, the
+    biggest 54 x 35, each floor sixteen offices, sixteen storerooms and eight
+    laundries. Three storeys up is flats, as a measured height already is."""
+    return (special is None and levels >= 3 and btag not in HOUSE_TAGS
+            and area_tiles >= settings.apartment_footprint)
+
+
 # Metres of building per storey, for turning a height= into a floor count.
 # OSM's own convention, and close enough to the game's floor spacing.
 METRES_PER_LEVEL = 3.0
@@ -1748,6 +1760,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             levels = max(1, min(top, int(round(nearby)) +
                                 style_rng.choice((-1, 0, 0, 1))))
             from_near += 1
+        if flats_by_height(special, levels, btag, fp.tiles, here):
+            special = "apartment"
+            commercial = True
         if hotel:
             special = "apartment"      # its flats are guest rooms
         elif any(back == "theatre" for _front, back in uses):
