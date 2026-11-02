@@ -1,5 +1,5 @@
 """Basements: a cellar under a house, a plant room under a school, levels of
-bunker under a military base (docs/superpowers/specs/2026-11-01-basements-design.md).
+bunker under a military base.
 
 A basement is its own lot, `<parent>_bsmt.tbx`, laid at a level below 0 with its
 top floor at -1, and the room tables keep it a building of its own, apart from
