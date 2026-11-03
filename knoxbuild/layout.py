@@ -132,6 +132,12 @@ class Plan:
     # What the building is (build_plan's kind), for rooms furnished by it: an
     # office in a house is a study, in an office block it is desks.
     kind: str | None = None
+    # A mall laid out as one (_mall_plan): the concourse spine between the
+    # anchors, the centre court on it, and each anchor store, all as grid
+    # rectangles (x0, y0, x1, y1) inclusive. None and empty on anything else.
+    spine: tuple[int, int, int, int] | None = None
+    court: tuple[int, int, int, int] | None = None
+    anchors: list = field(default_factory=list)
     # Outside wall edges this storey shares with the building next door:
     # no window, shop front or door goes in them.
     party: set = field(default_factory=set)
@@ -452,6 +458,18 @@ SPECIAL_MIXES = {
     # room; a base's bunker is stores, bunks and offices.
     "basement_house":      (["laundry", "storage", "garage", "livingroom"],
                             ["storage", "livingroom"]),
+    # ...and the other things a house's cellar is (basements.HOUSE_BASEMENTS):
+    # a finished rec room, a workshop, a family's shelter, a plain store.
+    "basement_house_rec":      (["livingroom", "bathroom", "laundry", "storage"],
+                                ["livingroom", "storage"]),
+    "basement_house_workshop": (["garage", "storage", "laundry", "storage"],
+                                ["garage", "storage"]),
+    "basement_house_shelter":  (["storage", "bedroom", "kitchen", "storage", "bathroom"],
+                                ["storage", "bedroom"]),
+    "basement_house_cellar":   (["storage", "storage", "laundry"], ["storage"]),
+    # A block of flats keeps its shared laundry and the tenants' store rooms
+    # downstairs.
+    "basement_apartment":  (["laundry", "storage", "storage"], ["storage"]),
     "basement_school":     (["janitor", "storage"], ["storage"]),
     "basement_medical":    (["storage", "janitor"], ["storage"]),
     "basement_police":     (["prisoncells", "policestorage"], ["prisoncells", "storage"]),
@@ -2447,9 +2465,364 @@ MALL_ARMS_MAX = 3
 # railing runs round one clean opening instead of round each bay.
 MALL_HOLE_END = 6
 
+# A mall big enough to be laid out as a US enclosed mall (_mall_plan): two
+# anchors with a run of shops and a centre court between them. Anything
+# smaller keeps the spine-and-split layout below.
+MALL_PLAN_MIN_TILES = 4000
+MALL_PLAN_MIN_ACROSS = 36
+MALL_PLAN_MIN_LENGTH = 80
+# The centre court, square, where the spine widens at its middle.
+MALL_COURT = 20
+# Anchor department stores: their size, and the size aimed for.
+MALL_ANCHOR_MIN = 800
+MALL_ANCHOR_MAX = 2500
+MALL_ANCHOR_TARGET = 1600
+MALL_ANCHOR_LEN = (16, 50)
+# Past this a floor has a third and fourth anchor, at the ends of its arms,
+# with this much of each arm left between the spine and the anchor's front.
+MALL_BIG_FLOOR = 25000
+MALL_ARM_STUB = 6
+# Inline units: frontage and depth, in tiles. 5-9 by 8-16 is 40-150 tiles,
+# the mid-size shop a US mall is lined with.
+MALL_UNIT_FRONT = (5, 9)
+MALL_UNIT_DEPTH = (8, 16)
+MALL_UNIT_MIN_TILES = MALL_UNIT_FRONT[0] * MALL_UNIT_DEPTH[0]
+# The service corridor behind each row of units, and the passage from each
+# end of it to the outside where storerooms stand between it and the wall.
+# Three wide: a strip two tiles thick and that short is folded away as a
+# sliver (_mend_fragments).
+MALL_SERVICE = 2
+MALL_EXIT_WIDE = 3
+# The big-store kinds an anchor may be, when the map's own shops name one.
+ANCHOR_KINDS = {"departmentstore", "grocery", "furniturestore",
+                "electronicsstore", "sportstore"}
+# The food court's counters, one of each, in a row behind the seating. Each
+# is MALL_COUNTER_FRONT across and 4-6 deep: 20-30 tiles, a kitchen and a
+# serving counter, which is what a food court unit is.
+FOOD_COUNTERS = ["pizzakitchen", "burgerkitchen", "chinesekitchen",
+                 "icecreamkitchen", "mexicankitchen"]
+MALL_COUNTER_FRONT = 5
+MALL_COUNTER_DEPTH = (4, 6)
+
+
+def _mall_anchor_len(across: int) -> int:
+    """How far along the spine each end anchor runs."""
+    return max(MALL_ANCHOR_LEN[0], min(MALL_ANCHOR_LEN[1],
+                                       -(-MALL_ANCHOR_TARGET // across)))
+
+
+def _mall_plan_fits(w: int, h: int, mask) -> bool:
+    """Whether a floor this size is laid out by _mall_plan.
+
+    build_building asks too: only a mall laid out this way has a court for
+    its lift to stand in. The old layout's hole runs the spine's length and
+    a lift there stood in it with the railing across its doors.
+    """
+    across, length = (h, w) if w >= h else (w, h)
+    floor_tiles = sum(map(sum, mask)) if mask is not None else w * h
+    anchor_len = _mall_anchor_len(across)
+    return (floor_tiles >= MALL_PLAN_MIN_TILES and across >= MALL_PLAN_MIN_ACROSS
+            and length >= MALL_PLAN_MIN_LENGTH
+            and length - 2 * anchor_len >= MALL_COURT + 4 * MALL_UNIT_FRONT[0])
+
+
+def _mall_plan(plan: Plan, rng: random.Random, target: int, level: int,
+               uses: list | None, shaft: tuple | None = None) -> bool:
+    """A US enclosed mall, or False when the floor is too small for one.
+
+    Anchors at the two ends of a concourse spine, a centre court where it
+    widens at the middle, mid-size units down both sides of it, and behind
+    each row a two-tile service corridor to the lavatories, the office, the
+    storerooms and the exits. Every room is cut with its kind and fixed, so
+    the mix dealt afterwards leaves them alone.
+    """
+    w, h = plan.width, plan.height
+    if not _mall_plan_fits(w, h, plan.mask):
+        return False
+    along_x = w >= h
+    across, length = (h, w) if along_x else (w, h)
+    floor_tiles = sum(map(sum, plan.mask)) if plan.mask is not None else w * h
+    anchor_len = _mall_anchor_len(across)
+    inner0, inner1 = anchor_len, length - anchor_len - 1
+    band = max(MALL_CONCOURSE_MIN,
+               min(MALL_CONCOURSE_MAX, round(across * MALL_CONCOURSE_SHARE)))
+    start = (across - band) // 2
+    end = start + band             # first tile past the spine
+
+    def rect(a0, b0, a1, b1):
+        return (a0, b0, a1, b1) if along_x else (b0, a0, b1, a1)
+
+    def put(a0, b0, a1, b1, kind):
+        if a1 < a0 or b1 < b0:
+            return None
+        plan.rooms.append(Room(*rect(a0, b0, a1, b1), kind=kind, fixed=True))
+        return plan.rooms[-1]
+
+    def inside(a0, b0, a1, b1):
+        if plan.mask is None:
+            return (a1 - a0 + 1) * (b1 - b0 + 1)
+        x0, y0, x1, y1 = rect(a0, b0, a1, b1)
+        return sum(plan.mask[y][x] for y in range(y0, y1 + 1)
+                   for x in range(x0, x1 + 1))
+
+    # Each side of the spine: (depth of the block, shop depth, corridor width).
+    sides = {}
+    for side, d in (("lo", start), ("hi", across - end)):
+        shop = min(d - MALL_SERVICE, MALL_UNIT_DEPTH[1])
+        spare = d - shop - MALL_SERVICE
+        corridor = MALL_SERVICE + (spare if spare < MIN_ROOM else 0)
+        sides[side] = (d, shop, corridor)
+    # The court eats into the units either side, but leaves them 8 deep.
+    extra = max(0, min((MALL_COURT - band) // 2,
+                       *(s[1] - MALL_UNIT_DEPTH[0] for s in sides.values())))
+    c0 = length // 2 - MALL_COURT // 2
+    c1 = c0 + MALL_COURT - 1
+
+    # Anchors 1 and 2 at the ends, the full depth of the building where that
+    # stays under MALL_ANCHOR_MAX, centred on the spine where it does not.
+    anchors = []
+    deep = min(across, MALL_ANCHOR_MAX // anchor_len)
+    ab0 = max(0, min(across - deep, (start + end) // 2 - deep // 2))
+    for a0 in (0, length - anchor_len):
+        anchors.append((a0, ab0, a0 + anchor_len - 1, ab0 + deep - 1))
+        put(a0, 0, a0 + anchor_len - 1, ab0 - 1, "storage")
+        put(a0, ab0 + deep, a0 + anchor_len - 1, across - 1, "storage")
+
+    # One arm in the middle of each half, between the anchor and the court.
+    arm = max(MALL_ARM_MIN, min(MALL_ARM_MAX, round(band * MALL_ARM_SHARE)))
+    arms = []
+    for h0, h1 in ((inner0, c0 - 1), (c1 + 1, inner1)):
+        if h1 - h0 + 1 >= MALL_ARM_EVERY + arm:
+            mid = (h0 + h1) // 2
+            arms.append((mid - arm // 2, mid - arm // 2 + arm - 1))
+    # Anchors 3 and 4 on a big floor: at the wall end of each arm, the west
+    # one on the low side and the east one on the high side.
+    side_anchor = {}
+    if floor_tiles > MALL_BIG_FLOOR:
+        for (m0, m1), side in zip(arms, ("lo", "hi")):
+            d = sides[side][0]
+            deep3 = d - MALL_ARM_STUB
+            if deep3 < MIN_ROOM:
+                continue
+            wide = min(-(-MALL_ANCHOR_TARGET // deep3), MALL_ANCHOR_MAX // deep3)
+            mid = (m0 + m1) // 2
+            a0 = mid - wide // 2
+            a1 = a0 + wide - 1
+            if a0 < inner0 or a1 > inner1 or c0 <= a1 and a0 <= c1:
+                continue
+            b0, b1 = ((0, start - MALL_ARM_STUB - 1) if side == "lo"
+                      else (end + MALL_ARM_STUB, across - 1))
+            anchors.append((a0, b0, a1, b1))
+            side_anchor[side] = (a0, a1)
+
+    kinds = [f for f, _b in uses or () if f in ANCHOR_KINDS]
+    for n, (a0, b0, a1, b1) in enumerate(anchors):
+        put(a0, b0, a1, b1, kinds[n] if n < len(kinds) else "departmentstore")
+    plan.anchors = [rect(*r) for r in anchors]
+
+    # The concourse: the spine between the anchors, the court on it, the arms.
+    # Cut round the court rather than under it: a room painted over the
+    # middle of another leaves it in two pieces, and the second became an
+    # office in the middle of the mall.
+    put(inner0, start, c0 - 1, end - 1, "concourse")
+    put(c1 + 1, start, inner1, end - 1, "concourse")
+    cb0, cb1 = start - extra, end - 1 + extra
+    g = MALL_GALLERY
+    if level > 0 and c1 - c0 + 1 - 2 * g >= 3 and cb1 - cb0 + 1 - 2 * g >= 3:
+        # Above the ground floor the court is the hole, with a gallery round
+        # it; the stairs and the lift stand in it on their own floor, a
+        # walkway out to the nearer gallery.
+        put(c0, cb0, c1, cb0 + g - 1, "concourse")
+        put(c0, cb1 - g + 1, c1, cb1, "concourse")
+        put(c0, cb0 + g, c0 + g - 1, cb1 - g, "concourse")
+        put(c1 - g + 1, cb0 + g, c1, cb1 - g, "concourse")
+        ha0, hb0, ha1, hb1 = c0 + g, cb0 + g, c1 - g, cb1 - g
+        keep = set()
+        for box in (plan.core, shaft):
+            if box is None:
+                continue
+            x0, y0, x1, y1 = box
+            ka0, kb0, ka1, kb1 = (x0, y0, x1, y1) if along_x else (y0, x0, y1, x1)
+            if ka1 < ha0 or ka0 > ha1 or kb1 < hb0 or kb0 > hb1:
+                continue
+            up = (kb0 - hb0) <= (hb1 - kb1)
+            wb0, wb1 = (hb0, kb0 - 1) if up else (kb1 + 1, hb1)
+            wa0, wa1 = max(ka0, ha0), min(ka1, ha1)
+            put(wa0, wb0, wa1, wb1, "concourse")
+            keep |= {(a, b) for a in range(wa0, wa1 + 1)
+                     for b in range(min(wb0, kb0), max(wb1, kb1) + 1)}
+        for a in range(ha0, ha1 + 1):
+            for b in range(hb0, hb1 + 1):
+                if (a, b) not in keep:
+                    plan.void.add((a, b) if along_x else (b, a))
+    else:
+        put(c0, cb0, c1, cb1, "concourse")
+    plan.spine = rect(inner0, start, inner1, end - 1)
+    plan.court = rect(c0, start - extra, c1, end - 1 + extra)
+    for m0, m1 in arms:
+        for side, (d, shop, _c) in sides.items():
+            if side in side_anchor and side_anchor[side][0] <= m1 \
+                    and m0 <= side_anchor[side][1]:
+                b0, b1 = ((start - MALL_ARM_STUB, start - 1) if side == "lo"
+                          else (end, end + MALL_ARM_STUB - 1))
+            else:
+                # Through to the outer wall, past the corridor and the back
+                # zone, with shops down both sides (below).
+                b0, b1 = ((0, start - 1) if side == "lo"
+                          else (end, across - 1))
+            put(m0, b0, m1, b1, "concourse")
+
+    # The units, the corridor and whatever is left behind it, side by side.
+    shop_kinds = [f for f, _b in uses or () if f in MALL_SHOP_KINDS]
+    deal = list(MALL_SHOP_KINDS)
+    rng.shuffle(deal)
+    deal = shop_kinds + deal
+    dealt = 0
+    units: dict = {"lo": [], "hi": []}
+    # The food court takes the units off one side of the court, ground floor
+    # only: the seating along the court, the counters in a row behind it.
+    food_side = rng.choice(("lo", "hi")) if level == 0 else None
+    for side, (d, shop, corridor) in sides.items():
+        cuts = sorted([(m0, m1) for m0, m1 in arms] + [(c0, c1)]
+                      + ([side_anchor[side]] if side in side_anchor else []))
+        edge = inner0
+        segments = [(c0, c1)]
+        for g0, g1 in cuts:
+            if g0 > edge:
+                segments.append((edge, g0 - 1))
+            edge = max(edge, g1 + 1)
+        segments.append((edge, inner1))
+        for s0, s1 in sorted(segments):
+            n = s1 - s0 + 1
+            if n <= 0:
+                continue
+            depth = shop - extra if (s0, s1) == (c0, c1) else shop
+            near = start - extra if (s0, s1) == (c0, c1) else start
+            far = end + extra if (s0, s1) == (c0, c1) else end
+            b0, b1 = ((near - depth, near - 1) if side == "lo"
+                      else (far, far + depth - 1))
+            if side == food_side and (s0, s1) == (c0, c1):
+                back = max(MALL_COUNTER_DEPTH[0],
+                           min(MALL_COUNTER_DEPTH[1], depth - 6))
+                seat = ((b1 - depth + back + 1, b1) if side == "lo"
+                        else (b0, b0 + depth - back - 1))
+                row = ((b0, b0 + back - 1) if side == "lo"
+                       else (b1 - back + 1, b1))
+                put(s0, seat[0], s1, seat[1], "foodcourt")
+                count = n // MALL_COUNTER_FRONT
+                for k, kind in enumerate(rng.sample(FOOD_COUNTERS, count)):
+                    a = s0 + k * MALL_COUNTER_FRONT
+                    put(a, row[0], s1 if k == count - 1 else a + MALL_COUNTER_FRONT - 1,
+                        row[1], kind)
+                continue
+            if n < MALL_UNIT_FRONT[0]:
+                put(s0, b0, s1, b1, "storage")
+                continue
+            count = -(-n // MALL_UNIT_FRONT[1])
+            a = s0
+            for k in range(count):
+                front = n // count + (1 if k < n % count else 0)
+                # A unit the footprint cuts too small to trade from is a
+                # storeroom instead.
+                ok = inside(a, b0, a + front - 1, b1) >= MALL_UNIT_MIN_TILES
+                room = put(a, b0, a + front - 1, b1,
+                           deal[dealt % len(deal)] if ok else "storage")
+                if ok:
+                    dealt += 1
+                    units[side].append(((a, a + front - 1), room))
+                a += front
+        # The corridor and the back zone run the inner length, broken only
+        # by an anchor standing at the end of an arm.
+        # and by each arm running through to the wall.
+        runs = [(inner0, inner1)]
+        if side in side_anchor:
+            x0, x1 = side_anchor[side]
+            runs = [(inner0, x0 - 1), (x1 + 1, inner1)]
+        through = [(m0, m1) for m0, m1 in arms if not (
+            side in side_anchor and side_anchor[side][0] <= m1
+            and m0 <= side_anchor[side][1])]
+        for m0, m1 in through:
+            cut = []
+            for r0, r1 in runs:
+                if r1 < m0 or r0 > m1:
+                    cut.append((r0, r1))
+                else:
+                    cut += [(r0, m0 - 1), (m1 + 1, r1)]
+            runs = [(r0, r1) for r0, r1 in cut if r1 >= r0]
+        arm_start = {m0 for m0, _m1 in through}
+        arm_end = {m1 for _m0, m1 in through}
+        for r0, r1 in runs:
+            if r1 < r0:
+                continue
+            at_arm = (r0 - 1 in arm_end, r1 + 1 in arm_start)
+            if at_arm[0] and at_arm[1]:
+                # Between two arms the corridor still needs a way outside.
+                at_arm = (True, False)
+            if side == "lo":
+                k0, k1 = start - shop - corridor, start - shop - 1
+                back = (0, k0 - 1)
+            else:
+                k0, k1 = end + shop, end + shop + corridor - 1
+                back = (k1 + 1, across - 1)
+            put(r0, k0, r1, k1, "hall")
+            if back[1] >= back[0]:
+                # With storerooms between it and the wall, the corridor
+                # reaches the outside down a passage at each end. An end
+                # that meets an arm has the arm to the wall instead, and
+                # shops down its side.
+                if not at_arm[0]:
+                    put(r0, back[0], r0 + MALL_EXIT_WIDE - 1, back[1], "hall")
+                    r0 += MALL_EXIT_WIDE
+                if not at_arm[1]:
+                    put(r1 - MALL_EXIT_WIDE + 1, back[0], r1, back[1], "hall")
+                    r1 -= MALL_EXIT_WIDE
+                n = back[1] - back[0] + 1
+                for lined, left in ((at_arm[0], True), (at_arm[1], False)):
+                    if not lined or r1 < r0:
+                        continue
+                    deep = MALL_UNIT_DEPTH[0]
+                    if r1 - r0 + 1 - deep < MIN_ROOM:
+                        deep = r1 - r0 + 1
+                    s0, s1 = (r0, r0 + deep - 1) if left else (r1 - deep + 1, r1)
+                    if left:
+                        r0 = s1 + 1
+                    else:
+                        r1 = s0 - 1
+                    count = max(1, n // MALL_UNIT_FRONT[1])
+                    if n < MALL_UNIT_FRONT[0]:
+                        put(s0, back[0], s1, back[1], "storage")
+                        continue
+                    b = back[0]
+                    for k in range(count):
+                        front = n // count + (1 if k < n % count else 0)
+                        ok = inside(s0, b, s1, b + front - 1) >= MALL_UNIT_MIN_TILES
+                        put(s0, b, s1, b + front - 1,
+                            deal[dealt % len(deal)] if ok else "storage")
+                        dealt += ok
+                        b += front
+                if r1 < r0:
+                    continue
+                spare: list = []
+                box = rect(r0, back[0], r1, back[1])
+                _split(*box, rng, MAX_DEPTH, spare, target_area=target,
+                       mask=plan.mask)
+                for room in spare:
+                    room.kind, room.fixed = "storage", True
+                plan.rooms.extend(spare)
+
+    # Back of house: the units nearest the court, west of it, become the
+    # lavatories and the office on one side and storerooms on the other.
+    for side, roles in (("lo", ("bathroom", "bathroom", "office")),
+                        ("hi", ("storage", "storage"))):
+        west = [u for u in units[side] if u[0][1] < c0]
+        for (_span, room), kind in zip(reversed(west), roles):
+            room.kind = kind
+    return True
+
 
 def _mall_rooms(plan: Plan, rng: random.Random, target: int,
-                level: int = 0) -> None:
+                level: int = 0, uses: list | None = None,
+                shaft: tuple | None = None) -> None:
     """A branching concourse, with the units filling the blocks between it.
 
     Knox County's mall concourse is not a corridor down the middle: it is a
@@ -2463,7 +2836,11 @@ def _mall_rooms(plan: Plan, rng: random.Random, target: int,
     Above the ground floor the middle of the spine is left open (no room, so
     no floor) with a gallery either side, which is how the mall is one space
     several storeys tall.
+
+    A mall big enough is laid out as a US enclosed mall instead (_mall_plan).
     """
+    if _mall_plan(plan, rng, target, level, uses, shaft):
+        return
     w, h = plan.width, plan.height
     along_x = w >= h
     across, length = (h, w) if along_x else (w, h)
@@ -2561,7 +2938,50 @@ def _mall_rooms(plan: Plan, rng: random.Random, target: int,
 # light switches and lamps every room gets. With Erika's Tiles the plants come
 # through as erika_plant_*, so these are matched as prefixes.
 CONCOURSE_KEEP = {"plant", "erika_plant", "shop_bin", "vending",
-                  "erika_vending", "switch", "lamp", "light"}
+                  "erika_vending", "switch", "lamp", "light", "shop_counter"}
+
+# Kiosks down the middle of a wide concourse: a stall of one or two counters
+# every so often, where the spine is wide enough to walk either side of one,
+# and never in the court or in the way of a door.
+MALL_KIOSK_MIN_SPINE = 14
+MALL_KIOSK_EVERY = (12, 16)
+MALL_KIOSK_DOOR_CLEAR = 3
+
+
+def _place_kiosks(plan: Plan, rng: random.Random, ground: bool) -> int:
+    """Stand kiosks down the spine's centre line; how many went in."""
+    if not ground or plan.spine is None:
+        return 0
+    x0, y0, x1, y1 = plan.spine
+    along_x = x1 - x0 >= y1 - y0
+    wide = (y1 - y0 + 1) if along_x else (x1 - x0 + 1)
+    if wide < MALL_KIOSK_MIN_SPINE:
+        return 0
+    mid = (y0 + y1) // 2 if along_x else (x0 + x1) // 2
+    a, a_end = (x0, x1) if along_x else (y0, y1)
+    taken = {(x, y) for _r, x, y, _d in plan.furniture}
+    clear = [(x, y) for x, y, _d in plan.doors] + \
+            [(x, y) for x, y, _d in plan.open_edge]
+
+    def fits(x, y):
+        return (plan.grid[y][x] and (x, y) not in taken
+                and not (plan.court and plan.court[0] <= x <= plan.court[2]
+                         and plan.court[1] <= y <= plan.court[3])
+                and all(abs(cx - x) + abs(cy - y) > MALL_KIOSK_DOOR_CLEAR
+                        for cx, cy in clear))
+
+    placed = 0
+    a += rng.randint(*MALL_KIOSK_EVERY) // 2
+    while a <= a_end:
+        stall = [(a + k, mid) if along_x else (mid, a + k)
+                 for k in range(rng.choice((1, 2)))]
+        if all(c[0] <= x1 and c[1] <= y1 and fits(*c) for c in stall):
+            for x, y in stall:
+                plan.furniture.append(("shop_counter", x, y,
+                                       "S" if along_x else "E"))
+            placed += 1
+        a += rng.randint(*MALL_KIOSK_EVERY)
+    return placed
 
 
 def _clear_concourse(plan: Plan) -> int:
@@ -2663,8 +3083,57 @@ GLAZED_UNITS = {"clothesstore", "shoestore", "sewingstore", "electronicsstore",
                 "sportstore", "jewelrystore", "musicstore", "candystore",
                 "toolstore", "pharmacy", "generalstore", "gunstore", "bakery",
                 "cafe", "foodcourt", "grocery", "conveniencestore"}
+# The kinds an inline unit of a mall is let as: the shops of the mall's own
+# mix that stand open to the concourse, less the department store, which is
+# an anchor's, and the food court, which has a block of its own.
+MALL_SHOP_KINDS = list(dict.fromkeys(
+    k for k in SPECIAL_MIXES["mall"][0] + SPECIAL_MIXES["mall"][1]
+    if k in GLAZED_UNITS and k not in ("departmentstore", "foodcourt")))
 SHOP_OPENING = 0.45
 MIN_OPENING = 3
+
+
+def _mall_doors(plan: Plan, rng: random.Random, ground: bool) -> None:
+    """The doors a mall's back of house needs that the door tree leaves out.
+
+    The tree gives each room one way in, and for a unit that is its front
+    onto the concourse: every unit also gets a back door onto the service
+    corridor behind it, each food counter one onto the seating it serves,
+    the corridor's pieces doors between them, and on the ground floor an
+    exit at each end.
+    """
+    rooms = plan.rooms
+    halls = {i for i, r in enumerate(rooms, 1)
+             if r.kind == "hall" and not r.is_core and not r.is_shaft}
+    if not halls:
+        return
+    back = set(MALL_SHOP_KINDS) | set(FOOD_COUNTERS) | {"bathroom", "office",
+                                                        "storage", "foodcourt"}
+    joined = set()
+    for x, y, d in plan.doors:
+        a = _room_at(plan, x - 1, y) if d == "W" else _room_at(plan, x, y - 1)
+        joined.add(frozenset((a, _room_at(plan, x, y))))
+    for (a, b), wall in _boundary_edges(plan).items():
+        ka, kb = rooms[a - 1].kind, rooms[b - 1].kind
+        wanted = ((a in halls and (b in halls or kb in back or kb == "concourse"))
+                  or (b in halls and (ka in back or ka == "concourse"))
+                  or {ka, kb} & set(FOOD_COUNTERS) and "foodcourt" in (ka, kb))
+        if not wanted or frozenset((a, b)) in joined:
+            continue
+        spot = _door_spot(wall, 1, rng)
+        if spot:
+            plan.doors.append(spot[0])
+            joined.add(frozenset((a, b)))
+    if not ground:
+        return
+    for i in halls:
+        runs = _outside_runs(plan, i)
+        if not runs:
+            continue
+        run = runs[0][1]
+        for door in {run[min(1, len(run) - 1)], run[max(0, len(run) - 2)]}:
+            if door not in plan.doors:
+                plan.doors.append(door)
 
 
 def _open_shopfronts(plan: Plan) -> None:
@@ -3212,7 +3681,8 @@ def _doors(plan: Plan, rng: random.Random) -> None:
              if k[0] not in sealed and k[1] not in sealed}
 
     def start_room() -> int:
-        for kind in ("hall", "lobby", "livingroom", "openplan"):
+        # A mall grows from its concourse, not from a service corridor.
+        for kind in ("concourse", "hall", "lobby", "livingroom", "openplan"):
             found = [i for i, r in enumerate(rooms, 1) if r.kind == kind]
             # The stairs arrive in the core: grow from there, or a second hall
             # beside it wins on size and the stairs open into a bedroom.
@@ -3854,7 +4324,9 @@ ROOM_DENSITY = {"classroom": 2, "secondaryclassroom": 2, "schoollab": 2,
 WAREHOUSE_ROLES = {"metal_rack", "crate"}
 # A house's cellar is part of the home: without it, its laundry was fitted
 # out as a laundromat, coin washers down one wall and dryers down the other.
-HOME_KINDS = {None, "house", "apartment", "basement_house"}
+HOME_KINDS = {None, "house", "apartment", "basement_house", "basement_house_rec",
+              "basement_house_workshop", "basement_house_shelter",
+              "basement_house_cellar"}
 # What a home puts in a box room instead.
 HOME_STORE = {"metal_rack": "shelf", "crate": "dresser"}
 CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "military",
@@ -6078,6 +6550,9 @@ ELEVATOR_FROM_LEVELS = 5
 # ...if it is more than a townhouse: a lift in a building five tiles wide
 # took half its ground floor.
 ELEVATOR_MIN_SIDE = 10
+# A mall has a lift from its first floor up: it stands in the centre court
+# beside the stairs and the escalators.
+MALL_LIFT_FROM_LEVELS = 2
 SHAFT_SIZE = 2
 
 
@@ -6897,7 +7372,9 @@ def build_building(width: int, height: int, levels: int = 1,
     shaft = shaft_door = None
     if tcore is not None:
         shaft, shaft_door = tcore.lifts[0]
-    elif core is not None and levels >= ELEVATOR_FROM_LEVELS and min(width, height) >= ELEVATOR_MIN_SIDE:
+    elif core is not None and min(width, height) >= ELEVATOR_MIN_SIDE and levels >= (
+            MALL_LIFT_FROM_LEVELS if kind == "mall" and _mall_plan_fits(width, height, mask)
+            else ELEVATOR_FROM_LEVELS):
         found = _pick_shaft(core, width, height, mask, stairs)
         if found:
             shaft, shaft_door = found
@@ -7214,7 +7691,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
         sections = _shop_rooms(plan, rng, street,
                                gas=any(front == "gasstore" for front, _b in (uses or ())))
     elif mix_kind == "mall":
-        _mall_rooms(plan, rng, target, level)
+        _mall_rooms(plan, rng, target, level, uses, shaft)
     elif mix_kind == "garage":
         room_kind = ("mechanic" if any(front == "mechanic"
                                        for front, _back in (uses or ()))
@@ -7326,6 +7803,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
         _flats_keep_bathrooms(plan)
 
     _doors(plan, rng)
+    if mix_kind == "mall":
+        _mall_doors(plan, rng, ground)
     if ground and tower is not None:
         _tower_entrance(plan, rng, street, entrances)
     elif ground:
@@ -7344,6 +7823,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
     _furnish(plan, rng, stairs, street)
     if mix_kind == "mall":
         _clear_concourse(plan)
+        _place_kiosks(plan, rng, ground)
         # Nothing hangs on a railing or on an opened shopfront: a light or a
         # picture left on the edge of an opening stood in mid-air. A piece
         # records the tile it stands on and the way it faces, so the wall it

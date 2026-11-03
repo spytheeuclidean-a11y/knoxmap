@@ -4,7 +4,7 @@ import unittest
 from shapely.geometry import Polygon
 
 from generator.osm import OSMFeature
-from generator.rendering.infill import _infill_frontage
+from generator.rendering.infill import _back_sheds, _infill_frontage
 from generator.rendering.projection import Projector
 
 PROJ = Projector.build(35.90, -84.00, 35.92, -83.97, 1.0)
@@ -34,6 +34,12 @@ def polys(feats):
     return [Polygon([PROJ.to_px(la, lo) for la, lo in f.geometry]) for f in feats]
 
 
+def in_hole(feats):
+    """The new buildings standing in the hole of Houses.scene, not the row
+    carried on past its ends."""
+    return [f for f, p in zip(feats, polys(feats)) if 109 < p.bounds[0] < 184]
+
+
 def fill(buildings, roads=(), **buckets):
     roads = list(roads) or [street()]
     return _infill_frontage({"road_minor": roads, **buckets}, [], buildings, PROJ)
@@ -46,7 +52,7 @@ class Houses(unittest.TestCase):
         return row(40, 14, 18, 15, 130, 142, skip=(4, 5, 6, 7))
 
     def test_a_hole_in_a_row_is_filled(self):
-        made = fill(self.scene())
+        made = in_hole(fill(self.scene()))
         self.assertGreaterEqual(len(made), 3)
         for p in polys(made):
             self.assertTrue(112 <= p.bounds[0] and p.bounds[2] <= 192)
@@ -82,7 +88,7 @@ class Houses(unittest.TestCase):
     def test_a_church_beside_the_gap_says_nothing(self):
         scene = self.scene()
         scene[3] = box(103, 94, 111, 130, 142, building="church")
-        self.assertEqual([f for f in fill(scene)
+        self.assertEqual([f for f in in_hole(fill(scene))
                           if polys([f])[0].bounds[0] < 120], [])
 
     def test_filling_is_repeatable(self):
@@ -133,7 +139,7 @@ class Blocked(unittest.TestCase):
         lake = way(50, [(112, 100), (190, 100), (190, 146), (112, 146), (112, 100)],
                    natural="water")
         made = fill(Houses().scene(), water=[lake])
-        self.assertEqual(made, [])
+        self.assertEqual(in_hole(made), [])
 
     def test_a_side_street_is_not_built_across(self):
         cross = way(60, [(150, 40), (150, 150)], highway="residential")
@@ -146,6 +152,62 @@ class Blocked(unittest.TestCase):
         edge = row(0, 3, 18, 15, 130, 142) + row(70, 3, 18, 15, 130, 142)
         for p in polys(fill(edge)):
             self.assertGreaterEqual(p.bounds[0], 0)
+
+
+class LongGaps(unittest.TestCase):
+    def test_a_row_ending_in_a_long_empty_stretch_is_carried_on(self):
+        made = polys(fill(row(40, 4, 18, 15, 130, 142)))
+        self.assertTrue(made)
+        # a little way on from the last house (it ends at x=109), not far
+        self.assertTrue(all(p.bounds[0] < 109 + 50 for p in made))
+
+    def test_a_long_gap_between_rows_is_filled_from_both_ends_only(self):
+        left = row(40, 3, 18, 15, 130, 142)
+        right = [box(200 + i, 260 + i * 18, 275 + i * 18, 130, 142) for i in range(3)]
+        made = polys(fill(left + right))
+        self.assertTrue(any(p.bounds[2] < 150 for p in made))
+        self.assertTrue(any(p.bounds[0] > 200 for p in made))
+        self.assertFalse(any(150 < p.bounds[0] < 200 for p in made))
+
+
+class BackSheds(unittest.TestCase):
+    def sheds(self, houses, **buckets):
+        return _back_sheds({"road_minor": [street()], **buckets}, [], houses, PROJ)
+
+    def yard(self):
+        # forty 15 x 12 m houses on a street, standing back 4 m
+        return row(40, 14, 18, 15, 156, 168)
+
+    def test_some_houses_get_a_shed_behind_them(self):
+        made = polys(self.sheds(self.yard()))
+        self.assertTrue(made)
+        self.assertLess(len(made), 14)
+        for p in made:
+            self.assertGreater(p.bounds[1], 168)      # behind the house
+
+    def test_nothing_overlaps_a_house_or_a_shed(self):
+        houses = self.yard()
+        every = polys(houses) + polys(self.sheds(houses))
+        for i, a in enumerate(every):
+            for b in every[i + 1:]:
+                self.assertEqual(a.intersection(b).area, 0)
+
+    def test_sheds_are_repeatable(self):
+        a = [f.geometry for f in self.sheds(self.yard())]
+        self.assertEqual(a, [f.geometry for f in self.sheds(self.yard())])
+
+    def test_no_shed_where_a_building_already_stands_behind(self):
+        houses = self.yard() + [box(500 + i, 40 + i * 18, 52 + i * 18, 172, 178,
+                                    building="shed") for i in range(14)]
+        self.assertEqual(self.sheds(houses), [])
+
+    def test_no_shed_on_water(self):
+        lake = way(50, [(0, 169), (400, 169), (400, 260), (0, 260), (0, 169)],
+                   natural="water")
+        self.assertEqual(self.sheds(self.yard(), water=[lake]), [])
+
+    def test_a_lone_shed_is_not_a_house(self):
+        self.assertEqual(self.sheds([box(1, 100, 106, 156, 160)]), [])
 
 
 if __name__ == "__main__":

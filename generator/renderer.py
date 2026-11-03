@@ -35,7 +35,7 @@ from .rendering.buildings import (ADDRESS_APART_M, ADDRESS_AVOIDS_ROADS,
                                   BUILDING_TAGS, MAX_ADDRESS_HOUSES,
                                   _buildings_geojson, _houses_from_addresses,
                                   _off_the_road)  # noqa: F401
-from .rendering.infill import _infill_frontage
+from .rendering.infill import _back_sheds, _infill_frontage
 from .rendering.furniture import (CRACK_SHARE, DRAIN_EVERY,
                                   EDGE_LINE_MIN_WIDTH, GRIME_SHARE,
                                   HYDRANT_EVERY, LAMP_EVERY, LITTER_SHARE,
@@ -216,12 +216,19 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # (generator/rendering/infill.py). After the addresses, so a numbered
     # house that was just put down is a neighbour like any other.
     infilled: list[OSMFeature] = []
+    sheds: list[OSMFeature] = []
     if fill_frontage:
         infilled = _infill_frontage(buckets, vegetation_feats, building_feats,
                                     proj, clip)
         if infilled:
             building_feats = building_feats + infilled
             buckets["building"] = buckets.get("building", []) + infilled
+    # A shed or garage behind some of the houses, whether or not the gaps are
+    # filled: a yard has one either way.
+    sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
+    if sheds:
+        building_feats = building_feats + sheds
+        buckets["building"] = buckets.get("building", []) + sheds
 
     def ground_rings(feat: OSMFeature) -> list[list[tuple[float, float]]]:
         rings = _feature_coords_px(feat, proj)
@@ -398,6 +405,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         "houses_from_addresses": len(addressed),
         # And how many were put into gaps along a street.
         "houses_infilled": len(infilled),
+        "sheds_infilled": len(sheds),
         "guide_reference": "Thuztor Mapping Guide v0.2",
     }, indent=2)
 

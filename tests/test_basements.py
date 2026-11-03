@@ -7,10 +7,11 @@ from types import SimpleNamespace
 import numpy as np
 from shapely.geometry import box as shape_box
 
-from knoxbuild.basements import (BasementSpec, Underground, _inside, levels_for,
-                                 plan_basement, render_basement, reserve, tier)
+from knoxbuild.basements import (BasementSpec, HOUSE_BASEMENTS, STAIR_ROOMS, Underground,
+                                 _house_basement, _inside, basement_style,
+                                 find_stair_spot, levels_for, plan_basement, render_basement, reserve, tier)
 from knoxbuild.buildtiles import parse_tbx
-from knoxbuild.layout import build_building
+from knoxbuild.layout import _blocks as layout_blocks, build_building
 from knoxbuild.buildheader import placed_rooms
 from knoxbuild.settings import Settings
 from tools.compile_map import knoxlots_exe
@@ -64,7 +65,7 @@ class Tiers(unittest.TestCase):
         self.assertEqual(tier("industrial", 900, 50_000), "installation")
         self.assertEqual(tier("military", 50, 0), "installation")
         self.assertIsNone(tier("shed", 40, 0))
-        self.assertIsNone(tier("apartment", 400, 0))
+        self.assertEqual(tier("apartment", 400, 0), "house")    # flats: a cellar too
 
     def test_levels(self):
         self.assertEqual(levels_for("house", 90, 0, 8), 1)
@@ -194,6 +195,73 @@ class Planning(unittest.TestCase):
             self.assertLessEqual(roles.count("washer"), 1, seed)
         self.assertGreater(found, 0)
 
+    def stair_room(self, parent, b):
+        """The ground floor's room holding the flight's top squares, its
+        squares, and the doors on its edges."""
+        g = parent.storeys[0]
+        sx, sy, d = b.building.stairs[-1]
+        top = [(sx + b.dx + (0 if d == "N" else i), sy + b.dy + (i if d == "N" else 0))
+               for i in range(4)]
+        n = g.grid[top[0][1]][top[0][0]]
+        cells = {(x, y) for y, row in enumerate(g.grid) for x, v in enumerate(row) if v == n}
+        doors = [(x, y, e) for x, y, e in g.doors
+                 if {(x, y), (x, y - 1) if e == "N" else (x - 1, y)} & cells]
+        return g, n, set(top), cells, doors
+
+    def test_a_house_basement_is_reached_through_a_door_at_the_top(self):
+        """A house too small to wall a flight off in (a 4 x 4 dining room
+        cut in two by it) keeps open stairs; most are behind a door."""
+        walled = 0
+        for seed in range(12):
+            parent = build_building(12, 10, seed=seed)
+            b = plan_basement(parent, house_spec(parent), seed, Settings())
+            if b is None:
+                continue
+            g, n, top, cells, doors = self.stair_room(parent, b)
+            if cells != top:
+                continue
+            walled += 1
+            with self.subTest(seed=seed):
+                self.assertEqual(g.rooms[n - 1].kind, "hall")
+                self.assertEqual(cells, top)            # a stairwell one wide
+                self.assertEqual(len(doors), 1)
+                self.assertFalse([f for f in g.furniture if (f[1], f[2]) in cells
+                                  and layout_blocks(f[0])])
+        self.assertGreaterEqual(walled, 10)
+
+    def test_a_small_house_stairwell_is_walled_off_not_open(self):
+        """A 12 x 10 house used to have its flight come up open in a room one
+        time in fifteen: no bedroom was tried before that."""
+        for seed in range(40):
+            parent = build_building(12, 10, seed=seed)
+            mask = np.ones((parent.height, parent.width), dtype=bool)
+            spot = find_stair_spot(parent.storeys[0], _inside(mask), STAIR_ROOMS,
+                                   set(), "stairwell")
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(spot)
+                self.assertIsNotNone(spot[4])      # a door
+
+    def test_open_stairs_have_a_room_of_their_own(self):
+        """A school's stairs come up in a stair hall: the flight and a lane
+        beside it, walled off with a door, so nothing stands in the way."""
+        found = 0
+        for seed in range(12):
+            parent = build_building(22, 16, kind="school", seed=seed, commercial=True)
+            ground = np.array([[bool(v) for v in row] for row in parent.storeys[0].grid])
+            spec = BasementSpec("large", "school", 1, 0, 0, _inside(ground))
+            b = plan_basement(parent, spec, seed, Settings())
+            if b is None:
+                continue
+            g, n, top, cells, doors = self.stair_room(parent, b)
+            found += 1
+            with self.subTest(seed=seed):
+                self.assertTrue(top < cells)
+                self.assertEqual(len(cells), 8)         # the flight and a lane
+                self.assertEqual(len(doors), 1)
+                self.assertFalse([f for f in g.furniture if (f[1], f[2]) in cells
+                                  and layout_blocks(f[0])])
+        self.assertGreater(found, 0)
+
     def test_no_spot_no_basement(self):
         parent = build_building(4, 4, seed=1)
         self.assertIsNone(plan_basement(parent, house_spec(parent), 1, Settings()))
@@ -225,6 +293,36 @@ class Planning(unittest.TestCase):
         tbx = parse_tbx(render_basement(b, "t", None))
         self.assertEqual(len(tbx.floors), 1)
         self.assertTrue(any(o.get("type") == "stairs" for o in tbx.floors[0].objects))
+
+
+class Variety(unittest.TestCase):
+    def test_house_cellars_are_not_all_the_same_programme(self):
+        kinds = {_house_basement(seed)[0] for seed in range(200)}
+        self.assertEqual(kinds, {k for k, _w, _f in HOUSE_BASEMENTS})
+
+    def test_a_cellar_is_a_function_of_its_seed(self):
+        self.assertEqual(_house_basement(17), _house_basement(17))
+
+    def test_every_programme_lays_out_with_rooms_the_game_knows(self):
+        from knoxbuild.layout import ROOM_STYLE as ROOMS
+        seen = set()
+        for seed in range(120):
+            parent = build_building(16, 12, seed=seed)
+            b = plan_basement(parent, house_spec(parent), seed, Settings())
+            if b is None:
+                continue
+            seen.add(_house_basement(seed)[0])
+            for r in b.building.rooms:
+                self.assertIn(r.kind, ROOMS, (seed, r.kind))
+            self.assertEqual(b.finished, _house_basement(seed)[1])
+        self.assertEqual(seen, {k for k, _w, _f in HOUSE_BASEMENTS})
+
+    def test_a_finished_cellar_keeps_the_house_s_walls_and_floor(self):
+        house = {"interior": "painted", "floor": "oak", "exterior": "brick"}
+        self.assertEqual(basement_style(house, True)["interior"], "painted")
+        self.assertEqual(basement_style(house, True)["floor"], "oak")
+        self.assertNotEqual(basement_style(house, False)["interior"], "painted")
+        self.assertNotEqual(basement_style(house, True)["exterior"], "brick")
 
 
 @NEEDS_KNOXLOTS

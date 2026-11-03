@@ -49,6 +49,7 @@ REAR_CLEAR_M = 2.5         # kept clear behind a new building
 MIN_NEIGHBOUR_M2 = 40.0    # sheds and garages say nothing about the street
 MIN_LOT_M = 5.0            # narrowest new building
 MAX_LOT_M = 28.0           # widest; a longer gap is cut into more lots
+SIDE_STEPS = 4             # stations of side gap a row is carried across
 SIDE_GAP_M = 3.0           # between detached houses
 EDGE_SLACK_M = 0.05        # so a side gap never rounds to under SIDE_GAP_M
                            # on its way through lat/lon and back
@@ -219,16 +220,30 @@ def _neighbours(scan, states, i, step, info, limit=3):
     that starts next to station `i` and goes in direction `step`, and whether
     that stretch is more than one building: a row joined wall to wall."""
     seen: list[int] = []
+    joined = False
     j = i
-    while 0 <= j < len(states) and states[j] == "B":
+    while 0 <= j < len(states):
+        if states[j] != "B":
+            # The side gap between two detached houses is not the end of the
+            # row: step over it to the next building.
+            k = j
+            while (0 <= k < len(states) and states[k] != "B"
+                   and abs(k - j) <= SIDE_STEPS):
+                k += step
+            if not (0 <= k < len(states) and states[k] == "B" and seen):
+                break
+            j = k
+            continue
         b = int(scan["which"][j])
         if b not in seen:
             if len(seen) == limit:
                 break
+            if seen and states[j - step] == "B":
+                joined = True       # wall to wall, no gap between
             seen.append(b)
         j += step
     return ([info[b] for b in seen
-             if info[b] and info[b]["area"] >= MIN_NEIGHBOUR_M2], len(seen) > 1)
+             if info[b] and info[b]["area"] >= MIN_NEIGHBOUR_M2], joined)
 
 
 def _describe(scan, states, bi, poly, tags):
@@ -300,8 +315,25 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     both = bool(left and right)
     limit = min(MAX_GAP_BOTH_M, max(40.0, 10 * width)) if both else \
         min(MAX_GAP_ONE_M, max(20.0, 2.5 * width))
-    if length > limit or length < MIN_LOT_M:
+    if length < MIN_LOT_M:
         return []
+    if length > limit:
+        # Too long to fill whole: carry the row on from each neighbour as far
+        # as a row is carried (half the limit from each end when both stand),
+        # and leave the middle as it is.
+        reach = int((limit / 2 if both else limit) // STEP_M)
+        done = []
+        for part in ((i0, i0 + reach - 1, left, [], lo, None) if left else None,
+                     (i1 - reach + 1, i1, [], right, None, hi) if right else None):
+            if part is None or reach < 1:
+                continue
+            got = _lots_for_gap(scan, part[0], part[1], part[2], part[3],
+                                hard_free, joined, part[4], part[5])
+            if got:
+                done.append(got)
+        if not done:
+            return []
+        return ([lot for g in done for lot in g[0]], done[0][1], done[0][2])
 
     # The pavement edge of the gap; ends against a neighbour keep a garden's
     # width from it, ends against a road or nothing keep a little less.
@@ -365,9 +397,10 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     return out, _modal_kind(near), _levels(near)
 
 
-def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list,
-                     proj: Projector, clip=None) -> list[OSMFeature]:
-    """New buildings for the gaps along streets. See the module docstring."""
+def _world(buckets: dict, vegetation_feats: list, building_feats: list,
+           proj: Projector):
+    """What stands, what cannot be built on and which streets are looked along,
+    or None when there is nothing to look at."""
     import numpy as np
     import shapely
     from shapely.geometry import LineString, Polygon
@@ -384,7 +417,7 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
             b_polys.append(poly)
             b_tags.append(f.tags)
     if not b_polys:
-        return []
+        return None
     b_geoms = np.array(b_polys, dtype=object)
     b_tree = STRtree(b_geoms)
 
@@ -424,7 +457,22 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
     hard_geoms = _chopped(hard) if hard else None
     hard_tree = STRtree(hard_geoms) if hard else None
     if not fronts:
+        return None
+
+    return (k, b_polys, b_tags, b_geoms, b_tree, hard_geoms, hard_tree, fronts)
+
+
+def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list,
+                     proj: Projector, clip=None) -> list[OSMFeature]:
+    """New buildings for the gaps along streets. See the module docstring."""
+    from shapely.geometry import Polygon
+
+    from .projection import _inside
+
+    world = _world(buckets, vegetation_feats, building_feats, proj)
+    if world is None:
         return []
+    k, b_polys, b_tags, b_geoms, b_tree, hard_geoms, hard_tree, fronts = world
 
     width_m, height_m = proj.width * k, proj.height * k
     grid = _Grid()
@@ -501,4 +549,98 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                     grid.add(poly)
                     made.append(feat)
                     ident -= 1
+    return made
+
+
+# Sheds and garages behind the houses along a street: what a yard has in it.
+SHED_HOUSE_KINDS = {"house", "detached", "semidetached_house", "residential", "yes"}
+SHED_HOUSE_M2 = (70.0, 300.0)   # smaller is a shed already, bigger is not a house
+SHED_NEAR_STREET_M = 30.0       # a house this close to a street stands on it
+SHED_SHARE = 35                 # per cent of the houses that have one
+SHED_SIZE_M = ((3.0, 6.0), (3.0, 5.0))    # across, deep
+SHED_BEHIND_M = 2.0             # clear of the house's back wall
+SHED_CLEAR_M = 3.0              # kept clear of any outbuilding already there
+MAX_SHEDS = 20000
+
+
+def _back_sheds(buckets: dict, vegetation_feats: list, building_feats: list,
+                proj: Projector, clip=None) -> list[OSMFeature]:
+    """A shed or garage behind some of the houses on each street.
+
+    Only where there is room: nothing on it, nothing within SHED_CLEAR_M of it
+    that is a building already, no road, water, park or wood. Which houses get
+    one is a function of where they stand, so the same map comes out the same.
+    """
+    import numpy as np
+    from shapely.geometry import Point, Polygon
+    from shapely.strtree import STRtree
+
+    from .projection import _inside
+
+    world = _world(buckets, vegetation_feats, building_feats, proj)
+    if world is None:
+        return []
+    k, b_polys, b_tags, b_geoms, b_tree, hard_geoms, hard_tree, fronts = world
+    lines = np.array([line for line, _half in fronts], dtype=object)
+    line_tree = STRtree(lines)
+    width_m, height_m = proj.width * k, proj.height * k
+    grid = _Grid()
+    made: list[OSMFeature] = []
+    ident = FIRST_ID - MAX_INFILL - 1      # below the lots' ids
+
+    for me, (poly, tags) in enumerate(zip(b_polys, b_tags)):
+        if len(made) >= MAX_SHEDS:
+            break
+        if (tags.get("building") or "yes").lower() not in SHED_HOUSE_KINDS:
+            continue
+        if not SHED_HOUSE_M2[0] <= poly.area <= SHED_HOUSE_M2[1]:
+            continue
+        c = poly.centroid
+        # which way is the street, and which way is back
+        near = line_tree.nearest(c)
+        line = lines[near]
+        at = line.interpolate(line.project(c))
+        dx, dy = c.x - at.x, c.y - at.y
+        dist = (dx * dx + dy * dy) ** 0.5
+        if dist == 0 or dist - 0.5 * poly.length / 4 > SHED_NEAR_STREET_M:
+            continue
+        nx, ny = dx / dist, dy / dist
+        tx, ty = -ny, nx
+        # a function of the house's place: 35% of them, and the shape
+        h = (int(c.x * 10) * 73856093) ^ (int(c.y * 10) * 19349663)
+        if h % 100 >= SHED_SHARE:
+            continue
+        r1, r2, r3 = (h >> 7) % 100 / 100, (h >> 14) % 100 / 100, (h >> 21) % 100 / 100
+        w = SHED_SIZE_M[0][0] + r1 * (SHED_SIZE_M[0][1] - SHED_SIZE_M[0][0])
+        d = SHED_SIZE_M[1][0] + r2 * (SHED_SIZE_M[1][1] - SHED_SIZE_M[1][0])
+        back = max((x - c.x) * nx + (y - c.y) * ny for x, y in poly.exterior.coords)
+        side = (r3 - 0.5) * min(poly.length / 4, 8.0)
+        cx = c.x + nx * (back + SHED_BEHIND_M + d / 2) + tx * side
+        cy = c.y + ny * (back + SHED_BEHIND_M + d / 2) + ty * side
+        corners = [(cx - tx * w / 2 - nx * d / 2, cy - ty * w / 2 - ny * d / 2),
+                   (cx + tx * w / 2 - nx * d / 2, cy + ty * w / 2 - ny * d / 2),
+                   (cx + tx * w / 2 + nx * d / 2, cy + ty * w / 2 + ny * d / 2),
+                   (cx - tx * w / 2 + nx * d / 2, cy - ty * w / 2 + ny * d / 2)]
+        shed = Polygon(corners)
+        x0, y0, x1, y1 = shed.bounds
+        if x0 < 0 or y0 < 0 or x1 > width_m or y1 > height_m:
+            continue
+        if any(i != me for i in b_tree.query(shed.buffer(SHED_CLEAR_M),
+                                             predicate="intersects")):
+            continue
+        if hard_tree is not None and hard_tree.query(shed.buffer(0.4),
+                                                     predicate="intersects").size:
+            continue
+        if any(shed.intersects(p) for p in grid.near(shed)):
+            continue
+        feat = OSMFeature(
+            osm_id=ident, kind="way",
+            tags={"building": "garage" if w >= 5.0 else "shed"},
+            geometry=[proj.to_latlon(x / k, y / k)
+                      for x, y in corners + [corners[0]]])
+        if clip is not None and not _inside(feat, proj, clip):
+            continue
+        grid.add(shed)
+        made.append(feat)
+        ident -= 1
     return made

@@ -270,6 +270,41 @@ BIG_BUILDING_M2 = 6000.0
 # out as a building of its own, and is a campus or an airfield mapped as one
 # building rather than a building. Past it the old answer stands: left out.
 MAX_OVERSIZE_TILES = 1_200_000
+# ...except a mall. A real one is 10,000-60,000 m2, and cut at the blocks
+# above Piqua Center came out as eleven mini-malls side by side, each with
+# a concourse of its own and nothing joining them. Up to this it is one
+# building (layout._mall_plan); past it it is a campus mapped as one outline.
+MALL_MAX_M2 = 60000.0
+# A mall mapped with no mall tag on it: "Piqua Center" with the shops drawn
+# as points inside. The name alone is not enough - a medical centre has a
+# pharmacy, an office tower called a Plaza has a cafe in its lobby, and a
+# strip of shops is a Plaza too - so it takes this many different shops or
+# places to eat, no offices, a low building and a real mall's floor area.
+MALL_NAME_MIN_SHOPS = 3
+MALL_NAME_MIN_M2 = 10000.0
+MALL_NAME_MAX_LEVELS = 2
+MALL_NAME = re.compile(r"\b(center|centre|plaza)\s*$", re.I)
+
+
+def mall_by_name(special: str | None, tags: dict,
+                 uses: list[tuple[str, str]], real_m2: float) -> str | None:
+    """"mall" for a Center, Centre or Plaza with shops in it, else `special`."""
+    from .uses import FOOD_FRONTS, OFFICE_USE, SHOP_USES
+
+    if special not in (None, "shop", "civic"):
+        return special
+    if not MALL_NAME.search(tags.get("name") or "") or real_m2 < MALL_NAME_MIN_M2:
+        return special
+    if OFFICE_USE in uses or tags.get("building") == "office":
+        return special
+    try:
+        if float(tags.get("building:levels") or 0) > MALL_NAME_MAX_LEVELS:
+            return special
+    except ValueError:
+        pass
+    retail = {front for front, _back in SHOP_USES.values()} | FOOD_FRONTS
+    shops = sum(1 for front, _back in uses if front in retail)
+    return "mall" if shops >= MALL_NAME_MIN_SHOPS else special
 
 
 def _cut_big(units: list, metres_per_tile: float,
@@ -319,6 +354,9 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
     """
     from .footprint import split_row
 
+    if special == "mall" and max_side is None and \
+            fp.tiles * metres_per_tile * metres_per_tile <= MALL_MAX_M2:
+        return [fp]
     if special not in ROW_KINDS and btag not in TERRACE_TAGS:
         return _cut_big([fp], metres_per_tile, max_side)
     long_side = max(fp.width, fp.height) * metres_per_tile
@@ -1707,6 +1745,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         inside = [tags] + _points_inside(points, px, points_taken)
         uses = uses_of(inside)
         special = _business_kind(special, uses)
+        special = mall_by_name(special, tags, uses, real_m2)
         if special == "garage":
             sheds += 1
         entrance_points = _entrances_inside(points, px)

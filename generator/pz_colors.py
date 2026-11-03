@@ -128,6 +128,22 @@ BED_NE = (12, 37, 220)
 BED_E = (12, 37, 221)
 BED_SE = (12, 37, 222)
 BED_SOIL = (12, 37, 223)
+# Works yards (knoxbuild/works.py): what stands along a works' walls, and its
+# dumpster, a two-tile piece set as two colours each way it faces.
+WORKS_PALLET = (12, 39, 200)
+WORKS_BRICKS = (12, 39, 201)
+WORKS_DRUM = (12, 39, 202)
+WORKS_BARREL = (12, 39, 203)
+WORKS_CRATE = (12, 39, 204)
+WORKS_TIRES = (12, 39, 205)
+DUMPSTER_BLUE_S0 = (12, 39, 206)
+DUMPSTER_BLUE_S1 = (12, 39, 207)
+DUMPSTER_BLUE_E0 = (12, 39, 208)
+DUMPSTER_BLUE_E1 = (12, 39, 209)
+DUMPSTER_ORANGE_S0 = (12, 39, 210)
+DUMPSTER_ORANGE_S1 = (12, 39, 211)
+DUMPSTER_ORANGE_E0 = (12, 39, 212)
+DUMPSTER_ORANGE_E1 = (12, 39, 213)
 # Ground: the stone slabs of a front path or a stoop (Rules.txt "Paving Stone 4").
 PAVING_STONE = (190, 180, 180)
 
