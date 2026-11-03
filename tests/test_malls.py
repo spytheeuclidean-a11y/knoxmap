@@ -160,6 +160,19 @@ class FloorPlan(unittest.TestCase):
         for seed in range(6):
             self.assert_mall_plan(mall(seed=seed).storeys[0], seed)
 
+    def test_arms_reach_the_wall_and_storerooms_are_and_cut_the_storerooms(self):
+        for w, h in ((160, 90), (240, 130), (245, 245)):
+            p = mall(w, h).storeys[0]
+            total = sum(map(sum, p.mask)) if p.mask is not None else w * h
+            store = sum(_tiles(p, i) for i, r in enumerate(p.rooms, 1)
+                        if r.kind == "storage")
+            if (w, h) == (160, 90):   # was 35% before the arms ran through
+                self.assertLess(store / total, 0.25, store / total)
+            c = _concourse_id(p)
+            edge = [(x, y) for y in range(p.height) for x in range(p.width)
+                    if p.grid[y][x] == c and (x in (0, p.width - 1) or y in (0, p.height - 1))]
+            self.assertTrue(edge, (w, h))
+
     def test_two_anchors_on_a_small_mall(self):
         p = mall().storeys[0]   # 14,400 tiles
         self.assertEqual(len(p.anchors), 2)

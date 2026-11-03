@@ -2657,8 +2657,10 @@ def _mall_plan(plan: Plan, rng: random.Random, target: int, level: int,
                 b0, b1 = ((start - MALL_ARM_STUB, start - 1) if side == "lo"
                           else (end, end + MALL_ARM_STUB - 1))
             else:
-                b0, b1 = ((start - shop, start - 1) if side == "lo"
-                          else (end, end + shop - 1))
+                # Through to the outer wall, past the corridor and the back
+                # zone, with shops down both sides (below).
+                b0, b1 = ((0, start - 1) if side == "lo"
+                          else (end, across - 1))
             put(m0, b0, m1, b1, "concourse")
 
     # The units, the corridor and whatever is left behind it, side by side.
@@ -2722,13 +2724,31 @@ def _mall_plan(plan: Plan, rng: random.Random, target: int, level: int,
                 a += front
         # The corridor and the back zone run the inner length, broken only
         # by an anchor standing at the end of an arm.
+        # and by each arm running through to the wall.
         runs = [(inner0, inner1)]
         if side in side_anchor:
             x0, x1 = side_anchor[side]
             runs = [(inner0, x0 - 1), (x1 + 1, inner1)]
+        through = [(m0, m1) for m0, m1 in arms if not (
+            side in side_anchor and side_anchor[side][0] <= m1
+            and m0 <= side_anchor[side][1])]
+        for m0, m1 in through:
+            cut = []
+            for r0, r1 in runs:
+                if r1 < m0 or r0 > m1:
+                    cut.append((r0, r1))
+                else:
+                    cut += [(r0, m0 - 1), (m1 + 1, r1)]
+            runs = [(r0, r1) for r0, r1 in cut if r1 >= r0]
+        arm_start = {m0 for m0, _m1 in through}
+        arm_end = {m1 for _m0, m1 in through}
         for r0, r1 in runs:
             if r1 < r0:
                 continue
+            at_arm = (r0 - 1 in arm_end, r1 + 1 in arm_start)
+            if at_arm[0] and at_arm[1]:
+                # Between two arms the corridor still needs a way outside.
+                at_arm = (True, False)
             if side == "lo":
                 k0, k1 = start - shop - corridor, start - shop - 1
                 back = (0, k0 - 1)
@@ -2738,10 +2758,39 @@ def _mall_plan(plan: Plan, rng: random.Random, target: int, level: int,
             put(r0, k0, r1, k1, "hall")
             if back[1] >= back[0]:
                 # With storerooms between it and the wall, the corridor
-                # reaches the outside down a passage at each end.
-                put(r0, back[0], r0 + MALL_EXIT_WIDE - 1, back[1], "hall")
-                put(r1 - MALL_EXIT_WIDE + 1, back[0], r1, back[1], "hall")
-                r0, r1 = r0 + MALL_EXIT_WIDE, r1 - MALL_EXIT_WIDE
+                # reaches the outside down a passage at each end. An end
+                # that meets an arm has the arm to the wall instead, and
+                # shops down its side.
+                if not at_arm[0]:
+                    put(r0, back[0], r0 + MALL_EXIT_WIDE - 1, back[1], "hall")
+                    r0 += MALL_EXIT_WIDE
+                if not at_arm[1]:
+                    put(r1 - MALL_EXIT_WIDE + 1, back[0], r1, back[1], "hall")
+                    r1 -= MALL_EXIT_WIDE
+                n = back[1] - back[0] + 1
+                for lined, left in ((at_arm[0], True), (at_arm[1], False)):
+                    if not lined or r1 < r0:
+                        continue
+                    deep = MALL_UNIT_DEPTH[0]
+                    if r1 - r0 + 1 - deep < MIN_ROOM:
+                        deep = r1 - r0 + 1
+                    s0, s1 = (r0, r0 + deep - 1) if left else (r1 - deep + 1, r1)
+                    if left:
+                        r0 = s1 + 1
+                    else:
+                        r1 = s0 - 1
+                    count = max(1, n // MALL_UNIT_FRONT[1])
+                    if n < MALL_UNIT_FRONT[0]:
+                        put(s0, back[0], s1, back[1], "storage")
+                        continue
+                    b = back[0]
+                    for k in range(count):
+                        front = n // count + (1 if k < n % count else 0)
+                        ok = inside(s0, b, s1, b + front - 1) >= MALL_UNIT_MIN_TILES
+                        put(s0, b, s1, b + front - 1,
+                            deal[dealt % len(deal)] if ok else "storage")
+                        dealt += ok
+                        b += front
                 if r1 < r0:
                     continue
                 spare: list = []
@@ -3057,8 +3106,8 @@ def _mall_doors(plan: Plan, rng: random.Random, ground: bool) -> None:
         joined.add(frozenset((a, _room_at(plan, x, y))))
     for (a, b), wall in _boundary_edges(plan).items():
         ka, kb = rooms[a - 1].kind, rooms[b - 1].kind
-        wanted = ((a in halls and (b in halls or kb in back))
-                  or (b in halls and ka in back)
+        wanted = ((a in halls and (b in halls or kb in back or kb == "concourse"))
+                  or (b in halls and (ka in back or ka == "concourse"))
                   or {ka, kb} & set(FOOD_COUNTERS) and "foodcourt" in (ka, kb))
         if not wanted or frozenset((a, b)) in joined:
             continue
