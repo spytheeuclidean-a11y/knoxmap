@@ -452,6 +452,9 @@ SPECIAL_MIXES = {
     # room; a base's bunker is stores, bunks and offices.
     "basement_house":      (["laundry", "storage", "garage", "livingroom"],
                             ["storage", "livingroom"]),
+    # A block of flats keeps its shared laundry and the tenants' store rooms
+    # downstairs.
+    "basement_apartment":  (["laundry", "storage", "storage"], ["storage"]),
     "basement_school":     (["janitor", "storage"], ["storage"]),
     "basement_medical":    (["storage", "janitor"], ["storage"]),
     "basement_police":     (["prisoncells", "policestorage"], ["prisoncells", "storage"]),

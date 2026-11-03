@@ -35,7 +35,7 @@ BLOCK = 32
 
 def tier(kind: str | None, footprint_m2: float, site_m2: float) -> str | None:
     """"house", "large", "installation", or None for a building with no basement."""
-    if kind is None or kind == "house":
+    if kind is None or kind in ("house", "apartment"):
         return "house"
     if kind == "military":
         return "installation"
@@ -235,15 +235,46 @@ def _core(x: int, y: int, d: str) -> tuple[int, int, int, int]:
     return (x - 1, y - 1, x + STAIR_RUN - 1, y + 1)
 
 
+def _well(x: int, y: int, d: str, lane: int | None) -> list[tuple[int, int]]:
+    """The squares of the room a flight comes up in: the step-off square and
+    the three over the steps, and with `lane` (-1 or 1) the squares beside
+    them to walk round by."""
+    run = _top(x, y, d)
+    if lane is None:
+        return run
+    ox, oy = (lane, 0) if d == "N" else (0, lane)
+    return run + [(a + ox, b + oy) for a, b in run]
+
+
+# What each kind of well tries, in order, as (lane, against a wall): a home's
+# cellar stairs behind a door at the top (lane None), other buildings' open
+# stairs in a hall with a lane beside the flight (-1, 1), and "open", the
+# flight in the room as it is, last. Along a wall first; the shaft below has
+# to be inside the basement, a tile in from the outside walls, so a small
+# house's flight often has no wall to stand by and is walled in on both sides.
+WELL_TRIES = {"stairwell": [[(None, True)], [(None, False)], [(-1, True), (1, True)],
+                            ["open"]],
+              "hall": [[(-1, True), (1, True)], [(-1, False), (1, False)],
+                       [(None, True)], [(None, False)], ["open"]]}
+
+
 def find_stair_spot(ground, under: np.ndarray, kinds: tuple[str, ...] | None,
-                    avoid: set) -> tuple[int, int, str] | None:
-    """(x, y, dir) on the ground floor where a flight can come up from below.
+                    avoid: set, well: str | None = None):
+    """(x, y, dir, lane, door) on the ground floor where a flight can come up
+    from below.
 
     The square a player steps off at and the three left open over the steps
     (_top) lie in one room of `kinds` (None: any room but a bathroom or a
     bedroom), off every door and `avoid`; the shaft below lies inside `under`
-    (the basement's squares, in the ground floor's tiles). The first spot that
-    moves no furniture wins, rooms taken in the order of `kinds`."""
+    (the basement's squares, in the ground floor's tiles).
+
+    `well` ("stairwell" or "hall", WELL_TRIES) asks for a room of the flight's
+    own, cut out of that room along one of its walls, with `door` its way in
+    beside the step-off square and `lane` the hall's side. Left in the room as
+    it was, the stairs had furniture standing across them. With no well, or
+    none that fits, `lane` and `door` are None: the flight comes up in the
+    room as it is. The first spot that moves no furniture wins, rooms taken
+    in the order of `kinds`."""
     from .layout import _cells_for, _is_wall_piece
     grid = ground.grid
     h, w = len(grid), len(grid[0]) if grid else 0
@@ -269,21 +300,85 @@ def find_stair_spot(ground, under: np.ndarray, kinds: tuple[str, ...] | None,
         return (0 <= x0 and 0 <= y0 and x1 < uw and y1 < uh
                 and bool(under[y0:y1 + 1, x0:x1 + 1].all()))
 
+    def at(a, b):
+        return grid[b][a] if 0 <= a < w and 0 <= b < h else 0
+
+    def walled_in(x, y, d, lane, along):
+        """(squares, door, square before the door) of a room for the flight,
+        along a wall of its room if `along`, or None."""
+        sq = _well(x, y, d, lane)
+        r = grid[y][x]
+        if any(at(a, b) != r or (a, b) in blocked for a, b in sq):
+            return None
+        # One long side against a wall the room already has.
+        if d == "N":
+            lo, hi = min(a for a, _ in sq) - 1, max(a for a, _ in sq) + 1
+            sides = [[(lo, b) for _, b in _top(x, y, d)], [(hi, b) for _, b in _top(x, y, d)]]
+        else:
+            lo, hi = min(b for _, b in sq) - 1, max(b for _, b in sq) + 1
+            sides = [[(a, lo) for a, _ in _top(x, y, d)], [(a, hi) for a, _ in _top(x, y, d)]]
+        if along and not any(all(at(*p) != r for p in side) for side in sides):
+            return None
+        # What is left of the room still hangs together.
+        rest = {(a, b) for b in range(h) for a in range(w) if grid[b][a] == r} - set(sq)
+        if not rest:
+            return None
+        start = min(rest)
+        seen, todo = {start}, [start]
+        while todo:
+            a, b = todo.pop()
+            for n in ((a + 1, b), (a - 1, b), (a, b + 1), (a, b - 1)):
+                if n in rest and n not in seen:
+                    seen.add(n)
+                    todo.append(n)
+        if seen != rest:
+            return None
+        # The way in, beside the step-off square: off the end of the flight
+        # first, then its side.
+        landing = [sq[0]] + ([sq[4]] if lane else [])
+        ends = [(0, -1), (1, 0), (-1, 0)] if d == "N" else [(-1, 0), (0, 1), (0, -1)]
+        for la, lb in landing:
+            for ex, ey in ends:
+                o = (la + ex, lb + ey)
+                if o in sq or at(*o) != r or o in blocked:
+                    continue
+                door = (la, max(lb, o[1]), "N") if ex == 0 else (max(la, o[0]), lb, "W")
+                return sq, door, o
+        return None
+
     spots = [(x, y, d) for y in range(h) for x in range(w) for d in ("N", "W")
              if room_kind(x, y) and ok(x, y, d)]
     order = kinds or STAIR_ROOMS
 
-    def rank(spot):
+    def place(spot):
         kind = room_kind(spot[0], spot[1])
         if kinds is None and kind in NOT_STAIR_ROOMS:
             return None
-        place = order.index(kind) if kind in order else (len(order) if kinds is None else None)
-        if place is None:
-            return None
-        return (place, bool(set(_top(*spot)) & furnished))
+        return order.index(kind) if kind in order else (len(order) if kinds is None else None)
 
-    ranked = [(r, s) for s in spots if (r := rank(s)) is not None]
-    return min(ranked)[1] if ranked else None
+    def best(lanes):
+        ranked = []
+        for spot in spots:
+            p = place(spot)
+            if p is None:
+                continue
+            for way in lanes:
+                if way == "open":
+                    ranked.append(((p, bool(set(_top(*spot)) & furnished)), (*spot, None, None)))
+                    continue
+                lane, along = way
+                got = walled_in(*spot, lane, along)
+                if got:
+                    sq, door, o = got
+                    ranked.append(((p, bool((set(sq) | {o}) & furnished), lane or 0),
+                                   (*spot, lane, door)))
+        return min(ranked)[1] if ranked else None
+
+    for lanes in WELL_TRIES.get(well, [["open"]]):
+        got = best(lanes)
+        if got:
+            return got
+    return None
 
 
 def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement | None:
@@ -304,10 +399,14 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
                     under[y, x] = spec.mask[by, bx]
     avoid = {c for s in parent.stairs for c in _run(*s)}
     kinds = STAIR_ROOMS if spec.tier == "house" else None
-    spot = find_stair_spot(ground, under, kinds, avoid)
+    # Homes and works go down behind a door at the top of the stairs; other
+    # buildings' stairs come up in a stair hall of their own.
+    well = ("stairwell" if spec.tier == "house"
+            or (spec.tier == "large" and spec.kind == "industrial") else "hall")
+    spot = find_stair_spot(ground, under, kinds, avoid, well)
     if spot is None:
         return None
-    sx, sy, d = spot
+    sx, sy, d, lane, door = spot
     here = (sx - spec.dx, sy - spec.dy, d)
     core = _core(*here)
     mask = spec.mask.tolist()
@@ -320,11 +419,29 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
         st.windows = []
         _clear_for_stairs(st, *here)
     building = Building(width=w, height=h, storeys=storeys, stairs=[here] * spec.levels)
-    top = set(_top(sx, sy, d))
+    clear = set(_top(sx, sy, d))
+    if door is not None:
+        clear = _wall_off(ground, _well(sx, sy, d, lane), door)
     ground.furniture = [f for f in ground.furniture if _is_wall_piece(f[0])
-                        or not (set(_cells_for(f[0], f[1], f[2], f[3])) & top)]
+                        or not (set(_cells_for(f[0], f[1], f[2], f[3])) & clear)]
     ground.holes |= set(_top(sx, sy, d)[1:])
     return Basement(building, spec.dx, spec.dy, spec.levels)
+
+
+def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]) -> set:
+    """Make `squares` a hall of their own, of the same flat as the room they
+    are cut from, with `door` into that room. Returns what has to be cleared
+    of furniture: the hall, and the squares either side of its door."""
+    from .layout import Room
+    a, b = squares[0]
+    was = ground.rooms[ground.grid[b][a] - 1]
+    xs, ys = [p[0] for p in squares], [p[1] for p in squares]
+    ground.rooms.append(Room(min(xs), min(ys), max(xs), max(ys), kind="hall", unit=was.unit))
+    for x, y in squares:
+        ground.grid[y][x] = len(ground.rooms)
+    ground.doors.append(door)
+    x, y, e = door
+    return set(squares) | {(x, y), (x, y - 1) if e == "N" else (x - 1, y)}
 
 
 def basement_style(style: dict | None) -> dict:

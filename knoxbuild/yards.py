@@ -519,6 +519,18 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             drives.append((min(xs), min(ys), max(xs) - min(xs) + 1,
                            max(ys) - min(ys) + 1))
 
+    # The works: a tarmac yard round each, and what stands in it.
+    from types import SimpleNamespace
+
+    from .works import WORKS_KINDS, dress_works
+    works_files = [r["file"] for r in rows if r.get("kind") in WORKS_KINDS]
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        works_doors = dict(zip(works_files, pool.map(
+            lambda f: _outside_doors(os.path.join(out_dir, "buildings", f)), works_files)))
+    canvas = SimpleNamespace(ground=ground, veg=veg, w=w, h=h, free=free, paint=paint,
+                             paved_at=paved_at, occupied_at=occupied_at)
+    dress_works(rows, works_doors, canvas, drives, random.Random(0x3077))
+
     if veg is not None and fronts:
         # No tree or bush grows in a doorway.
         for x, y in fronts:

@@ -13,7 +13,7 @@ LANDSCAPE_ORDER = [
     # schoolyard, a car park on an industrial estate - is painted over it.
     "residential",    # gardens and yards
     "commercial",     # pavement in front of shops
-    "industrial",     # gravel yards
+    "industrial",     # rough grass; the works' yards are paved later
     "military",
     "schoolyard",
     "hospital_grounds",
@@ -81,7 +81,9 @@ LANDSCAPE_FILL = {
     "plaza": C.PAVING,
     "residential": C.MEDIUM_GRASS,
     "commercial": C.PALE_CONCRETE,
-    "industrial": C.LIGHT_ASPHALT,
+    # Rough grass: each works gets its own tarmac yard round it
+    # (knoxbuild/works.py). Gravel from fence to fence was a beige plain.
+    "industrial": C.LIGHT_GRASS,
     "military": C.DIRT,
     "schoolyard": C.PALE_CONCRETE,
     "hospital_grounds": C.MEDIUM_GRASS,

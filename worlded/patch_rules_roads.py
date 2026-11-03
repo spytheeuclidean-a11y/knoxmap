@@ -106,6 +106,26 @@ RULES = [
     ("Yard bed_e", (12, 37, 221), "carpentry_03_043", "0_Furniture"),
     ("Yard bed_se", (12, 37, 222), "carpentry_03_052", "0_Furniture"),
     ("Yard bed_soil", (12, 37, 223), "floors_exterior_natural_01_018", "0_FloorOverlay6"),
+    # Works yards (knoxbuild/works.py): pallets, drums, barrels, crates and
+    # tyres along the walls, a list picked from for each square.
+    ("Works pallet", (12, 39, 200), "construction_01_5", "0_Furniture"),
+    ("Works bricks", (12, 39, 201), "construction_01_4", "0_Furniture"),
+    ("Works drum", (12, 39, 202), [f"crafted_01_{i}" for i in range(24, 33)], "0_Furniture"),
+    ("Works barrel", (12, 39, 203), ["industry_01_22", "industry_01_23"], "0_Furniture"),
+    ("Works crate", (12, 39, 204), ["carpentry_01_16", "carpentry_01_19"], "0_Furniture"),
+    ("Works tires", (12, 39, 205), [f"location_business_machinery_01_{i}"
+                                    for i in (40, 41, 42, 43, 44, 45, 48, 49, 50, 51, 52)],
+     "0_Furniture"),
+    # The dumpster's halves, read off the game's tile definitions: facing S
+    # it is 0,0 then 1,0 along x; facing E, 0,0 then 0,1 along y.
+    ("Dumpster blue s0", (12, 39, 206), "trashcontainers_01_10", "0_Furniture"),
+    ("Dumpster blue s1", (12, 39, 207), "trashcontainers_01_11", "0_Furniture"),
+    ("Dumpster blue e0", (12, 39, 208), "trashcontainers_01_9", "0_Furniture"),
+    ("Dumpster blue e1", (12, 39, 209), "trashcontainers_01_8", "0_Furniture"),
+    ("Dumpster orange s0", (12, 39, 210), "trashcontainers_01_14", "0_Furniture"),
+    ("Dumpster orange s1", (12, 39, 211), "trashcontainers_01_15", "0_Furniture"),
+    ("Dumpster orange e0", (12, 39, 212), "trashcontainers_01_13", "0_Furniture"),
+    ("Dumpster orange e1", (12, 39, 213), "trashcontainers_01_12", "0_Furniture"),
 ]
 
 # Rules for Erika's Tiles (workshop 3346506593), written only once Setup has
