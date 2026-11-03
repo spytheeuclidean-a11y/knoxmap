@@ -223,11 +223,12 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         if infilled:
             building_feats = building_feats + infilled
             buckets["building"] = buckets.get("building", []) + infilled
-        # and a shed or garage behind some of the houses
-        sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
-        if sheds:
-            building_feats = building_feats + sheds
-            buckets["building"] = buckets.get("building", []) + sheds
+    # A shed or garage behind some of the houses, whether or not the gaps are
+    # filled: a yard has one either way.
+    sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
+    if sheds:
+        building_feats = building_feats + sheds
+        buckets["building"] = buckets.get("building", []) + sheds
 
     def ground_rings(feat: OSMFeature) -> list[list[tuple[float, float]]]:
         rings = _feature_coords_px(feat, proj)
