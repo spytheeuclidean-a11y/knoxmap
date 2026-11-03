@@ -493,6 +493,35 @@ Events.OnGameBoot.Add(addToSpawnSelector)
 KNOXMAP_URL = "https://github.com/spytheeuclidean-a11y/knoxmap"
 
 
+# The Workshop shows the preview square and small, and refuses a big file
+# (tools/workshop_check.py). The mod list shows poster.png the same way.
+PREVIEW_SIDE = 512
+
+
+def write_preview(project_dir: str, mod_root: str) -> bool:
+    """preview.png and poster.png from the map's own preview: a square of
+    PREVIEW_SIDE pixels with the whole map in it, on a dark ground. False
+    without a map preview to make them from."""
+    from PIL import Image
+
+    name = os.path.basename(os.path.normpath(project_dir))
+    source = os.path.join(project_dir, f"{name}_preview.png")
+    if not os.path.exists(source):
+        return False
+    Image.MAX_IMAGE_PIXELS = None          # a town's preview is a pixel a tile
+    with Image.open(source) as src:
+        image = src.convert("RGB")
+    image.thumbnail((PREVIEW_SIDE, PREVIEW_SIDE), Image.LANCZOS)
+    square = Image.new("RGB", (PREVIEW_SIDE, PREVIEW_SIDE), (24, 26, 22))
+    square.paste(image, ((PREVIEW_SIDE - image.width) // 2, (PREVIEW_SIDE - image.height) // 2))
+    square.save(os.path.join(mod_root, "preview.png"), optimize=True)
+    # that file: the root, common/ and 42/.
+    for where in ("", "common", "42"):
+        os.makedirs(os.path.join(mod_root, where), exist_ok=True)
+        square.save(os.path.join(mod_root, where, "poster.png"), optimize=True)
+    return True
+
+
 def write_attribution(project_dir: str, mod_root: str, name: str) -> None:
     """ATTRIBUTION.txt at the root of every mod: what the map is made from.
 
@@ -505,6 +534,9 @@ def write_attribution(project_dir: str, mod_root: str, name: str) -> None:
     """
     import datetime
     import json as _json
+
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from knoxbuild import credits as _credits
 
     info = {}
     for entry in os.listdir(project_dir):
@@ -528,6 +560,8 @@ Overture Maps Foundation" alongside OpenStreetMap if you publish this map.
 {"=" * len(name)}
 
 A Project Zomboid map generated with KnoxMap ({KNOXMAP_URL}).
+
+{_credits.plain()}
 
 MAP DATA
 Map data (c) OpenStreetMap contributors, available under the Open Database
@@ -910,7 +944,8 @@ def package(project_dir: str, name: str, mod_id: str,
     # marker. Match that exactly.
     info = (f"name={name}\n"
             f"id={mod_id}\n"
-            f"description={desc}\n")
+            f"description={desc}\n"
+            f"poster=poster.png\n")
     # A map built with Erika's Tiles cannot load without it. The compiled
     # headers list every tile the map uses - buildings, shop signs and the
     # street signs alike.
@@ -931,6 +966,7 @@ def package(project_dir: str, name: str, mod_id: str,
             f.write(info)
 
     write_attribution(project_dir, mod_root, name)
+    has_preview = write_preview(project_dir, mod_root)
     n_cells = sum(1 for c in cells if c.endswith(".lotheader"))
     big_map = n_cells >= BIG_MAP_CELLS
     write_how_to_play(mod_root, name, n_cells, big_map)
@@ -952,6 +988,8 @@ def package(project_dir: str, name: str, mod_id: str,
     if spawn_picture:
         extra_names.append("spawnSelectImagePyramid.zip (the map's picture for the spawn picker)")
     extra_names.append(f"SERVER SETUP.txt and server/{regions}")
+    if has_preview:
+        extra_names.append("preview.png and poster.png (the Workshop picture and the mod list's)")
     saves = worlds_already_made()
     if saves:
         extra_names.append(
