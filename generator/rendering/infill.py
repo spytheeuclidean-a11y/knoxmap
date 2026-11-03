@@ -49,6 +49,7 @@ REAR_CLEAR_M = 2.5         # kept clear behind a new building
 MIN_NEIGHBOUR_M2 = 40.0    # sheds and garages say nothing about the street
 MIN_LOT_M = 5.0            # narrowest new building
 MAX_LOT_M = 28.0           # widest; a longer gap is cut into more lots
+SIDE_STEPS = 4             # stations of side gap a row is carried across
 SIDE_GAP_M = 3.0           # between detached houses
 EDGE_SLACK_M = 0.05        # so a side gap never rounds to under SIDE_GAP_M
                            # on its way through lat/lon and back
@@ -219,16 +220,30 @@ def _neighbours(scan, states, i, step, info, limit=3):
     that starts next to station `i` and goes in direction `step`, and whether
     that stretch is more than one building: a row joined wall to wall."""
     seen: list[int] = []
+    joined = False
     j = i
-    while 0 <= j < len(states) and states[j] == "B":
+    while 0 <= j < len(states):
+        if states[j] != "B":
+            # The side gap between two detached houses is not the end of the
+            # row: step over it to the next building.
+            k = j
+            while (0 <= k < len(states) and states[k] != "B"
+                   and abs(k - j) <= SIDE_STEPS):
+                k += step
+            if not (0 <= k < len(states) and states[k] == "B" and seen):
+                break
+            j = k
+            continue
         b = int(scan["which"][j])
         if b not in seen:
             if len(seen) == limit:
                 break
+            if seen and states[j - step] == "B":
+                joined = True       # wall to wall, no gap between
             seen.append(b)
         j += step
     return ([info[b] for b in seen
-             if info[b] and info[b]["area"] >= MIN_NEIGHBOUR_M2], len(seen) > 1)
+             if info[b] and info[b]["area"] >= MIN_NEIGHBOUR_M2], joined)
 
 
 def _describe(scan, states, bi, poly, tags):
@@ -300,8 +315,25 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     both = bool(left and right)
     limit = min(MAX_GAP_BOTH_M, max(40.0, 10 * width)) if both else \
         min(MAX_GAP_ONE_M, max(20.0, 2.5 * width))
-    if length > limit or length < MIN_LOT_M:
+    if length < MIN_LOT_M:
         return []
+    if length > limit:
+        # Too long to fill whole: carry the row on from each neighbour as far
+        # as a row is carried (half the limit from each end when both stand),
+        # and leave the middle as it is.
+        reach = int((limit / 2 if both else limit) // STEP_M)
+        done = []
+        for part in ((i0, i0 + reach - 1, left, [], lo, None) if left else None,
+                     (i1 - reach + 1, i1, [], right, None, hi) if right else None):
+            if part is None or reach < 1:
+                continue
+            got = _lots_for_gap(scan, part[0], part[1], part[2], part[3],
+                                hard_free, joined, part[4], part[5])
+            if got:
+                done.append(got)
+        if not done:
+            return []
+        return ([lot for g in done for lot in g[0]], done[0][1], done[0][2])
 
     # The pavement edge of the gap; ends against a neighbour keep a garden's
     # width from it, ends against a road or nothing keep a little less.

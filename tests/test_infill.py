@@ -34,6 +34,12 @@ def polys(feats):
     return [Polygon([PROJ.to_px(la, lo) for la, lo in f.geometry]) for f in feats]
 
 
+def in_hole(feats):
+    """The new buildings standing in the hole of Houses.scene, not the row
+    carried on past its ends."""
+    return [f for f, p in zip(feats, polys(feats)) if 109 < p.bounds[0] < 184]
+
+
 def fill(buildings, roads=(), **buckets):
     roads = list(roads) or [street()]
     return _infill_frontage({"road_minor": roads, **buckets}, [], buildings, PROJ)
@@ -46,7 +52,7 @@ class Houses(unittest.TestCase):
         return row(40, 14, 18, 15, 130, 142, skip=(4, 5, 6, 7))
 
     def test_a_hole_in_a_row_is_filled(self):
-        made = fill(self.scene())
+        made = in_hole(fill(self.scene()))
         self.assertGreaterEqual(len(made), 3)
         for p in polys(made):
             self.assertTrue(112 <= p.bounds[0] and p.bounds[2] <= 192)
@@ -82,7 +88,7 @@ class Houses(unittest.TestCase):
     def test_a_church_beside_the_gap_says_nothing(self):
         scene = self.scene()
         scene[3] = box(103, 94, 111, 130, 142, building="church")
-        self.assertEqual([f for f in fill(scene)
+        self.assertEqual([f for f in in_hole(fill(scene))
                           if polys([f])[0].bounds[0] < 120], [])
 
     def test_filling_is_repeatable(self):
@@ -133,7 +139,7 @@ class Blocked(unittest.TestCase):
         lake = way(50, [(112, 100), (190, 100), (190, 146), (112, 146), (112, 100)],
                    natural="water")
         made = fill(Houses().scene(), water=[lake])
-        self.assertEqual(made, [])
+        self.assertEqual(in_hole(made), [])
 
     def test_a_side_street_is_not_built_across(self):
         cross = way(60, [(150, 40), (150, 150)], highway="residential")
@@ -146,6 +152,22 @@ class Blocked(unittest.TestCase):
         edge = row(0, 3, 18, 15, 130, 142) + row(70, 3, 18, 15, 130, 142)
         for p in polys(fill(edge)):
             self.assertGreaterEqual(p.bounds[0], 0)
+
+
+class LongGaps(unittest.TestCase):
+    def test_a_row_ending_in_a_long_empty_stretch_is_carried_on(self):
+        made = polys(fill(row(40, 4, 18, 15, 130, 142)))
+        self.assertTrue(made)
+        # a little way on from the last house (it ends at x=109), not far
+        self.assertTrue(all(p.bounds[0] < 109 + 50 for p in made))
+
+    def test_a_long_gap_between_rows_is_filled_from_both_ends_only(self):
+        left = row(40, 3, 18, 15, 130, 142)
+        right = [box(200 + i, 260 + i * 18, 275 + i * 18, 130, 142) for i in range(3)]
+        made = polys(fill(left + right))
+        self.assertTrue(any(p.bounds[2] < 150 for p in made))
+        self.assertTrue(any(p.bounds[0] > 200 for p in made))
+        self.assertFalse(any(150 < p.bounds[0] < 200 for p in made))
 
 
 if __name__ == "__main__":
