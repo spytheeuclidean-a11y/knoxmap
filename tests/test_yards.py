@@ -118,6 +118,17 @@ class BackYards(unittest.TestCase):
             self.assertEqual({(x + 1, y) for x, y in x0}, x1, door)
             self.assertEqual({(x, y + 1) for x, y in y0}, y1, door)
 
+    def test_a_blocked_half_takes_the_whole_deck_chair_with_it(self):
+        """With water where the second half would go, the first half is not
+        left standing alone."""
+        houses = [("house", 10, 10)]
+        veg = _paint(40, 40, houses, veg=True)
+        x0, x1 = self.pieces(veg, C.TABLE_X0), self.pieces(veg, C.TABLE_X1)
+        self.assertTrue(x0 and x1)
+        veg = _paint(40, 40, houses, water=list(x1), veg=True)
+        self.assertEqual(self.pieces(veg, C.TABLE_X0), set())
+        self.assertEqual(self.pieces(veg, C.TABLE_X1), set())
+
 
 if __name__ == "__main__":
     unittest.main()

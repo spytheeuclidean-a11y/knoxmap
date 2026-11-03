@@ -401,6 +401,15 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 claimed_bytes[y * w + x] = 1
                 return True
 
+            def place_pair(first, second):
+                """Both halves of one two-tile sprite, or neither: a half
+                alone is half a deck chair."""
+                for u, v, _c in (first, second):
+                    x, y = at(u, v)
+                    if (x, y) in taken or not free(x, y):
+                        return False
+                return place(*first) and place(*second)
+
             # Patio: stone outside the back door, three deep; behind the middle
             # of the house if the back door is not on the yard side.
             mid = width // 2
@@ -417,12 +426,12 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                         ground, veg, crossable, claimed, (at(u, v),)))
             place(mid - 2, 1, C.GRILL)
             if dy:
-                place(mid, 1, C.TABLE_X0); place(mid + 1, 1, C.TABLE_X1)
+                place_pair((mid, 1, C.TABLE_X0), (mid + 1, 1, C.TABLE_X1))
                 place(mid, 0, C.CHAIR_N); place(mid + 1, 2, C.CHAIR_S)
             else:
                 # The deck chair's halves run along u (north to south here),
                 # as in the other branch; along v they stood side by side.
-                place(mid, 1, C.TABLE_Y0); place(mid + 1, 1, C.TABLE_Y1)
+                place_pair((mid, 1, C.TABLE_Y0), (mid + 1, 1, C.TABLE_Y1))
                 place(mid - 1, 1, C.CHAIR_W); place(mid + 1, 2, C.CHAIR_E)
             for x, y in patio_tiles:
                 claimed_bytes[y * w + x] = 1
