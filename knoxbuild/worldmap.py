@@ -63,6 +63,10 @@ AREA_VALUE = {"water": ("water", "river"), "pool": ("water", "river"),
 # every alley and pavement buries the streets people navigate by.
 NAMED_CLASSES = {"road_major", "road_medium", "road_minor", "road_service",
                  "pedestrian"}
+# The credit lines under the OpenStreetMap note on the paper map: names to a line,
+# and tiles between lines.
+CREDIT_NAMES_PER_LINE = 4
+CREDIT_LINE_GAP = 8
 SIMPLIFY = 0.5     # tiles; the map is drawn far smaller than one tile per pixel
 
 # Points in one <street> of streets.xml, at most. Project Zomboid (Build 42) builds
@@ -213,6 +217,17 @@ def write(out_dir: str, map_name: str, proj, info: dict,
     # players open, as the ODbL attribution guidelines ask of produced works.
     labels.append(("Map data (c) OpenStreetMap contributors", "text-note", 0.35,
                    min(width - 1, 150), min(height - 1, 12)))
+    # And the credit for KnoxMap and everyone who made it, under it: one line
+    # for the maker, then the rest in lines of CREDIT_NAMES_PER_LINE.
+    from . import credits
+    people = list(credits.CONTRIBUTORS)
+    credit_lines = [f"Made with KnoxMap by {credits.MAKER}"]
+    credit_lines += ["with " + ", ".join(people[i:i + CREDIT_NAMES_PER_LINE]) if i == 0
+                     else ", ".join(people[i:i + CREDIT_NAMES_PER_LINE])
+                     for i in range(0, len(people), CREDIT_NAMES_PER_LINE)]
+    for n, line in enumerate(credit_lines, start=1):
+        labels.append((line, "text-note", 0.35, min(width - 1, 150),
+                       min(height - 1, 12 + CREDIT_LINE_GAP * n)))
     _write_annotations(os.path.join(out_dir, "worldmap-annotations.lua"),
                        labels, width, height)
     return {"map_features": len(features), "map_cells": cells, "streets": named,

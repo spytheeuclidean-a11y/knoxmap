@@ -25,8 +25,16 @@ class WorksYards(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         works = [("industrial", X, Y)]
-        cls.ground = _paint(50, 50, works)
-        cls.veg = _paint(50, 50, works, veg=True)
+        # The yards on their own: the credit lettered in the ground
+        # (knoxbuild/credit_ground.py) has its own tests, and would be land
+        # beyond the yard that is not grass.
+        from knoxbuild import credit_ground
+        keep, credit_ground.LAYOUTS = credit_ground.LAYOUTS, []
+        try:
+            cls.ground = _paint(50, 50, works)
+            cls.veg = _paint(50, 50, works, veg=True)
+        finally:
+            credit_ground.LAYOUTS = keep
         cls.r = yard_width(SIZE, SIZE)
 
     def ring(self, x, y):

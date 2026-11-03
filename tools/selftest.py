@@ -4416,6 +4416,9 @@ def main(argv: list[str]) -> int:
               f"no street on the paper map too long for the game to draw ({longest} points)")
         notes = open(os.path.join(out, "worldmap-annotations.lua"), encoding="utf-8").read()
         check("OpenStreetMap contributors" in notes, "OpenStreetMap credit on the in-game map")
+        from knoxbuild import credits
+        check(credits.MAKER in notes and all(n in notes for n in credits.CONTRIBUTORS),
+              "KnoxMap and every contributor credited on the in-game map")
         check("Selftest School" in notes or "Selftest Church" in notes, "landmarks labelled")
 
         print("spawn map")
