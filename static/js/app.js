@@ -2238,6 +2238,13 @@ function wireDownload(link, name, label) {
   link.addEventListener('click', e => { e.preventDefault(); saveFile(name, label); });
 }
 
+// Done with this map: put the page back as it was before Generate, ready for
+// another area. The map itself stays on disk; nothing is stopped or deleted.
+document.getElementById('resultsClose').addEventListener('click', () => {
+  document.getElementById('results').hidden = true;
+  document.getElementById('map').scrollIntoView({ block: 'start' });
+});
+
 function renderResults(data) {
   const section = document.getElementById('results');
   section.hidden = false;

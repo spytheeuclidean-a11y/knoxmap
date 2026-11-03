@@ -46,8 +46,8 @@ class Settings:
     # and on 45-degree diagonals, like Knox County's (1); routed in vanilla
     # B42's sixteen directions with its own street shapes and curves (2); or
     # that, with built-up streets kept on the grid and off the buildings (3).
-    # 2 and 3 take minutes on a town (generator/roadgraph).
-    straight_roads: int = 1
+    # 2 and 3 take minutes on a town (generator/roadgraph). 3 is the default.
+    straight_roads: int = 3
 
     # --- terrain ---------------------------------------------------------
     # Multiplies how much tree cover the map gets: the woods the mapper drew,

@@ -9,8 +9,8 @@ from shapely.geometry import LineString, Point
 
 class OctilinearRoadDefaults(unittest.TestCase):
     def test_straight_roads_are_default_but_can_be_disabled(self):
-        self.assertEqual(Settings().straight_roads, 1)
-        self.assertEqual(Settings.from_dict({}).straight_roads, 1)
+        self.assertEqual(Settings().straight_roads, 3)
+        self.assertEqual(Settings.from_dict({}).straight_roads, 3)
         self.assertEqual(Settings.from_dict({"straight_roads": 0}).straight_roads, 0)
         # By name, not by position: counted off the end of the argument list
         # this moved every time the renderer gained a knob, and said nothing

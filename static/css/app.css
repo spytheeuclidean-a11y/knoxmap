@@ -422,7 +422,8 @@ body.rotate-dragging * {
 
 /* ---- results ------------------------------------------------------------------ */
 #results { padding: 16px; border-top: 1px solid var(--line); background: var(--bg); }
-#results h2 { font-size: 17px; margin-bottom: 10px; }
+#results h2 { font-size: 17px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+#results .results-close { margin-left: auto; font-weight: normal; }
 #results h3 { font-size: 15px; margin: 16px 0 8px; }
 #results-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 16px; }
 @media (max-width: 820px) { #results-grid { grid-template-columns: 1fr; } }
