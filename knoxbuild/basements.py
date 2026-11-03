@@ -205,6 +205,27 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
 STAIR_ROOMS = ("hall", "corridor", "lobby", "laundry", "storage", "office", "kitchen",
                "dining", "livingroom")
 NOT_STAIR_ROOMS = {"bathroom", "bedroom", "kidsbedroom"}
+# A house with no wall in any other room to stand a stairwell against goes
+# down through a bedroom before the flight comes up open in the middle of one.
+LAST_RESORT_ROOMS = {"bedroom", "kidsbedroom"}
+
+
+# What a house's cellar is, as (layout kind, weight, finished). A finished one
+# keeps the house's own walls and floors; the rest are bare concrete.
+HOUSE_BASEMENTS = (("basement_house", 35, False), ("basement_house_rec", 20, True),
+                   ("basement_house_workshop", 15, False),
+                   ("basement_house_shelter", 10, True),
+                   ("basement_house_cellar", 20, False))
+
+
+def _house_basement(seed: int) -> tuple[str, bool]:
+    """(layout kind, finished) of a house's cellar, a function of its seed."""
+    pick = random.Random(seed ^ 0x5BD1E995).uniform(0, sum(w for _k, w, _f in HOUSE_BASEMENTS))
+    for kind, weight, finished in HOUSE_BASEMENTS:
+        pick -= weight
+        if pick <= 0:
+            return kind, finished
+    return HOUSE_BASEMENTS[0][0], False
 
 
 @dataclass
@@ -213,6 +234,7 @@ class Basement:
     dx: int
     dy: int
     levels: int
+    finished: bool = False
 
 
 def _run(x: int, y: int, d: str) -> list[tuple[int, int]]:
@@ -350,16 +372,20 @@ def find_stair_spot(ground, under: np.ndarray, kinds: tuple[str, ...] | None,
              if room_kind(x, y) and ok(x, y, d)]
     order = kinds or STAIR_ROOMS
 
-    def place(spot):
+    def place(spot, loose=False):
         kind = room_kind(spot[0], spot[1])
+        if loose:
+            if kind in order:
+                return order.index(kind)
+            return len(order) if kind in LAST_RESORT_ROOMS else None
         if kinds is None and kind in NOT_STAIR_ROOMS:
             return None
         return order.index(kind) if kind in order else (len(order) if kinds is None else None)
 
-    def best(lanes):
+    def best(lanes, loose=False):
         ranked = []
         for spot in spots:
-            p = place(spot)
+            p = place(spot, loose)
             if p is None:
                 continue
             for way in lanes:
@@ -378,6 +404,12 @@ def find_stair_spot(ground, under: np.ndarray, kinds: tuple[str, ...] | None,
         got = best(lanes)
         if got:
             return got
+        # Not in a room it was meant for: in a bedroom, behind a door, still
+        # against a wall if there is one.
+        if lanes != ["open"] and kinds is not None:
+            got = best(lanes, loose=True)
+            if got:
+                return got
     return None
 
 
@@ -410,7 +442,10 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
     here = (sx - spec.dx, sy - spec.dy, d)
     core = _core(*here)
     mask = spec.mask.tolist()
-    storeys = [build_plan(w, h, seed=seed + 977 * i, kind=f"basement_{spec.kind}",
+    kind, finished = (f"basement_{spec.kind}", False)
+    if spec.tier == "house" and spec.kind in ("house", None):
+        kind, finished = _house_basement(seed)
+    storeys = [build_plan(w, h, seed=seed + 977 * i, kind=kind,
                           mask=mask, ground=False, settings=settings, core=core,
                           level=i, levels=spec.levels + 1, stairs=here,
                           corridor=spec.tier == "installation")
@@ -425,7 +460,7 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
     ground.furniture = [f for f in ground.furniture if _is_wall_piece(f[0])
                         or not (set(_cells_for(f[0], f[1], f[2], f[3])) & clear)]
     ground.holes |= set(_top(sx, sy, d)[1:])
-    return Basement(building, spec.dx, spec.dy, spec.levels)
+    return Basement(building, spec.dx, spec.dy, spec.levels, finished)
 
 
 def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]) -> set:
@@ -444,17 +479,20 @@ def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]
     return set(squares) | {(x, y), (x, y - 1) if e == "N" else (x - 1, y)}
 
 
-def basement_style(style: dict | None) -> dict:
-    """The building's style with concrete walls and floors: the industrial kit."""
+def basement_style(style: dict | None, finished: bool = False) -> dict:
+    """The building's style with concrete walls and floors: the industrial kit.
+    A finished cellar keeps the house's own interior walls and floor."""
     from . import catalog as C
     plant = C.SPECIAL_STYLES["industrial"]
     out = dict(style or {})
-    out.update(exterior=plant["exterior"], interior=plant["interior"], floor=plant["floor"],
-               roof=None, trim=None, shutters=None, grime=None, windows_by_levels=None)
+    out.update(exterior=plant["exterior"], roof=None, trim=None, shutters=None,
+               grime=None, windows_by_levels=None)
+    if not (finished and out.get("interior") and out.get("floor")):
+        out.update(interior=plant["interior"], floor=plant["floor"])
     out.setdefault("name", "basement")
     return out
 
 
 def render_basement(b: Basement, label: str, style: dict | None) -> str:
     from .tbx import render_tbx
-    return render_tbx(b.building, label, basement_style(style), roof=False)
+    return render_tbx(b.building, label, basement_style(style, b.finished), roof=False)

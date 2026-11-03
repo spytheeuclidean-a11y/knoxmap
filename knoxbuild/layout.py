@@ -458,6 +458,15 @@ SPECIAL_MIXES = {
     # room; a base's bunker is stores, bunks and offices.
     "basement_house":      (["laundry", "storage", "garage", "livingroom"],
                             ["storage", "livingroom"]),
+    # ...and the other things a house's cellar is (basements.HOUSE_BASEMENTS):
+    # a finished rec room, a workshop, a family's shelter, a plain store.
+    "basement_house_rec":      (["livingroom", "bathroom", "laundry", "storage"],
+                                ["livingroom", "storage"]),
+    "basement_house_workshop": (["garage", "storage", "laundry", "storage"],
+                                ["garage", "storage"]),
+    "basement_house_shelter":  (["storage", "bedroom", "kitchen", "storage", "bathroom"],
+                                ["storage", "bedroom"]),
+    "basement_house_cellar":   (["storage", "storage", "laundry"], ["storage"]),
     # A block of flats keeps its shared laundry and the tenants' store rooms
     # downstairs.
     "basement_apartment":  (["laundry", "storage", "storage"], ["storage"]),
@@ -4315,7 +4324,9 @@ ROOM_DENSITY = {"classroom": 2, "secondaryclassroom": 2, "schoollab": 2,
 WAREHOUSE_ROLES = {"metal_rack", "crate"}
 # A house's cellar is part of the home: without it, its laundry was fitted
 # out as a laundromat, coin washers down one wall and dryers down the other.
-HOME_KINDS = {None, "house", "apartment", "basement_house"}
+HOME_KINDS = {None, "house", "apartment", "basement_house", "basement_house_rec",
+              "basement_house_workshop", "basement_house_shelter",
+              "basement_house_cellar"}
 # What a home puts in a box room instead.
 HOME_STORE = {"metal_rack": "shelf", "crate": "dresser"}
 CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "military",

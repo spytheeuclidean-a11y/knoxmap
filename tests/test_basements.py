@@ -7,8 +7,9 @@ from types import SimpleNamespace
 import numpy as np
 from shapely.geometry import box as shape_box
 
-from knoxbuild.basements import (BasementSpec, Underground, _inside, levels_for,
-                                 plan_basement, render_basement, reserve, tier)
+from knoxbuild.basements import (BasementSpec, HOUSE_BASEMENTS, STAIR_ROOMS, Underground,
+                                 _house_basement, _inside, basement_style,
+                                 find_stair_spot, levels_for, plan_basement, render_basement, reserve, tier)
 from knoxbuild.buildtiles import parse_tbx
 from knoxbuild.layout import _blocks as layout_blocks, build_building
 from knoxbuild.buildheader import placed_rooms
@@ -228,6 +229,18 @@ class Planning(unittest.TestCase):
                                   and layout_blocks(f[0])])
         self.assertGreaterEqual(walled, 10)
 
+    def test_a_small_house_stairwell_is_walled_off_not_open(self):
+        """A 12 x 10 house used to have its flight come up open in a room one
+        time in fifteen: no bedroom was tried before that."""
+        for seed in range(40):
+            parent = build_building(12, 10, seed=seed)
+            mask = np.ones((parent.height, parent.width), dtype=bool)
+            spot = find_stair_spot(parent.storeys[0], _inside(mask), STAIR_ROOMS,
+                                   set(), "stairwell")
+            with self.subTest(seed=seed):
+                self.assertIsNotNone(spot)
+                self.assertIsNotNone(spot[4])      # a door
+
     def test_open_stairs_have_a_room_of_their_own(self):
         """A school's stairs come up in a stair hall: the flight and a lane
         beside it, walled off with a door, so nothing stands in the way."""
@@ -280,6 +293,36 @@ class Planning(unittest.TestCase):
         tbx = parse_tbx(render_basement(b, "t", None))
         self.assertEqual(len(tbx.floors), 1)
         self.assertTrue(any(o.get("type") == "stairs" for o in tbx.floors[0].objects))
+
+
+class Variety(unittest.TestCase):
+    def test_house_cellars_are_not_all_the_same_programme(self):
+        kinds = {_house_basement(seed)[0] for seed in range(200)}
+        self.assertEqual(kinds, {k for k, _w, _f in HOUSE_BASEMENTS})
+
+    def test_a_cellar_is_a_function_of_its_seed(self):
+        self.assertEqual(_house_basement(17), _house_basement(17))
+
+    def test_every_programme_lays_out_with_rooms_the_game_knows(self):
+        from knoxbuild.layout import ROOM_STYLE as ROOMS
+        seen = set()
+        for seed in range(120):
+            parent = build_building(16, 12, seed=seed)
+            b = plan_basement(parent, house_spec(parent), seed, Settings())
+            if b is None:
+                continue
+            seen.add(_house_basement(seed)[0])
+            for r in b.building.rooms:
+                self.assertIn(r.kind, ROOMS, (seed, r.kind))
+            self.assertEqual(b.finished, _house_basement(seed)[1])
+        self.assertEqual(seen, {k for k, _w, _f in HOUSE_BASEMENTS})
+
+    def test_a_finished_cellar_keeps_the_house_s_walls_and_floor(self):
+        house = {"interior": "painted", "floor": "oak", "exterior": "brick"}
+        self.assertEqual(basement_style(house, True)["interior"], "painted")
+        self.assertEqual(basement_style(house, True)["floor"], "oak")
+        self.assertNotEqual(basement_style(house, False)["interior"], "painted")
+        self.assertNotEqual(basement_style(house, True)["exterior"], "brick")
 
 
 @NEEDS_KNOXLOTS
