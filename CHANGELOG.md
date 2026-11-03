@@ -1,5 +1,37 @@
 # Changelog
 
+## 1.8.4.1
+
+- **Stairs down get a room of their own.** A house's cellar stairs go behind a
+  door in a one-wide stairwell, flats and ordinary works the same, and bigger
+  buildings get a stair hall. Open stairs in the middle of a room are the last
+  resort, and a bedroom is tried before them. Blocks of flats get basements: a
+  shared laundry and the tenants' store rooms.
+- **Five kinds of cellar.** A house's basement is a plain store, a finished rec
+  room, a workshop, a family's shelter or a store, chosen from the house, with
+  the finished ones keeping the house's own walls and floor.
+- **Malls are one mall.** A mall is kept whole up to 60,000 m2 instead of being
+  cut into blocks, and a "Center", "Centre" or "Plaza" with shops mapped inside
+  is a mall too. A big one is laid out as a US enclosed mall: anchors at the
+  ends, a centre court with escalators and a lift, units down both sides, a
+  food court, kiosks and a service corridor behind. The side arms run through
+  to the outer wall with shops down both sides, and a mall is drawn as retail
+  on the paper map.
+- **Industrial yards.** Works get tarmac yards on light grass instead of
+  gravel from fence to fence.
+- **Fuller streets.** A row of detached houses with a gap in it is filled, and
+  a row is carried on past its last house, where it was left alone before. A
+  shed or garage stands behind about a third of the houses on a street, on
+  every map.
+- **No dark patches on the roads.** The smooth grime patches that looked like
+  shadows across the tarmac are gone from streets and yards.
+- **Close the map window.** The panel that opens after Generate has a Close
+  button, so you can make another map without quitting.
+- **Back yards:** both halves of the deck chair are placed together or not at
+  all.
+
+Regenerate a map, and start a new world, to see these.
+
 ## 1.8.4
 
 - **Basements.** Houses (about 4 in 10), schools, hospitals, police, civic
