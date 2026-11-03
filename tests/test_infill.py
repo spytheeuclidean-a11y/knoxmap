@@ -4,7 +4,7 @@ import unittest
 from shapely.geometry import Polygon
 
 from generator.osm import OSMFeature
-from generator.rendering.infill import _infill_frontage
+from generator.rendering.infill import _back_sheds, _infill_frontage
 from generator.rendering.projection import Projector
 
 PROJ = Projector.build(35.90, -84.00, 35.92, -83.97, 1.0)
@@ -168,6 +168,46 @@ class LongGaps(unittest.TestCase):
         self.assertTrue(any(p.bounds[2] < 150 for p in made))
         self.assertTrue(any(p.bounds[0] > 200 for p in made))
         self.assertFalse(any(150 < p.bounds[0] < 200 for p in made))
+
+
+class BackSheds(unittest.TestCase):
+    def sheds(self, houses, **buckets):
+        return _back_sheds({"road_minor": [street()], **buckets}, [], houses, PROJ)
+
+    def yard(self):
+        # forty 15 x 12 m houses on a street, standing back 4 m
+        return row(40, 14, 18, 15, 156, 168)
+
+    def test_some_houses_get_a_shed_behind_them(self):
+        made = polys(self.sheds(self.yard()))
+        self.assertTrue(made)
+        self.assertLess(len(made), 14)
+        for p in made:
+            self.assertGreater(p.bounds[1], 168)      # behind the house
+
+    def test_nothing_overlaps_a_house_or_a_shed(self):
+        houses = self.yard()
+        every = polys(houses) + polys(self.sheds(houses))
+        for i, a in enumerate(every):
+            for b in every[i + 1:]:
+                self.assertEqual(a.intersection(b).area, 0)
+
+    def test_sheds_are_repeatable(self):
+        a = [f.geometry for f in self.sheds(self.yard())]
+        self.assertEqual(a, [f.geometry for f in self.sheds(self.yard())])
+
+    def test_no_shed_where_a_building_already_stands_behind(self):
+        houses = self.yard() + [box(500 + i, 40 + i * 18, 52 + i * 18, 172, 178,
+                                    building="shed") for i in range(14)]
+        self.assertEqual(self.sheds(houses), [])
+
+    def test_no_shed_on_water(self):
+        lake = way(50, [(0, 169), (400, 169), (400, 260), (0, 260), (0, 169)],
+                   natural="water")
+        self.assertEqual(self.sheds(self.yard(), water=[lake]), [])
+
+    def test_a_lone_shed_is_not_a_house(self):
+        self.assertEqual(self.sheds([box(1, 100, 106, 156, 160)]), [])
 
 
 if __name__ == "__main__":
