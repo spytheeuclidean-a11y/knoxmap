@@ -13,7 +13,9 @@ from ..osm import ROAD_HIERARCHY_BY_CODE
 # (tools/building_stats.py's neighbourhoods): grime on 9% of the tarmac, cracks
 # on under 0.5%, a lamp per ~290 squares of street, and so on. Spacings are in
 # tiles along the kerb.
-GRIME_SHARE = 0.14
+# The grime was smooth dark patches on the road that read as shadows across it,
+# so it is off; set above 0 to bring it back.
+GRIME_SHARE = 0.0
 # Roads at least this wide get a faded edge line down each side.
 EDGE_LINE_MIN_WIDTH = 5
 CRACK_SHARE = 0.012
@@ -207,7 +209,8 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     coarse = Image.fromarray((rng.random((max(1, h // 5), max(1, w // 5))) * 255).astype(np.uint8))
     noise = np.asarray(coarse.resize((w, h), Image.BICUBIC)
                        .filter(ImageFilter.GaussianBlur(2)), dtype=np.float32)
-    level = np.quantile(noise[asphalt], 1 - GRIME_SHARE) if asphalt.any() else 256
+    level = (np.quantile(noise[asphalt], 1 - GRIME_SHARE)
+             if GRIME_SHARE > 0 and asphalt.any() else 256)
     pick = asphalt & empty & (noise >= level)
     out[pick] = C.ASPHALT_GRIME
     empty &= ~pick

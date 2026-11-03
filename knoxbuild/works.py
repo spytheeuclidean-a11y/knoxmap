@@ -24,7 +24,7 @@ DRIVE_MAX = 120
 DRIVE_WIDTH = 3
 CLUTTER_EVERY = 9                # tiles of wall per stack of clutter
 # Wear on the yard's tarmac, as the street pass has it on the roads.
-GRIME_SHARE = 1 / 9
+GRIME_SHARE = 0.0     # no dark patches on the tarmac, as on the roads
 CRACK_SHARE = 1 / 14
 # (colour, fewest and most in a row along the wall)
 CLUTTER = [(C.WORKS_PALLET, (2, 4)), (C.WORKS_BRICKS, (1, 3)), (C.WORKS_DRUM, (2, 4)),
