@@ -23,6 +23,12 @@ from .widths import _way_width_m
 # household's size is put there, upright on the grid; the rest of the build
 # treats it like any other footprint, so it is skipped if a real building
 # already covers the spot and it moves off the road like the others do.
+#
+# Except where the numbers are the ends of an address interpolation: a line
+# along the street tagged addr:interpolation, whose end nodes say "2" and
+# "48" for every home between. Those two points are the ends of a range, not
+# two houses, and they stand at a corner or in the gap between real houses,
+# so a house made from them was wedged in among the ones Overture filled in.
 ADDRESS_HOUSE_M = (9.0, 11.0)    # frontage, depth: a small detached house
 ADDRESS_CLEAR_M = 4.0            # keep this far off a mapped building
 ADDRESS_APART_M = 7.0            # and this far from the next address point
@@ -81,9 +87,14 @@ def _houses_from_addresses(feats: list["OSMFeature"], buildings: list["OSMFeatur
     from shapely.geometry import LineString, Point, Polygon
     from shapely.strtree import STRtree
 
+    # Overpass gives an interpolation line the same coordinates as its nodes,
+    # so a node is found on one by where it is.
+    ranges = {tuple(p) for f in feats
+              if f.kind == "way" and f.tags.get("addr:interpolation")
+              for p in f.geometry}
     points = [f for f in feats
               if f.kind == "node" and f.geometry and f.tags.get("addr:housenumber")
-              and not f.tags.get("building")]
+              and not f.tags.get("building") and tuple(f.geometry[0]) not in ranges]
     if not points:
         return []
     shapes = []

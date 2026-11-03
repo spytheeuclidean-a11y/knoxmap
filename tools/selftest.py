@@ -118,6 +118,14 @@ def town() -> list[OSMFeature]:
                                 {"addr:housenumber": str(k * 2 + 1),
                                  "addr:street": "Avenue 6"},
                                 [_ll(120 + k * 14, 500)]))
+    # And one whose numbers are only an interpolation: a line saying 2 to 48
+    # are along here, numbered at its two ends. Those ends are not houses.
+    feats.append(way({"addr:interpolation": "even", "addr:street": "Range Row"},
+                     [(270, 500), (390, 500)]))
+    for number, x in (("2", 270), ("48", 390)):
+        feats.append(OSMFeature(next(_ids), "node",
+                                {"addr:housenumber": number, "addr:street": "Range Row"},
+                                [_ll(x, 500)]))
     # A river with a bridge carrying High Street over it.
     feats.append(way({"waterway": "river", "name": "Selftest River"}, [(560, 30), (560, 600)]))
     feats.append(way({"natural": "water", "water": "river"}, box(550, 0, 572, 600)))
@@ -241,6 +249,10 @@ def check_1_3_6(check, out: str, tbx: list[str], pzw_text: str, log: str) -> Non
                  if (f.get("properties") or {}).get("addr:street") == "Avenue 6"]
     check(len(addressed) >= 6,
           f"a street of addresses with no buildings gets houses ({len(addressed)})")
+    ranged = [f for f in geo["features"]
+              if (f.get("properties") or {}).get("addr:street") == "Range Row"]
+    check(not ranged,
+          f"the ends of an address interpolation are not houses ({len(ranged)})")
 
     # Trees and scrub on ground nobody mapped, and none on the farmland.
     from generator import pz_colors as _C

@@ -307,11 +307,16 @@ OVERPASS_FILTERS: Sequence[str] = (
     # nothing else; those streets came out as roads through empty grass
     # (generator/rendering/buildings.py _houses_from_addresses).
     'node["addr:housenumber"]',
+    # The line along a street that says "numbers 2 to 48 are along here".
+    # Its end nodes carry addr:housenumber too, but they mark the ends of a
+    # range and not two homes, so they are fetched only to be told apart from
+    # the house numbers above.
+    'way["addr:interpolation"]',
 )
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 14
+FILTERS_VERSION = 15
 
 
 @dataclass
