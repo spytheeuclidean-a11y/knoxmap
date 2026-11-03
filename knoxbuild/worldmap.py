@@ -42,7 +42,8 @@ CELL = 300
 # the vanilla style colours; a shed is drawn as a plain building.
 BUILDING_VALUE = {
     "house": "Residential", "apartment": "Residential",
-    "shop": "RetailAndCommercial", "restaurant": "RestaurantsAndEntertainment",
+    "shop": "RetailAndCommercial", "mall": "RetailAndCommercial",
+    "restaurant": "RestaurantsAndEntertainment",
     "school": "CommunityServices", "civic": "CommunityServices",
     "church": "CommunityServices", "medical": "Medical",
     "industrial": "Industrial", "barn": "Industrial", "shed": "yes",
