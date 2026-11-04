@@ -38,6 +38,13 @@
   patch of lawn is lettered "KNOXMAP / BY EUCLID80TR" in the ground, and the
   paper map names everyone who has worked on KnoxMap. The ground lettering is
   part of the compiled map, so it stays with it.
+- **No houses at the ends of an address range** (`generator/osm.py`,
+  `generator/rendering/buildings.py`). Where a street's numbers are mapped as
+  an address interpolation - a line along the street, numbered "2" and "48"
+  at its ends - the two end points each became a house, wedged in between the
+  real ones Overture filled in. Common in Canada, where CanVec imported these
+  across whole towns. The ends of a range are no longer taken for homes; maps
+  fetch their map data again to pick this up.
 
 Regenerate a map, and start a new world, to see these.
 
@@ -295,14 +302,6 @@ Regenerate a map, and start a new world, to see these.
   **Test the servers** button that shows which answer, and **Run your own
   server (Docker)** starts, stops and uses a local Overpass server from a
   Geofabrik extract.
-
-- **No houses at the ends of an address range** (`generator/osm.py`,
-  `generator/rendering/buildings.py`). Where a street's numbers are mapped as
-  an address interpolation - a line along the street, numbered "2" and "48"
-  at its ends - the two end points each became a house, wedged in between the
-  real ones Overture filled in. Common in Canada, where CanVec imported these
-  across whole towns. The ends of a range are no longer taken for homes; maps
-  fetch their map data again to pick this up.
 
 ## 1.7.6.3
 
