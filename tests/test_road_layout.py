@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from generator import octilinear, osm, renderer
-from generator.roadgraph import modes, network, raster, route, snap
+from generator.roadgraph import modes, network, raster, route, rustsearch, snap
 from knoxbuild.settings import Settings
 
 H = W = 200
@@ -245,6 +245,34 @@ class Setting(unittest.TestCase):
                 octilinear.replay(town(), proj, osm.classify, renderer._is_polygon, {"straight_roads": 2}, d, "x")
         self.assertEqual(octilinear.replay(town(), proj, osm.classify, renderer._is_polygon,
                                            {"straight_roads": 0}, "", "m"), 0)
+
+
+@unittest.skipUnless(rustsearch.available(), "knoxroute not built")
+class RouterEquivalence(unittest.TestCase):
+    """The out-of-process search must give exactly the in-process one."""
+
+    def test_cost_mode_uses_the_router_and_matches_python(self):
+        import unittest.mock as mock
+
+        seen = []
+        original = rustsearch.Router.search
+
+        def spy(self, **kw):
+            seen.append(1)
+            return original(self, **kw)
+
+        proj = plain_projection()
+        with mock.patch.object(rustsearch.Router, "search", spy):
+            routed = route.route(town(), proj, "cost", log=lambda *a: None)
+        self.assertTrue(seen, "the Rust router was not used in cost mode")
+
+        old = snap.BACKEND
+        snap.BACKEND = "python"
+        try:
+            python = route.route(town(), proj, "cost", log=lambda *a: None)
+        finally:
+            snap.BACKEND = old
+        self.assertEqual(routed["ways"], python["ways"])
 
 
 if __name__ == "__main__":

@@ -47,6 +47,7 @@ way. A 2:1 step goes two tiles along and one across.
 """
 from __future__ import annotations
 
+import bisect
 import heapq
 import itertools
 import math
@@ -85,10 +86,22 @@ def _piece_steps(h: int, length: float) -> int:
     return max(1, int(round(length / LENGTH[h])))
 
 
+_CURVES: dict = {}          # (heading, width, scale) -> what curves() gives back
+
+
 def curves(hd: int, width: int, scale: float = 1.0) -> list:
     """The curved turns leaving heading hd (a grid or 45 heading): [(kind,
     turn in notches, [(heading, steps), ...])] - the pieces, then the road
-    goes on at hd + turn."""
+    goes on at hd + turn. The same for a heading, a width and a scale, so it
+    is worked out once: the search used to do it again at every corner."""
+    key = (hd, width, scale)
+    out = _CURVES.get(key)
+    if out is None:
+        out = _CURVES[key] = _built_curves(hd, width, scale)
+    return out
+
+
+def _built_curves(hd: int, width: int, scale: float = 1.0) -> list:
     out = []
     if hd % 2:
         return out                                   # from a 2:1 run, only sharp turns
@@ -101,6 +114,39 @@ def curves(hd: int, width: int, scale: float = 1.0) -> list:
         half = (hd + sign) % N
         out.append(("half", 2 * sign, [(half, _piece_steps(half, r * math.pi / 4))]))
     return out
+
+
+# The turns the search may take from a heading, once per heading and beta:
+# [(steps [(heading, count)], new heading, run after, last turn, turn cost)].
+_MOVES: dict = {}
+
+
+def _sharp_moves(hd: int, beta: float) -> tuple:
+    """Vanilla's sharp turns leaving heading hd, at this beta."""
+    key = ("sharp", hd, beta)
+    out = _MOVES.get(key)
+    if out is None:
+        out = []
+        for k, share in SHARP.items():
+            for sign in (1, -1):
+                turn = k * sign
+                nh = (hd + turn) % N
+                out.append(([(nh, 1)], nh, SPAN[nh], sign, beta * share))
+        out = _MOVES[key] = tuple(out)
+    return out
+
+
+def _curved_moves(hd: int, width: int, scale: float, beta: float) -> tuple:
+    """The curved turns leaving heading hd (a 2:1 run takes none of them)."""
+    key = ("curve", hd, width, scale, beta)
+    out = _MOVES.get(key)
+    if out is None:
+        out = _MOVES[key] = tuple(
+            (pieces, (hd + turn) % N, 0, 1 if turn > 0 else -1, beta * CURVE_COST[kind])
+            for kind, turn, pieces in curves(hd, width, scale))
+    return out
+
+
 # Cost a tile on each slope, beside along the grid: vanilla runs 65-72% of its
 # kerb along the grid, 10-12% at 2:1 and 4% at 45 (measured from streets.xml),
 # 2:1 mostly round curves - so a long 2:1 road pays its way. 45 is let be
@@ -140,10 +186,22 @@ CLEAR_PAD = 4                # tiles beyond a routed road's edge another road pa
 CLEAR_COST = 3.0             # ...a tile (a cost, not a wall: a tight spot can still be routed)
 TEMPLATE_MIN_END = 40.0      # tiles: a dead end shorter than this is routed, not fitted to a vanilla shape
                              # (it would hook to land exactly on its end; routed it may stop short)
-MAX_STATES = 1_500_000        # a search this big gives up (and the link tries again looser)
-EXACT_STATES = 1_500_000      # ...but first: an exact search this big, then one leaning on its
+MAX_STATES = 500_000         # a search this big gives up (and the link tries again looser)
+EXACT_STATES = 250_000        # ...but first: an exact search this big, then one leaning on its
+LEAN_MID, MID_STATES = 1.5, 250_000   # estimate a little harder, then
 GREEDY = 2.0                 # estimate this much harder (cost at most this times the best;
                              # a long road out of town with room to stray is too big to search exactly)
+# Why the exact search is not given millions: a search that will not fit runs to
+# its limit and is thrown away, and its link then searches again looser. On a
+# town whose main roads are long and crooked those searches fill the window
+# (a diagonal main road's is the whole map) and take a minute each, so a town of
+# 1,655 links sat at 0 routed for the best part of an hour. A road that cannot be
+# searched exactly in a quarter of a million states is one whose exact route
+# nobody can see either; leaning on the estimate at 1.5 finds nearly the same
+# road in a few thousand, and the looser tries behind it bound the worst case.
+LADDER = ((1.0, EXACT_STATES), (LEAN_MID, MID_STATES), (GREEDY, MAX_STATES))
+                             # a full link's tries in order - exact, leaning a little, leaning
+                             # hard - and the first that finds a path wins
 RETRY_STATES = 200_000       # the looser tries after the first (wider band, shorter runs, headings
                              # let go) give up at this: a failing search runs to its limit, and at
                              # 1.5 million a try a town's 9 unroutable links took 40+ minutes; a
@@ -311,6 +369,31 @@ def _adiff(a: float, b: float) -> float:
 
 def _notches(a: int, b: int) -> int:
     return min((a - b) % N, (b - a) % N)
+
+
+def _swing_table() -> tuple:
+    """The headings within 90 degrees of a bearing, as a table by bearing.
+
+    Which headings a road may still head on changes only where one of them
+    comes into or leaves the half-circle, at each heading's own bearing plus
+    and minus 90 degrees; between those the answer is the same, so h reads it
+    from a table rather than working through all sixteen for every corner.
+    """
+    bounds = sorted({round((a + d) % 360.0, 9) for a in ANGLE for d in (90.0, -90.0)})
+    table = []
+    for k, lo in enumerate(bounds):
+        hi = bounds[k + 1] if k + 1 < len(bounds) else bounds[0] + 360.0
+        a = (lo + hi) / 2.0 % 360.0
+        open_ = [b for b in range(N) if _adiff(ANGLE[b], a) < 90]
+        table.append(tuple(min(_notches(hd, b) for b in open_) if open_ else 0
+                           for hd in range(N)))
+    return tuple(bounds), tuple(table)
+
+
+SWING_BOUNDS, SWING_TABLE = _swing_table()
+SWING_SET = frozenset(SWING_BOUNDS)   # a bearing exactly on one: see h, its strictness
+
+
 
 
 def _nearest(bearing: float, k: int = 1) -> list:
@@ -513,11 +596,13 @@ def snap(nodes: dict, links: list, town: np.ndarray | None = None, log=print, pi
     from . import templates
     failed = []
     shapes_used: dict = {}
-    for n_done, i in enumerate(order):
+    for i in order:
         l = links[i]
         if i in paths:
             continue
-        tick(n_done, len(order))
+        # Counted the way the strokes pass counts - links on a route of all of
+        # them - so the bar carries on instead of dropping back to nothing.
+        tick(min(len(paths), len(order)), len(order))
         # Routed toward a dead end, which has no heading and stops within
         # DEAD_END_REACH of where it really does.
         a, ea, b, eb, pts = l.u, "u", l.v, "v", l.pts
@@ -661,10 +746,11 @@ def _strokes(links, live, arms, through, merged, groups, corner, pins, fixed, he
             strokes.append(chain)
     strokes.sort(key=lambda c: (min(RANK[links[i].cls] for i, _f in c),
                                 -sum(shapely.LineString(links[i].pts).length for i, _f in c)))
-    routed = moved = split = 0
+    routed = moved = split = 0                    # `paths` is the readout: links on a route,
+                                                  # counted in one run rather than per pass
     for chain in strokes:
         if tick:
-            tick(0, len(live))
+            tick(min(len(paths), len(live)), len(live))
         nodes_on = []                                 # the chain's nodes in order
         for i, fwd in chain:
             l = links[i]
@@ -734,6 +820,8 @@ def _strokes(links, live, arms, through, merged, groups, corner, pins, fixed, he
                 taken[p_] = part[0][0]
             _mark(near, path, width)
             routed += 1
+        if tick:
+            tick(min(len(paths), len(live)), len(live))
     return (f"main roads routed whole: {len(strokes)} strokes in {routed} pieces ({split} cuts at fixed junctions), "
             f"{moved} junctions moved onto them")
 
@@ -895,6 +983,53 @@ def _shift(p, h: int, amount: int):
 STATES = {"searched": 0}     # states searched, for the slow-link log
 
 
+# Which engine runs the search: "rust" (the same search in rust/knoxroute - see
+# rustsearch.py) or "python" (the loop in _search). Python works out the ground
+# either way; this only picks who searches it. Rust is the default and the
+# interpreter's own search the fallback: no binary built, a trace wanted, or a
+# turn rule the port does not carry, and it runs here instead.
+BACKEND = "rust"
+TRACE_TO = None            # a list: the equivalence harness's window on the rust search's pops
+_UNAVAILABLE = object()    # the rust search could not run: use the python one
+_ROUTER = None
+
+
+def _close_router() -> None:
+    global _ROUTER
+    if _ROUTER is not None:
+        try:
+            _ROUTER.close()
+        except OSError:
+            pass
+        _ROUTER = None
+
+
+def close_router() -> None:
+    """Let the rust search process go: the next map starts a fresh one."""
+    _close_router()
+
+
+def _rust_search(**kw):
+    """(path, states) from rust/knoxroute, or _UNAVAILABLE if it cannot run."""
+    global _ROUTER
+    from . import rustsearch
+    if not rustsearch.available():
+        return _UNAVAILABLE
+    try:
+        if _ROUTER is None:
+            _ROUTER = rustsearch.Router()
+        if TRACE_TO is not None:            # the harness comparing the two searches
+            got, _ = _ROUTER.search(**kw, trace=400)
+            TRACE_TO.extend(got)
+        return _ROUTER.search(**kw)
+    except (OSError, RuntimeError):
+        # A binary that will not start, or one that died mid-pipe, is no reason to
+        # fail the map: the search below takes over, and the next call tries a
+        # fresh process.
+        _close_router()
+        return _UNAVAILABLE
+
+
 def _route(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach=0, town=None, beta=BETA,
            band_town=BAND, alpha_town=ALPHA, free_town=0.0, near=None, limit=None, road_width=None, stops=()):
     """Corners from s to g, or None. A heading of None is free. Distance is
@@ -910,7 +1045,7 @@ def _route(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach=0, town
     the last costs REVERSE more. Searched exactly (EXACT_STATES at most),
     then leaning on the estimate GREEDY times (MAX_STATES); `limit` for
     both instead, if given."""
-    tries = ((1.0, EXACT_STATES), (GREEDY, MAX_STATES)) if limit is None else ((1.0, limit), (GREEDY, limit))
+    tries = LADDER if limit is None else ((1.0, limit), (GREEDY, limit))
     for lean, cap in tries:
         path = _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town, beta,
                        band_town, alpha_town, free_town, lean, cap, near, road_width, stops)
@@ -919,9 +1054,31 @@ def _route(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach=0, town
     return None
 
 
+def _dist_field(line, gx, gy, far):
+    """Distance from `line` at every corner of the window, and infinite past the
+    band. Measured corner by corner over the whole window, this was most of the
+    cost of every search on a long road - a diagonal road's window is the whole
+    map, while the band it may run in is a thin corridor through it, and the
+    distance to a long line is not cheap. The corridor found first, only the
+    corners in it are measured; outside it the cost is infinite either way."""
+    corridor = shapely.buffer(line, far + 2, quad_segs=8)
+    shapely.prepare(corridor)
+    rows, cols = np.nonzero(shapely.contains_xy(corridor, gx, gy))
+    out = np.full(gx.shape, np.inf)
+    if rows.size:
+        out[rows, cols] = shapely.distance(
+            shapely.points(gx[rows, cols].astype(float), gy[rows, cols].astype(float)), line)
+    return out
+
+
 def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town, beta,
-            band_town, alpha_town, free_town, lean, limit, near=None, road_width=None, stops=()):
-    """One A* search for _route: the estimate times `lean`, `limit` states."""
+            band_town, alpha_town, free_town, lean, limit, near=None, road_width=None, stops=(),
+            trace=None):
+    """One A* search for _route: the estimate times `lean`, `limit` states.
+
+    With `trace` (a list), the first five hundred states it pops are appended to
+    it - (estimate, cost, x, y, heading, run, last turn) - so another engine's
+    search can be compared with it step for step. See rust/knoxroute."""
     width = run_min                                  # min_run is the road's width (4 at least)
     road_w = road_width or run_min                   # the jog rule's width (its gap is from the edge)
     if s == g:
@@ -934,7 +1091,7 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
     x1 = int(math.ceil(max(p[0] for p in pts) + far + 2))
     y1 = int(math.ceil(max(p[1] for p in pts) + far + 2))
     gx, gy = np.meshgrid(np.arange(x0, x1 + 1), np.arange(y0, y1 + 1))
-    dist = shapely.distance(shapely.points(gx.ravel(), gy.ravel()), line).reshape(gx.shape)
+    dist = _dist_field(line, gx, gy, far)
     if town is None:
         band, alpha, free = band_town * wide, alpha_town, free_town
     else:
@@ -977,34 +1134,92 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
         f = occ_field(road_w)
         FH, FW = f.shape
         occw = OCC_WEIGHT * f[np.clip(gy, 0, FH - 1), np.clip(gx, 0, FW - 1)]
+    # May a road turn at a corner here (mode "cost")? A dense corner with a
+    # frontage on it may only do so at a junction (or where the frontage has a
+    # gap): worked out once for the window, so the search reads a corner
+    # rather than calling turn_ok for every state.
+    turnable = None
+    if jog_on and JOG.get("plots") is None:
+        CH, CW = JOG["dist"].shape
+        gap = JOG["dist"][np.clip(gy, 0, CH - 1), np.clip(gx, 0, CW - 1)] > road_w / 2 + JOG_GAP
+        turnable = ((cdens < JOG_DENSITY) | gap).tolist()
+
+    turn_pts = (s, g, *stops)
+    turn_reach = max(JOG_END, road_w)
+
+    def may_turn(x, y, hd):
+        """turn_ok, read off that field."""
+        if turnable is None:
+            return turn_ok(x, y, hd, road_w, s, g, stops)
+        if turnable[y - y0][x - x0]:
+            return True
+        return min(math.dist((x, y), q) for q in turn_pts) <= turn_reach
     # The way the real line runs (degrees) at the point of it nearest each
     # corner: a step may not go more than 90 degrees from it, so a road never
     # doubles back on itself (with room to wander it would rather loop round
     # than arrive on its heading with a jog).
-    along = shapely.line_locate_point(line, shapely.points(gx.ravel(), gy.ravel()))
-    p0 = shapely.line_interpolate_point(line, np.maximum(along - 2.0, 0.0))
-    p1 = shapely.line_interpolate_point(line, np.minimum(along + 2.0, line.length))
-    way = np.degrees(np.arctan2(shapely.get_y(p1) - shapely.get_y(p0),
-                                shapely.get_x(p1) - shapely.get_x(p0))).reshape(gx.shape) % 360
+    # Only the corners within the band can be stepped on (past it the cost is
+    # inf, and nothing reads those), and on a long road they are a fraction of
+    # the window: read the line's way for those corners alone.
+    way = np.zeros(gx.shape)
+    flat = np.nonzero(dist <= band)
+    if flat[0].size:
+        px, py = gx[flat], gy[flat]
+        along = shapely.line_locate_point(line, shapely.points(px, py))
+        p0 = shapely.line_interpolate_point(line, np.maximum(along - 2.0, 0.0))
+        p1 = shapely.line_interpolate_point(line, np.minimum(along + 2.0, line.length))
+        way[flat] = np.degrees(np.arctan2(shapely.get_y(p1) - shapely.get_y(p0),
+                                          shapely.get_x(p1) - shapely.get_x(p0))) % 360
 
     notch = beta * TURN_SHARE                # a turn of one notch
+    # Read per corner, often, in the search below: plain lists are quicker
+    # than a numpy array, and this is a few seconds' work even on the widest
+    # window.
+    weight_l, way_l, run_l = weight.tolist(), way.tolist(), run_here.tolist()
+    dens_l = None if cdens is None else cdens.tolist()
+    occ_l = None if occw is None else occw.tolist()
+    taken_get = taken.get
+    INF = math.inf
+    reach_short = reach * math.sqrt(2)
+    reach_near = reach + 2
+
+    hcache: dict = {}                     # (corner, heading) -> the bound: one search's, and
+                                          # the same state is reached again and again
 
     def h(x, y, hd=None):
         """A lower bound on the cost to the goal: the straight distance, and a
         notch's cost for each notch the heading must still swing - to head
         less than 90 degrees off the goal, and to arrive on the heading
         wanted."""
+        key = (x, y, hd)
+        got = hcache.get(key)
+        if got is not None:
+            return got
         dx, dy = g[0] - x, g[1] - y
-        dist = max(0.0, math.hypot(dx, dy) - reach * math.sqrt(2))
+        dist = math.hypot(dx, dy) - reach_short
+        if dist < 0.0:
+            dist = 0.0
         if hd is None or hd == DONE:
+            hcache[key] = dist
             return dist
         turns = 0
-        if max(abs(dx), abs(dy)) > reach + 2:
+        if max(abs(dx), abs(dy)) > reach_near:
             a = _bearing(dx, dy)
-            turns = min(_notches(hd, b) for b in range(N) if _adiff(ANGLE[b], a) < 90)
+            if a in SWING_SET:
+                # Exactly on a boundary - square to the goal, as a grid town's
+                # streets are - the sector either side cannot hold both
+                # headings' strictness, so the walk is taken after all.
+                turns = min(_notches(hd, b) for b in range(N) if _adiff(ANGLE[b], a) < 90)
+            else:
+                k = bisect.bisect_right(SWING_BOUNDS, a)
+                turns = SWING_TABLE[k - 1 if k else len(SWING_BOUNDS) - 1][hd]
         if h_arrive is not None:
-            turns = max(turns, _notches(hd, h_arrive))
-        return lean * (dist + notch * turns)
+            back = _notches(hd, h_arrive)
+            if back > turns:
+                turns = back
+        out = lean * (dist + notch * turns)
+        hcache[key] = out
+        return out
     # The first and last runs need half the minimum: the junction's own
     # width stands in for the rest.
     end_run = (run_min + 1) // 2
@@ -1028,18 +1243,41 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
         if not all(steppable(g[0] - dx * j, g[1] - dy * j, h_arrive)
                    for j in range(-(-end_run // SPAN[h_arrive]))):
             return None
+    if BACKEND == "rust" and trace is None and turnable is not None:
+        # The same search, out of process: all the ground work above is done, so
+        # only the pops move. It keeps the mask's turn rule, which is the cost
+        # mode's - any other mode stays in the loop below rather than guess at
+        # turn_ok. Tracing stays here, where the analysis is.
+        win_w, win_h = x1 - x0 + 1, y1 - y0 + 1
+        got = _rust_search(
+            x0=x0, y0=y0, w=win_w, h=win_h, s=s, g=g, h_start=h_start, h_arrive=h_arrive,
+            reach=reach, run_min=run_min, cap=cap, end_run=end_run, end_r=end_r,
+            road_width=road_w, beta=beta, lean=lean, limit=limit, weight=weight, way=way,
+            dens=cdens, occ=occw, turnable=turnable, run_here=run_here,
+            taken_idx=np.fromiter(((q[1] - y0) * win_w + (q[0] - x0) for q in taken),
+                                  "<i4", len(taken)),
+            taken_owner=np.fromiter(taken.values(), "<i4", len(taken)), me=me, stops=stops)
+        if got is not _UNAVAILABLE:
+            path, states = got
+            STATES["searched"] += states
+            return path
     starts = [(s[0], s[1], hd, run_min - end_run, 0) for hd in (range(N) if h_start is None else [h_start])]
     best = {st: 0.0 for st in starts}
+    best_get = best.get
     came = {}
     via: dict = {}                                   # a state reached by a curve: the corners on the way
     tick = itertools.count()
     heap = [(h(s[0], s[1], st[2]), -0.0, next(tick), st) for st in starts]   # equal f: the deeper first
+    heapq.heapify(heap)          # a list is not a heap: without this the first pops are of
+                                 # whatever sits at the front, whichever heading that is
     seen = 0
     while heap:
         _f, neg, _t, st = heapq.heappop(heap)
         cost = -neg
-        if cost > best.get(st, math.inf):
+        if cost > best_get(st, INF):
             continue
+        if trace is not None and len(trace) < 500:
+            trace.append((_f, cost) + st)
         x, y, hd, run, last = st
         if hd == DONE:
             STATES["searched"] += seen
@@ -1053,7 +1291,7 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
         if max(abs(x - g[0]), abs(y - g[1])) <= reach and h_arrive in (None, hd) and run >= end_run                 and (x, y) != s:                     # at least one step
             done = (x, y, DONE, 0, 0)
             dc = cost + END_SHORT * math.dist((x, y), g)
-            if dc < best.get(done, math.inf):
+            if dc < best_get(done, INF):
                 best[done] = dc
                 came[done] = st
                 heapq.heappush(heap, (dc, -dc, next(tick), done))
@@ -1061,22 +1299,23 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
         if seen > limit:
             STATES["searched"] += seen
             return None
-        need = run_here[y - y0, x - x0]
-        # Moves: (steps [(heading, count)], new heading, run after, last turn, turn cost).
-        nrun = min(run + SPAN[hd], cap)
+        need = run_l[y - y0][x - x0]
+        # Moves: (steps [(heading, count)], new heading, run after, last turn,
+        # turn cost) - the straight run, then vanilla's sharp turns and its
+        # curves, taken from the heading's own list rather than built here.
+        nrun = run + SPAN[hd]
+        if nrun > cap:
+            nrun = cap
         moves = [([(hd, 1)], hd, nrun, 0 if nrun >= cap else last, 0.0)]
-        if run >= need and (not jog_on or turn_ok(x, y, hd, road_w, s, g, stops)):
-            for k, share in SHARP.items():
-                for sign in (1, -1):
-                    turn = k * sign
-                    back = REVERSE if last * turn < 0 and run < 2 * need else 0.0
-                    nh = (hd + turn) % N
-                    moves.append(([(nh, 1)], nh, SPAN[nh], sign, beta * share + back))
+        if run >= need and (not jog_on or may_turn(x, y, hd)):
+            short = run < 2 * need
+            for steps, nh, nr, sign, turn_cost in _sharp_moves(hd, beta):
+                back = REVERSE if short and last * sign < 0 else 0.0
+                moves.append((steps, nh, nr, sign, turn_cost + back))
             scale = 1.0 if need <= run_min else 2.0      # out of town, gentler
-            for kind, turn, pieces in curves(hd, width, scale):
-                sign = 1 if turn > 0 else -1
-                back = REVERSE if last * turn < 0 and run < 2 * need else 0.0
-                moves.append((pieces, (hd + turn) % N, 0, sign, beta * CURVE_COST[kind] + back))
+            for steps, nh, nr, sign, turn_cost in _curved_moves(hd, width, scale, beta):
+                back = REVERSE if short and last * sign < 0 else 0.0
+                moves.append((steps, nh, nr, sign, turn_cost + back))
         for steps, nh, nr, nl, extra in moves:
             cx, cy = x, y
             nc = cost + extra
@@ -1084,32 +1323,42 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
             ok = True
             for sh, count in steps:
                 dx, dy = STEP[sh]
+                ang = ANGLE[sh]
+                slope = SLOPE[sh]
                 for _ in range(count):
-                    cx, cy = cx + dx, cy + dy
-                    if not (x0 <= cx <= x1 and y0 <= cy <= y1):
+                    cx += dx
+                    cy += dy
+                    if cx < x0 or cx > x1 or cy < y0 or cy > y1:
                         ok = False
                         break
-                    wgt = weight[cy - y0, cx - x0]
-                    if wgt == math.inf or _adiff(ANGLE[sh], way[cy - y0, cx - x0]) > BACK_LIMIT:
+                    row = cy - y0
+                    col = cx - x0
+                    wgt = weight_l[row][col]
+                    if wgt == INF:
                         ok = False
                         break
-                    owner = taken.get((cx, cy))
+                    d = ang - way_l[row][col]
+                    d %= 360.0
+                    if d > BACK_LIMIT and 360.0 - d > BACK_LIMIT:
+                        ok = False
+                        break
+                    owner = taken_get((cx, cy))
                     if owner is not None and owner != me and \
                             min(abs(cx - s[0]) + abs(cy - s[1]), abs(cx - g[0]) + abs(cy - g[1])) > end_r:
                         ok = False
                         break
-                    nc += LENGTH[sh] * SLOPE_COST[SLOPE[sh]] * wgt
-                    if cdens is not None:
-                        nc += LENGTH[sh] * COST_SCALE * cdens[cy - y0, cx - x0] * DIR_PENALTY[SLOPE[sh]]
-                    if occw is not None:
-                        nc += LENGTH[sh] * occw[cy - y0, cx - x0]
+                    nc += LENGTH[sh] * SLOPE_COST[slope] * wgt
+                    if dens_l is not None:
+                        nc += LENGTH[sh] * COST_SCALE * dens_l[row][col] * DIR_PENALTY[slope]
+                    if occ_l is not None:
+                        nc += LENGTH[sh] * occ_l[row][col]
                     corners.append((cx, cy))
                 if not ok:
                     break
             if not ok:
                 continue
             ns = (cx, cy, nh, nr, nl)
-            if nc < best.get(ns, math.inf):
+            if nc < best_get(ns, INF):
                 best[ns] = nc
                 came[ns] = st
                 if len(corners) > 1:

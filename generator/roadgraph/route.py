@@ -82,6 +82,7 @@ def route(features: list, proj, mode: str = "graph", shape: dict | None = None, 
             paths, _corner, _merged, failed = snap.snap(nodes, links, town, log=log, pins=pins, tick=tick)
         finally:
             modes.reset()
+            snap.close_router()             # one search process per map: none left behind on a stop
     log(f"roads routed ({mode}): {len(paths)} of {len(links)} links, {len(failed)} left as drawn")
     road = network.road_ways(features)
     real = {f.osm_id: [proj.to_px(la, lo) for la, lo in f.geometry] for f in road}
