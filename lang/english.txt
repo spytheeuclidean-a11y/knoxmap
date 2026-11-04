@@ -541,3 +541,13 @@ KnoxMap could not reach the OpenStreetMap servers. Check your internet connectio
 OSM query failed: {details} = OSM query failed: {details}
 The map would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works. {details} = The map would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works. {details}
 {count} of {total} map tiles would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works, and a smaller area always does. {details} = {count} of {total} map tiles would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works, and a smaller area always does. {details}
+
+Land cover where OpenStreetMap has no land use. = Land cover where OpenStreetMap has no land use.
+Terrain relief from USGS elevation data. = Terrain relief from USGS elevation data.
+The most relief to allow, in z-levels. = The most relief to allow, in z-levels.
+Natural Earth context: country, coastline and place labels. = Natural Earth context: country, coastline and place labels.
+Force a regional style instead of reading the map's names. = Force a regional style instead of reading the map's names.
+Match generated hospitals to the real facilities. = Match generated hospitals to the real facilities.
+Place a hospital where OpenStreetMap has none. = Place a hospital where OpenStreetMap has none.
+Tint the map for its real climate. = Tint the map for its real climate.
+Winter look: snow and bare trees. = Winter look: snow and bare trees.

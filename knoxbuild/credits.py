@@ -30,6 +30,21 @@ def plain() -> str:
     return "\n".join(lines)
 
 
+def dataset_lines(used, retrieved: str | None = None) -> list[str]:
+    """Attribution for the optional data layers a map actually used.
+
+    Delegates to knoxdata so each layer's own module owns its wording; the
+    lazily imported package keeps a bare knoxbuild import cheap.
+    """
+    if not used:
+        return []
+    try:
+        import knoxdata
+        return knoxdata.attribution_lines(used, retrieved=retrieved)
+    except Exception:                       # noqa: BLE001 - credit is never fatal
+        return []
+
+
 def bbcode() -> str:
     """The same, for a Steam Workshop page."""
     out = [f"[b]Made with [url={KNOXMAP_URL}]KnoxMap[/url][/b] by [b]{MAKER}[/b], with work "

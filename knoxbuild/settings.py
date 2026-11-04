@@ -158,6 +158,26 @@ class Settings:
     # How each building outline is fitted to the tile grid: the dominant wall direction, keeping the shape.
     building_alignment: str = "rectilinear"
 
+    # --- optional enrichment layers (knoxdata/) ---------------------------
+    # ESA WorldCover land cover where OSM leaves ground untagged. OSM and
+    # hand-drawn ground always win; this only fills what nobody claimed.
+    landcover: str = "worldcover"      # worldcover | osm | off
+    # USGS 3DEP relief. Flat outside its coverage whatever this says.
+    elevation: str = "3dep"            # 3dep | flat
+    # How many z-levels of relief to allow; 0 is flat.
+    max_relief: int = 4
+    # Natural Earth country, coastline fallback and place labels.
+    ne_context: int = 1
+    # Force a regional architecture ("cn", "gb"...) instead of reading the names.
+    region_override: str = "auto"      # auto | <ISO-2>
+    # HIFLD hospital identity. OSM elsewhere, and "off" never matches.
+    hospitals: str = "hifld"           # hifld | osm | off
+    # Stamp a hospital where OSM has none (off: only enrich what exists).
+    hospitals_place_missing: int = 0
+    # NOAA climate normals tint; the default look outside its coverage.
+    climate_flavor: int = 1
+    winter_look: str = "auto"          # auto | on | off
+
     def to_dict(self) -> dict:
         return asdict(self)
 
@@ -172,7 +192,11 @@ class Settings:
         types = {f.name: f.type for f in fields(cls)}
         enum_options = {"building_alignment": BUILDING_ALIGNMENT_OPTIONS,
                         "arch_style": ARCH_STYLE_OPTIONS,
-                        "height_mix": HEIGHT_MIX_OPTIONS}
+                        "height_mix": HEIGHT_MIX_OPTIONS,
+                        "landcover": LANDCOVER_OPTIONS,
+                        "elevation": ELEVATION_OPTIONS,
+                        "hospitals": HOSPITALS_OPTIONS,
+                        "winter_look": WINTER_LOOK_OPTIONS}
         for name, raw in list(base.items()) + list(data.items()):
             if name not in types:
                 continue          # unknown key, including "preset" itself
@@ -180,6 +204,14 @@ class Settings:
                 value = str(raw).strip().lower()
                 if value in enum_options[name]:
                     kept[name] = value
+                continue
+            if name == "region_override":
+                # "auto" or a short country code; anything else keeps the default.
+                value = str(raw).strip()
+                if value == "auto":
+                    kept[name] = value
+                elif value.isalpha() and len(value) <= 3:
+                    kept[name] = value.upper()
                 continue
             try:
                 value = int(raw) if types[name] == "int" else float(raw)
@@ -251,11 +283,25 @@ LIMITS = {
     # but every knob gets an entry so the settings form can be built blind.
     "arch_style": (0, 3),
     "height_mix": (0, 4),
+    # The enrichment layers. String knobs carry an entry for the form's sake.
+    "landcover": (0, 3),
+    "elevation": (0, 2),
+    "max_relief": (0, 12),
+    "ne_context": (0, 1),
+    "region_override": (0, 3),
+    "hospitals": (0, 3),
+    "hospitals_place_missing": (0, 1),
+    "climate_flavor": (0, 1),
+    "winter_look": (0, 3),
 }
 
 BUILDING_ALIGNMENT_OPTIONS = ("real", "smart", "rectilinear", "rectangle")
 ARCH_STYLE_OPTIONS = ("auto", "cn", "off")
 HEIGHT_MIX_OPTIONS = ("auto", "low", "middle", "tall", "even")
+LANDCOVER_OPTIONS = ("worldcover", "osm", "off")
+ELEVATION_OPTIONS = ("3dep", "flat")
+HOSPITALS_OPTIONS = ("hifld", "osm", "off")
+WINTER_LOOK_OPTIONS = ("auto", "on", "off")
 
 
 PRESETS = {

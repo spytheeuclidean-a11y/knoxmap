@@ -113,6 +113,25 @@ Source: [GPL-2.0](https://www.gnu.org/licenses/old-licenses/gpl-2.0.html)
 - The **Elevators** mod is not included or modified. KnoxMap only builds lifts
   the way that mod recognises them, from vanilla tile names.
 
+## Optional third-party data layers
+
+`knoxdata/` can add public datasets to a map. Each is optional, independently
+switchable, and off where it does not apply (a missing dependency or an area
+outside coverage). A map carries the credit of every layer it actually used in
+its `ATTRIBUTION.txt`, with the retrieval date. See `docs/DATASETS.md`.
+
+| Layer | Source | Licence | Terms |
+|---|---|---|---|
+| WorldCover | ESA WorldCover 2021 (v200) | CC-BY 4.0 | credit "Contains modified Copernicus/ESA WorldCover data 2021" — met in `ATTRIBUTION.txt` |
+| 3DEP | USGS The National Map | public domain | none |
+| Natural Earth | Natural Earth via `martynafford/natural-earth-geojson` | CC0 1.0 | none (bundling permitted) |
+| HIFLD Hospitals | HIFLD Open Data (US Government) | public domain | none |
+| NOAA Climate Normals | NOAA NCEI 1991–2020 | public domain | none |
+
+OpenTopography's `OT_3DEP_Workflows` is GPL-3; its **code is not used** — the
+3DEP layer reads the same public USGS endpoints directly. No game assets are
+redistributed by any layer.
+
 ## Privacy
 
 KnoxMap has no accounts, telemetry or analytics. While it runs, your PC

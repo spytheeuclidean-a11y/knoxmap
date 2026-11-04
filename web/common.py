@@ -64,7 +64,7 @@ def _map_dir(map_name: str) -> Path | None:
         return None
     safe = SAFE_NAME.sub("_", map_name)
     d = (OUTPUT_DIR / safe).resolve()
-    if not str(d).startswith(str(OUTPUT_DIR.resolve())) or not d.is_dir():
+    if not d.is_relative_to(OUTPUT_DIR.resolve()) or not d.is_dir():
         return None
     return d
 

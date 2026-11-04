@@ -175,6 +175,26 @@ same public service count as one server. A responding status page does not
 guarantee a free query slot. If all servers are unavailable, choose Auto or
 Geofabrik rather than repeatedly starting the same online download.
 
+**Optional enrichment layers** (`knoxdata/`). Five public datasets can fill
+what OpenStreetMap leaves blank. They are opt-in and independently switchable,
+and a map is never failed by one: OSM and hand-drawn data always win. Each
+layer has its own switch under Fine tuning, and a map credits the ones it used
+in `ATTRIBUTION.txt`. Details: [docs/DATASETS.md](docs/DATASETS.md).
+
+| Layer | Fills | Licence |
+|---|---|---|
+| ESA WorldCover | land cover where OSM has no land-use tag: woods, meadow, farmland, marsh, water | CC-BY 4.0 |
+| USGS 3DEP | real terrain relief (US only) | public domain |
+| Natural Earth 1:110m | country/region, coastline fallback, place labels | CC0 |
+| HIFLD Hospitals | real hospital name, size and type (US only) | public domain |
+| NOAA Climate Normals | region-correct climate tint (US only) | public domain |
+
+The heavy parts are optional: `rasterio` (WorldCover, 3DEP) and `pyarrow`
+(NOAA) — `python -m pip install rasterio pyarrow` into KnoxMap's own `.venv`.
+Without them those layers say why and are skipped. Fetch an area's data once
+with **Download data layers** (or `POST /api/datasets/refresh`); generate then
+applies it from cache without touching the network.
+
 ## Tuning a map
 
 Open **Fine tuning** under *Style*:

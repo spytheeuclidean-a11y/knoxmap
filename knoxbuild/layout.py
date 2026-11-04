@@ -1902,7 +1902,7 @@ def _shop_rooms(plan: Plan, rng: random.Random, street: str | None,
     back = max(lo, min(hi, round(total * SHOP_BACK_SHARE)))
     if total - back < (GAS_MIN_SALES_DEPTH if gas else MIN_SALES_DEPTH):
         plan.rooms.append(Room(0, 0, w - 1, h - 1))
-        return [1]
+        return [len(plan.rooms)]
     if side == "S":
         sales, strip = (0, back, w - 1, h - 1), (0, 0, w - 1, back - 1)
     elif side == "N":
@@ -7683,6 +7683,9 @@ def build_plan(width: int, height: int, commercial: bool = False,
 
     arms: list = []
     by_kind = None
+    # _shop_rooms numbers the sales rooms before _paint; _paint can drop,
+    # split or renumber them. Remember the rooms themselves, not the numbers.
+    section_ids: set[int] = set()
     if tower is not None:
         arms = _tower_rooms(plan, tower, ground, plant, street)
     elif kind == "apartment":
@@ -7690,6 +7693,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
     elif shop_floor and kind in ("shop", "restaurant"):
         sections = _shop_rooms(plan, rng, street,
                                gas=any(front == "gasstore" for front, _b in (uses or ())))
+        section_ids = {id(plan.rooms[i - 1]) for i in sections}
     elif mix_kind == "mall":
         _mall_rooms(plan, rng, target, level, uses, shaft)
     elif mix_kind == "garage":
@@ -7734,6 +7738,10 @@ def build_plan(width: int, height: int, commercial: bool = False,
         _unit_touches_corridor(plan)
         _assign_flat_kinds(plan, hotel=hotel, reception=hotel and ground, rng=rng)
     elif shop_floor:
+        # _paint above can drop, split or renumber rooms, so the old numbers
+        # are stale. Rebuild them from the rooms that survived: the sales
+        # sections are identified by the room objects themselves.
+        sections = [i for i, r in enumerate(plan.rooms, 1) if id(r) in section_ids]
         if kind == "restaurant" and not uses:
             uses = [("restaurantdining", "restaurantkitchen")]
         _assign_shop_floor(plan, rng, street, uses,

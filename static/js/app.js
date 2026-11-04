@@ -937,6 +937,14 @@ const SETTING_LABELS = {
   parking_density:     ['Parking', 'Vehicles only ever spawn in a parking stall.'],
   basement_share:      ['Basements', 'The share of houses with a basement. Schools, hospitals, police stations and the like always get one.'],
   max_basement_depth:  ['Deepest basement', 'Levels a military base may go down, up to 32. 0 builds no basements at all.'],
+  landcover:           ['Land cover', 'WorldCover fills ground OpenStreetMap leaves blank: woods, meadow, farmland, dirt. OpenStreetMap only keeps today’s behaviour. Needs rasterio.'],
+  elevation:           ['Terrain relief', 'USGS 3DEP adds real relief, up to Relief z-levels. Flat keeps today’s flat terrain. US only; needs rasterio.'],
+  max_relief:          ['Relief', 'How many z-levels of real terrain relief to allow.'],
+  ne_context:          ['Natural Earth context', 'Country, coastline fallback and place labels from Natural Earth.'],
+  hospitals:           ['Hospitals', 'HIFLD names and sizes real US hospitals on the map. OpenStreetMap only uses the map’s own tags.'],
+  hospitals_place_missing: ['Place missing hospitals', 'On stamps a hospital where OpenStreetMap has none, if the ground allows.'],
+  climate_flavor:      ['Climate flavour', 'Tints the map for its real NOAA climate. US only; needs pyarrow.'],
+  winter_look:         ['Winter look', 'Auto, on or off: snow-dusted ground and bare deciduous trees where the climate is cold.'],
 };
 
 let settingsMeta = null;

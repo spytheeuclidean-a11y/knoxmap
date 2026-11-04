@@ -263,6 +263,48 @@ def generate():
     osm_cache_name = Path(cache).name
     osm_bbox = fetch_box
 
+    layers = None
+    landcover_for = None
+    suggested_preset = None
+    try:
+        import knoxdata
+        from knoxdata import cache as layer_cache
+        from knoxdata.worldcover import suggest_preset
+        # Read here so RENDER_SETTINGS can tell a changed knob needs a redraw.
+        layer_knobs = {
+            "landcover": settings.landcover, "elevation": settings.elevation,
+            "max_relief": settings.max_relief, "ne_context": settings.ne_context,
+            "region_override": settings.region_override,
+            "hospitals": settings.hospitals,
+            "hospitals_place_missing": settings.hospitals_place_missing,
+            "climate_flavor": settings.climate_flavor,
+            "winter_look": settings.winter_look,
+        }
+        layers = knoxdata.MapContext(
+            bbox=(south, west, north, east), settings=settings,
+            map_dir=map_dir, map_name=map_name, features=features)
+        report = knoxdata.run_layers(settings, (south, west, north, east), map_dir,
+                                     map_name=map_name, features=features,
+                                     ctx=layers, require_cache=True)
+        if report.get("used"):
+            log.info("generate %s: data layers used %s", map_name,
+                     ", ".join(report["used"]))
+        landcover_for = knoxdata.landcover_for(settings, (south, west, north, east))
+        fractions = (report.get("worldcover") or {}).get("fractions") or {}
+        if fractions:
+            suggested_preset = suggest_preset(fractions)
+        layer_cache.write_json(map_dir / f"{map_name}_knoxdata.json", {
+            "used": report.get("used", []),
+            "region": layers.region,
+            "climate": layers.climate,
+            "landcover": fractions,
+            "suggestedPreset": suggested_preset,
+            "knobs": layer_knobs,
+        })
+    except Exception as exc:             # noqa: BLE001 - optional, never fatal
+        log.warning("generate %s: data layers skipped - %s: %s", map_name,
+                    type(exc).__name__, exc)
+
     osm_time = time.time() - t0
     _set_progress(map_name, stage="render", features=len(features))
 
@@ -281,6 +323,12 @@ def generate():
             shape=shape,
             straight_roads=int(settings.straight_roads),
             fill_frontage=int(settings.fill_frontage),
+            landcover_for=landcover_for,
+            climate=(layers.climate if layers else None),
+            winter_look=settings.winter_look,
+            elevation=(layers.elevation if layers else None),
+            elevation_span=((layers.report.get("elevation_3dep") or {}).get("span_m")
+                            if layers else None),
             should_stop=_stopper(map_name),
             progress=lambda done, total: _set_progress(map_name, stage="roads", done=done, total=total),
         )
@@ -333,6 +381,12 @@ def generate():
         "settings": settings.to_dict(),
         "fromOverture": gaps.get("added", 0),
         "overtureError": gaps.get("error") or gaps.get("why") or "",
+        # What the optional data layers did (knoxdata/): which applied, the
+        # suggested preset from real land cover, and the region/climate read.
+        "dataLayers": (layers.report.get("used", []) if layers else []),
+        "suggestedPreset": suggested_preset,
+        "region": (layers.region if layers else ""),
+        "climate": (layers.climate if layers else {}),
         "files": {
             "landscape": f"/output/{map_name}/{Path(result.landscape_path).name}",
             "vegetation": f"/output/{map_name}/{Path(result.vegetation_path).name}",

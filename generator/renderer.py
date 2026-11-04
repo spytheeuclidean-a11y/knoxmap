@@ -104,6 +104,99 @@ class RenderResult:
 ROAD_LAYOUTS = {2: "graph", 3: "cost"}
 
 
+# Ground tint multipliers per NOAA climate class: a gentle shift, never a
+# repaint. Project Zomboid's art is Kentucky-themed, so this only leans it.
+CLIMATE_TINT = {
+    "arid": (1.10, 1.02, 0.80),
+    "cold continental": (0.95, 1.00, 1.06),
+    "humid": (0.95, 1.04, 0.95),
+    "temperate": (1.0, 1.0, 1.0),
+}
+_WINTER_GROUND = (210, 214, 218)
+
+
+def _paint_climate(landscape: Image.Image, climate: dict,
+                   winter_look: str = "auto") -> None:
+    """Tint the ground for its real climate: dry, cold, lush or default."""
+    import numpy as np
+
+    climate = climate or {}
+    klass = str(climate.get("class") or "").strip().lower()
+    mult = CLIMATE_TINT.get(klass)
+    cold = klass == "cold continental" or float(climate.get("jan_c") or 0) < -3
+    winter = winter_look == "on" or (winter_look == "auto" and cold)
+    if mult is None and not winter:
+        return
+    arr = np.asarray(landscape, dtype="float32")
+    if mult:
+        arr = arr * np.array(mult, dtype="float32")
+    if winter:
+        arr = arr * 0.80 + np.array(_WINTER_GROUND, dtype="float32") * 0.20
+    landscape.paste(Image.fromarray(np.clip(arr, 0, 255).astype("uint8"), "RGB"),
+                    (0, 0))
+
+
+MIN_RELIEF_M = 30.0
+SNOW_RELIEF_M = 400.0
+
+
+def _paint_relief(landscape: Image.Image, metres, span=None,
+                  strength: float = 0.30) -> None:
+    """Compressed relief: a hillshade and rock/snow bands, no z channel.
+
+    The metres grid is one sample per tile (or a coarse DEM window); it is
+    stretched to the ground image. Flat areas are left alone, so a map with
+    no relief looks exactly as before.
+    """
+    import numpy as np
+
+    m = np.asarray(metres, dtype="float32")
+    if m.ndim != 2 or m.size == 0:
+        return
+    if (m.shape[1], m.shape[0]) != landscape.size:
+        m = np.asarray(Image.fromarray(m).resize(landscape.size, Image.BILINEAR))
+    if not np.isfinite(m).any():
+        return
+    lo, hi = span if span else (float(np.nanmin(m)), float(np.nanmax(m)))
+    relief = float(hi) - float(lo)
+    if relief < MIN_RELIEF_M:
+        return
+    m = np.nan_to_num(m, nan=float(np.nanmin(m)))
+    # Hillshade from the north-west, so slopes read the way paper maps do.
+    gy, gx = np.gradient(m)
+    shade = -(gx + gy)
+    scale = float(np.percentile(np.abs(shade), 95)) or 1.0
+    shade = np.clip(shade / scale, -1.0, 1.0) * strength
+    arr = np.asarray(landscape, dtype="float32") * (1.0 + shade[..., None])
+    rock = m >= np.percentile(m, 75)
+    arr[rock] = arr[rock] * 0.85 + np.array([120, 110, 96], "float32") * 0.15
+    if relief >= SNOW_RELIEF_M:
+        snow = m >= np.percentile(m, 92)
+        arr[snow] = arr[snow] * 0.55 + np.array([238, 240, 244], "float32") * 0.45
+    landscape.paste(Image.fromarray(np.clip(arr, 0, 255).astype("uint8"), "RGB"),
+                    (0, 0))
+
+
+def _paint_landcover(landscape: Image.Image, grid) -> None:
+    """Paint the WorldCover base, one class per tile, under the OSM features.
+
+    OSM is painted afterwards, so anything it knows wins; this only colours
+    ground nothing else claimed.
+    """
+    import numpy as np
+
+    from .rendering.landcover import WORLDCOVER_PAINT
+
+    height, width = grid.shape
+    rgb = np.zeros((height, width, 3), dtype="uint8")
+    for code, colour in WORLDCOVER_PAINT.items():
+        rgb[grid == code] = colour
+    base = Image.fromarray(rgb, "RGB")
+    if base.size != landscape.size:
+        base = base.resize(landscape.size, Image.NEAREST)
+    landscape.paste(base, (0, 0))
+
+
 def render(features: Iterable[OSMFeature], south: float, west: float,
            north: float, east: float, meters_per_tile: float,
            output_dir: str, map_name: str,
@@ -116,6 +209,11 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            shape: dict | None = None,
            straight_roads: int = 1,
            fill_frontage: int = 0,
+           landcover_for=None,
+           climate=None,
+           winter_look: str = "auto",
+           elevation=None,
+           elevation_span=None,
            should_stop=None, progress=None) -> RenderResult:
     proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
     # Read more than once below - the buildings pass goes back over the
@@ -144,6 +242,19 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # the shape is built.
     clip = shape_px(shape, proj)
     landscape = Image.new("RGB", (proj.width, proj.height), C.DARK_GRASS)
+    if landcover_for is not None:
+        # Optional WorldCover ground under everything OSM paints (knoxdata).
+        try:
+            _paint_landcover(landscape, landcover_for(proj.width, proj.height))
+        except Exception:               # noqa: BLE001 - optional, never fatal
+            pass
+    if elevation is not None:
+        # Optional 3DEP relief (knoxdata): compressed into the ground under
+        # OSM, since Project Zomboid's outdoor ground is flat by format.
+        try:
+            _paint_relief(landscape, elevation, elevation_span)
+        except Exception:               # noqa: BLE001 - optional, never fatal
+            pass
     vegetation = Image.new("RGB", (proj.width, proj.height), C.VEG_NOTHING)
     l_draw = ImageDraw.Draw(landscape)
 
@@ -332,6 +443,14 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
              C.LIGHT_ASPHALT, C.PALE_CONCRETE}
     structures.settle_posts(lifted, lambda x, y: 0 <= x < proj.width and 0 <= y < proj.height
                             and ground_px[x, y] not in under)
+
+    if climate:
+        # Optional NOAA climate tint (knoxdata): after the ground is drawn, so
+        # it leans everything, and only when the layer actually ran.
+        try:
+            _paint_climate(landscape, climate, winter_look)
+        except Exception:               # noqa: BLE001 - optional, never fatal
+            pass
 
     # --- zombie spawn map (10x smaller, grayscale) ---
     spawn_w = proj.width // C.SPAWN_MAP_SCALE

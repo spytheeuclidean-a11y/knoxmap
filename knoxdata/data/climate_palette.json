@@ -1,0 +1,6 @@
+{
+  "arid": {"ground_tint": "dry_yellow", "trees": "sparse", "dirt_share": 0.35},
+  "cold continental": {"ground_tint": "cold", "trees": "bare_deciduous", "evergreen_share": 0.6},
+  "humid": {"ground_tint": "lush", "trees": "temperate", "evergreen_share": 0.3},
+  "temperate": {"ground_tint": "default", "trees": "temperate", "evergreen_share": 0.35}
+}

@@ -186,7 +186,12 @@ BUILD_BASE_BYTES = 300e6
 # steps a change really needs. tests/test_render_settings.py checks it against
 # what generate() actually reads, so the two cannot drift apart.
 RENDER_SETTINGS = ["align_streets", "rotate_degrees", "straight_roads",
-                   "tree_density", "forest_density", "fill_gaps", "fill_frontage"]
+                   "tree_density", "forest_density", "fill_gaps", "fill_frontage",
+                   # Enrichment layers (knoxdata/): they colour the ground and
+                   # tag buildings, so changing one redraws the map.
+                   "landcover", "elevation", "max_relief", "ne_context",
+                   "region_override", "hospitals", "hospitals_place_missing",
+                   "climate_flavor", "winter_look"]
 
 
 def _too_big_for_memory(tiles_w: float, tiles_h: float,

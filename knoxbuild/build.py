@@ -39,6 +39,7 @@ from .layout import build_building
 from .uses import USE_KEYS, is_hotel, uses_of
 from .context import Context, style_fits
 from .population import build_spawn_map, official_population, save_footprints
+from . import hospitals
 from .profile import BuildingProfile
 from .settings import PRESETS, Settings
 from .tbx import render_tbx
@@ -1563,6 +1564,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     with_uses = 0
     # (x0, y0, mask, storeys, kind) for the population estimate.
     peopled: list[tuple[int, int, np.ndarray, int, str]] = []
+    hifld_by_fname: dict = {}
     # Real outlines of the buildings placed, for the in-game paper map.
     outlines: list[tuple[list[tuple[float, float]], str, str]] = []
     occupied = np.zeros((proj.height, proj.width), dtype=bool)
@@ -1864,6 +1866,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             unit_uses = [uses[n % len(uses)]] if uses and len(units) > 1 else uses
             fname = f"{map_name}_{i:04d}.tbx" if len(units) == 1 else \
                 f"{map_name}_{i:04d}_{n:02d}.tbx"
+            # A real hospital's size shapes the people its spawn map holds.
+            hifld = hospitals.profile(tags)
+            if hifld:
+                hifld_by_fname[fname] = hifld
             label = (f"{name} {n + 1}" if name and len(units) > 1 else
                      name or f"{map_name} building {i}")
             if ("gunstore", "storage") in unit_uses:
@@ -1989,7 +1995,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                                         y0 + below["dy"], below["w"], below["h"],
                                         levels=below["levels"], base_level=-below["levels"]))
             basement_counts[below["tier"]] += 1
-        peopled.append((x0, y0, fp.mask, storeys, special or "house"))
+        peopled.append((x0, y0, fp.mask, storeys,
+                        hospitals.occupancy_kind(special or "house",
+                                                 hifld_by_fname.get(fname))))
         outlines.append((px, special or "house", real_name))
         rows.append({
             "file": fname, "name": label,
