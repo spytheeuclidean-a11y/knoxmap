@@ -3497,7 +3497,9 @@ def check_workshop(check, work: str) -> None:
     open(os.path.join(maps, "0_0.lotheader"), "wb").close()
     open(os.path.join(maps, "map.info"), "w").close()
     with open(os.path.join(root, "ATTRIBUTION.txt"), "w", encoding="utf-8") as f:
-        f.write("Map data (c) OpenStreetMap contributors, available under the Open Database License (ODbL)")
+        from knoxbuild import credits
+        f.write("Map data (c) OpenStreetMap contributors, available under the Open Database "
+                "License (ODbL)\n" + credits.plain())
 
     def levels():
         res = wc.check(root)
@@ -4414,6 +4416,9 @@ def main(argv: list[str]) -> int:
               f"no street on the paper map too long for the game to draw ({longest} points)")
         notes = open(os.path.join(out, "worldmap-annotations.lua"), encoding="utf-8").read()
         check("OpenStreetMap contributors" in notes, "OpenStreetMap credit on the in-game map")
+        from knoxbuild import credits
+        check(credits.MAKER in notes and all(n in notes for n in credits.CONTRIBUTORS),
+              "KnoxMap and every contributor credited on the in-game map")
         check("Selftest School" in notes or "Selftest Church" in notes, "landmarks labelled")
 
         print("spawn map")

@@ -77,6 +77,12 @@ def check(mod_root: str, project_dir: str | None = None) -> list[dict]:
         else:
             add("bad", "ATTRIBUTION.txt does not credit OpenStreetMap under the ODbL.",
                 "Install again to rewrite it, and keep the credit in whatever you publish.")
+        from knoxbuild import credits
+        if "made with knoxmap" in low and credits.MAKER.lower() in low:
+            add("ok", "ATTRIBUTION.txt credits KnoxMap and the people who made it.")
+        else:
+            add("warn", "ATTRIBUTION.txt does not credit KnoxMap and its makers.",
+                "Install again to rewrite it, and keep the credit on the Workshop page.")
         overture = project_dir and os.path.isdir(project_dir) and any(
             e.endswith("_overture.json.gz") for e in os.listdir(project_dir))
         if overture:

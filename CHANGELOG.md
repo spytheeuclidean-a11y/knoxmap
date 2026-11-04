@@ -29,6 +29,15 @@
   button, so you can make another map without quitting.
 - **Back yards:** both halves of the deck chair are placed together or not at
   all.
+- **Publishing to the Steam Workshop.** Installing a map now writes the
+  `preview.png` and `poster.png` the Workshop wants, so the Publish check stops
+  warning about a missing picture. `tools/make_map_workshop.py` lays an
+  installed map out for the game's uploader with a standard Workshop page,
+  which credits OpenStreetMap, The Indie Stone and KnoxMap.
+- **KnoxMap is credited in the map itself.** Near the first spawn house a clear
+  patch of lawn is lettered "KNOXMAP / BY EUCLID80TR" in the ground, and the
+  paper map names everyone who has worked on KnoxMap. The ground lettering is
+  part of the compiled map, so it stays with it.
 
 Regenerate a map, and start a new world, to see these.
 

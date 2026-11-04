@@ -545,6 +545,12 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         for x, y in fronts:
             if 0 <= x < w and 0 <= y < h:
                 veg[y, x] = C.VEG_NOTHING
+    # The credit for KnoxMap, in the ground near the first spawn house.
+    from . import credit_ground
+    clear = (match(CROSSABLE) & ~occupied
+             & ~np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w))
+    where = credit_ground.paint(ground, veg, clear, rows)
+    print(f"credit lettering     : " + (f"at tile {where[0]},{where[1]}" if where else "no clear patch"))
     Image.fromarray(ground).save(bmp, format="BMP")
     if veg is not None:
         Image.fromarray(veg).save(veg_path, format="BMP")
