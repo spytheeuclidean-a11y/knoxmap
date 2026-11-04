@@ -44,6 +44,23 @@ YARD_SIDE = 2            # how far the fence stands out past the house's sides
 PAVED = (C.PALE_CONCRETE, C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT)
 CROSSABLE = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.DIRT)
 YARD_FENCE_STYLES = ("tall_wooden", "short_wooden", "white_picket", "short_chainlink")
+YARD_ARCHETYPES = ("family", "grill", "laundry", "garden", "bare")
+YARD_ARCHETYPE_WEIGHTS = (30, 22, 18, 18, 12)
+YARD_FENCE_WEIGHTS = (40, 30, 18, 12)
+FENCED_SHARE = 0.85
+
+
+def yard_plan(bx0: int, by0: int) -> tuple[str, bool, str]:
+    """(fence style, fenced, archetype) for the house at bx0,by0.
+
+    Stable per house so a rebuild is the same map, and independent of the
+    order houses are visited in.
+    """
+    rng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0x9E3779B9)
+    style = rng.choices(YARD_FENCE_STYLES, weights=YARD_FENCE_WEIGHTS)[0]
+    fenced = rng.random() < FENCED_SHARE
+    archetype = rng.choices(YARD_ARCHETYPES, weights=YARD_ARCHETYPE_WEIGHTS)[0]
+    return style, fenced, archetype
 
 # A light by the front door. Knox County has one on 92% of its houses and a
 # railing on 71%; generated ones had a light on 1%, which is most of why they
@@ -124,14 +141,14 @@ def door_fronts(out_dir: str, rows: list[dict]) -> set[tuple[int, int]]:
     return out
 
 
-def _pave_patio(ground, veg, crossable, claimed, cells):
+def _pave_patio(ground, veg, crossable, claimed, cells, colour=C.PAVING_STONE):
     """Pave only unclaimed lawn so one home's patio cannot overwrite a neighbor's path."""
     h, w = crossable.shape
     paved = []
     for x, y in cells:
         if not (0 <= x < w and 0 <= y < h) or not crossable[y, x] or claimed[y, x]:
             continue
-        ground[y, x] = C.PAVING_STONE
+        ground[y, x] = colour
         if veg is not None:
             veg[y, x] = C.VEG_NOTHING
         paved.append((x, y))
@@ -347,7 +364,11 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         ax, ay = (1, 0) if dy else (0, 1)            # along the back wall
         back = (by0 - 1 if dy > 0 else by0 + bh) if dy else (bx0 - 1 if dx > 0 else bx0 + bw)
         # As wide as the house and a little over, narrower where the
-        # neighbours are close; as deep as there is room for.
+        # neighbours are close; as deep as there is room for, up to a depth
+        # this house's own yard takes. Every yard used to be nine deep.
+        want_depth = max(YARD_MIN_DEPTH,
+                         YARD_DEPTH - random.Random((bx0 * 31 + by0) ^ 0xA5A5)
+                         .choice((0, 0, 1, 1, 2, 3)))
         for side in (YARD_SIDE, 1, 0):
             u0 = (bx0 if dy else by0) - side
             width = (bw if dy else bh) + 2 * side
@@ -357,14 +378,19 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 return ((u0 + u, back + bdy * v) if dy else (back + bdx * v, u0 + u))
 
             depth = 0
-            for v in range(YARD_DEPTH):
+            for v in range(want_depth):
                 if not all(free(*at(u, v)) for u in range(width)):
                     break
                 depth = v + 1
             if depth >= YARD_MIN_DEPTH:
                 break
         if depth >= YARD_MIN_DEPTH:
-            style = YARD_FENCE_STYLES[(bx0 * 7 + by0 * 13) % len(YARD_FENCE_STYLES)]
+            # Which yard this is, and whether it is fenced at all: stable per
+            # house, so a rebuild is the same map, but a street is not all the
+            # same back yard. The fence style used to be a function of the
+            # coordinates alone, which is why whole rows matched.
+            style, fenced, archetype = yard_plan(bx0, by0)
+            yrng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0x5DEECE66D)
 
             # Fence corners as tile-corner coordinates, far side of row depth-1.
             if dy:
@@ -374,17 +400,21 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 far_y = back + bdy * depth + (0 if bdy > 0 else 1)
                 a, b = u0, u0 + width
                 house_a, house_b = bx0, bx0 + bw
-                fences.append(([(house_a, wall_y), (a, wall_y), (a, far_y), (b, far_y),
-                                (b, wall_y), (house_b, wall_y)], style,
-                               [(house_b, wall_y)]))
+                fence = ([(house_a, wall_y), (a, wall_y), (a, far_y), (b, far_y),
+                          (b, wall_y), (house_b, wall_y)], style,
+                         [(house_b, wall_y)])
+                if fenced:
+                    fences.append(fence)
             else:
                 wall_x = back + (0 if bdx > 0 else 1)
                 far_x = back + bdx * depth + (0 if bdx > 0 else 1)
                 a, b = u0, u0 + width
                 house_a, house_b = by0, by0 + bh
-                fences.append(([(wall_x, house_a), (wall_x, a), (far_x, a), (far_x, b),
-                                (wall_x, b), (wall_x, house_b)], style,
-                               [(wall_x, house_b)]))
+                fence = ([(wall_x, house_a), (wall_x, a), (far_x, a), (far_x, b),
+                          (wall_x, b), (wall_x, house_b)], style,
+                         [(wall_x, house_b)])
+                if fenced:
+                    fences.append(fence)
             # The gate is beside the house, at the end of the last stretch.
 
             taken = set()
@@ -410,8 +440,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                         return False
                 return place(*first) and place(*second)
 
-            # Patio: stone outside the back door, three deep; behind the middle
-            # of the house if the back door is not on the yard side.
+            # What this yard is: a family yard with the table out, a barbecue,
+            # washing, a garden, or a bare one with a bin. Knox County's yards
+            # are not one script, and every generated one used to be.
             mid = width // 2
             for bxo, byo, _bxi, _byi in doors[1:]:
                 wx, wy = bx0 + bxo, by0 + byo
@@ -419,47 +450,93 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 if v == 0 and 2 <= u < width - 3:
                     mid = u
                     break
+
+            # Patio: stone or gravel, 3 or 5 wide, as deep as the yard allows.
+            patio_w = min(3 if (width < 9 or yrng.random() < 0.5) else 5,
+                          max(1, width - 2))
+            patio_d = max(1, min(yrng.choice((2, 3, 3, 4)), depth - 1))
+            patio_colour = yrng.choice((C.PAVING_STONE, C.PAVING_STONE, C.LIGHT_ASPHALT))
             patio_tiles = []
-            for v in range(min(3, depth - 1)):
-                for u in range(mid - 2, mid + 3):
-                    patio_tiles.extend(_pave_patio(
-                        ground, veg, crossable, claimed, (at(u, v),)))
-            place(mid - 2, 1, C.GRILL)
-            if dy:
-                place_pair((mid, 1, C.TABLE_X0), (mid + 1, 1, C.TABLE_X1))
-                place(mid, 0, C.CHAIR_N); place(mid + 1, 2, C.CHAIR_S)
+            left = max(1, min(width - 2 - patio_w, mid - patio_w // 2))
+            mid = left + patio_w // 2
+            if archetype != "bare":
+                for v in range(patio_d):
+                    for u in range(left, left + patio_w):
+                        patio_tiles.extend(_pave_patio(
+                            ground, veg, crossable, claimed, (at(u, v),), patio_colour))
+
+            # Furniture: not every yard sets the same table.
+            if archetype == "family":
+                place(left, 1, C.GRILL)
+                if dy:
+                    place_pair((mid, 1, C.TABLE_X0), (mid + 1, 1, C.TABLE_X1))
+                    place(mid, 0, C.CHAIR_N); place(mid + 1, 2, C.CHAIR_S)
+                else:
+                    # The deck chair's halves run along u (north to south here),
+                    # as in the other branch; along v they stood side by side.
+                    place_pair((mid, 1, C.TABLE_Y0), (mid + 1, 1, C.TABLE_Y1))
+                    place(mid - 1, 1, C.CHAIR_W); place(mid + 1, 2, C.CHAIR_E)
+            elif archetype == "grill":
+                place(left, 1, C.GRILL)
+                place(mid, 1, C.CHAIR_N if dy else C.CHAIR_W)
+            elif archetype == "laundry":
+                place(1, depth - 2, C.BIN)
             else:
-                # The deck chair's halves run along u (north to south here),
-                # as in the other branch; along v they stood side by side.
-                place_pair((mid, 1, C.TABLE_Y0), (mid + 1, 1, C.TABLE_Y1))
-                place(mid - 1, 1, C.CHAIR_W); place(mid + 1, 2, C.CHAIR_E)
+                place(width - 2, depth - 2, C.BIN)
+
+            # Claimed only now: the furniture stands on the patio, and `place`
+            # refuses a claimed tile.
             for x, y in patio_tiles:
                 claimed_bytes[y * w + x] = 1
 
-            # Washing line along the back fence, if the yard is wide enough.
+            # Washing line along the back fence: the family and laundry yards,
+            # on whichever side it was put.
             v_line = depth - 2
-            if width >= 9 and v_line >= 3:
+            if archetype in ("family", "laundry") and width >= 9 and v_line >= 3:
                 ends = (C.LINE_X0, C.LINE_XM, C.LINE_X1) if dy else (C.LINE_Y0, C.LINE_YM, C.LINE_Y1)
+                start = width - 6 if yrng.random() < 0.5 else 1
                 for k in range(5):
-                    place(width - 6 + k, v_line, ends[0] if k == 0 else ends[2] if k == 4 else ends[1])
+                    place(start + k, v_line, ends[0] if k == 0 else ends[2] if k == 4 else ends[1])
 
-            # A raised vegetable bed in the far corner, soil to plant in. Its
-            # frame pieces go by map direction (the editor's 3x3 planter,
-            # stretched): west column, middle, east column; north row, middle,
-            # south row.
-            bd_ = min(4, depth - 3)
-            if bd_ >= 3:
-                cells = [at(1 + i, depth - 1 - j) for i in range(3) for j in range(bd_)]
-                if all(free(x, y) for x, y in cells):
-                    xs_ = sorted({x for x, _ in cells}); ys_ = sorted({y for _, y in cells})
-                    frame = {("W", "N"): C.BED_NW, ("W", "M"): C.BED_W, ("W", "S"): C.BED_SW,
-                             ("M", "N"): C.BED_N, ("M", "M"): C.BED_SOIL, ("M", "S"): C.BED_S,
-                             ("E", "N"): C.BED_NE, ("E", "M"): C.BED_E, ("E", "S"): C.BED_SE}
-                    for x, y in cells:
-                        col = "W" if x == xs_[0] else "E" if x == xs_[-1] else "M"
-                        row = "N" if y == ys_[0] else "S" if y == ys_[-1] else "M"
-                        paint(x, y, C.DIRT)
+            # A raised vegetable bed, soil to plant in. Its frame pieces go by
+            # map direction (the editor's 3x3 planter, stretched): west column,
+            # middle, east column; north row, middle, south row.
+            def veg_bed(u_start):
+                bd_ = min(4, depth - 3)
+                if bd_ < 3:
+                    return
+                cells = [at(u_start + i, depth - 1 - j) for i in range(3) for j in range(bd_)]
+                if not all(free(x, y) for x, y in cells):
+                    return
+                xs_ = sorted({x for x, _ in cells}); ys_ = sorted({y for _, y in cells})
+                frame = {("W", "N"): C.BED_NW, ("W", "M"): C.BED_W, ("W", "S"): C.BED_SW,
+                         ("M", "N"): C.BED_N, ("M", "M"): C.BED_SOIL, ("M", "S"): C.BED_S,
+                         ("E", "N"): C.BED_NE, ("E", "M"): C.BED_E, ("E", "S"): C.BED_SE}
+                for x, y in cells:
+                    col = "W" if x == xs_[0] else "E" if x == xs_[-1] else "M"
+                    row = "N" if y == ys_[0] else "S" if y == ys_[-1] else "M"
+                    paint(x, y, C.DIRT)
+                    if veg is not None:
                         veg[y, x] = frame[(col, row)]
+
+            if archetype == "garden":
+                veg_bed(1)
+                if width >= 12:
+                    veg_bed(width - 4)
+            elif archetype == "family" and yrng.random() < 0.6:
+                veg_bed(1)
+
+            # A few bushes, or flowers in the corners: a yard is not mown bare.
+            # Skipped where a bed or a tree already stands.
+            if veg is not None and archetype != "bare":
+                for u in range(1, width - 1, 2):
+                    x, y = at(u, depth - 1)
+                    if (0 <= x < w and 0 <= y < h
+                            and tuple(veg[y, x]) == C.VEG_NOTHING
+                            and yrng.random() < 0.22):
+                        place(u, depth - 1, C.BUSHES)
+            if veg is not None and archetype in ("garden", "bare") and yrng.random() < 0.5:
+                place(width - 2, 0, C.FLOWERS)
             # Behind the fence: no later path or drive runs through it.
             for u in range(width):
                 for v in range(depth):
