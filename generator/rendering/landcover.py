@@ -4,6 +4,24 @@ from __future__ import annotations
 from .. import pz_colors as C
 
 
+# ESA WorldCover class -> ground colour, painted under every OSM feature.
+# The table is data (knoxdata/worldcover.py reads it), but the colours are the
+# renderer's, so they live here with the rest of the palette.
+WORLDCOVER_PAINT = {
+    10: C.DARK_GRASS,      # tree cover -> forest ground
+    20: C.MEDIUM_GRASS,    # shrubland
+    30: C.MEDIUM_GRASS,    # grassland
+    40: C.LIGHT_GRASS,     # cropland -> farmland
+    50: C.MEDIUM_GRASS,    # built-up: yards, not pavement; roads/buildings over it
+    60: C.DIRT,            # bare / sparse
+    70: C.SAND,            # snow and ice (the tile palette has no snow)
+    80: C.WATER,           # permanent water
+    90: C.DARK_GRASS,      # herbaceous wetland -> marsh
+    95: C.DARK_GRASS,      # mangroves
+    100: C.DIRT,           # moss and lichen -> rocky tundra
+}
+
+
 # --- feature painting ------------------------------------------------------
 
 # Paint order for landscape: later categories overwrite earlier ones, so this

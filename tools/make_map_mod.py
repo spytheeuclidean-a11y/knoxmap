@@ -556,6 +556,21 @@ buildings theme is published under ODbL as well, and is itself OpenStreetMap
 with machine-detected roofprints layered under it. Credit "Building data (c)
 Overture Maps Foundation" alongside OpenStreetMap if you publish this map.
 """ if overture else ""
+    # Optional data layers (knoxdata/) carry their own attribution, recorded
+    # beside the map when generate applied them (docs/DATASETS.md).
+    used_layers = []
+    for entry in os.listdir(project_dir):
+        if entry.endswith("_knoxdata.json"):
+            try:
+                with open(os.path.join(project_dir, entry), encoding="utf-8") as f:
+                    used_layers = _json.load(f).get("used") or []
+            except (OSError, ValueError):
+                used_layers = []
+            break
+    layer_lines = _credits.dataset_lines(used_layers)
+    from_layers = ("\nOPTIONAL DATA\n"
+                   + "\n".join(f"  - {line}" for line in layer_lines) + "\n"
+                   if layer_lines else "")
     text = f"""{name}
 {"=" * len(name)}
 
@@ -573,7 +588,7 @@ the OpenStreetMap data inside this area (south, west, north, east):
 downloaded on or before {datetime.date.today().isoformat()}, using the open-source
 method in KnoxMap at the address above. If you publish this map, keep this
 file with it and credit "Map data (c) OpenStreetMap contributors".
-{from_overture}
+{from_overture}{from_layers}
 Buildings' interiors, residents and zombies are invented by the generator and
 do not describe the real places or anyone connected with them. Not for
 navigation or any real-world use.

@@ -19,8 +19,8 @@ from flask import Flask, jsonify, render_template, request
 
 import knoxlog
 
-from web import (compiling, generation, geo, jobs, maps, presets, system,
-                 updates, zones)
+from web import (compiling, datasets, generation, geo, jobs, maps, presets,
+                 system, updates, zones)
 from web.common import _request_context, failed
 
 # Names the tests and tools/selftest.py reach through this module. The code
@@ -127,6 +127,7 @@ app.register_blueprint(presets.bp)
 app.register_blueprint(zones.bp)
 app.register_blueprint(compiling.bp)
 app.register_blueprint(generation.bp)
+app.register_blueprint(datasets.bp)
 app.register_blueprint(maps.bp)
 
 

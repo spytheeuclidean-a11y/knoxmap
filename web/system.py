@@ -425,8 +425,10 @@ def api_settings():
         # JSON writes 1.0 as 1, so the page cannot tell a float whose default
         # happens to be whole from an int - and a woodland slider built as an
         # integer can only reach 0, 1, 2 or 3. Say which is which.
-        "types": {f.name: ("enum" if f.name in ("building_alignment", "arch_style",
-                                                "height_mix")
+        "types": {f.name: ("enum" if f.name in (
+                              "building_alignment", "arch_style", "height_mix",
+                              "landcover", "elevation", "hospitals", "winter_look")
+                           else "text" if f.name == "region_override"
                            else "int" if f.type in (int, "int") else "float")
                   for f in fields(Settings)},
         "options": {
@@ -441,6 +443,13 @@ def api_settings():
                            ["middle", "Mostly middling"],
                            ["tall", "Mostly tall, a few smaller"],
                            ["even", "Every height equally"]],
+            # Enrichment layers (knoxdata/).
+            "landcover": [["worldcover", "ESA WorldCover"],
+                          ["osm", "OpenStreetMap only"], ["off", "Off"]],
+            "elevation": [["3dep", "USGS 3DEP"], ["flat", "Flat"]],
+            "hospitals": [["hifld", "HIFLD"],
+                          ["osm", "OpenStreetMap only"], ["off", "Off"]],
+            "winter_look": [["auto", "Auto"], ["on", "On"], ["off", "Off"]],
         },
         "limits": {k: list(v) for k, v in LIMITS.items()},
         "presets": {name: s.to_dict() for name, s in PRESETS.items()},

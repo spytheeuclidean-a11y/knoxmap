@@ -1,0 +1,13 @@
+{
+  "10": {"name": "Tree cover", "ground": "forest", "behaviour": "Build 42 trees at Woodland density"},
+  "20": {"name": "Shrubland", "ground": "grass", "behaviour": "grass with scattered bushes and saplings"},
+  "30": {"name": "Grassland", "ground": "meadow", "behaviour": "meadow grass"},
+  "40": {"name": "Cropland", "ground": "farmland", "behaviour": "field plots, furrows and farm fences at field boundaries"},
+  "50": {"name": "Built-up", "ground": "impervious", "behaviour": "impervious/dirt only where OSM has no road or building"},
+  "60": {"name": "Bare / sparse vegetation", "ground": "dirt", "behaviour": "dirt or sand"},
+  "70": {"name": "Snow and ice", "ground": "snow", "behaviour": "snow-tinted ground"},
+  "80": {"name": "Permanent water bodies", "ground": "water", "behaviour": "water only where OSM has no water polygon"},
+  "90": {"name": "Herbaceous wetland", "ground": "marsh", "behaviour": "marsh ground and swamp trees"},
+  "95": {"name": "Mangroves", "ground": "marsh", "behaviour": "marsh ground and swamp trees"},
+  "100": {"name": "Moss and lichen", "ground": "tundra", "behaviour": "rocky tundra tint"}
+}

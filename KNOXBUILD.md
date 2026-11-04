@@ -366,6 +366,22 @@ and `WorldWriter` in the mapping-tools source. Things worth knowing:
   version 4, the first that carries a per-room `Ceiling`; older versions load
   but get ceilings silently back-filled.
 
+## Optional data layers (`knoxdata/`)
+
+Five public datasets can fill what OpenStreetMap leaves blank. Each implements
+`DatasetSource` in `knoxdata/` and reports `available()` / `why_unavailable()`;
+`run_layers()` applies the enabled ones in order, logging one line per skip and
+never failing a map. `refresh()` downloads to `cache/datasets/`; the generate
+path only reads that cache (`require_cache=True`), so a map is never slowed or
+failed by a dataset, and a fresh install is byte-identical to before.
+
+OSM and hand-authored data always win: WorldCover paints the ground *under* the
+OSM features, only where nothing else claimed a tile. HIFLD matches a facility
+to the nearest OSM building within 150 m (name match first) and writes its
+name/beds/type/status/helipad onto the feature that reaches `_buildings.geojson`,
+which the building step reads. See [docs/DATASETS.md](docs/DATASETS.md) for each
+layer's source, coverage, licence, cache and the data tables in `knoxdata/data/`.
+
 ## Verification status
 
 Both formats have been loaded by the real editors (PZ_Mapping_Tools build

@@ -181,7 +181,7 @@ def api_save():
             return failed(f"Could not write the zip: {exc}", 500, exc)
     else:
         target = (map_dir / name).resolve()
-        if not str(target).startswith(str(map_dir.resolve())) or not target.is_file():
+        if not target.is_relative_to(map_dir.resolve()) or not target.is_file():
             return failed("That file is not in this map's folder.", 400)
     knoxlog.open_folder(target)
     log.info("saved %s for %s", target.name, map_dir.name)
@@ -199,7 +199,7 @@ def download_all(map_name: str):
     """
     safe = SAFE_NAME.sub("_", map_name)
     map_dir = (common.OUTPUT_DIR / safe).resolve()
-    if not str(map_dir).startswith(str(common.OUTPUT_DIR.resolve())):
+    if not map_dir.is_relative_to(common.OUTPUT_DIR.resolve()):
         return jsonify({"error": "Bad map name."}), 400
     if not map_dir.is_dir():
         return jsonify({"error": f"No output for {safe!r}."}), 404

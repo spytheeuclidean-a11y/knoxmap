@@ -101,15 +101,35 @@ def _ground_shares(path: str, gw: int, gh: int) -> tuple[np.ndarray, np.ndarray]
     return paved, water
 
 
+def _split_scale(kind: str) -> tuple[str, float]:
+    """('medical', 2.5) from 'medical:2.5'; ('medical', 0.25) from '...:closed'.
+
+    Set by knoxbuild/hospitals.py from HIFLD BEDS, so a real hospital is
+    stocked with more or fewer people than a generic medical building.
+    """
+    if ":" not in kind:
+        return kind, 1.0
+    base, _, suffix = kind.partition(":")
+    if base != "medical":
+        return kind, 1.0
+    if suffix == "closed":
+        return base, 0.25
+    try:
+        return base, max(0.1, float(suffix))
+    except ValueError:
+        return base, 1.0
+
+
 def occupants(kind: str, tiles: int, levels: int, metres_per_tile: float,
               m2_per_person: float) -> tuple[float, float]:
     """(residents, daytime occupants) for one building."""
     if kind == "shed":
         return 0.0, 0.0
+    kind, scale = _split_scale(kind)
     floor = tiles * metres_per_tile * metres_per_tile * max(1, levels)
     if kind in RESIDENTIAL:
         return floor / m2_per_person, 0.0
-    return 0.0, floor / DAYTIME_M2_PER_PERSON.get(kind, 25)
+    return 0.0, scale * floor / DAYTIME_M2_PER_PERSON.get(kind, 25)
 
 
 def _soften(grid: np.ndarray) -> np.ndarray:

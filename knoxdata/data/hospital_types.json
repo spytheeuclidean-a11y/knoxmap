@@ -1,0 +1,13 @@
+{
+  "PSYCHIATRIC": "psychiatric",
+  "CHILDREN": "childrens",
+  "CHILDRENS": "childrens",
+  "CHILDREN'S": "childrens",
+  "MILITARY": "military",
+  "REHABILITATION": "rehabilitation",
+  "LONG TERM CARE": "longtermcare",
+  "CRITICAL ACCESS": "criticalaccess",
+  "GENERAL ACUTE CARE": "generalacute",
+  "GENERAL MEDICAL AND SURGICAL": "generalacute",
+  "": "generalacute"
+}
