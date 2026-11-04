@@ -126,13 +126,31 @@ def _walk(s, runs):
     return out
 
 
+MAX_SAMPLES = 256            # the real road is compared at most this often
+
+
+def _samples(real):
+    """Points along the real line, shape only.
+
+    Every SAMPLE tiles is right for a street, but a kilometres-long link (a
+    beach road on a 119 km2 map) made each candidate comparison quadratic:
+    thousands of samples against thousands of corners, again for each shape.
+    One link sat here for over half an hour. Cap the count; the fit only needs
+    the shape.
+    """
+    span = np.arange(0, real.length + SAMPLE / 2, SAMPLE)
+    if len(span) > MAX_SAMPLES:
+        span = np.linspace(0, real.length, MAX_SAMPLES)
+    return shapely.line_interpolate_point(real, span)
+
+
 def fit(real_pts, s, g, hs, ha, width, run_min, reach_tiles, scale=1.0, taken=None, me=None, end_r=8,
         near=None, clear_cost=0.0):
     """The best vanilla-shaped path from corner s on heading hs to corner g
     (arriving on ha; None: any), or None. Returns (path corners, shape key,
     mean distance)."""
     real = shapely.LineString(real_pts)
-    samples = shapely.line_interpolate_point(real, np.arange(0, real.length + SAMPLE / 2, SAMPLE))
+    samples = _samples(real)
     D = np.array(g, int) - np.array(s, int)
     end_run = max(1, (run_min + 1) // 2)
     best = None
@@ -188,7 +206,7 @@ def fit(real_pts, s, g, hs, ha, width, run_min, reach_tiles, scale=1.0, taken=No
             path = _walk(s, runs)
             if path[-1] != tuple(g):
                 continue
-            line = shapely.LineString(path)
+            line = shapely.LineString(path).simplify(1.0)
             d = shapely.distance(samples, line)
             if d.max() > reach_tiles:
                 continue

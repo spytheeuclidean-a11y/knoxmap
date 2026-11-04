@@ -59,3 +59,6 @@ presets/buildings/
 
 # Areas and buildings written out to send to somebody (knoxbuild/share.py).
 preset_exports/
+
+# Cargo build output
+rust/*/target/
