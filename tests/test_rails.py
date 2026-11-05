@@ -13,33 +13,28 @@ class _Proj:
     meters_per_tile = 1.0
 
 
-def _painted(ring, mpt=1.0):
+def _painted(ring):
     img = Image.new("RGB", (60, 40), C.LIGHT_ASPHALT)
     feat = OSMFeature(1, "way", {"railway": "rail"}, [[0.0, 0.0], [0.0, 1.0]])
     with mock.patch.object(roads, "_feature_coords_px", return_value=[ring]):
-        roads.paint_rails(ImageDraw.Draw(img), {"railway": [feat]},
-                          type("P", (), {"meters_per_tile": mpt})())
+        roads.paint_rails(ImageDraw.Draw(img), {"railway": [feat]}, _Proj())
     return img
 
 
-class Rails(unittest.TestCase):
-    def test_two_rails_with_ballast_between_them(self):
-        img = _painted([(5, 20), (55, 20)])
-        self.assertEqual(img.getpixel((30, 19)), C.DARKEST_ASPHALT)
-        self.assertEqual(img.getpixel((30, 21)), C.DARKEST_ASPHALT)
-        self.assertEqual(img.getpixel((30, 20)), C.LIGHT_ASPHALT)
+class RailTile(unittest.TestCase):
+    def test_a_line_climbing_north_east_gets_the_ne_sw_tile(self):
+        img = _painted([(5, 30), (40, 5)])
+        self.assertIn(C.RAIL_NE_SW,
+                      {img.getpixel((x, y)) for x in range(60) for y in range(40)})
 
-    def test_sleepers_cross_the_bed(self):
-        img = _painted([(5, 20), (55, 20)])
-        self.assertEqual(img.getpixel((8, 20)), C.DIRT)     # 3 m along, mid-bed
-        self.assertEqual(img.getpixel((11, 20)), C.DIRT)    # 6 m along
-        self.assertEqual(img.getpixel((9, 20)), C.LIGHT_ASPHALT)  # between
+    def test_a_line_climbing_south_east_gets_the_nw_se_tile(self):
+        img = _painted([(5, 5), (40, 30)])
+        self.assertIn(C.RAIL_NW_SE,
+                      {img.getpixel((x, y)) for x in range(60) for y in range(40)})
 
-    def test_rails_follow_a_diagonal(self):
-        img = _painted([(5, 5), (55, 35)])
-        dark = sum(1 for x in range(60) for y in range(40)
-                   if img.getpixel((x, y)) == C.DARKEST_ASPHALT)
-        self.assertGreater(dark, 60)
+    def test_the_ballast_shows_beside_the_track(self):
+        img = _painted([(5, 30), (40, 5)])
+        self.assertEqual(img.getpixel((20, 34)), C.LIGHT_ASPHALT)
 
 
 if __name__ == "__main__":

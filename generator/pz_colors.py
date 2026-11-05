@@ -146,6 +146,10 @@ DUMPSTER_ORANGE_E0 = (12, 39, 212)
 DUMPSTER_ORANGE_E1 = (12, 39, 213)
 # Ground: the stone slabs of a front path or a stoop (Rules.txt "Paving Stone 4").
 PAVING_STONE = (190, 180, 180)
+# Rail: Rules.txt "Railroad NE-SW"/"Railroad NW-SE" paint the game's own track
+# tiles (industry_railroad_01_6/_7), so a rail bed is a real railway line.
+RAIL_NE_SW = (200, 30, 200)
+RAIL_NW_SE = (201, 31, 201)
 
 # Zombie spawn map: grayscale, 10x smaller than landscape/vegetation.
 # (0,0,0) = no spawns, (255,255,255) = max spawn density.

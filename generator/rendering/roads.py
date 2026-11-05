@@ -119,49 +119,34 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         landscape.paste(Image.fromarray(ground[rows]), (0, y0))
 
 
+
+
+
+
 # --- railway ---------------------------------------------------------------
 
-# Rails a tile apart rather than the true 1.435 m gauge: at 1 m per tile two
-# lines any closer merge into one, and a railway that reads as a single dark
-# line is no better than the bare ballast it replaced.
-RAIL_GAUGE_M = 2.0
-RAIL_BED_M = 4.0        # the ballast strip painted for "railway" in landcover
-RAIL_SLEEPER_M = 3.0    # one sleeper every this many metres along the track
+RAIL_WIDTH_M = 1.0      # one tile of track; the tile carries ties and rails
 
 
 def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
-    """Two rails and their sleepers on the ballast.
+    """Lay the game's own railroad tile along each track.
 
-    A rail bed was a bare strip of lightgravel four tiles wide, which from
-    above is what a sandy path looks like: Sidney's rail wye read as a
-    junction of dirt tracks. Dark rails just inside the bed, with a sleeper
-    across every few metres, make the corridor read as a railway.
+    The bed is ballast (landcover "railway"); on it we paint the vanilla
+    track tile, picking the of the two straight pieces by which way the line
+    runs: industry_railroad_01_6 climbs NE-SW, _7 NW-SE. Without this a rail
+    corridor is a bare gravel strip and reads as a sandy path.
     """
-    mpt = proj.meters_per_tile
-    half = RAIL_GAUGE_M / 2 / mpt
-    arm = (RAIL_BED_M / 2 - 0.5) / mpt
-    step = RAIL_SLEEPER_M / mpt
+    width = max(1, _pixel_width(RAIL_WIDTH_M, proj.meters_per_tile))
     for feat in buckets.get("railway", []):
         if _is_polygon(feat):
             continue
         for ring in _feature_coords_px(feat, proj):
             for (ax, ay), (bx, by) in zip(ring, ring[1:]):
                 dx, dy = bx - ax, by - ay
-                length = math.hypot(dx, dy)
-                if length < 1.0:
+                if abs(dx) + abs(dy) < 1.0:
                     continue
-                nx, ny = -dy / length, dx / length
-                for side in (-half, half):
-                    ox, oy = nx * side, ny * side
-                    draw.line([(ax + ox, ay + oy), (bx + ox, by + oy)],
-                              fill=C.DARKEST_ASPHALT, width=1)
-                t = step
-                while t < length:
-                    px, py = ax + dx * t / length, ay + dy * t / length
-                    draw.line([(px - nx * arm, py - ny * arm),
-                               (px + nx * arm, py + ny * arm)],
-                              fill=C.DIRT, width=1)
-                    t += step
+                colour = C.RAIL_NE_SW if dx * dy < 0 else C.RAIL_NW_SE
+                draw.line([(ax, ay), (bx, by)], fill=colour, width=width)
 
 
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,

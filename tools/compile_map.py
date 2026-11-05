@@ -354,6 +354,45 @@ def bitmap_pixels(width: int, height: int) -> int:
     return -(-width // 300) * 300 * (-(-height // 300) * 300)
 
 
+# The renderer paints railways with the game's own track tiles
+# (generator/pz_colors.RAIL_NE_SW / RAIL_NW_SE). A colour with no rule is
+# dropped from the compile with a warning, leaving holes where the track was,
+# so the rules are added to the tools' Rules.txt the first time a map is built.
+RAIL_RULES = """
+rule
+{
+    label = Railroad NE-SW
+    bitmap = 0
+    color = 200 30 200
+    tiles = industry_railroad_01_6
+    layer = 0_Floor
+}
+
+rule
+{
+    label = Railroad NW-SE
+    bitmap = 0
+    color = 201 31 201
+    tiles = industry_railroad_01_7
+    layer = 0_Floor
+}
+"""
+
+
+def ensure_rail_rules(tools_dir) -> bool:
+    """Add the railroad rules to the tools' Rules.txt if they are missing."""
+    rules = tools_dir / "config" / "Rules.txt"
+    try:
+        text = rules.read_text(encoding="utf-8", errors="replace")
+        if "Railroad NE-SW" in text:
+            return False
+        with rules.open("a", encoding="utf-8") as handle:
+            handle.write(RAIL_RULES)
+        return True
+    except OSError:
+        return False
+
+
 def scale_that_fits(width: int, height: int, meters_per_tile: float) -> int | None:
     """The smallest whole-metre scale at which a map drawn at this one fits
     WorldEd, or None if no scale up to 100 does."""
@@ -455,6 +494,7 @@ def clear_stale(project: Path) -> None:
     settings_time = 0.0
     tools = knoxpaths.mapping_tools_dir()
     if tools:
+        ensure_rail_rules(tools)
         terrain = max(terrain, newest(p for p in (tools / "config" / "Rules.txt",
                                                   tools / "config" / "Blends.txt")
                                       if p.exists()))
