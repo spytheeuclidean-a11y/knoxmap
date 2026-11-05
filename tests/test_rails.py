@@ -14,7 +14,7 @@ class _Proj:
 
 
 def _painted(ring):
-    img = Image.new("RGB", (60, 40), C.LIGHT_ASPHALT)
+    img = Image.new("RGB", (60, 40), C.DIRT)
     feat = OSMFeature(1, "way", {"railway": "rail"}, [[0.0, 0.0], [0.0, 1.0]])
     with mock.patch.object(roads, "_feature_coords_px", return_value=[ring]):
         roads.paint_rails(ImageDraw.Draw(img), {"railway": [feat]}, _Proj())
@@ -32,9 +32,9 @@ class RailTile(unittest.TestCase):
         self.assertIn(C.RAIL_NW_SE,
                       {img.getpixel((x, y)) for x in range(60) for y in range(40)})
 
-    def test_the_ballast_shows_beside_the_track(self):
+    def test_the_dirt_bed_shows_beside_the_track(self):
         img = _painted([(5, 30), (40, 5)])
-        self.assertEqual(img.getpixel((20, 34)), C.LIGHT_ASPHALT)
+        self.assertEqual(img.getpixel((20, 34)), C.DIRT)
 
 
 if __name__ == "__main__":
