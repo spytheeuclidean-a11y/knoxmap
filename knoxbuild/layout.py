@@ -6265,8 +6265,8 @@ FLOOR_CHOICES = {
 # uncarpeted here on purpose.
 KIND_FLOOR_CHOICES = {
     "garage": {
-        "garage": ["tile_grey", "civic_scuff"],
-        "mechanic": ["tile_grey", "civic_scuff"],
+        "garage": ["concrete"],
+        "mechanic": ["concrete"],
     },
     "school": {
         "classroom":    ["wood_pale", "school_pale", "school_warm"],

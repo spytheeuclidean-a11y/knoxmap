@@ -299,6 +299,10 @@ def render_tbx(plan: Plan | Building, name: str,
             entry, curtains = style["shop_front"]
             front_idx = _add(entries, entry)
             front_curtains = _add(entries, curtains)
+    # A garage wears a gable roof whatever the town's kit is: a tar-roofed box
+    # beside the houses reads as a shop unit rather than a garage.
+    if building.rooms and all(r.kind == "garage" for r in building.rooms):
+        peaked = True
     # With Erika's Tiles, a shop front is a wall of glass in a painted frame,
     # not windows set in brick, and a sign hangs over it.
     runs: list[tuple[str, int, int, int]] = []
