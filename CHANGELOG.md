@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.8.4.2
+
+- **Five optional data layers.** A map can now read ground cover from ESA
+  WorldCover, relief from USGS 3DEP, coastlines and place names from Natural
+  Earth, hospital identities from HIFLD and a tint from the NOAA climate
+  normals. Each is a knob in *Fine tuning* (`landcover`, `elevation`,
+  `ne_context`, `hospitals`, `climate_flavor`), each is fetched through a
+  cache in `cache/datasets/` and copied into `<map>/.knoxdata/`, and each
+  degrades to what the map looked like before if it cannot be had - the build
+  never fails because a download did. OpenStreetMap always wins: a layer only
+  fills ground nobody claimed.
+- **Everything a map used is credited.** `ATTRIBUTION.txt` names every
+  source the map actually drew from, layer by layer.
+- **Heavy dependencies stay optional.** Raster layers import rasterio and
+  pyarrow only when they run, and Setup says whether they are installed, so a
+  plain install still builds plain maps.
+- **Roads are routed by knoxroute.** The Rust A* search over the OSM graph
+  does the routing (`rust/knoxroute`), with the Python side feeding it and
+  falling back when the binary is missing. A deadlock on the search pipe that
+  could leave a map stuck at 390 of 1,771 links for ten minutes is fixed, and
+  a search that runs away is stopped after 600 s.
+- **Long links fit again.** Template fitting sampled every corner pair on a
+  long road, so a 20 km link took minutes; it is bounded to 256 samples and a
+  1 m simplify, and that link now fits in ten seconds.
+- **The compiler obeys the machine.** Compile workers are capped so the
+  compile never takes more than three quarters of the installed RAM, whatever
+  `compile_workers` says: 16 GB gives 4 workers, 8 GB gives 2, and a machine
+  whose memory cannot be read gets one.
+- **Unnamed maps are `knoxmap_`.** A map generated without a name is now
+  `knoxmap_<timestamp>`, not the old `knoxify_`.
+- **A build lands where the map was placed.** Builds used to ignore the
+  placement saved for a map and pick a free origin each time, so the window
+  and the compiled cells named different cells and installing answered "this
+  map has been moved since it was last compiled" however often it was
+  compiled again. A build now keeps the placement, then where the project
+  already stands, and only then looks for a free cell.
+
 ## 1.8.4.1
 
 - **Stairs down get a room of their own.** A house's cellar stairs go behind a
