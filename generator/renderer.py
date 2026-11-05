@@ -60,7 +60,8 @@ from .rendering.projection import (Projector, _ceil_to, _inside, cover_bbox,
                                    shape_px)  # noqa: F401
 from .rendering.roads import (_paint_road_details, _pave_dense_ground,
                               _real_kerbs, _road_hierarchy_image,
-                              _smooth_road_edges, _weather_roads)  # noqa: F401
+                              _smooth_road_edges, _weather_roads,
+                              paint_rails)  # noqa: F401
 from .rendering.sea import sea_polygons  # noqa: F401
 from .rendering.shape import THROUGH_ROADS, _clip_to_shape  # noqa: F401
 from .rendering.vegetation import (BOX_STRIP_ROWS, GARDEN_CLEAR_OF_HOUSE,
@@ -400,6 +401,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 # A river or canal mapped only as its centre line.
                 metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
                 _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
+
+    # Rails after the ground: the ballast under them is the landscape pass's
+    # railway fill, and a bare bed reads as a sandy path.
+    paint_rails(l_draw, buckets, proj)
 
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:
