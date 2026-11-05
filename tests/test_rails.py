@@ -22,13 +22,18 @@ def _painted(ring):
 
 
 class RailTile(unittest.TestCase):
-    def test_a_line_climbing_north_east_gets_the_ne_sw_tile(self):
-        img = _painted([(5, 30), (40, 5)])
+    def test_a_flat_run_gets_the_east_west_tile(self):
+        img = _painted([(5, 20), (50, 20)])
+        self.assertIn(C.RAIL_NW_SE,
+                      {img.getpixel((x, y)) for x in range(60) for y in range(40)})
+
+    def test_a_vertical_run_gets_the_north_south_tile(self):
+        img = _painted([(20, 5), (20, 35)])
         self.assertIn(C.RAIL_NE_SW,
                       {img.getpixel((x, y)) for x in range(60) for y in range(40)})
 
-    def test_a_line_climbing_south_east_gets_the_nw_se_tile(self):
-        img = _painted([(5, 5), (40, 30)])
+    def test_a_long_run_mostly_across_gets_the_east_west_tile(self):
+        img = _painted([(5, 30), (45, 12)])
         self.assertIn(C.RAIL_NW_SE,
                       {img.getpixel((x, y)) for x in range(60) for y in range(40)})
 

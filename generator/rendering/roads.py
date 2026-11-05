@@ -145,7 +145,12 @@ def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector) -> 
                 dx, dy = bx - ax, by - ay
                 if abs(dx) + abs(dy) < 1.0:
                     continue
-                colour = C.RAIL_NE_SW if dx * dy < 0 else C.RAIL_NW_SE
+                # Which of the two straight pieces: the tile whose art runs
+                # east-west, or the one that runs north-south. A flat or a
+                # vertical run has dx*dy == 0, so the sign of the product put
+                # every one of them on the same tile and half the track lay
+                # across its own corridor.
+                colour = (C.RAIL_NW_SE if abs(dx) >= abs(dy) else C.RAIL_NE_SW)
                 draw.line([(ax, ay), (bx, by)], fill=colour, width=width)
 
 

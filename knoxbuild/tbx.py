@@ -53,9 +53,19 @@ _PEAK_DEPTHS = {1: "Point5", 2: "One", 3: "OnePoint5", 4: "Two", 5: "TwoPoint5"}
 _NO_CAPS = {"cappedW": False, "cappedN": False, "cappedE": False, "cappedS": False}
 
 
-def _peak_depth(across: int) -> str:
-    """BuildingEd's depth for a 45-degree peaked roof this many tiles across."""
-    return _PEAK_DEPTHS.get(across, "Three")
+_SHALLOW_DEPTH = "OnePoint5"
+
+
+def _peak_depth(across: int, shallow: bool = False) -> str:
+    """BuildingEd's depth for a 45-degree peaked roof this many tiles across.
+
+    `shallow` lowers it: on a garage the full depth is a roof taller than the
+    walls beneath it.
+    """
+    depth = _PEAK_DEPTHS.get(across, "Three")
+    if shallow and depth in ("Three", "TwoPoint5", "Two"):
+        return _SHALLOW_DEPTH
+    return depth
 
 
 # A one-storey part of a two-storey house is pitched too (it was always flat); only a strip
@@ -74,7 +84,7 @@ MANY_WING_PEAK30_MAX = 7
 MANY_WING_MIN_PITCHED_AREA = 8
 
 
-def _roof_pieces(rects, peaked: bool, roof30: bool = True):
+def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False):
     """(RoofType, Depth, caps, (x, y, w, h)) for each roof over a footprint.
 
     Flat roofs are never capped: at depth three a cap is a storey-high wall of
@@ -103,10 +113,10 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True):
             cap = dict(_NO_CAPS)
             if along_x:
                 cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
-                out.append(("PeakWE", _peak_depth(rh), cap, (rx, ry, rw, rh)))
+                out.append(("PeakWE", _peak_depth(rh, shallow), cap, (rx, ry, rw, rh)))
             else:
                 cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
-                out.append(("PeakNS", _peak_depth(rw), cap, (rx, ry, rw, rh)))
+                out.append(("PeakNS", _peak_depth(rw, shallow), cap, (rx, ry, rw, rh)))
             continue
         odd = across if across % 2 else across - 1
         # Hips only on small houses: across a wide one the four slopes meet
@@ -301,7 +311,9 @@ def render_tbx(plan: Plan | Building, name: str,
             front_curtains = _add(entries, curtains)
     # A garage wears a gable roof whatever the town's kit is: a tar-roofed box
     # beside the houses reads as a shop unit rather than a garage.
-    if building.rooms and all(r.kind == "garage" for r in building.rooms):
+    garage_only = bool(building.rooms) and all(r.kind == "garage"
+                                               for r in building.rooms)
+    if garage_only:
         peaked = True
     # With Erika's Tiles, a shop front is a wall of glass in a painted frame,
     # not windows set in brick, and a sign hangs over it.
@@ -664,7 +676,8 @@ def render_tbx(plan: Plan | Building, name: str,
         if roof and any(any(row) for row in exposed):
             rects = roof_rects(exposed)
             for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(
-                    rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30):
+                    rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30,
+                    shallow=garage_only):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),
