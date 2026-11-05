@@ -98,8 +98,8 @@ def generate():
 
     raw_name = data.get("mapName")
     if not isinstance(raw_name, str) or not raw_name.strip():
-        raw_name = f"knoxify_{int(time.time())}"
-    map_name = SAFE_NAME.sub("_", raw_name).strip("_") or f"knoxify_{int(time.time())}"
+        raw_name = f"knoxmap_{int(time.time())}"
+    map_name = SAFE_NAME.sub("_", raw_name).strip("_") or f"knoxmap_{int(time.time())}"
 
     # Upper bound on the final bitmap size before we even hit Overpass.
     approx_w = ((east - west) * 111320 * _cos_lat((south + north) / 2)) / meters_per_tile
