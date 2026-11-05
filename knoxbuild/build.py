@@ -1507,8 +1507,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # this PC rather than on top of it (knoxbuild/world.py). Everything
     # below - the paper map, the zones, the compiled cells - is written from
     # here on, so it is settled first.
-    from .world import choose_origin, origin, set_origin
-    set_origin(choose_origin(out_dir, info["cells_x"], info["cells_y"]))
+    from .world import origin, set_origin
+    from . import placement as _placement
+    set_origin(_placement.settled_origin(
+        out_dir, info.get("map_name") or os.path.basename(out_dir.rstrip("\\/")),
+        info["cells_x"], info["cells_y"]))
+    # Keep the saved choice in step with the project, so the window and the
+    # compiled cells never disagree about where the map is.
+    _placement.save(out_dir, origin())
 
     # Record what this build actually used, whoever started it. Without this
     # a map generated from the command line cannot be reproduced, and the app

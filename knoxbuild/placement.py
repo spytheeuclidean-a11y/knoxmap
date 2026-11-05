@@ -554,6 +554,20 @@ def unplace(out_dir: str, map_name: str) -> dict:
     return done
 
 
+def settled_origin(out_dir: str, map_name: str,
+                   width: int, height: int) -> tuple[int, int]:
+    """Where to build this map: the place picked for it, else where its own
+    files already stand, else a free cell.
+
+    A build used to pick a fresh place every time and ignore the choice, so a
+    map the window had placed at 0,0 was built at 70,0: the compiled cells
+    named for one origin and install refusing it against the other, for ever.
+    """
+    from .world import choose_origin
+    return (saved(out_dir) or project_origin(out_dir, map_name)
+            or choose_origin(out_dir, width, height))
+
+
 def move(out_dir: str, map_name: str, cells, remember: bool = True) -> dict:
     """Put a built map somewhere else. Says what was rewritten.
 
