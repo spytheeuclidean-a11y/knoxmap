@@ -623,16 +623,34 @@ MAX_WORKERS = 3   # what the byte-for-byte comparison was run at. Six was tried
 
 
 def default_workers() -> int:
+    """How many compile workers this PC may run.
+
+    Bounded by three quarters of the machine's RAM as well as by cores: the
+    compile is the one job that can take a whole PC down, and a user's
+    bottleneck is normally the box, not the map.
+    """
     try:
         wanted = int(knoxpaths.load_config().get("compile_workers") or 0)
     except (TypeError, ValueError):
         wanted = 0
+    ceiling = worker_ceiling()
     if wanted > 0:
-        return wanted
+        return max(1, min(wanted, ceiling))
     cores = os.cpu_count() or 2
     free_gb = _free_memory_gb()
     by_memory = int(free_gb // GB_PER_WORKER) if free_gb else 1
-    return max(1, min(MAX_WORKERS, cores // 4, by_memory))
+    return max(1, min(MAX_WORKERS, cores // 4, by_memory, ceiling))
+
+
+# Never take more than three quarters of the machine's RAM, whatever the core
+# count or the config says.
+RAM_SHARE = 0.75
+
+
+def worker_ceiling() -> int:
+    """Workers whose peak footprint fits inside RAM_SHARE of this PC's RAM."""
+    _, total = _memory_gb()
+    return max(1, int(total * RAM_SHARE // GB_PER_WORKER)) if total else 1
 
 
 class Throttle:
@@ -679,8 +697,8 @@ class Throttle:
             return self.limit
 
 
-def _free_memory_gb() -> float:
-    """Memory available right now, in GB; 0 when it cannot be told."""
+def _memory_gb() -> tuple[float, float]:
+    """(available, total) memory in GB; (0, 0) when it cannot be told."""
     try:
         if os.name == "nt":
             import ctypes
@@ -694,14 +712,23 @@ def _free_memory_gb() -> float:
             m = MEM()
             m.length = ctypes.sizeof(MEM)
             ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(m))
-            return m.avail / 2 ** 30
+            return m.avail / 2 ** 30, m.total / 2 ** 30
         with open("/proc/meminfo") as fh:
+            avail = total = 0.0
             for line in fh:
                 if line.startswith("MemAvailable:"):
-                    return int(line.split()[1]) / 2 ** 20
+                    avail = int(line.split()[1]) / 2 ** 20
+                elif line.startswith("MemTotal:"):
+                    total = int(line.split()[1]) / 2 ** 20
+            return avail, total
     except Exception:  # noqa: BLE001 - unknown memory means "run one"
         pass
-    return 0.0
+    return 0.0, 0.0
+
+
+def _free_memory_gb() -> float:
+    """Memory available right now, in GB; 0 when it cannot be told."""
+    return _memory_gb()[0]
 
 
 def knoxlots_exe() -> Path | None:

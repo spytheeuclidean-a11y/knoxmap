@@ -257,6 +257,14 @@ class MovingOne(AMapOnDisk):
         self.assertTrue(P.lots_match(self.dir, (70, 0)))
         self.assertFalse(P.lots_match(self.dir, (71, 0)))
 
+    def test_a_build_keeps_the_place_chosen_for_the_map(self):
+        P.save(self.dir, (12, 34))
+        self.assertEqual(P.settled_origin(self.dir, "town", 5, 5), (12, 34))
+
+    def test_a_build_keeps_where_the_map_already_stands(self):
+        self.compiled(cell_x=82, cell_y=0)
+        self.assertEqual(P.settled_origin(self.dir, "town", 70, 1), (70, 0))
+
     def test_handing_the_choice_back_puts_the_map_where_it_would_have_gone(self):
         # Forgetting the choice is not enough: the project itself says where
         # the map is, so a map that was moved would stay moved.

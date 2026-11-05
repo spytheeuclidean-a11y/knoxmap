@@ -2049,7 +2049,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
   // Name it here rather than letting the server invent one, so progress can be
   // polled under a key the page already knows.
   const nameField = document.getElementById('mapName');
-  const chosen = (nameField.value.trim() || `knoxify_${Date.now()}`)
+  const chosen = (nameField.value.trim() || `knoxmap_${Date.now()}`)
     .replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
   nameField.value = chosen;
 
