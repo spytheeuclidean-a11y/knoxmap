@@ -5396,6 +5396,18 @@ function placeState() {
   }
 }
 
+// The game's own maps, each fetched once and kept for the next draw.
+function placeFetchPictures() {
+  for (const map of placeWorld.maps || []) {
+    if (!map.picture || placePictures[map.name]) continue;
+    const shot = new Image();
+    shot.onload = drawWorld;
+    shot.onerror = () => { delete placePictures[map.name]; };
+    shot.src = `/api/world-picture/${encodeURIComponent(map.name)}`;
+    placePictures[map.name] = shot;
+  }
+}
+
 async function loadPlacement(mapName) {
   const panel = document.getElementById('placePanel');
   if (!panel || !mapName) return;
@@ -5409,15 +5421,7 @@ async function loadPlacement(mapName) {
   placeRoad = [];
   placeDrawingRoad = false;
   placeLinkState();
-  // The game's own maps, each fetched once and kept for the next draw.
-  for (const map of placeWorld.maps || []) {
-    if (!map.picture || placePictures[map.name]) continue;
-    const shot = new Image();
-    shot.onload = drawWorld;
-    shot.onerror = () => { delete placePictures[map.name]; };
-    shot.src = `/api/world-picture/${encodeURIComponent(map.name)}`;
-    placePictures[map.name] = shot;
-  }
+  placeFetchPictures();
   // The map as it came out, drawn in its place in the world.
   placePreview = new Image();
   placePreview.onload = drawWorld;
@@ -5575,6 +5579,7 @@ async function putMapAt(body) {
     if (!res.ok) throw apiError(out, res);
     placeWorld = out;
     placePicked = null;
+    placeFetchPictures();
     drawWorld();
     placeFields();
     const moved = out.moved || {};

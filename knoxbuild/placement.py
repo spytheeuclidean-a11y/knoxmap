@@ -436,11 +436,18 @@ def _with_pictures(maps: list[dict], cache_dir: str | None) -> list[dict]:
     return maps
 
 
-def world_maps() -> list[dict]:
+def world_maps(own_mod: str | None = None) -> list[dict]:
     """Every map on this PC, in compiled cells: the game's own and the
-    installed mods. What the window draws the world from."""
+    installed mods. What the window draws the world from.
+
+    `own_mod` is the mod folder the map being placed was installed into: its
+    own installed copy is not another map, and was drawn as one, a second
+    square of the same town behind it."""
+    own = os.path.normcase(os.path.abspath(own_mod)) + os.sep if own_mod else None
     out = []
     for folder, kind, name in _map_folders():
+        if own and os.path.normcase(os.path.abspath(folder)).startswith(own):
+            continue
         found = _map_folder(folder, kind, name)
         if found:
             # Whether the game ships a picture of it, which the window asks
@@ -469,9 +476,11 @@ def layout(out_dir: str, map_name: str, cache_dir: str | None = None) -> dict:
     `cache_dir` is where the pictures of the maps are kept; without one the
     world is drawn as the shape of its cells and nothing else.
     """
+    from . import mapstate
     from .world import choose_origin
 
     here = where_is(out_dir, map_name)
+    inst = mapstate.installed(out_dir)
     width, height = here["size"]
     chosen, built, where = here["chosen"], here["built"], here["cell"]
     vx, vy, vw, vh = VANILLA_BOX
@@ -482,7 +491,7 @@ def layout(out_dir: str, map_name: str, cache_dir: str | None = None) -> dict:
     return {
         "vanilla": {"x": vx, "y": vy, "w": vw, "h": vh, "name": VANILLA_NAME},
         # The world as it really is, in compiled cells, for the picture.
-        "maps": _with_pictures(world_maps(), cache_dir),
+        "maps": _with_pictures(world_maps(inst and inst.get("modRoot")), cache_dir),
         "compiledCell": COMPILED_CELL,
         "installed": taken,
         "map": mine,
