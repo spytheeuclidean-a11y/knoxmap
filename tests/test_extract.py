@@ -247,6 +247,90 @@ class ReadingAnExtract(unittest.TestCase):
         self.assertEqual(len(rel["members"][0]["geometry"]), 5)
 
 
+@unittest.skipUnless(osmium, "pyosmium is not installed")
+class ExtractEncoding(unittest.TestCase):
+    def setUp(self):
+        self.folder = tempfile.TemporaryDirectory()
+        self.addCleanup(self.folder.cleanup)
+
+    def write_names(self, invalid=None):
+        path = os.path.join(self.folder.name, str(invalid)+'.osm.pbf')
+        name = 'İstanbul 東京 Łódź'
+
+        def tags(kind, values):
+            return dict(values, name=b'x'*143+b'\xfd' if kind == invalid else name)
+
+        with osmium.SimpleWriter(path) as writer:
+            for i, location in enumerate(((20, 10), (20.001, 10), (20, 10.001)), 1):
+                writer.add_node(osmium.osm.mutable.Node(id=i, location=location))
+            writer.add_node(osmium.osm.mutable.Node(id=10, location=(20, 10),
+                            tags=tags('node', {'shop': 'bakery'})))
+            writer.add_way(osmium.osm.mutable.Way(id=20, nodes=[1, 2, 3, 1],
+                           tags=tags('way', {'building': 'yes'})))
+            writer.add_relation(osmium.osm.mutable.Relation(id=30, members=[('w', 20, 'outer')],
+                                tags=tags('relation', {'type': 'multipolygon', 'natural': 'water'})))
+        return path
+
+    def test_non_english_names_survive_reading_and_cache(self):
+        path = self.write_names()
+        with mock.patch.object(extract, '_download', return_value=path):
+            elements = extract.elements(9.99, 19.99, 10.01, 20.01, regions=[{'name': 'test'}])
+        self.assertEqual({el['type'] for el in elements}, {'node', 'way', 'relation'})
+        features = osm._parse({'elements': elements})
+        cache = os.path.join(self.folder.name, 'names.json.gz')
+        bbox = (9.99, 19.99, 10.01, 20.01)
+        osm.save_cache(cache, bbox, features)
+        self.assertEqual([f.tags['name'] for f in osm.load_cache(cache, bbox)],
+                         ['İstanbul 東京 Łódź'] * 3)
+
+    def test_invalid_tag_text_marks_each_extract_unavailable_without_changing_it(self):
+        for kind in ('node', 'way', 'relation'):
+            with self.subTest(kind=kind):
+                path = self.write_names(kind)
+                with open(path, 'rb') as stream:
+                    before = stream.read()
+                with mock.patch.object(extract, '_download', return_value=path), \
+                        self.assertLogs(extract.knoxlog.log, level='WARNING') as log:
+                    with self.assertRaises(extract.ExtractUnavailable) as ctx:
+                        extract.elements(9.99, 19.99, 10.01, 20.01, regions=[{'name': 'test'}])
+                self.assertIn('UTF-8', str(ctx.exception))
+                self.assertIsInstance(ctx.exception.__cause__, UnicodeDecodeError)
+                self.assertIn(path, log.output[0])
+                self.assertIn('0xfd', log.output[0])
+                with open(path, 'rb') as stream:
+                    self.assertEqual(stream.read(), before)
+
+    def test_auto_uses_overpass_without_returning_partial_extract_data(self):
+        paths = [self.write_names(), self.write_names('way')]
+        expected = [osm.OSMFeature(99, 'node', {'name': '東京'}, [(10, 20)])]
+        with mock.patch.dict(os.environ, {'KNOXMAP_OSM_SOURCE': 'auto'}), \
+                mock.patch.object(extract, '_index', return_value={}), \
+                mock.patch.object(extract, 'regions_for', return_value=[{'name': 'first'}, {'name': 'second'}]), \
+                mock.patch.object(extract, '_download', side_effect=paths), \
+                mock.patch.object(osm, 'check_endpoints'), \
+                mock.patch.object(osm, '_tile_cache_get', return_value=None), \
+                mock.patch.object(osm, '_tile_cache_put'), \
+                mock.patch.object(osm, '_fetch_splitting', return_value=expected) as fetch, \
+                self.assertLogs(extract.knoxlog.log, level='WARNING'):
+            result = osm.fetch_features_tiled(10, 20, 10.001, 20.001)
+        self.assertEqual(result, expected)
+        fetch.assert_called_once()
+
+    def test_extract_only_explains_the_bad_file_without_contacting_overpass(self):
+        path = self.write_names('relation')
+        with mock.patch.dict(os.environ, {'KNOXMAP_OSM_SOURCE': 'extract'}), \
+                mock.patch.object(extract, '_index', return_value={}), \
+                mock.patch.object(extract, 'regions_for', return_value=[{'name': 'test'}]), \
+                mock.patch.object(extract, '_download', return_value=path), \
+                mock.patch.object(osm, '_fetch_splitting', side_effect=AssertionError('asked Overpass')), \
+                self.assertLogs(extract.knoxlog.log, level='WARNING'):
+            with self.assertRaises(osm.OverpassError) as ctx:
+                osm.fetch_features_tiled(10, 20, 10.001, 20.001)
+        self.assertIn('relation.osm.pbf', str(ctx.exception))
+        self.assertIn('UTF-8', str(ctx.exception))
+        self.assertIn('fresh copy', str(ctx.exception))
+
+
 class WhichSource(unittest.TestCase):
     def setUp(self):
         self.old = os.environ.pop("KNOXMAP_OSM_SOURCE", None)

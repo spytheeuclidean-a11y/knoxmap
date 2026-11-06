@@ -30,7 +30,7 @@ The same as `Setup.bat`: a private Python environment in `.venv`, the PZ
 Mapping Tools into `vendor/`, the patched map compiler, and the tile artwork
 extracted from **your own copy of the game** — never downloaded.
 
-It needs 64-bit Python 3.10 or newer. A 32-bit one can only address about
+It needs 64-bit Python 3.12 or newer. A 32-bit one can only address about
 2 GB, which a town-sized map runs out of part-way through.
 
     sudo apt install python3 python3-venv python3-pip     # Debian, Ubuntu

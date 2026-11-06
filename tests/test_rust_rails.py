@@ -85,6 +85,11 @@ class NativeRails(unittest.TestCase):
                  [(.5, 0), (3.5, -3)], [(.49, 0), (.49, 4)],
                  [(0, .5), (4, .5)], [(.5, 0), (.5, 4)]]
         cases += [track for points in cases[:3] for track in continuous_tracks([points])]
+        source = [(2185.1667290805053, 1125.3332709194947),
+                  (2189.4088189004106, 1121.0911810995894)]
+        cases += [track for scale in (1, 2, 3)
+                  for track in continuous_tracks([[(x/scale, y/scale) for x, y in source]])]
+        cases += [[(10.2, 20), (11.4, 20)]]
         for points in cases:
             with self.subTest(points=points):
                 expected = list(rail_sections(points, backend="python"))
@@ -116,19 +121,21 @@ class NativeRails(unittest.TestCase):
 
         hashes = []
         with TemporaryDirectory() as temp:
-            for backend in ("python", "rust"):
-                folder = Path(temp)/backend
+            for scale, backend in ((scale, backend) for scale in (1, 2, 3)
+                                   for backend in ("python", "rust")):
+                folder = Path(temp)/str(scale)/backend
                 with mock.patch.object(rustsearch, "rail_search", return_value=None) if backend == "python" else \
                         mock.patch.object(rustsearch, "rail_search", wraps=rustsearch.rail_search) as native:
                     renderer.render(features(), SOUTH, WEST, SOUTH+260*LAT_PER_M,
-                                    WEST+260*LON_PER_M, 1.0, str(folder), "rails")
+                                    WEST+260*LON_PER_M, scale, str(folder), "rails")
                     if backend == "rust":
                         self.assertGreaterEqual(native.call_count, 2)
                 hashes.append({p.name: hashlib.sha256(p.read_bytes()).hexdigest()
                                for p in folder.iterdir() if p.suffix in (".bmp", ".png")
                                or p.name.endswith("_structures.json")})
-            self.assertGreaterEqual(len(hashes[0]), 7)
-            self.assertEqual(*hashes)
+            for i in range(0, len(hashes), 2):
+                self.assertGreaterEqual(len(hashes[i]), 7)
+                self.assertEqual(hashes[i], hashes[i+1])
 
     def test_exact_sections_across_straights_curves_negative_and_half_tiles(self):
         cases = [[], [(0, 0)], [(0, 0), (.1, .1)], [(5, 10), (90, 17)],

@@ -8,7 +8,7 @@
  *   2. PYTHONUTF8=1, so every file KnoxMap reads and writes is UTF-8 on a
  *      Windows whose code page cannot hold all of its text,
  *   3. run Setup.bat first, in a console of its own, if there is no
- *      environment yet - that is the long first run, and it has to be
+ *      working environment yet - that is the long first run, and it has to be
  *      watchable,
  *   4. start .venv\Scripts\pythonw.exe knoxmap.py and exit straight away.
  *
@@ -54,6 +54,12 @@ static int run_and_wait(wchar_t *line, DWORD flags) {
     return (int)code;
 }
 
+static BOOL runtime_ready(void) {
+    wchar_t probe[] = L"\"" PYTHONW L"\" \"knoxruntime.py\"";
+    return there(PYTHONW) && there(L"knoxruntime.py") &&
+           run_and_wait(probe, CREATE_NO_WINDOW) == 0;
+}
+
 int WINAPI wWinMain(HINSTANCE self, HINSTANCE previous, PWSTR args, int show) {
     static wchar_t here[32768];
     static wchar_t line[32768];
@@ -84,7 +90,7 @@ int WINAPI wWinMain(HINSTANCE self, HINSTANCE previous, PWSTR args, int show) {
 
     /* First run: setup builds the environment and fetches the map tools.
      * It takes minutes and says what it is doing, so it gets a console. */
-    if (!there(PYTHONW)) {
+    if (!runtime_ready()) {
         int code;
         if (!there(L"Setup.bat")) {
             say(L"KnoxMap is not set up yet and Setup.bat is missing.\n\n"
@@ -98,7 +104,8 @@ int WINAPI wWinMain(HINSTANCE self, HINSTANCE previous, PWSTR args, int show) {
             say(L"KnoxMap could not start Setup.bat.");
             return 1;
         }
-        if (code != 0 || !there(PYTHONW)) {
+        /* Missing map tools can be repaired later; Python packages cannot. */
+        if (!runtime_ready()) {
             say(L"Setup did not finish, so KnoxMap cannot start.\n\n"
                 L"Run Setup.bat on its own to see what it says; the whole run "
                 L"is written to logs\\setup.log.");

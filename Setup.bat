@@ -10,21 +10,24 @@ rem Prefer the py launcher; "python" on a fresh Windows can be the Microsoft
 rem Store stub, which opens the Store instead of running anything. Either way
 rem the version check below is what decides.
 rem
-rem The check is 3.10 or newer AND 64-bit: a 32-bit Python can only use about
+rem The check is 3.12 or newer AND 64-bit: a 32-bit Python can only use about
 rem 2 GB however much memory the PC has, and a town-sized map needs more than
-rem that - it dies halfway through with "MemoryError". A 32-bit one is kept as
-rem PY32 in case this really is a 32-bit Windows, where it is all there is.
+rem that - it dies halfway through with "MemoryError". The pinned numerical
+rem packages also require Python 3.12 or newer.
 set PY=
-set PY32=
 rem Why this run stopped, for logs\setup.log (see :log at the end): the window
 rem is usually shut before anybody can read it, and a run that stopped before
 rem Python started used to leave nothing behind at all.
 set "SETUP_REASON=Python could not be found, and the private copy could not be downloaded"
-if exist ".python\tools\python.exe" set PY=".python\tools\python.exe"
-if not defined PY where py >nul 2>nul && py -3 -c "import sys; sys.exit(sys.version_info < (3, 10) or sys.maxsize <= 2**32)" >nul 2>nul && set PY=py -3
-if not defined PY python -c "import sys; sys.exit(sys.version_info < (3, 10) or sys.maxsize <= 2**32)" >nul 2>nul && set PY=python
-if not defined PY where py >nul 2>nul && py -3 -c "import sys; sys.exit(sys.version_info < (3, 10))" >nul 2>nul && set PY32=py -3
-if not defined PY if not defined PY32 python -c "import sys; sys.exit(sys.version_info < (3, 10))" >nul 2>nul && set PY32=python
+if not defined PY (
+  where py >nul 2>nul && py -3 -c "import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)" >nul 2>nul && set PY=py -3
+)
+if not defined PY (
+  python -c "import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)" >nul 2>nul && set PY=python
+)
+if not defined PY if exist ".python\tools\python.exe" (
+  ".python\tools\python.exe" -c "import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)" >nul 2>nul && set PY=".python\tools\python.exe"
+)
 if not defined PY call :portable_python || goto :fail
 
 rem Part of Python itself gone missing - antivirus software quarantining a
@@ -40,7 +43,7 @@ set VENV_PYTHON=".venv\Scripts\python.exe"
 if exist ".venv\bin\python.exe" call :msys_warning
 
 if exist %VENV_PYTHON% (
-  %VENV_PYTHON% -c "import sys; sys.exit(sys.maxsize <= 2**32)" >nul 2>nul || call :rebuild_venv
+  %VENV_PYTHON% -c "import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)" >nul 2>nul || call :rebuild_venv
 )
 
 if not exist %VENV_PYTHON% (
@@ -52,6 +55,12 @@ if not exist %VENV_PYTHON% (
 echo Installing Python packages...
 set "SETUP_REASON=the packages in requirements.txt could not be installed"
 %VENV_PYTHON% -m pip install --disable-pip-version-check -q -r requirements.txt || goto :fail
+set "SETUP_REASON=Python packages could not be imported in the environment; run Setup again (logs\setup.log has the details)"
+%VENV_PYTHON% knoxruntime.py || (
+  echo Repairing Python packages whose installed files could not be loaded...
+  %VENV_PYTHON% -m pip install --disable-pip-version-check -q --force-reinstall --no-cache-dir -r requirements.txt || goto :fail
+  %VENV_PYTHON% knoxruntime.py || goto :fail
+)
 
 rem A non-zero exit here is not always fatal - a rule file that could not be
 rem written yet leaves the app working, and the window's setup card says so -
@@ -70,11 +79,10 @@ if not "%KNOXMAP_NO_PAUSE%"=="1" pause
 exit /b 1
 
 :rebuild_venv
-rem Only worth doing when what we have now is 64-bit; on a 32-bit Windows the
-rem environment is as good as it gets.
-%PY% -c "import sys; sys.exit(sys.maxsize <= 2**32)" >nul 2>nul || exit /b 0
-echo The Python environment is 32-bit, which runs out of memory on a big map.
-echo Making it again with 64-bit Python...
+rem Rebuild an old or unsupported environment using the checked interpreter.
+%PY% -c "import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)" >nul 2>nul || exit /b 0
+echo The Python environment needs 64-bit Python 3.12 or newer.
+echo Making it again with a supported Python...
 rmdir /s /q ".venv"
 exit /b 0
 
@@ -98,13 +106,13 @@ call :portable_python || exit /b 1
 exit /b 0
 
 :portable_python
-echo 64-bit Python 3.10 or newer was not found - downloading a private copy (about 14 MB)...
+echo 64-bit Python 3.12 or newer was not found - downloading private Python 3.15.2...
 
 rem Download using native Windows curl
-curl.exe -sL "https://api.nuget.org/v3-flatcontainer/python/3.13.7/python.3.13.7.nupkg" -o ".python.zip" || goto :no_portable
+curl.exe -sL "https://api.nuget.org/v3-flatcontainer/python/3.15.2/python.3.15.2.nupkg" -o ".python.zip" || goto :no_portable
 
 rem Verify the hash using native certutil
-set "EXPECTED_HASH=e74272a824e23702dfb5f3e11c3660ceabac7487e3366d4551391db5cd762853"
+set "EXPECTED_HASH=294f5ed7ab97148fcbb57b8c06ba428f6d282c2bbaa266dbe3137284497998f0"
 set "ACTUAL_HASH="
 for /f "skip=1 tokens=* usebackq" %%H in (`certutil -hashfile ".python.zip" SHA256`) do (
     if not defined ACTUAL_HASH set "ACTUAL_HASH=%%H"
@@ -125,18 +133,13 @@ tar.exe -xf ".python.zip" -C ".python" || goto :no_portable
 del ".python.zip"
 
 if not exist ".python\tools\python.exe" goto :no_portable
-".python\tools\python.exe" -c "import sys; sys.exit(sys.maxsize <= 2**32)" >nul 2>nul || goto :no_portable
+".python\tools\python.exe" -c "import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)" >nul 2>nul || goto :no_portable
 set PY=".python\tools\python.exe"
 exit /b 0
 
 :no_portable
-rem It could not be downloaded, or it will not run here (a 32-bit Windows).
-if defined PY32 (
-  echo Carrying on with the 32-bit Python on this PC. Maps of more than a few
-  echo square kilometres may run out of memory.
-  set PY=%PY32%
-    exit /b 0
-)
+rem It could not be downloaded, or it will not run on this Windows.
+echo Install 64-bit Python 3.12 or newer from python.org and run Setup again.
 exit /b 1
 
 :msys_warning

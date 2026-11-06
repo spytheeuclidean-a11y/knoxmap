@@ -8,20 +8,23 @@ from .. import pz_colors as C
 from ..osm import OSMFeature, classify
 from .geometry import _feature_coords_px, _is_polygon
 from .projection import Projector
+from . import woodland
+
+import knoxstop
 
 
 def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
-                      density: float = 1.0) -> None:
+                      density: float = 1.0, should_stop=None) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
-                     {"forest", "scrub", "tree_single"}], proj, density)
+                     {"forest", "scrub", "tree_single"}], proj, density, should_stop)
 
 
 def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
-                    density: float = 1.0) -> None:
+                    density: float = 1.0, should_stop=None) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,
@@ -34,6 +37,7 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
     because trees are cover: a map buried in forest plays completely
     differently from the same map with hedgerows.
     """
+    knoxstop.check(should_stop, 'the woodland')
     mask = Image.new("L", veg.size, 0)
     mask_draw = ImageDraw.Draw(mask)
     scrub_mask = Image.new("L", veg.size, 0)
@@ -77,7 +81,12 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
         return GRADES[min(max(i + shift, 0), len(GRADES) - 1)]
 
     w, h = veg.size
+    if w*h >= woodland.MIN_PIXELS and woodland.paint(veg, landscape, mask, eroded, scrub_mask,
+                                       graded(C.TREES_DARK_GRASS), graded(C.TREES), should_stop):
+        return
     for y in range(h):
+        if y % 256 == 0:
+            knoxstop.check(should_stop, 'the woodland')
         for x in range(w):
             if scrub_px[x, y]:
                 veg_px[x, y] = C.BUSHES_TREES_DARK_GRASS
