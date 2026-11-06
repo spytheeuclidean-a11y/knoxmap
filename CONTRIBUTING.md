@@ -54,6 +54,16 @@ Releases carry `knoxroute.exe` (Windows) or executable `knoxroute` (Linux/macOS)
 The `KNOXROUTE` environment variable can select another build; otherwise the
 app checks its own directory, then `rust/knoxroute/target/release`.
 
+`knoxroute --woodland` processes woodland pixels in bounded strips through one
+worker per pass. Python draws the masks and computes density grades; Rust
+applies the existing scrub, forest and ground-colour rules. `KWD1` sends a strip
+count, then each strip's dimensions, eight RGB palette entries, vegetation and
+ground RGB bytes, and three L masks. Each reply is `KWD1` followed by the updated
+vegetation and ground RGB bytes. All integers are little-endian. Small images
+stay in Python; missing or older workers fall back to the Python loop.
+Run `python -m unittest tests.test_rust_woodland` for pixel parity, fallback,
+malformed-input and cancellation checks.
+
 ## Never commit
 
 - **Project Zomboid files**, including tile sheets extracted by Setup

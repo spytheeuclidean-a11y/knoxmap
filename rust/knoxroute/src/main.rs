@@ -1,4 +1,4 @@
-//! The road router's search, out of the interpreter.
+//! Native road/rail searches and woodland pixel processing.
 //!
 //! Python works out the ground - the band's costs, the way the real line runs,
 //! the frontage density, the buildings, which corners a road may turn on - and
@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::io::{self, BufWriter, Read, Write};
 
 mod rails;
+mod woodland;
 
 const N: usize = 16;
 const INF: f64 = f64::INFINITY;
@@ -571,6 +572,10 @@ fn read_tables(r: &mut Reader<impl Read>) -> Tables {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--woodland") {
+        woodland::run();
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--rails") {
         rails::run();
         return;

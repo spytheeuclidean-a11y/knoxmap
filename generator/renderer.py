@@ -416,7 +416,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # The woods the mapper drew take both dials; the gardens and the scrub
     # over open ground take the overall one only.
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
-                      density=tree_density * forest_density)
+                      density=tree_density * forest_density, should_stop=should_stop)
     _paint_parks(vegetation, landscape, buckets.get("park", []), proj,
                  density=tree_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
