@@ -2291,7 +2291,9 @@ function startProgress(mapName) {
                            + '— this takes a few minutes the first time…';
       } else if (p.stage === 'roads') {
         status.textContent = `Routing the roads — ${(p.done || 0).toLocaleString()} of `
-                           + `${(p.total || 0).toLocaleString()} stretches…`;
+                           + `${(p.total || 0).toLocaleString()} stretches…`
+                           + (p.slowRoads ? ' Slowly: the fast road router (knoxroute) is '
+                              + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '');
       } else if (p.stage === 'render') {
         status.textContent = `Rendering ${p.features.toLocaleString()} features `
                            + 'into bitmaps…';
