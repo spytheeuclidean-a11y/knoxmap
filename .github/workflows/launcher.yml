@@ -93,6 +93,10 @@ jobs:
           $box = Join-Path $env:RUNNER_TEMP 'first-run'
           New-Item -ItemType Directory -Force $box | Out-Null
           Copy-Item KnoxMap.exe $box
+          # The launcher checks its environment by running pythonw.exe on
+          # knoxruntime.py, which here only has to exit 0.
+          "raise SystemExit(0)" |
+            Set-Content -Encoding ascii (Join-Path $box 'knoxruntime.py')
           # A stand-in for Setup.bat: it leaves the environment the launcher
           # is looking for, and a mark to say it ran.
           @"
@@ -129,6 +133,10 @@ jobs:
           # The real thing: pythonw.exe running knoxmap.py, which here only
           # writes a file and ends.
           Copy-Item $python (Join-Path $box '.venv\Scripts\pythonw.exe')
+          # The readiness probe, which has to pass before the launcher starts
+          # knoxmap.py at all.
+          "raise SystemExit(0)" |
+            Set-Content -Encoding ascii (Join-Path $box 'knoxruntime.py')
           "open('started.txt','w').write('started')" |
             Set-Content -Encoding ascii (Join-Path $box 'knoxmap.py')
           Push-Location $box
