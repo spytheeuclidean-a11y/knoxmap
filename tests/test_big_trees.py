@@ -97,6 +97,57 @@ def patch(path: Path) -> str:
     return (path / "config" / "Rules.txt").read_text(encoding="utf-8")
 
 
+ROADS_PATCHER = ROOT / "worlded" / "patch_rules_roads.py"
+
+
+def patch_both(path: Path) -> str:
+    """A Setup's worth of rule patching, in Setup's own order."""
+    for script in (PATCHER, ROADS_PATCHER):
+        out = subprocess.run([sys.executable, str(script), str(path)],
+                             capture_output=True, text=True, check=False)
+        assert out.returncode == 0, out.stderr
+    return (path / "config" / "Rules.txt").read_text(encoding="utf-8")
+
+
+class BothPatchersLeaveTheFileAlone(unittest.TestCase):
+    """The trees and the roads patch the same file, one after the other.
+
+    Each used to strip its own rules and append the new ones to the end. The
+    trees ran first and the roads second, so by the next run the trees' rules
+    were no longer last: each put its own back at the end, past the other's, and
+    the two swapped places on every run. Rules.txt is hashed to decide what an
+    incremental compile may keep (tools/compile_state.py), so every Setup meant
+    a full recompile of every map - and for a map that had been moved, "compile
+    it again" looked like it did nothing, because compiling was not the part
+    that was stale.
+
+    Running one of them twice cannot see this: the swap needs both.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.tools = tools_dir(Path(self.tmp.name))
+        self.addCleanup(self.tmp.cleanup)
+
+    def test_a_second_setup_writes_nothing(self):
+        settled = patch_both(self.tools)
+        for run in (2, 3):
+            with self.subTest(run=run):
+                self.assertEqual(patch_both(self.tools), settled)
+
+    def test_settled_still_holds_both_patchers_rules(self):
+        import worlded.patch_rules_b42_trees as trees
+        import worlded.patch_rules_roads as roads
+        text = patch_both(self.tools)
+        self.assertIn(f"label = {trees.MARKER} Giant tree", text)
+        self.assertIn(f"label = {roads.MARKER} Yard bed_soil", text)
+
+    def test_the_rules_are_not_laid_down_twice(self):
+        import worlded.patch_rules_b42_trees as trees
+        text = patch_both(self.tools)
+        self.assertEqual(text.count(f"label = {trees.MARKER} "), len(trees.TREE_RULES))
+
+
 class TheRulesPlaceTreesTheGameKnows(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

@@ -6,11 +6,60 @@ never a lost map, and OSM data is never overwritten.
 """
 import io
 import logging
+import os
+import tempfile
 import unittest
 from pathlib import Path
 
 import knoxdata
 from knoxbuild.settings import Settings
+
+
+class TheCacheHasACeiling(unittest.TestCase):
+    """knoxdata/cache.py caps the whole dataset cache, not just one download.
+
+    The per-download ceiling stops one wrong URL filling the disk. Nothing
+    stopped ten right ones: a few national extracts and a world raster and the
+    cache was as big as the last month of maps made it.
+    """
+
+    def ages(self, folder, *sizes):
+        """Files of the given sizes, oldest first."""
+        made = []
+        for i, size in enumerate(sizes):
+            p = Path(folder) / f"set{i}.bin"
+            p.write_bytes(b"x" * size)
+            os.utime(p, (1000 + i, 1000 + i))
+            made.append(p)
+        return made
+
+    def test_the_oldest_datasets_go_when_it_is_full(self):
+        from knoxdata import cache
+        with tempfile.TemporaryDirectory() as folder:
+            made = self.ages(folder, 600, 600, 600)
+            self.assertEqual(cache.prune(keep_bytes=1000, folder=folder), 2)
+            self.assertFalse(made[0].exists())
+            self.assertTrue(made[2].exists(), "the newest dataset must survive")
+
+    def test_the_file_just_downloaded_is_never_the_one_deleted(self):
+        from knoxdata import cache
+        with tempfile.TemporaryDirectory() as folder:
+            old, fresh = self.ages(folder, 600, 600)
+            self.assertEqual(cache.prune(keep_bytes=600, folder=folder, keep=fresh), 1)
+            self.assertFalse(old.exists())
+            self.assertTrue(fresh.exists())
+
+    def test_a_cache_under_its_ceiling_is_left_alone(self):
+        from knoxdata import cache
+        with tempfile.TemporaryDirectory() as folder:
+            made = self.ages(folder, 10)
+            self.assertEqual(cache.prune(keep_bytes=1000, folder=folder), 0)
+            self.assertTrue(made[0].exists())
+
+    def test_an_empty_or_missing_cache_is_not_an_error(self):
+        from knoxdata import cache
+        with tempfile.TemporaryDirectory() as folder:
+            self.assertEqual(cache.prune(folder=Path(folder) / "nothing-here"), 0)
 
 
 class FakeFeature:

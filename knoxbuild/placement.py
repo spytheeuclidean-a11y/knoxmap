@@ -89,10 +89,17 @@ def set_standalone(out_dir: str, map_name: str, on: bool) -> dict:
     if on:
         save(out_dir, (0, 0), standalone_flag=True)
         return move(out_dir, map_name, (0, 0), remember=False)
-    where = saved(out_dir) or project_origin(out_dir, map_name) or (0, 0)
+    here = where_is(out_dir, map_name, automatic=False)
+    where, was = here["cell"] or (0, 0), here["built"]
     save(out_dir, where, standalone_flag=False)
-    return {"origin": list(where), "was": list(where), "rewrote": [],
-            "needsBuild": False, "needsCompile": False}
+    # Standing it back down leaves it parked where standalone put it, but the
+    # lots in `lots/` are named for wherever it was last compiled - cell 0,0 is
+    # not where they are - so this is the same question `move` asks, and not a
+    # "no" written down here. Install refuses a map whose lots name another
+    # place as "moved since it was last compiled", and said so however often it
+    # was compiled again.
+    return {"origin": list(where), "was": list(was) if was else None, "rewrote": [],
+            "needsBuild": False, "needsCompile": not lots_match(out_dir, where)}
 
 
 def forget(out_dir: str) -> bool:
@@ -174,6 +181,46 @@ def lots_match(out_dir: str, cells: tuple[int, int] | None) -> bool:
         return True
     tx, ty = cells[0] * CELL_SIZE, cells[1] * CELL_SIZE
     return corner == (tx // 256, ty // 256)
+
+
+def where_is(out_dir: str, map_name: str, automatic: bool = True) -> dict:
+    """Where this map stands, and which record says so - the one answer.
+
+    Three things know where a map is: the place chosen for it
+    (`placement.json`), the world origin its own `.pzw` was last built with, and
+    the names of the compiled lots in `lots/`. They disagree, by design - a map
+    moved after it was compiled has lots naming the old place, and one that has
+    never been compiled has none at all - but each caller used to read them
+    itself, in its own order. That is how one of them could believe the map was
+    at 70,0 while another read 0,0, and why install refused a map as "moved
+    since it was last compiled" while the window said it was ready.
+
+        chosen     what the player picked (standalone parks at 0,0)
+        built      what the project itself was last built at
+        automatic  a free cell, when neither of those says anything
+        compiled   where the lots really are, in compiled cells
+        matches    whether the lots are where the map is going
+
+    Every caller asks this instead of reading the three, so there is one order
+    of precedence rather than four.
+    """
+    from .world import choose_origin
+
+    width, height = project_size(out_dir, map_name)
+    chosen = saved(out_dir)
+    built = project_origin(out_dir, map_name)
+    cell = chosen or built
+    if cell is None and automatic:
+        cell = choose_origin(out_dir, width, height)
+    return {
+        "cell": cell,
+        "chosen": chosen,
+        "built": built,
+        "source": "chosen" if chosen else "built" if built else "automatic",
+        "size": (width, height),
+        "compiled": compiled_corner(out_dir),
+        "matches": lots_match(out_dir, cell),
+    }
 
 
 # ---- the world as it really is ----------------------------------------------
@@ -424,10 +471,9 @@ def layout(out_dir: str, map_name: str, cache_dir: str | None = None) -> dict:
     """
     from .world import choose_origin
 
-    width, height = project_size(out_dir, map_name)
-    chosen = saved(out_dir)
-    built = project_origin(out_dir, map_name)
-    where = chosen or built or choose_origin(out_dir, width, height)
+    here = where_is(out_dir, map_name)
+    width, height = here["size"]
+    chosen, built, where = here["chosen"], here["built"], here["cell"]
     vx, vy, vw, vh = VANILLA_BOX
     mine = {"x": where[0], "y": where[1], "w": width, "h": height}
     taken = [m for m in installed_maps()
@@ -442,8 +488,9 @@ def layout(out_dir: str, map_name: str, cache_dir: str | None = None) -> dict:
         "map": mine,
         "chosen": bool(chosen),
         "built": list(built) if built else None,
-        "compiled": compiled_corner(out_dir) is not None,
-        "lotsMatch": lots_match(out_dir, (where[0], where[1])),
+        "compiled": here["compiled"] is not None,
+        "lotsMatch": here["matches"],
+        "source": here["source"],
         "cellTiles": CELL_SIZE,
         "maxCell": MAX_CELL,
         "standalone": alone,
@@ -563,9 +610,9 @@ def settled_origin(out_dir: str, map_name: str,
     map the window had placed at 0,0 was built at 70,0: the compiled cells
     named for one origin and install refusing it against the other, for ever.
     """
-    from .world import choose_origin
-    return (saved(out_dir) or project_origin(out_dir, map_name)
-            or choose_origin(out_dir, width, height))
+    # Same answer as everywhere else: the choice, else where it was built,
+    # else a free cell (see where_is).
+    return where_is(out_dir, map_name)["cell"]
 
 
 def move(out_dir: str, map_name: str, cells, remember: bool = True) -> dict:
@@ -577,7 +624,7 @@ def move(out_dir: str, map_name: str, cells, remember: bool = True) -> dict:
     for it - so they have to be made again, which the window says.
     """
     want = save(out_dir, cells) if remember else clamp(cells)
-    was = project_origin(out_dir, map_name)
+    was = where_is(out_dir, map_name, automatic=False)["built"]
     done = {"origin": list(want), "was": list(was) if was else None,
             "rewrote": [], "needsBuild": was is None,
             "needsCompile": False}

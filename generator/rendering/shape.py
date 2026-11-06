@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from ..osm import OSMFeature
-from .geometry import _draw_line, _feature_coords_px, _is_polygon, _pixel_width
+from .geometry import _draw_line, _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
 from .projection import Projector
 from .widths import _sidewalk_width_m, _way_width_m
 
@@ -37,13 +37,15 @@ def _clip_to_shape(landscape: Image.Image, shape, buckets: dict[str, list[OSMFea
     keep = inside.copy()
     kd = ImageDraw.Draw(keep)
     mpt = proj.meters_per_tile
+    strokes = []
     for cat in THROUGH_ROADS:
         for feat in buckets.get(cat, []):
             if _is_polygon(feat):
                 continue
             width = _pixel_width(_way_width_m(feat, cat)
                                  + 2 * _sidewalk_width_m(feat, cat), mpt)
-            _draw_line(kd, _feature_coords_px(feat, proj), 255, width)
+            strokes.append((width, _feature_coords_px(feat, proj)))
+    _draw_roads(keep, strokes, 255)
     for cat in ("water", "pool", "coastline"):
         for feat in buckets.get(cat, []):
             if _is_polygon(feat):

@@ -57,6 +57,19 @@ CLI_LINUX_SHA256 = "9ef88e23cb58e3fe3e1f9b5d901244b59203ec15d1a456f9f5e16d33164b
 
 USER_AGENT = f"KnoxMap-setup (+https://github.com/{REPO})"
 
+# What this run could not do. The exit code says whether it is empty, because
+# a run that says "Setup complete" must leave nothing for the window's setup
+# card to complain about, and Setup.bat turns a non-zero exit into "Setup
+# stopped with an error" instead of a window that lies. Only things that
+# damage nothing - a rule file that could not be written yet - go here: the app
+# still draws terrain and builds houses without them.
+PROBLEMS: list[str] = []
+
+
+def note_problem(text: str) -> None:
+    PROBLEMS.append(text)
+    say(f"      {text}")
+
 
 def say(msg: str = "") -> None:
     print(msg, flush=True)
@@ -347,60 +360,95 @@ def configure_tools(tools: Path, game: Path | None) -> None:
     say("      editor paths written")
 
     if game is None:
-        say("      skipped tile extraction - no game folder. Run Setup again once it is installed.")
-        return
-    from tools import extract_tiles, prune_tilesets
-
-    # Wherever this system keeps the game's artwork - inside the application
-    # bundle on a Mac, in <game>/media everywhere else.
-    packs = knoxpaths.pz_media_dir(game) / "texturepacks"
-    tilesets = config_dir / "Tilesets.txt"
-    # Start again from the full catalogue, so a sheet pruned by an earlier run
-    # (say, before the game was updated) gets another chance to be extracted.
-    full = config_dir / "Tilesets.txt.pre-prune"
-    if full.exists():
-        shutil.copyfile(full, tilesets)
-    catalog, _packs = extract_tiles.read_tilesets_txt(str(tilesets))
-    # Sheets extracted before the split-sheet fix lack the tiles B42 keeps in
-    # the floor packs - flat roof tops among them - so merge those in once.
-    merged = tools / "settings" / "floor_tiles_merged"
-    present = sorted(n for n in catalog if (two_x / f"{n}.png").exists())
-    if present and not merged.exists():
-        say("      adding Build 42 floor-pack tiles to your tile sheets ...")
-        log = io.StringIO()
-        with contextlib.redirect_stdout(log):
-            for pack in sorted(packs.glob("*2x.floor.pack")):
-                extract_tiles.extract_pack(str(pack), catalog, set(present), str(two_x), merge=True)
-        merged.parent.mkdir(parents=True, exist_ok=True)
-        merged.write_text("1", encoding="utf-8")
-    missing = sorted(n for n in catalog if not (two_x / f"{n}.png").exists())
-    if missing:
-        say(f"      extracting {len(missing)} tile sheets from your game (a few minutes) ...")
-        log = io.StringIO()
-        with contextlib.redirect_stdout(log):
-            extract_tiles.main(["extract_tiles", str(packs),
-                                str(tilesets), str(two_x), *missing])
-        (tools / "settings" / "extract_tiles.log").write_text(log.getvalue(), encoding="utf-8")
-        merged.write_text("1", encoding="utf-8")   # main() merges the floor packs itself
-        found = sum(1 for n in missing if (two_x / f"{n}.png").exists())
-        say(f"      extracted {found} of {len(missing)}"
-            + ("" if found == len(missing) else
-               f" - {len(missing) - found} no longer exist in Build 42, which is fine"))
+        say("      skipped tile extraction - no game folder. Run Setup again once "
+            "it is installed.")
     else:
-        say("      tile sheets already extracted")
-    # Sheets Build 42 no longer ships would otherwise be retried by the
-    # editor on every building it loads, stalling compiles for minutes.
-    with contextlib.redirect_stdout(io.StringIO()):
-        prune_tilesets.main(["prune_tilesets", str(tilesets), str(two_x)])
+        from tools import extract_tiles, prune_tilesets
 
-    add_erikas_tiles(tools, tilesets, two_x)
+        # Wherever this system keeps the game's artwork - inside the application
+        # bundle on a Mac, in <game>/media everywhere else.
+        packs = knoxpaths.pz_media_dir(game) / "texturepacks"
+        tilesets = config_dir / "Tilesets.txt"
+        # Start again from the full catalogue, so a sheet pruned by an earlier run
+        # (say, before the game was updated) gets another chance to be extracted.
+        full = config_dir / "Tilesets.txt.pre-prune"
+        if full.exists():
+            shutil.copyfile(full, tilesets)
+        catalog, _packs = extract_tiles.read_tilesets_txt(str(tilesets))
+        # Sheets extracted before the split-sheet fix lack the tiles B42 keeps in
+        # the floor packs - flat roof tops among them - so merge those in once.
+        merged = tools / "settings" / "floor_tiles_merged"
+        present = sorted(n for n in catalog if (two_x / f"{n}.png").exists())
+        if present and not merged.exists():
+            say("      adding Build 42 floor-pack tiles to your tile sheets ...")
+            log = io.StringIO()
+            with contextlib.redirect_stdout(log):
+                for pack in sorted(packs.glob("*2x.floor.pack")):
+                    extract_tiles.extract_pack(str(pack), catalog, set(present), str(two_x), merge=True)
+            merged.parent.mkdir(parents=True, exist_ok=True)
+            merged.write_text("1", encoding="utf-8")
+        missing = sorted(n for n in catalog if not (two_x / f"{n}.png").exists())
+        if missing:
+            say(f"      extracting {len(missing)} tile sheets from your game (a few minutes) ...")
+            log = io.StringIO()
+            with contextlib.redirect_stdout(log):
+                extract_tiles.main(["extract_tiles", str(packs),
+                                    str(tilesets), str(two_x), *missing])
+            (tools / "settings" / "extract_tiles.log").write_text(log.getvalue(), encoding="utf-8")
+            merged.write_text("1", encoding="utf-8")   # main() merges the floor packs itself
+            found = sum(1 for n in missing if (two_x / f"{n}.png").exists())
+            say(f"      extracted {found} of {len(missing)}"
+                + ("" if found == len(missing) else
+                   f" - {len(missing) - found} no longer exist in Build 42, which is fine"))
+        else:
+            say("      tile sheets already extracted")
+        # Sheets Build 42 no longer ships would otherwise be retried by the
+        # editor on every building it loads, stalling compiles for minutes.
+        with contextlib.redirect_stdout(io.StringIO()):
+            prune_tilesets.main(["prune_tilesets", str(tilesets), str(two_x)])
 
-    for script, what in (("patch_rules_b42_trees.py", "Build 42 trees and flowers"),
-                         ("patch_rules_roads.py", "Kerbs and road markings")):
-        rules = subprocess.run([sys.executable, str(BASE_DIR / "worlded" / script), str(tools)],
-                               capture_output=True, text=True, check=False)
-        say(f"      {what} " +
-            ("set up" if rules.returncode == 0 else f"not set up: {rules.stderr.strip()[-200:]}"))
+        add_erikas_tiles(tools, tilesets, two_x)
+
+    # The rules last, and whether or not there is a game: the kerbs and street
+    # furniture need no artwork, and the tree rules say what they are missing
+    # if they do. Skipping the whole step on a PC without the game left both
+    # red with nothing on screen to say why.
+    patch_rules(tools)
+
+
+def patch_rules(tools: Path) -> None:
+    """Write the rules the map tools need, and say what each run really did.
+
+    Both scripts are safe to run again: rules already present are not added
+    twice. Their output is printed here, so logs/setup.log keeps which sheets
+    were written, which were left out and why - a run that did nothing because
+    a sheet had not been extracted yet used to leave two words on screen and no
+    record anywhere.
+
+    "Set up" is the window's own question (knoxpaths.*_rules_ok) and not just
+    the script's exit code: the scripts answer that same question, so a run
+    that says it here and a red row in the window cannot happen together.
+    """
+    for script, what, ok in (
+            ("patch_rules_b42_trees.py", "Build 42 trees and flowers",
+             knoxpaths.tree_rules_ok),
+            ("patch_rules_roads.py", "Kerbs and road markings",
+             knoxpaths.road_rules_ok)):
+        done = subprocess.run([sys.executable, str(BASE_DIR / "worlded" / script),
+                               str(tools)], capture_output=True, text=True, check=False)
+        for line in (done.stdout + done.stderr).splitlines():
+            if line.strip():
+                say(f"        {line.rstrip()}")
+        try:
+            ready = ok(tools)
+        except OSError:
+            ready = False
+        if done.returncode == 0 and ready:
+            say(f"      {what} set up")
+        else:
+            why = (done.stderr.strip() or done.stdout.strip()
+                   or "nothing was written")[-300:]
+            note_problem(f"{what} not set up - {why}")
 
 
 def add_erikas_tiles(tools: Path, tilesets: Path, two_x: Path) -> None:
@@ -461,6 +509,18 @@ def finish(tools: Path, game: Path | None, cli_ok: bool) -> None:
                            "zomboid_dir": zomboid})
     say(f"      maps will be installed into {zomboid / 'mods'}")
     say()
+    if PROBLEMS:
+        # Last, because the window is usually shut before anybody scrolls
+        # back, and a run that could not finish its work must not end in
+        # "Setup complete".
+        say("Setup finished, but not everything is in place:")
+        for problem in PROBLEMS:
+            say(f"  - {problem}")
+        say()
+        say("Run Setup.bat again once the cause is sorted; logs/setup.log has the")
+        say("details. KnoxMap still draws terrain and builds houses, and the setup")
+        say("card in the window says which parts of compiling are affected.")
+        return
     say("Setup complete." if game and cli_ok else "Setup finished with notes above.")
     say("Start KnoxMap by double-clicking KnoxMap.bat.")
 
@@ -472,6 +532,7 @@ def main() -> int:
     for stream in (sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
             stream.reconfigure(errors="replace")
+    PROBLEMS.clear()
     say("KnoxMap setup")
     say("=============")
     if sys.maxsize <= 2 ** 32:
@@ -488,7 +549,7 @@ def main() -> int:
     game = find_game()
     configure_tools(tools, game)
     finish(tools, game, cli_ok)
-    return 0
+    return 1 if PROBLEMS else 0
 
 
 class _Tee:

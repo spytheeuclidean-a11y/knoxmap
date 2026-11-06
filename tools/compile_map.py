@@ -354,6 +354,23 @@ def bitmap_pixels(width: int, height: int) -> int:
     return -(-width // 300) * 300 * (-(-height // 300) * 300)
 
 
+# The renderer paints railways with the game's own track tiles
+# (generator/pz_colors.RAIL_NE_SW / RAIL_NW_SE). A colour with no rule is
+# dropped from the compile with a warning, leaving holes where the track was,
+# so the rules are added to the tools' Rules.txt the first time a map is built.
+def ensure_rail_rules(tools_dir) -> bool:
+    """Keep compilation on the renderer's current rail palette and layers."""
+    from worlded.patch_rules_roads import main as patch_roads
+
+    rules = tools_dir / "config" / "Rules.txt"
+    try:
+        before = rules.read_text(encoding="utf-8", errors="replace")
+        patch_roads(["patch_rules_roads", str(tools_dir)])
+        return rules.read_text(encoding="utf-8", errors="replace") != before
+    except OSError:
+        return False
+
+
 def scale_that_fits(width: int, height: int, meters_per_tile: float) -> int | None:
     """The smallest whole-metre scale at which a map drawn at this one fits
     WorldEd, or None if no scale up to 100 does."""
@@ -433,6 +450,66 @@ def assign_converted_maps(pzw: Path) -> int:
     return count
 
 
+WORLD_CELL = 300      # tiles in one cell of the world, as the .pzw counts them
+LOT_CELL = 256        # tiles in one compiled lot file
+LOT_FILE = re.compile(r"^(?:world_|chunkdata_)?(\d+)_(\d+)\.(?:lotheader|lotpack|bin)$")
+
+
+def world_extent(pzw: Path) -> tuple[int, int, int, int]:
+    """(origin x, origin y, cells across, cells down) out of the .pzw.
+
+    Zeros when the file is not there or does not say - a caller that deletes
+    compiled output from it must not guess.
+    """
+    try:
+        text = pzw.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return (0, 0, 0, 0)
+    size = re.search(r'<world version="[^"]*" width="(\d+)" height="(\d+)"', text)
+    origin = re.search(r'<worldOrigin origin="(-?\d+),(-?\d+)"', text)
+    if not (size and origin):
+        return (0, 0, 0, 0)
+    return (int(origin.group(1)), int(origin.group(2)),
+            int(size.group(1)), int(size.group(2)))
+
+
+def clear_outside_world(project: Path) -> int:
+    """Delete compiled lots for cells this map no longer stands on.
+
+    Moving a map (knoxbuild/placement.py) rewrites the world origin in the
+    .pzw and touches nothing compiled: the lots keep the names of the place
+    they were made for. They are newer than everything they were compiled
+    from, so nothing calls them stale, and the compile writes the new ones
+    beside them - so the corner they name stays the old place, and install
+    refuses the map as "moved since it was last compiled" however often it is
+    compiled. Ticking Standalone, which parks a map at cell 0,0, and putting
+    it back somewhere real is exactly that. The game cannot load cells from
+    outside a map's own box either, so they are only ever litter.
+    """
+    ox, oy, w, h = world_extent(project / f"{project.name}.pzw")
+    if not w or not h:
+        return 0
+    x0, x1 = ox * WORLD_CELL // LOT_CELL, ((ox + w) * WORLD_CELL - 1) // LOT_CELL
+    y0, y1 = oy * WORLD_CELL // LOT_CELL, ((oy + h) * WORLD_CELL - 1) // LOT_CELL
+    lots = project / "lots"
+    if not lots.is_dir():
+        return 0
+    removed = 0
+    for p in lots.iterdir():
+        m = LOT_FILE.match(p.name)
+        if not m or not p.is_file():
+            continue
+        lx, ly = int(m.group(1)), int(m.group(2))
+        if x0 <= lx <= x1 and y0 <= ly <= y1:
+            continue
+        try:
+            p.unlink()
+            removed += 1
+        except OSError:
+            pass
+    return removed
+
+
 def clear_stale(project: Path) -> None:
     """Delete compiled output that is older than what it was compiled from.
 
@@ -455,6 +532,7 @@ def clear_stale(project: Path) -> None:
     settings_time = 0.0
     tools = knoxpaths.mapping_tools_dir()
     if tools:
+        ensure_rail_rules(tools)
         terrain = max(terrain, newest(p for p in (tools / "config" / "Rules.txt",
                                                   tools / "config" / "Blends.txt")
                                       if p.exists()))
@@ -502,6 +580,55 @@ FAILURES_FILE = "compile_failures.json"
 # while one is running, but the command line does not know about the window,
 # and two compiles of one project write the same lots folder and the same
 # .pzw: assign_converted_maps rewrites it after every batch.
+def prepare_output(project: Path, run: str | None = None,
+                   knoxlots: bool | None = None) -> dict:
+    """Make the output folders what either compiler expects to find.
+
+    Both backends used to do this themselves, which is how pruning the lots a
+    map left behind ended up on the WorldEd path only: `knoxlots` compiled over
+    them, the corner they named stayed the place the map had left, and install
+    went on refusing the map as "moved since it was last compiled" however
+    often it was compiled (see clear_outside_world). A project that needed
+    repair was likewise only repaired before WorldEd compiled it.
+
+    One function called by both, so the next fix to "what is in lots/ before a
+    compile" is one edit rather than two - and the second one is not forgotten.
+    """
+    pzw = project / f"{project.name}.pzw"
+    # Whatever wrote the project, one entry past the edge of the map must not
+    # stop the whole compile: WorldEd refuses a project over a single one.
+    from knoxbuild.repair import repair_project
+    fixed = {"changed": False, "moved": 0, "dropped": []}
+    try:
+        fixed = repair_project(pzw, knoxlots=knoxlots)
+    except Exception:  # noqa: BLE001 - a repair that fails leaves the project as it was
+        knoxlog.log.exception("compile %s: checking the project failed", project.name)
+    else:
+        if fixed["changed"]:
+            knoxlog.log.warning("compile %s: repaired the project before compiling - moved %d, "
+                                "dropped %d%s", project.name, fixed["moved"],
+                                len(fixed["dropped"]),
+                                "".join(f"\n  dropped {what}: {why}"
+                                        for what, why in fixed["dropped"][:50]))
+
+    (project / "lots").mkdir(exist_ok=True)
+    # tmx/ is WorldEd's own step (a bitmap converted to a TMX); knoxlots reads
+    # the cells straight from the project, so it has no use for one.
+    if knoxlots is not True:
+        (project / "tmx").mkdir(exist_ok=True)
+
+    # Before anything is decided about what to compile: lots named for a place
+    # the map has left are not "stale", and an incremental compile that finds
+    # every cell it wants would keep them for ever, along with the corner they
+    # name.
+    moved = clear_outside_world(project)
+    if moved:
+        knoxlog.log.info("compile %s%s: removed %d lot files from where the map no "
+                         "longer stands", project.name,
+                         f" [{run}]" if run else "", moved)
+    return {"repaired": fixed, "moved": moved}
+
+
 LOCK_FILE = ".compiling"
 
 
@@ -837,6 +964,7 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
     project = Path(project_dir).resolve()
     if not (project / f"{project.name}.pzw").exists():
         raise FileNotFoundError(f"No {project.name}.pzw - generate the buildings first.")
+    ensure_rail_rules(knoxpaths.mapping_tools_dir())
     from tools.map_source import make_map_source
     run = uuid.uuid4().hex[:8]
     scratch = project / ".knoxlots"
@@ -844,24 +972,10 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
     finished = False
     with _only_one(project, run):
         try:
-            # The cell sources a stopped or failed run left are kept and carried
-            # on from, unless the map has changed since: a city's cell sources
-            # are an hour and a half, and a crash at row 34 of 49 threw them all
-            # away. The lot files knoxlots writes are always made afresh.
-            stamp = _source_stamp(project)
-            try:
-                same = json.loads((src / SOURCE_STAMP).read_text(encoding="utf-8")) == stamp
-            except (OSError, ValueError):
-                same = False
-            if not same:
-                shutil.rmtree(scratch, ignore_errors=True)
-            shutil.rmtree(out, ignore_errors=True)
-            src.mkdir(parents=True, exist_ok=True)
-            (src / SOURCE_STAMP).write_text(json.dumps(stamp), encoding="utf-8")
-            kept = len(list(src.glob("row_*.done")))
-            if kept:
-                knoxlog.log.info("compile %s [%s]: carrying on - %d rows of cells kept from "
-                                 "the last run", project.name, run, kept)
+            # The same preparation the WorldEd path does, so a map compiled by
+            # either one finds the same folders, and the same lots where the map
+            # used to stand have already gone.
+            prepare_output(project, run, knoxlots=True)
             if should_stop and should_stop():
                 raise knoxstop.Stopped("the compile")
             def phase(text: str, fraction: float) -> None:
@@ -959,23 +1073,8 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
     run = uuid.uuid4().hex[:8]
 
     with _only_one(project, run):
-        # Whatever wrote the project, one entry past the edge of the map must not
-        # stop the whole compile: WorldEd refuses a project over a single one.
-        from knoxbuild.repair import repair_project
-        try:
-            fixed = repair_project(pzw, knoxlots=False)
-        except Exception:  # noqa: BLE001 - a repair that fails leaves the project as it was
-            knoxlog.log.exception("compile %s: checking the project failed", project.name)
-        else:
-            if fixed["changed"]:
-                knoxlog.log.warning("compile %s: repaired the project before compiling - moved %d, "
-                                    "dropped %d%s", project.name, fixed["moved"],
-                                    len(fixed["dropped"]),
-                                    "".join(f"\n  dropped {what}: {why}"
-                                            for what, why in fixed["dropped"][:50]))
         lots = project / "lots"
-        lots.mkdir(exist_ok=True)
-        (project / "tmx").mkdir(exist_ok=True)
+        prepare_output(project, run, knoxlots=False)
 
         w, h = world_size(pzw)
         if not w or not h:

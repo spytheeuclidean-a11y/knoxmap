@@ -341,6 +341,7 @@ def _lay_run(plan: Plan, line: LineString, h, level: int, width: float, cat: str
     x0, y0, x1, y1 = (int(math.floor(v)) for v in area.bounds)
     deck: dict[int, set] = {}
     ramps: set = set()
+    tops: list = []
     for y in range(max(0, y0), min(proj.height, y1 + 1)):
         for x in range(max(0, x0), min(proj.width, x1 + 1)):
             centre = Point(x + 0.5, y + 0.5)
@@ -370,10 +371,33 @@ def _lay_run(plan: Plan, line: LineString, h, level: int, width: float, cat: str
                 direction = "S" if dy > 0 else "N"
             plan.put(x, y, z, "Floor", ramp_tile(direction, seg))
             ramps.add((x, y))
+            if seg == RAMP_STEPS - 1:
+                tops.append((x, y, z, direction))
+    _cap_tops(plan, tops, deck, proj)
     footprint = set(ramps).union(*deck.values()) if deck else set(ramps)
     for z, tiles in deck.items():
         _rail(plan, tiles, footprint, z)
         _posts(plan, tiles, footprint, z)
+
+
+def _cap_tops(plan: Plan, tops: list, deck: dict, proj) -> None:
+    """Lay the deck a ramp climbs to when rounding left it short.
+
+    A last segment at 19/20 storey with nothing at the next level is a ramp
+    that tops out in mid-air: the player walks up and cannot step off.
+    """
+    ahead = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
+    for x, y, z, direction in tops:
+        if any((x + dx, y + dy) in deck.get(z + 1, ())
+               for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            continue
+        dx, dy = ahead[direction]
+        nx, ny = x + dx, y + dy
+        if not (0 <= nx < proj.width and 0 <= ny < proj.height):
+            nx, ny = x, y
+        plan.put(nx, ny, z + 1, "Floor", DECK_FLOOR)
+        deck.setdefault(z + 1, set()).add((nx, ny))
+        plan.clear_veg.add((nx, ny))
 
 
 def _rail(plan: Plan, tiles: set, footprint: set, z: int) -> None:

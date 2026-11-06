@@ -123,6 +123,9 @@ def outline(path, width: int, extra=(0, 0)):
         return shapely.Polygon()
     left, right = [], []
     for side, out in ((1, left), (-1, right)):
+        # Set on the first segment of the run and read from the second on; the
+        # `else` below is the only reader, and it is never reached for n == 0.
+        out_prev = None
         for n, (a, b, d, offs) in enumerate(segs):
             off = offs[0 if side == 1 else 1]
             pa = (a[0] + side * off[0], a[1] + side * off[1])

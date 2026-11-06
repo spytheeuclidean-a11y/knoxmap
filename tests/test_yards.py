@@ -7,7 +7,7 @@ from PIL import Image
 
 from generator import pz_colors as C
 from knoxbuild.bitmaps import read_rgb
-from knoxbuild.yards import _pave_patio, paint_paths
+from knoxbuild.yards import YARD_MIN_DEPTH, _pave_patio, paint_paths, yard_plan
 
 
 class YardPlacement(unittest.TestCase):
@@ -94,7 +94,10 @@ class FrontPaths(unittest.TestCase):
     def test_a_path_goes_around_the_neighbours_back_yard(self):
         alone = _paint(40, 40, [("house", 10, 4)])
         both = _paint(40, 40, [("house", 10, 4), ("house", 10, 24)])
-        yard = (slice(10, 19), slice(8, 18))   # behind the first house
+        # The house and the minimum yard every house gets (the yard behind it
+        # starts at row 10); a deeper yard may extend further, but this part is
+        # claimed whatever the depth chosen.
+        yard = (slice(10, 10 + YARD_MIN_DEPTH), slice(8, 18))
         self.assertTrue((alone[yard] == both[yard]).all(),
                         "the second house's path was painted over the first one's yard")
 
@@ -128,6 +131,17 @@ class BackYards(unittest.TestCase):
         veg = _paint(40, 40, houses, water=list(x1), veg=True)
         self.assertEqual(self.pieces(veg, C.TABLE_X0), set())
         self.assertEqual(self.pieces(veg, C.TABLE_X1), set())
+
+
+class Variation(unittest.TestCase):
+    def test_a_street_gets_more_than_one_kind_of_yard(self):
+        plans = [yard_plan(6 + 10 * n, 6) for n in range(12)]
+        self.assertGreaterEqual(len({p[2] for p in plans}), 3, "archetypes")
+        self.assertGreaterEqual(len({p[0] for p in plans}), 2, "fence styles")
+        self.assertTrue(any(not p[1] for p in plans), "some yards are open")
+
+    def test_a_house_gets_the_same_yard_every_time(self):
+        self.assertEqual(yard_plan(42, 17), yard_plan(42, 17))
 
 
 if __name__ == "__main__":

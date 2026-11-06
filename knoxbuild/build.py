@@ -1077,6 +1077,18 @@ def _road_weight(out_dir: str, map_name: str, proj,
         if classified is not None:
             yards = yards & (classified == 0)
         weight[yards] = 0
+    # Rail beds are transport corridors too; rooms must not erase their track tiles.
+    from generator.rail_tiles import RAIL_RULES
+    rail = (ground[:, :, 0] == 206) & np.isin(ground[:, :, 1], (1, 2))
+    for colour in {colour for label, colour, tile in RAIL_RULES if colour[0] != 206}:
+        rail |= same_colour(ground, colour)
+    # An exterior wall can stand one square outside its room footprint.
+    padded = np.pad(rail, 1)
+    rail_clear = rail.copy()
+    for dy in range(3):
+        for dx in range(3):
+            rail_clear |= padded[dy:dy + rail.shape[0], dx:dx + rail.shape[1]]
+    weight[rail_clear] = 8
     return weight
 
 
@@ -2133,6 +2145,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     porch_lights: list = []
     from .yards import door_fronts
     fronts = door_fronts(out_dir, rows)
+    fence_clear = fronts
+    if road_weight is not None:
+        rail_y, rail_x = np.nonzero(road_weight == 8)
+        fence_clear = fronts | set(zip(rail_x.tolist(), rail_y.tolist()))
     paths, yard_fences = paint_paths(out_dir, map_name, rows, occupied, drives,
                                      porch_lights, fronts=fronts)
     # The lights stand outside the houses, past the edge of their own .tbx.
@@ -2192,7 +2208,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         job_fences = pool.submit(build_fences, out_dir, map_name, proj, occupied,
-                                 areas, bdir, extra=yard_fences, keep_clear=fronts)
+                                 areas, bdir, extra=yard_fences, keep_clear=fence_clear)
         job_spawn = pool.submit(make_spawn_map)
         job_paper = pool.submit(worldmap.write, out_dir, map_name, proj, info,
                                 outlines)

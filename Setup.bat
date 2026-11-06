@@ -16,6 +16,10 @@ rem that - it dies halfway through with "MemoryError". A 32-bit one is kept as
 rem PY32 in case this really is a 32-bit Windows, where it is all there is.
 set PY=
 set PY32=
+rem Why this run stopped, for logs\setup.log (see :log at the end): the window
+rem is usually shut before anybody can read it, and a run that stopped before
+rem Python started used to leave nothing behind at all.
+set "SETUP_REASON=Python could not be found, and the private copy could not be downloaded"
 if exist ".python\tools\python.exe" set PY=".python\tools\python.exe"
 if not defined PY where py >nul 2>nul && py -3 -c "import sys; sys.exit(sys.version_info < (3, 10) or sys.maxsize <= 2**32)" >nul 2>nul && set PY=py -3
 if not defined PY python -c "import sys; sys.exit(sys.version_info < (3, 10) or sys.maxsize <= 2**32)" >nul 2>nul && set PY=python
@@ -41,18 +45,25 @@ if exist %VENV_PYTHON% (
 
 if not exist %VENV_PYTHON% (
   echo Creating the Python environment...
+  set "SETUP_REASON=Python could not create the environment in .venv"
   %PY% -m venv .venv || goto :fail
   if exist ".venv\bin\python.exe" call :msys_warning
 )
 echo Installing Python packages...
+set "SETUP_REASON=the packages in requirements.txt could not be installed"
 %VENV_PYTHON% -m pip install --disable-pip-version-check -q -r requirements.txt || goto :fail
 
+rem A non-zero exit here is not always fatal - a rule file that could not be
+rem written yet leaves the app working, and the window's setup card says so -
+rem but it is still a run that did not finish, and saying so is the point.
+set "SETUP_REASON=knoxmap_setup.py stopped with an error (logs\setup.log has the details)"
 %VENV_PYTHON% knoxmap_setup.py || goto :fail
 echo.
 if not "%KNOXMAP_NO_PAUSE%"=="1" pause
 exit /b 0
 
 :fail
+call :log "%SETUP_REASON%"
 echo.
 echo Setup stopped with an error - see the messages above.
 if not "%KNOXMAP_NO_PAUSE%"=="1" pause
@@ -81,6 +92,7 @@ call :portable_python || exit /b 1
   echo The downloaded Python is missing those parts too, which usually means
   echo antivirus software is taking them out as they arrive. Allow this folder
   echo in your antivirus, or install Python from python.org, then run Setup again.
+  call :log "the downloaded Python is missing parts of its own library"
   exit /b 1
 )
 exit /b 0
@@ -141,4 +153,14 @@ if /I "%INSTALL_CORRECT%"=="y" (
 ) else (
     set VENV_PYTHON=".venv\bin\python.exe"
 )
+exit /b 0
+
+:log
+rem What went wrong, into the same log knoxmap_setup.py writes. Nothing used to
+rem be recorded when the batch stopped before Python started, which is exactly
+rem the run somebody needs the log for.
+if not exist "logs" mkdir "logs" >nul 2>nul
+echo.>>"logs\setup.log"
+echo ===== setup stopped %DATE% %TIME% =====>>"logs\setup.log"
+if not "%~1"=="" echo   %~1>>"logs\setup.log"
 exit /b 0

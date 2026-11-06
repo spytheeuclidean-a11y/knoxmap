@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, road_hierarchy
-from .geometry import _draw_line, _feature_coords_px, _is_polygon, _pixel_width
+from .geometry import _draw_line, _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
 from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES
 from .projection import Projector
 from .widths import (ROAD_WIDTHS_M, _road_markings, _sidewalk_width_m,
@@ -22,6 +22,7 @@ def _road_hierarchy_image(buckets: dict[str, list[OSMFeature]], proj: Projector)
     road_buckets = ("road_service", "road_minor", "road_medium", "road_major",
                     "paved_path", "dirt_path")
     for hierarchy, code in sorted(ROAD_HIERARCHY_CODES.items(), key=lambda item: item[1]):
+        strokes = []
         for cat in road_buckets:
             for feat in buckets.get(cat, []):
                 if _is_polygon(feat) or road_hierarchy(feat.tags) != hierarchy:
@@ -29,8 +30,8 @@ def _road_hierarchy_image(buckets: dict[str, list[OSMFeature]], proj: Projector)
                 width = _way_width_m(feat, cat)
                 if cat in ROAD_WIDTHS_M:
                     width += 2 * _sidewalk_width_m(feat, cat)
-                _draw_line(draw, _feature_coords_px(feat, proj), code,
-                           _pixel_width(width, proj.meters_per_tile))
+                strokes.append((_pixel_width(width, proj.meters_per_tile), _feature_coords_px(feat, proj)))
+        _draw_roads(image, strokes, code)
     return image
 
 
@@ -117,6 +118,20 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             ground[bump] = C.PALE_CONCRETE
         rows = slice(y0 - top, y0 - top + (y1 - y0))
         landscape.paste(Image.fromarray(ground[rows]), (0, y0))
+
+
+
+
+
+
+# --- railway ---------------------------------------------------------------
+
+def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+    """Lay connected vanilla straights, diagonals and bends along each track."""
+    from .rails import rail_paths, paint_track
+
+    for ring in rail_paths(buckets.get("railway", []), proj):
+        paint_track(draw, ring)
 
 
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,
