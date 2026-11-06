@@ -31,7 +31,8 @@ class Fallback(unittest.TestCase):
         expected = list(rail_sections(points, backend="python"))
         with mock.patch.object(rustsearch, "exe", return_value=None):
             self.assertEqual(list(rail_sections(points)), expected)
-        with mock.patch.object(rustsearch.subprocess, "Popen", side_effect=OSError("old worker")), \
+        with mock.patch.object(rustsearch, "exe", return_value="knoxroute"), \
+                mock.patch.object(rustsearch.subprocess, "Popen", side_effect=OSError("old worker")), \
                 self.assertLogs(rustsearch.__name__, level="WARNING"):
             self.assertEqual(list(rail_sections(points)), expected)
 
