@@ -537,6 +537,9 @@ button.version:hover, button.version[aria-expanded="true"] { color: var(--accent
   cursor: pointer; color: var(--accent-ink); background: var(--accent); border: 0;
   border-radius: 4px; padding: 3px 10px; }
 .map-list button:disabled { opacity: .5; cursor: default; }
+/* An Update in progress, under the row of the map being copied. */
+.map-list > li.map-progress { display: block; border-top: 0; padding: 0 0 6px; }
+.map-list > li.map-progress .bar { margin: 0 0 3px; }
 summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .upgrade-note { margin: 0 0 10px; padding: 10px 12px; border: 1px solid #5a4a2c;
   background: var(--warn-soft); border-radius: 6px; font-size: 13px;

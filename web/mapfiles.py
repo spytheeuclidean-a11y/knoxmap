@@ -158,6 +158,8 @@ def _map_summary(map_dir: Path) -> dict:
     stages = mapstate.done(str(map_dir))
     inst = mapstate.installed(str(map_dir))
     compiled_at = (stages.get("compile") or {}).get("at")
+    # The build as stamped, not guessed from a .pzw: a new Generate forgets it.
+    built = (mapstate.read(str(map_dir)).get("stages") or {}).get("build")
     return {
         "mapName": map_dir.name,
         "width": info.get("width_tiles", 0),
@@ -183,8 +185,8 @@ def _map_summary(map_dir: Path) -> dict:
         # forgets the build stamp), so it can be compiled as it stands. The
         # window only offered Compile straight after a build, so after a
         # restart a built city had to be built again - hours - to compile it.
-        "buildingsReady": bool((mapstate.read(str(map_dir)).get("stages") or {}).get("build"))
-                          and (map_dir / f"{map_dir.name}.pzw").exists(),
+        "buildingsReady": bool(built) and (map_dir / f"{map_dir.name}.pzw").exists(),
+        "builtAt": (built or {}).get("at"),
         "needs": needs,
         "needsLabels": [mapstate.LABELS[s] for s in needs],
         # Where it is installed, and whether that copy came after the last

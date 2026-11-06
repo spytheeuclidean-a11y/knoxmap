@@ -868,8 +868,11 @@ def free_bytes(path: str) -> int:
 
 def package(project_dir: str, name: str, mod_id: str,
             lots_dir: str | None = None, mods_dir: str | None = None,
-            description: str = "") -> tuple[str, int, list[str]]:
-    """Write the mod folder. Returns (mod_root, cell file count, extras)."""
+            description: str = "", on_progress=None) -> tuple[str, int, list[str]]:
+    """Write the mod folder. Returns (mod_root, cell file count, extras).
+
+    `on_progress(done, total)` follows the files being copied, which is
+    nearly all of the time: a city is thousands of cell files, gigabytes."""
     lots_dir = lots_dir or os.path.join(project_dir, "lots")
     mods_dir = mods_dir or default_mods_dir()
 
@@ -894,8 +897,11 @@ def package(project_dir: str, name: str, mod_id: str,
         _clear_folder(map_dir)
     os.makedirs(map_dir, exist_ok=True)
 
-    for src in cells + extras:
+    files = cells + extras
+    for n, src in enumerate(files, 1):
         shutil.copy2(src, os.path.join(map_dir, os.path.basename(src)))
+        if on_progress and (n % 25 == 0 or n == len(files)):
+            on_progress(n, len(files))
     # The paper map in the binary form Build 42 reads; from worldmap.xml alone
     # it shows street names and nothing else (knoxbuild/worldmap_bin.py).
     n_map_features = 0

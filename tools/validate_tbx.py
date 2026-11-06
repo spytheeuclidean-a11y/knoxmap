@@ -54,13 +54,20 @@ VALID_ROOF_DEPTHS = {"Zero", "Point5", "One", "OnePoint5", "Two",
                      "TwoPoint5", "Three"}
 
 
-def check(path: str, knoxlots: bool | None = None) -> list[str]:
+def check(path: str, knoxlots: bool | None = None, flaws: bool = True) -> list[str]:
     """Every reason BuildingEd would refuse the file, or [].
 
     `knoxlots` checks it for KnoxMap's own compiler instead, which also reads a
     floor's <object type="hole"/> and a basement's top flight rising into the
     building above (knoxbuild/basements.py); None asks which compiler a
-    compile would use (tools/compile_map.default_backend)."""
+    compile would use (tools/compile_map.default_backend).
+
+    `flaws` also reports what loads but looks wrong - furniture reaching out of
+    its room - which the tests and audits want to hear about. The check before
+    a compile asks without them: it drops what it rejects, and on a city it
+    would have dropped about 1,900 whole buildings (0.7%) that knoxlots
+    compiled, each over one wall decoration a square out of its room - a look,
+    added for the tests, not a reason the editor refuses a file."""
     if knoxlots is None:
         from tools.compile_map import default_backend
         knoxlots = default_backend() == "rust"
@@ -250,7 +257,7 @@ def check(path: str, knoxlots: bool | None = None) -> list[str]:
         # Furniture standing in a room must stay in it. Placed without this, a
         # two-tile mirror or a rug reached through the outside wall and hung
         # in the air beside the building.
-        if len(vals) == w * h:
+        if flaws and len(vals) == w * h:
             cells = [int(v) for v in vals]
             for o in floor.findall("object"):
                 if o.get("type") != "furniture":

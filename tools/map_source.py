@@ -182,6 +182,17 @@ def _read_rooms(project: str, names: list[str]) -> list:
     return out
 
 
+def _gather(pool, pending: dict, should_stop, take) -> None:
+    """knoxstop.gather for the compile. What a worker it ends leaves half
+    done is not kept: a row is only marked finished once its worker has
+    returned."""
+    knoxstop.gather(pool, pending, should_stop, take, "the compile")
+
+
+# Buildings read per job: small, so a stop or the last few jobs wait seconds.
+READ_BATCH = 500
+
+
 def read_buildings(project: str, names: list[str], workers: int | None = None, should_stop=None) -> list:
     """Every building the lots name, in order, parsed for the room tables - across
     processes once there are enough of them, since reading is where a big map
@@ -190,21 +201,14 @@ def read_buildings(project: str, names: list[str], workers: int | None = None, s
     workers = workers or os.cpu_count() or 1
     if len(names) < PARALLEL_READ_FROM or workers < 2:
         return _read_rooms(project, names)
-    size = max(50, len(names) // (workers * 4))
-    chunks = [names[i:i + size] for i in range(0, len(names), size)]
-    out: list = []
-    with futures.ProcessPoolExecutor(max_workers=workers) as pool:
-        jobs = [pool.submit(_read_rooms, project, c) for c in chunks]
-        try:
-            for job in jobs:          # in order: the result is the lots' order
-                out.extend(job.result())
-                if should_stop and should_stop():
-                    raise knoxstop.Stopped("the compile")
-        except BaseException:
-            for job in jobs:
-                job.cancel()
-            raise
-    return out
+    size = max(50, min(READ_BATCH, len(names) // (workers * 4)))
+    parts: dict = {}
+    pool = futures.ProcessPoolExecutor(max_workers=workers)
+    pending = {pool.submit(_read_rooms, project, names[s:s + size]): s
+               for s in range(0, len(names), size)}
+    _gather(pool, pending, should_stop, lambda fut, s: parts.__setitem__(s, fut.result()))
+    # in order: the result is the lots' order
+    return [b for s in sorted(parts) for b in parts[s]]
 
 
 def _row_done(out: str, cy: int) -> str:
@@ -267,19 +271,16 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                 written += _row(project, out, cy, bands[cy], placed, seed, seams, (w, h))
                 finished(cy, n)
         else:
-            with futures.ProcessPoolExecutor(max_workers=workers) as pool:
-                jobs = {pool.submit(_row, project, out, cy, bands[cy], placed, seed, seams, (w, h)): cy
-                        for cy in todo}
-                try:
-                    for n, fut in enumerate(futures.as_completed(jobs), 1):
-                        written += fut.result()
-                        finished(jobs[fut], n)
-                        if should_stop and should_stop():
-                            raise knoxstop.Stopped("the compile")
-                except BaseException:
-                    for fut in jobs:
-                        fut.cancel()
-                    raise
+            pool = futures.ProcessPoolExecutor(max_workers=workers)
+            jobs = {pool.submit(_row, project, out, cy, bands[cy], placed, seed, seams, (w, h)): cy
+                    for cy in todo}
+
+            def take(fut, cy: int) -> None:
+                nonlocal written
+                written += fut.result()
+                finished(cy, len(todo) - len(jobs))
+
+            _gather(pool, jobs, should_stop, take)
     name = os.path.basename(os.path.normpath(project))
     spawn = f"{name}_ZombieSpawnMap.bmp"
     lines = ["format = knoxlots-source 1", f"origin_x = {origin[0]}",
