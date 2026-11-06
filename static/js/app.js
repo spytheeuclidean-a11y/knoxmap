@@ -5139,12 +5139,20 @@ function placeMine() {
            w: placeWorld.map.w * k, h: placeWorld.map.h * k };
 }
 
+// The other maps in this map's world. A standalone map is the whole world, so
+// there are none: Knox County went on being drawn behind one, as if it were
+// still there, whenever a standalone map was opened or ticked.
+function placeWorldMaps() {
+  if (!placeWorld || placeWorld.standalone) return [];
+  return placeWorld.maps || [];
+}
+
 // Every other map's cells as tile rectangles, one per run of cells in a row.
 function placeOtherRects() {
   if (!placeWorld) return [];
   const k = placeWorld.compiledCell || 256;
   const out = [];
-  for (const map of placeWorld.maps || []) {
+  for (const map of placeWorldMaps()) {
     for (const [row, first, last] of map.runs) {
       out.push({ x: first * k, y: row * k, w: (last - first + 1) * k, h: k,
                  kind: map.kind, name: map.name });
@@ -5258,7 +5266,7 @@ function drawWorld() {
   // the shape of its cells where there is not.
   const mineNow = placeMine();
   const drawn = new Set();
-  for (const map of placeWorld.maps || []) {
+  for (const map of placeWorldMaps()) {
     const shot = placePictures[map.name];
     if (map.pictureBox && shot && shot.complete && shot.naturalWidth) {
       const b = map.pictureBox;
@@ -5275,7 +5283,7 @@ function drawWorld() {
   }
   // ...labelled once each, under what they cover.
   ctx.font = '13px system-ui, sans-serif';
-  for (const map of placeWorld.maps || []) {
+  for (const map of placeWorldMaps()) {
     const c = placeWorld.compiledCell || 256;
     ctx.fillStyle = map.kind === 'vanilla' ? '#d6dcc8' : '#92a8c4';
     ctx.fillText(map.name, map.x * c * k + 3, (map.y * c + map.h * c) * k + 14);
