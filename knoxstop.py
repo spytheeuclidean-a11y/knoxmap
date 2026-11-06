@@ -29,3 +29,29 @@ def check(should_stop, what: str = "the job") -> None:
     a loop: `should_stop` is a set lookup."""
     if should_stop is not None and should_stop():
         raise Stopped(what)
+
+
+def gather(pool, pending: dict, should_stop, take, what: str = "the job") -> None:
+    """Hand each job of a process `pool` to `take(job, key)` as it finishes,
+    looking at `should_stop` at least once a second, then shut the pool.
+
+    On a stop - or anything else going wrong - the workers are ended rather
+    than waited for. Waiting meant a Stop pressed while a city was being read,
+    or its rows of cells made, did nothing for minutes: each worker finished
+    the big piece it was on first. Only what `take` was handed counts as done.
+    """
+    from concurrent.futures import FIRST_COMPLETED, wait
+    try:
+        while pending:
+            finished, _ = wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                take(fut, pending.pop(fut))
+            check(should_stop, what)
+    except BaseException:
+        end = getattr(pool, "terminate_workers", None)      # Python 3.14+
+        if end is not None:
+            end()
+        else:
+            pool.shutdown(wait=False, cancel_futures=True)
+        raise
+    pool.shutdown()

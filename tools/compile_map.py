@@ -581,7 +581,8 @@ FAILURES_FILE = "compile_failures.json"
 # and two compiles of one project write the same lots folder and the same
 # .pzw: assign_converted_maps rewrites it after every batch.
 def prepare_output(project: Path, run: str | None = None,
-                   knoxlots: bool | None = None) -> dict:
+                   knoxlots: bool | None = None, should_stop=None,
+                   on_check=None) -> dict:
     """Make the output folders what either compiler expects to find.
 
     Both backends used to do this themselves, which is how pruning the lots a
@@ -593,6 +594,9 @@ def prepare_output(project: Path, run: str | None = None,
 
     One function called by both, so the next fix to "what is in lots/ before a
     compile" is one edit rather than two - and the second one is not forgotten.
+
+    `on_check(done, total)` follows the building files being checked, and
+    `should_stop` stops it (knoxstop.Stopped): on a city that is minutes.
     """
     pzw = project / f"{project.name}.pzw"
     # Whatever wrote the project, one entry past the edge of the map must not
@@ -600,7 +604,10 @@ def prepare_output(project: Path, run: str | None = None,
     from knoxbuild.repair import repair_project
     fixed = {"changed": False, "moved": 0, "dropped": []}
     try:
-        fixed = repair_project(pzw, knoxlots=knoxlots)
+        fixed = repair_project(pzw, knoxlots=knoxlots, should_stop=should_stop,
+                               on_progress=on_check)
+    except knoxstop.Stopped:
+        raise
     except Exception:  # noqa: BLE001 - a repair that fails leaves the project as it was
         knoxlog.log.exception("compile %s: checking the project failed", project.name)
     else:
@@ -983,7 +990,9 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
             # The same preparation the WorldEd path does, so a map compiled by
             # either one finds the same folders, and the same lots where the map
             # used to stand have already gone.
-            prepare_output(project, run, knoxlots=True)
+            prepare_output(project, run, knoxlots=True, should_stop=should_stop,
+                           on_check=lambda done, total: phase(
+                               f"Checking the buildings: {done:,} of {total:,}", 0.0))
             if should_stop and should_stop():
                 raise knoxstop.Stopped("the compile")
             # The cell sources a stopped or failed run left are kept and carried
@@ -1098,7 +1107,7 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
 
     with _only_one(project, run):
         lots = project / "lots"
-        prepare_output(project, run, knoxlots=False)
+        prepare_output(project, run, knoxlots=False, should_stop=should_stop)
 
         w, h = world_size(pzw)
         if not w or not h:

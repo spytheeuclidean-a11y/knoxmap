@@ -15,6 +15,7 @@ import numpy as np
 
 import knoxstop
 from knoxbuild import build as B
+from knoxbuild import repair as R
 from knoxbuild.buildheader import placed_rooms, room_rects
 from knoxbuild.settings import Settings
 from tools import compile_map as C
@@ -165,6 +166,72 @@ class StoppingACompile(unittest.TestCase):
         with self.assertRaises(knoxstop.Stopped):
             M._gather(pool, pending, lambda: time.time() > asked, lambda fut, n: None)
         self.assertLess(time.time() - t0, 10.0)
+
+
+class CheckingTheBuildings(unittest.TestCase):
+    """The check before a compile: what it drops, and not doing it twice."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self.base = Path(self._dir.name)
+        (self.base / "buildings").mkdir()
+        self.refs = []
+        for n in range(5):
+            ref = f"buildings/b{n}.tbx"
+            (self.base / ref).write_text(f"<building {n}/>", encoding="utf-8")
+            self.refs.append(ref)
+        self.read = []
+
+    def tearDown(self):
+        self._dir.cleanup()
+
+    def _check(self, refs=None, should_stop=None):
+        def batch(paths, knoxlots):
+            self.read.extend(Path(p).name for p in paths)
+            return [["broken"] if p.endswith("b3.tbx") else [] for p in paths]
+
+        with mock.patch.object(R, "_check_batch", batch):
+            return R.check_lot_files(self.base, refs or self.refs, True, should_stop)
+
+    def test_a_file_checked_before_is_not_read_again(self):
+        first = self._check()
+        self.assertEqual(first["buildings/b3.tbx"], ["broken"])
+        self.assertEqual(len(self.read), 5)
+        self.read.clear()
+        self.assertEqual(self._check(), first)
+        self.assertEqual(self.read, [])
+        later = time.time() + 5
+        os.utime(self.base / "buildings" / "b1.tbx", (later, later))
+        self._check()
+        self.assertEqual(self.read, ["b1.tbx"], "only the one that changed")
+
+    def test_a_missing_file_is_said_without_reading(self):
+        got = self._check(self.refs + ["buildings/gone.tbx"])
+        self.assertEqual(got["buildings/gone.tbx"], ["the file is missing"])
+        self.assertNotIn("gone.tbx", self.read)
+
+    def test_a_stop_keeps_what_was_checked(self):
+        refs = []
+        for n in range(120):
+            ref = f"buildings/many{n}.tbx"
+            (self.base / ref).write_text("<building/>", encoding="utf-8")
+            refs.append(ref)
+        with mock.patch.object(R, "PARALLEL_CHECK_FROM", 10 ** 9):
+            with self.assertRaises(knoxstop.Stopped):
+                self._check(refs, should_stop=lambda: len(self.read) > 0)
+            self.assertEqual(len(self.read), 50, "stopped after the first batch")
+            self.read.clear()
+            self._check(refs)
+        self.assertEqual(len(self.read), 70, "the first 50 were kept")
+
+    def test_furniture_out_of_its_room_does_not_drop_a_building(self):
+        import sys
+        tools = str(Path(R.__file__).resolve().parent.parent / "tools")
+        if tools not in sys.path:
+            sys.path.insert(0, tools)
+        with mock.patch("validate_tbx.check", return_value=[]) as check:
+            R._check_building(self.base / self.refs[0], True)
+        self.assertIs(check.call_args.kwargs.get("flaws"), False)
 
 
 class CarryingOnACompile(unittest.TestCase):

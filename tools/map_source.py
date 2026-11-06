@@ -183,29 +183,10 @@ def _read_rooms(project: str, names: list[str]) -> list:
 
 
 def _gather(pool, pending: dict, should_stop, take) -> None:
-    """Hand each job of `pool` to `take(job, key)` as it finishes, looking at
-    `should_stop` at least once a second, then shut the pool.
-
-    On a stop - or anything else going wrong - the workers are ended rather
-    than waited for. Waiting meant a Stop pressed while a city was being read,
-    or its rows of cells made, did nothing for minutes: each worker finished
-    the big piece it was on first. What they leave half done is not kept: a
-    row is only marked finished here, once its worker has returned."""
-    from concurrent.futures import FIRST_COMPLETED, wait
-    try:
-        while pending:
-            finished, _ = wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
-            for fut in finished:
-                take(fut, pending.pop(fut))
-            knoxstop.check(should_stop, "the compile")
-    except BaseException:
-        end = getattr(pool, "terminate_workers", None)      # Python 3.14+
-        if end is not None:
-            end()
-        else:
-            pool.shutdown(wait=False, cancel_futures=True)
-        raise
-    pool.shutdown()
+    """knoxstop.gather for the compile. What a worker it ends leaves half
+    done is not kept: a row is only marked finished once its worker has
+    returned."""
+    knoxstop.gather(pool, pending, should_stop, take, "the compile")
 
 
 # Buildings read per job: small, so a stop or the last few jobs wait seconds.
