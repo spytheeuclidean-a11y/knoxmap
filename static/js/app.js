@@ -60,7 +60,7 @@ L.tileLayer('/tiles/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const drawnItems = new L.FeatureGroup().addTo(map);
-const SEL_STYLE = { color: '#a5e266', weight: 2, fillOpacity: 0.1, className: 'sel-rect' };
+const SEL_STYLE = { color: '#3d8bfd', weight: 2, fillOpacity: 0.1, className: 'sel-rect' };
 const drawControl = new L.Control.Draw({
   draw: {
     polyline: false, marker: false, circlemarker: false,
@@ -232,7 +232,7 @@ function updateRotateHandle() {
 
   if (!rotateHandleStem) {
     rotateHandleStem = L.polyline([pos.stemStartLatLng, pos.handleLatLng], {
-      color: '#a5e266',
+      color: '#3d8bfd',
       weight: 2,
       opacity: 0.9,
       interactive: false,
@@ -549,7 +549,7 @@ function startLasso(button) {
   let trail = null;
   const down = (e) => {
     points = [e.latlng];
-    trail = L.polyline(points, { color: '#a5e266', weight: 2, dashArray: '4 4' }).addTo(map);
+    trail = L.polyline(points, { color: '#3d8bfd', weight: 2, dashArray: '4 4' }).addTo(map);
     map.on('mousemove', move);
   };
   const move = (e) => { points.push(e.latlng); trail.setLatLngs(points); };
@@ -909,7 +909,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 const SETTING_LABELS = {
   zombies_per_resident:['Zombies per person', 'Each person who lived or worked here becomes this many zombies.'],
-  m2_per_person:       ['Living space (m²)', 'Per resident. Lower = more crowded homes = more zombies. ~50 city, 45 town, 60 suburb.'],
+  m2_per_person:       ['Living space (m²)', 'Per resident. Less space means more crowded homes, so more zombies. About 50 in a city, 45 in a town, 60 in a suburb.'],
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
   tree_density:        ['Woodland', 'Scales tree cover everywhere: the woods, the gardens and the scrub over open ground. Trees are cover to hide in.'],
   forest_density:      ['Forests', 'Scales the woods the mapper drew, on top of Woodland. Thick forest round a thinly planted town, or the other way about.'],
@@ -1828,10 +1828,48 @@ async function loadMaps() {
   }
 }
 
+// Follow an install while its request is open: `tick(done, total)` with the
+// files copied so far. A city is thousands of cell files and gigabytes, and the
+// window used to show nothing but a greyed-out button until it was over.
+// Returns the function that stops watching.
+function watchInstall(mapName, tick) {
+  let over = false;
+  const timer = setInterval(async () => {
+    try {
+      const p = await (await fetch(`/api/progress?map=${encodeURIComponent(mapName)}`)).json();
+      // An answer still on its way when the install ended must not write
+      // "copying" over what the end said.
+      if (!over && p.stage === 'install' && p.total) tick(p.done || 0, p.total);
+    } catch (_) { /* the install call is the source of truth */ }
+  }, 700);
+  return () => { over = true; clearInterval(timer); };
+}
+
+function installSaid(done, total) {
+  return `${done.toLocaleString()} of ${total.toLocaleString()} files `
+    + `(${Math.floor(100 * done / total)}%)`;
+}
+
 async function updateMap(mapName, btn) {
   // The same install as the Install button, into the same mod folder under the
   // same name; the copy already there is replaced.
   btn.disabled = true;
+  btn.textContent = 'Updating…';
+  // Under the map's own row, so it is clear which map is being copied.
+  const shown = document.createElement('li');
+  shown.className = 'map-progress';
+  shown.innerHTML = '<div class="bar is-indeterminate"><div class="bar-fill"></div></div>'
+    + '<span class="size"></span>';
+  const bar = shown.querySelector('.bar');
+  const said = shown.querySelector('span');
+  said.textContent = 'Starting…';
+  btn.closest('li').after(shown);
+  fx.toast('ok', 'Updating in the game', `Copying ${mapName} into your mods folder…`);
+  const stop = watchInstall(mapName, (done, total) => {
+    bar.classList.remove('is-indeterminate');
+    bar.firstChild.style.width = `${Math.floor(100 * done / total)}%`;
+    said.textContent = `Copying ${installSaid(done, total)}`;
+  });
   try {
     const res = await fetch('/api/install', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1844,6 +1882,10 @@ async function updateMap(mapName, btn) {
   } catch (err) {
     fx.toast('bad', 'Could not update that map', err.message, 8000);
     btn.disabled = false;
+    btn.textContent = 'Update';
+  } finally {
+    stop();
+    shown.remove();
   }
 }
 
@@ -1987,6 +2029,7 @@ async function upgradeMap(data, button) {
   const box = document.getElementById('upgradeNote');
   const say = text => { box.querySelector('span').textContent = text; };
   for (const b of box.querySelectorAll('button')) b.disabled = true;
+  fx.toast('ok', 'Upgrading', `${data.mapName}: ${data.needsLabels.join(' → ')}`);
   const post = async (url, body) => {
     const res = await fetch(url, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2008,25 +2051,52 @@ async function upgradeMap(data, button) {
         });
       } else if (step === 'build') {
         say('Building the buildings again…');
-        await post('/api/buildings', { mapName: data.mapName, settings: data.settings });
+        let over = false;
+        const watch = setInterval(async () => {
+          try {
+            const p = await (await fetch(
+              `/api/progress?map=${encodeURIComponent(data.mapName)}`)).json();
+            if (!over && p.stage === 'buildings' && p.note) {
+              const pct = p.fraction != null ? ` (${Math.round(100 * p.fraction)}%)` : '';
+              say(`${p.note}${pct}…`);
+            }
+          } catch (_) { /* the next tick will do */ }
+        }, 1500);
+        try {
+          await post('/api/buildings', { mapName: data.mapName, settings: data.settings });
+        } finally {
+          over = true;
+          clearInterval(watch);
+        }
       } else if (step === 'compile') {
         say('Compiling…');
         await post('/api/compile', { mapName: data.mapName });
         for (;;) {
-          await new Promise(r => setTimeout(r, 5000));
+          await new Promise(r => setTimeout(r, 2000));
           const st = await (await fetch(
             `/api/compile-status?map=${encodeURIComponent(data.mapName)}`)).json();
-          if (st.state === 'running') {
-            say(`Compiling… ${st.cells || 0} of ${st.expected || '?'} cells`);
+          if (st.state === 'running' || st.state === 'stopping') {
+            // The knoxlots compile names its step; the cells already in lots/
+            // are the old ones, and read as done on a map compiled before.
+            say(st.phase ? `Compiling — ${st.phase} (${Math.round(100 * st.fraction)}%)…`
+              : `Compiling… ${st.cells || 0} of ${st.expected || '?'} cells`);
             continue;
           }
           if (st.error) throw new Error(st.error);
+          // Stopped is not finished: going on would install the old lots.
+          if (st.state === 'stopped') throw new Error('the compile was stopped.');
           break;
         }
       } else if (step === 'install') {
         say('Installing…');
-        await post('/api/install', { mapName: data.mapName, title: data.mapName,
-                                     modId: data.mapName });
+        const stopWatching = watchInstall(data.mapName,
+          (done, total) => say(`Installing — ${installSaid(done, total)}…`));
+        try {
+          await post('/api/install', { mapName: data.mapName, title: data.mapName,
+                                       modId: data.mapName });
+        } finally {
+          stopWatching();
+        }
       }
     }
     box.innerHTML = '<span></span>';
@@ -2221,7 +2291,9 @@ function startProgress(mapName) {
                            + '— this takes a few minutes the first time…';
       } else if (p.stage === 'roads') {
         status.textContent = `Routing the roads — ${(p.done || 0).toLocaleString()} of `
-                           + `${(p.total || 0).toLocaleString()} stretches…`;
+                           + `${(p.total || 0).toLocaleString()} stretches…`
+                           + (p.slowRoads ? ' Slowly: the fast road router (knoxroute) is '
+                              + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '');
       } else if (p.stage === 'render') {
         status.textContent = `Rendering ${p.features.toLocaleString()} features `
                            + 'into bitmaps…';
@@ -2665,9 +2737,8 @@ function setupPipeline(data) {
   // A map opened with its buildings already built can be compiled as it
   // stands; the button used to wake only after a build in this same window.
   if (data.buildingsReady) {
-    document.getElementById('worldedBtn').disabled = false;
-    document.getElementById('compileBtn').disabled = false;
-    note('compileNote', 'Ready — the buildings are built. Compile turns them into the game\'s files.');
+    const when = (data.builtAt || '').replace('T', ' ').slice(0, 16);
+    showBuilt(`Built${when ? ' ' + when : ''} → ${data.mapName}.pzw. Build again to lay them out afresh.`);
   }
   // Whatever the last compile of this map left behind, said again now: the
   // window has been closed and reopened since, and "done" would be a lie.
@@ -2684,6 +2755,18 @@ function setupPipeline(data) {
       showFailedCells(p.failed, p.cells);
     })
     .catch(() => { /* nothing to add if it cannot be asked */ });
+}
+
+// The buildings are there: Buildings is done, and both ways to compile are
+// open. The WorldEd note said "Generate the buildings first" even after they
+// were built.
+function showBuilt(text) {
+  note('buildingsNote', text, 'ok');
+  document.getElementById('worldedBtn').disabled = false;
+  document.getElementById('compileBtn').disabled = false;
+  note('compileNote', 'Ready — runs BMP to TMX and Generate Lots for you.');
+  note('worldedNote', 'Then File → BMP To TMX → All Cells… and '
+                      + 'File → Generate Lots 8x8 → All Cells…');
 }
 
 document.getElementById('buildingsBtn').addEventListener('click', async () => {
@@ -2721,11 +2804,8 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
     }
     if (!res.ok) throw apiError(data, res);
     if (data.terrain) renderResults(data.terrain);
-    note('buildingsNote', `${data.count} buildings → ${data.pzw}`, 'ok');
     renderCensus(data.population);
-    document.getElementById('worldedBtn').disabled = false;
-    document.getElementById('compileBtn').disabled = false;
-    note('compileNote', 'Ready — runs BMP to TMX and Generate Lots for you.');
+    showBuilt(`${data.count} buildings → ${data.pzw}`);
   } catch (err) {
     note('buildingsNote', err.message, 'bad');
   } finally {
@@ -2775,6 +2855,10 @@ document.getElementById('installBtn').addEventListener('click', async () => {
   const btn = document.getElementById('installBtn');
   btn.disabled = true;
   note('installNote', 'Installing…');
+  const installing = currentMap;
+  const stopWatching = watchInstall(installing, (done, total) => {
+    if (currentMap === installing) note('installNote', `Installing — ${installSaid(done, total)}…`);
+  });
   try {
     const res = await fetch('/api/install', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -2808,6 +2892,8 @@ document.getElementById('installBtn').addEventListener('click', async () => {
   } catch (err) {
     note('installNote', err.message, 'bad');
     btn.disabled = false;
+  } finally {
+    stopWatching();
   }
 });
 
@@ -3097,7 +3183,7 @@ const SKETCH_COLOURS = {
 
 function sketchStyle(kind) {
   const cat = (sketchPalette.find(e => e.id === kind) || {}).category;
-  const colour = SKETCH_COLOURS[cat] || '#a5e266';
+  const colour = SKETCH_COLOURS[cat] || '#3d8bfd';
   return { color: colour, weight: 3, fillColor: colour, fillOpacity: 0.3 };
 }
 
@@ -3121,7 +3207,7 @@ function paletteMarkup() {
         data-kind="${e.id}" data-geometry="${e.geometry}"
         title="${escapeHtml(Object.entries(e.tags)
           .map(([k, v]) => k + '=' + v).join(', '))}">
-        <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#a5e266'}"></span>
+        <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#3d8bfd'}"></span>
         ${escapeHtml(e.label)}</button>`).join('')}
     </div>`).join('');
 }
@@ -3489,7 +3575,7 @@ function boardDrawSheet() {
   // a map that has only just been given a size does not exist yet, and it
   // threw before a single line of the sheet was drawn.
   boardSheet = L.rectangle([[0, 0], [h, w]], {
-    pane: 'tilePane', color: '#a5e266', weight: 2, fill: true,
+    pane: 'tilePane', color: '#3d8bfd', weight: 2, fill: true,
     fillColor: '#0b0d0b', fillOpacity: 1, interactive: false }).addTo(boardMap);
   const lines = [];
   for (let x = BOARD_GRID_M; x < w; x += BOARD_GRID_M) lines.push([[0, x], [h, x]]);
@@ -5311,14 +5397,14 @@ function drawWorld() {
 
   if (mineNow) {
     const clash = placeClashes(placePicked || placeWorld.map);
-    const edge = clash.length ? '#dc5046' : '#a5e266';
+    const edge = clash.length ? '#dc5046' : '#3d8bfd';
     if (placePreview && placePreview.complete && placePreview.naturalWidth) {
       ctx.globalAlpha = 0.95;
       ctx.drawImage(placePreview, mineNow.x * k, mineNow.y * k,
                     mineNow.w * k, mineNow.h * k);
       ctx.globalAlpha = 1;
     } else {
-      ctx.fillStyle = clash.length ? 'rgba(220,80,70,0.35)' : 'rgba(165,226,102,0.35)';
+      ctx.fillStyle = clash.length ? 'rgba(220,80,70,0.35)' : 'rgba(61,139,253,0.35)';
       ctx.fillRect(mineNow.x * k, mineNow.y * k, mineNow.w * k, mineNow.h * k);
     }
     ctx.strokeStyle = edge;
@@ -5388,6 +5474,18 @@ function placeState() {
   }
 }
 
+// The game's own maps, each fetched once and kept for the next draw.
+function placeFetchPictures() {
+  for (const map of placeWorld.maps || []) {
+    if (!map.picture || placePictures[map.name]) continue;
+    const shot = new Image();
+    shot.onload = drawWorld;
+    shot.onerror = () => { delete placePictures[map.name]; };
+    shot.src = `/api/world-picture/${encodeURIComponent(map.name)}`;
+    placePictures[map.name] = shot;
+  }
+}
+
 async function loadPlacement(mapName) {
   const panel = document.getElementById('placePanel');
   if (!panel || !mapName) return;
@@ -5401,15 +5499,7 @@ async function loadPlacement(mapName) {
   placeRoad = [];
   placeDrawingRoad = false;
   placeLinkState();
-  // The game's own maps, each fetched once and kept for the next draw.
-  for (const map of placeWorld.maps || []) {
-    if (!map.picture || placePictures[map.name]) continue;
-    const shot = new Image();
-    shot.onload = drawWorld;
-    shot.onerror = () => { delete placePictures[map.name]; };
-    shot.src = `/api/world-picture/${encodeURIComponent(map.name)}`;
-    placePictures[map.name] = shot;
-  }
+  placeFetchPictures();
   // The map as it came out, drawn in its place in the world.
   placePreview = new Image();
   placePreview.onload = drawWorld;
@@ -5567,6 +5657,7 @@ async function putMapAt(body) {
     if (!res.ok) throw apiError(out, res);
     placeWorld = out;
     placePicked = null;
+    placeFetchPictures();
     drawWorld();
     placeFields();
     const moved = out.moved || {};

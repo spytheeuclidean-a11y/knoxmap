@@ -10,8 +10,9 @@
 <link rel="stylesheet" href="/static/vendor/leaflet/leaflet.css"/>
 <link rel="stylesheet" href="/static/vendor/leaflet-draw/leaflet.draw.css"/>
 <link rel="stylesheet" href="/static/css/app.css"/>
+<link rel="stylesheet" href="/static/css/shell.css"/>
 </head>
-<body data-in-window="{{ 1 if in_window else 0 }}">
+<body class="ws-loading" data-in-window="{{ 1 if in_window else 0 }}">
 
 <header class="topbar">
   <img src="/static/logo.png" alt="" class="logo"/>
@@ -670,6 +671,7 @@
 <script src="/static/js/fx.js"></script>
 <script src="/static/js/draw.js"></script>
 <script src="/static/js/app.js"></script>
+<script src="/static/js/shell.js"></script>
 <script src="/static/js/i18n.js"></script>
 </body>
 </html>

@@ -8,6 +8,9 @@
 # committed. `git rm --cached knoxlots.exe` untracks the one that is.
 /knoxlots.exe
 /knoxlots
+# The Rust road router, the same way (.github/workflows/knoxroute.yml).
+/knoxroute.exe
+/knoxroute
 
 # Python
 __pycache__/

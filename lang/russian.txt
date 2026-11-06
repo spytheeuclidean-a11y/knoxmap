@@ -1,3 +1,4 @@
+# name: Русский
 # KnoxMap in your language
 #
 # Copy this file, name it after the language - russian.txt, deutsch.txt,

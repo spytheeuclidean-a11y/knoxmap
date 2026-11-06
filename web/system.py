@@ -93,12 +93,30 @@ def _language_strings(path: Path) -> dict:
     return out
 
 
+def _language_name(path: Path) -> str:
+    """What the language calls itself: a "# name: Português (Brasil)" line near the
+    top, else the file's name - which cannot carry an accent or a bracket."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for _ in range(30):
+                line = f.readline()
+                if not line:
+                    break
+                if line.lower().startswith("# name:"):
+                    name = line.split(":", 1)[1].strip()
+                    if name:
+                        return name[:40]
+    except OSError:
+        pass
+    return path.stem[:1].upper() + path.stem[1:]
+
+
 @bp.route("/api/languages")
 def api_languages():
     files = sorted(LANG_DIR.glob("*.txt")) if LANG_DIR.is_dir() else []
     import knoxpaths
     return jsonify({
-        "languages": [{"file": f.stem, "name": f.stem[:1].upper() + f.stem[1:],
+        "languages": [{"file": f.stem, "name": _language_name(f),
                        "lines": len(_language_strings(f))} for f in files],
         "current": knoxpaths.load_config().get("language", "english"),
         "folder": str(LANG_DIR),
@@ -209,7 +227,16 @@ def _setup_report() -> dict:
                     "install it with your package manager (apt install wine, pacman -S "
                     "wine, dnf install wine), or set KNOXMAP_WINE to the build you want "
                     "used. Everything except Compile works without either."})
+    from generator.roadgraph import rustsearch
     optional = [
+        # Not needed to make a map, but without it the road layout that squares
+        # built-up streets is about a hundred times slower: hours, or days on a city.
+        {"id": "road_router", "ok": rustsearch.available(),
+         "label": "Fast road router (knoxroute)",
+         "fix": "Without it, Road layout's \"Vanilla curves, built-up streets square\" "
+                "routes roads about a hundred times slower. Update KnoxMap to a release "
+                "that includes knoxroute, or build it: cargo build --release in "
+                "rust/knoxroute. The other road layouts don't need it."},
         {"id": "elevators", "ok": knoxpaths.elevators_mod_installed(),
          "label": "Elevators mod (optional)",
          "fix": "Subscribe to it on the Steam Workshop for working lifts in tall buildings."},
@@ -463,13 +490,23 @@ def api_install():
                                  f"{need // 2**20} MB and {free // 2**20} MB is free. Choose a "
                                  "folder with more room under Where maps are installed, or free "
                                  "some space."}), 400
+    # The copy is the long part - a city is gigabytes - so the window can
+    # follow it on /api/progress like the other steps, instead of a greyed-out
+    # button and nothing else until it was over.
+    from web.jobs import _set_progress
+    _set_progress(map_dir.name, stage="install", done=0, total=0)
     try:
         mod_root, n_cells, extras = make_map_mod.package(
-            str(map_dir), title, mod_id)
+            str(map_dir), title, mod_id,
+            on_progress=lambda done, total: _set_progress(
+                map_dir.name, stage="install", done=done, total=total))
     except FileNotFoundError as exc:
+        _set_progress(map_dir.name, stage="install-failed")
         return failed(str(exc), 400, exc)
     except Exception as exc:
+        _set_progress(map_dir.name, stage="install-failed")
         return failed(f"Install failed: {exc}", 500, exc)
+    _set_progress(map_dir.name, stage="installed")
     mapstate.stamp(str(map_dir), "install")
     mapstate.record_install(str(map_dir), str(mod_root), mod_id, title)
     log.info("install %s: %d cells as %s, extras %s", map_dir.name, n_cells, mod_id, extras)

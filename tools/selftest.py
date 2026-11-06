@@ -3823,7 +3823,7 @@ def check_install_folder(check, out: str, work: str, client) -> None:
         mapstate.record_install(out, str(mod), "KeptId", "Kept Title")
         asked = []
         was_package = _mmm.package
-        _mmm.package = lambda d, title, mid: (asked.append((title, mid)) or (str(mod), 1, []))
+        _mmm.package = lambda d, title, mid, **kw: (asked.append((title, mid)) or (str(mod), 1, []))
         try:
             r = client.post("/api/install", json={"mapName": "selftest"})
         finally:

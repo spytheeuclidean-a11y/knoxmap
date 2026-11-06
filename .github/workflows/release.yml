@@ -74,8 +74,15 @@ jobs:
     if: needs.gate.outputs.ours == 'yes'
     uses: ./.github/workflows/knoxlots.yml
 
+  # The Rust road router, the same way. Without it the Vanilla curves road layout
+  # falls back to the Python search: minutes on a town became days on a city.
+  knoxroute:
+    needs: gate
+    if: needs.gate.outputs.ours == 'yes'
+    uses: ./.github/workflows/knoxroute.yml
+
   release:
-    needs: [gate, checks, launcher, knoxlots]
+    needs: [gate, checks, launcher, knoxlots, knoxroute]
     if: needs.gate.outputs.ours == 'yes'
     runs-on: ubuntu-latest
     permissions:
@@ -177,6 +184,11 @@ jobs:
                 last=$(unzip -Z1 "$out" | grep -v '/$' | tail -1)
                 [ "$last" = "KnoxMap/KnoxMap.exe" ] ||
                   { echo "KnoxMap.exe must be the last entry, got $last"; exit 1; }
+                # Both Rust tools, or the download quietly runs the slow paths.
+                for tool in knoxlots.exe knoxroute.exe; do
+                  unzip -Z1 "$out" | grep -qx "KnoxMap/$tool" ||
+                    { echo "$tool is missing from the Windows download"; exit 1; }
+                done
                 ;;
               *)
                 rm -f "pack/$system/KnoxMap"/*.bat
@@ -184,6 +196,7 @@ jobs:
                 # The Rust compiler for this system; a tarball keeps the executable bit.
                 cp "knoxlots/knoxlots-$system/knoxlots" "pack/$system/KnoxMap/knoxlots"
                 chmod +x "pack/$system/KnoxMap/knoxlots"
+                # And the road router.
                 cp "knoxroute/knoxroute-$system/knoxroute" "pack/$system/KnoxMap/knoxroute"
                 chmod +x "pack/$system/KnoxMap/knoxroute"
                 (cd "pack/$system" && tar -czf "$GITHUB_WORKSPACE/KnoxMap-$v-$system.tar.gz" KnoxMap)

@@ -13,6 +13,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from knoxbuild import placement as P
 from knoxbuild.world import CELL_SIZE, choose_origin
@@ -426,6 +427,19 @@ class TheWorldAsItReallyIs(unittest.TestCase):
     def cells(self, pairs):
         for x, y in pairs:
             open(os.path.join(self.dir, f"{x}_{y}.lotheader"), "w").close()
+
+    def test_its_own_installed_copy_is_not_another_map(self):
+        mods = os.path.join(self.dir, "mods")
+        mine = os.path.join(mods, "town", "common", "media", "maps", "town")
+        other = os.path.join(mods, "village", "common", "media", "maps", "village")
+        for folder in (mine, other):
+            os.makedirs(folder)
+            open(os.path.join(folder, "0_0.lotheader"), "w").close()
+        found = [(mine, "installed", "town"), (other, "installed", "village")]
+        with mock.patch.object(P, "_map_folders", return_value=found):
+            self.assertEqual([m["name"] for m in P.world_maps()], ["town", "village"])
+            self.assertEqual([m["name"] for m in P.world_maps(os.path.join(mods, "town"))],
+                             ["village"])
 
     def test_a_row_of_cells_is_one_run(self):
         self.assertEqual(P._runs([(3, 0), (4, 0), (5, 0)]), [[0, 3, 5]])

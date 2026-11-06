@@ -86,7 +86,7 @@ def api_placement(name: str):
         done = P.unplace(str(map_dir), map_dir.name)
         log.info("placement %s: automatic, now cell %s (was %s)",
                  map_dir.name, done["origin"], done["was"])
-        out = P.layout(str(map_dir), map_dir.name)
+        out = P.layout(str(map_dir), map_dir.name, str(CACHE_DIR))
         out["moved"] = done
         return jsonify(out)
     body = _json_body()
@@ -96,7 +96,7 @@ def api_placement(name: str):
                                     body.get("standalone") is True)
             log.info("placement %s: standalone %s, now cell %s (was %s)", map_dir.name,
                      body.get("standalone") is True, done["origin"], done["was"])
-            out = P.layout(str(map_dir), map_dir.name)
+            out = P.layout(str(map_dir), map_dir.name, str(CACHE_DIR))
             out["moved"] = done
             return jsonify(out)
         done = P.move(str(map_dir), map_dir.name,
@@ -106,7 +106,7 @@ def api_placement(name: str):
         return jsonify({"error": str(exc)}), 400
     except OSError as exc:
         return failed(f"The map could not be moved: {exc}", 500, exc)
-    out = P.layout(str(map_dir), map_dir.name)
+    out = P.layout(str(map_dir), map_dir.name, str(CACHE_DIR))
     out["moved"] = done
     return jsonify(out)
 

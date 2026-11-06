@@ -121,29 +121,66 @@ already has. See [LINUX.md](LINUX.md).
    - downloads the map compiler from this repository's releases and checks its fingerprint,
    - finds your Project Zomboid install and copies the tile artwork the map tools
      need **from your own copy of the game** (games or Workshop mods on another
-     drive: name it when setup asks, or later under *Settings > Steam libraries*),
+     drive: name it when setup asks, or later under *Edit > Preferences > Steam libraries*),
    - adds the rules for kerbs, road markings and Build 42 trees to the map tools.
 
    It takes a few minutes, once. After that `KnoxMap.exe` opens straight away.
 3. **Make a map** in the window that opens:
-   1. **Choose an area** (see below). Start small, a few streets, while you get a
-      feel for it.
-   2. Pick a **kind of place** (Town, Suburb, City, Rural) and press **Generate map**.
-   3. Under *Finish the map*: **Build** → **Compile** → **Install**.
+   1. On **Home**, type your street and house number, a town or a city, and press
+      **Enter**. Pick a result: **Make a map here** for a box around it, or
+      **outline** for the place's real boundary. Start small, a few streets,
+      while you get a feel for it.
+   2. Pick a **kind of place** (Town, Suburb, City, Rural) in the **Properties**
+      panel on the right.
+   3. Press the big button in the steps row above the map. It always does what
+      comes next: **Generate map ▶**, then **Build ▶**, **Compile ▶** and
+      **Install ▶**.
 4. **In Project Zomboid**: enable your map in **Mods** (and **Elevators** too, if
    you want working lifts), then start a **new** game and choose it. Existing
    saves never pick up new maps.
 
-If anything is missing, a *Setup incomplete* panel in the app says exactly what
-and how to fix it. You can run `Setup.bat` again at any time; it only does what
-is still needed.
+If anything is missing, a *Setup isn't finished* bar at the top of the window
+says exactly what and how to fix it. You can run `Setup.bat` again at any time;
+it only does what is still needed.
+
+## The window
+
+<p align="center">
+  <img src="docs/images/app_home.jpg" alt="KnoxMap's Home: a search box for your street or town, your maps, saved areas and the setup check" width="100%"/>
+</p>
+
+KnoxMap is laid out like a desktop design tool:
+
+- **Menus** along the top: *File*, *Edit*, *View*, *Map*, *Build* and *Help*
+  hold everything, with keyboard shortcuts (`Ctrl+N` new map, `Ctrl+W` close
+  it, `Ctrl+F` search, `F5` the next step). The **search** box sits beside them,
+  and 🌐 picks the window's language.
+- **Home** is where you start: search for a place, open **Your maps** (with
+  *Update* and *Uninstall* for the installed ones), your **saved areas**, and
+  *Check my setup*.
+- **Tabs**: every map you open gets one. ✕ closes it, and ⧉ (or dragging the
+  tab down) pops it out into its own window to look at beside another.
+- **The steps row** over the map: *Generate › Buildings › Compile › Install ›
+  Publish check*, each marked done, running or needing to be redone, and one
+  button for whatever comes next. Click a step for its details: the census
+  after Buildings, the WorldEd fallback under Compile, the name and mod id
+  under Install. While a step runs, the button is **Stop**.
+- **Tools** on the left: *Move*, *Area*, *Add to this area*, *Zones*, *Change
+  what is here*, and the building editor and drawing board. The bar above the
+  map says what the chosen tool does.
+- **Panels** on the right: **Properties** (the area, the map's settings, or the
+  chosen tool's panel) and **Layers** (show or hide the area, what you drew,
+  zones, changes and named places). Drag the column's edge or a panel's bottom
+  edge to resize; drag a panel by its title to float it, and back to dock it.
+- **Real place / Game world** switches the map between the place itself and
+  where it sits in the game's world, for placing it or making it standalone.
 
 ## Choosing an area
 
 | Tool | How |
 |---|---|
-| **Search** | Type a place and press **Enter**. Pick a result for a box around it, or its **OUTLINE** button for the place's real boundary: a park, a district, a whole town. |
-| **Rectangle** | Drag a box on the map. |
+| **Search** | Type a place, or your street and number, in the search box (top bar, or on Home) and press **Enter**. Pick a result for a box around it, or its **outline** button for the place's real boundary: a park, a district, a whole town. |
+| **Rectangle** | Pick the **Area** tool on the left, then drag a box on the map. |
 | **Polygon** | Click point by point round any outline; click the first point to finish. |
 | **Circle** | Drag out a radius from a centre. |
 | **Freehand ✎** | Drag round what you want. The line is smoothed into a clean outline. |
@@ -178,7 +215,7 @@ Geofabrik rather than repeatedly starting the same online download.
 **Optional enrichment layers** (`knoxdata/`). Five public datasets can fill
 what OpenStreetMap leaves blank. They are opt-in and independently switchable,
 and a map is never failed by one: OSM and hand-drawn data always win. Each
-layer has its own switch under Fine tuning, and a map credits the ones it used
+layer has its own switch under *More settings*, and a map credits the ones it used
 in `ATTRIBUTION.txt`. Details: [docs/DATASETS.md](docs/DATASETS.md).
 
 | Layer | Fills | Licence |
@@ -197,7 +234,9 @@ applies it from cache without touching the network.
 
 ## Tuning a map
 
-Open **Fine tuning** under *Style*:
+Every setting is in the **Properties** panel on the right: *Kind of place* and
+*Scale* at the top, then **More settings**, which has a search box. A changed
+setting is put into an open map with only the steps it needs.
 
 | Setting | What it does |
 |---|---|
@@ -225,13 +264,15 @@ second without rebuilding, then compile again so the game sees the change.
 
 ## Good to know
 
-- **KnoxMap in your language.** `lang/english.txt` holds every line the window
-  says, as `English = English`. Copy it, name the copy after the language
-  (`russian.txt`, `deutsch.txt`, `turkce.txt`), translate the right-hand side
-  of each line, and pick it from the menu at the top of the window. Lines left
-  in English stay English, so you can translate as much or as little as you
-  like, and `python tools/make_lang_template.py` writes the English file again
-  after an update. Translations are welcome as pull requests.
+- **KnoxMap in your language.** The window comes in English, Português
+  (Brasil), Русский, Español and Türkçe: pick one from 🌐 at the top.
+  `lang/english.txt` holds every line the window says, as `English = English`.
+  Copy it, name the copy after the language (`deutsch.txt`), translate the
+  right-hand side of each line, and put `# name: Deutsch` at the top so the menu
+  shows it in its own name. Lines left in English stay English, so you can
+  translate as much or as little as you like, and
+  `python tools/make_lang_template.py` writes the English file again after an
+  update. Translations are welcome as pull requests.
 - **Build a building yourself, and send it to anyone.** Under **Hand-built
   buildings** you can draw a house, a police station or a shop room by room
   and have the generator stamp it onto the map wherever it has one of those,
@@ -248,7 +289,7 @@ second without rebuilding, then compile again so the game sees the change.
   their loot tables. It asks first, because what is in them is thrown away.
   Single player only.
 - **An update does not mean starting over.** Each step of a map records the
-  KnoxMap that ran it. Open a map again under *Your maps* and, if a newer
+  KnoxMap that ran it. Open a map again from *Your maps* on Home and, if a newer
   release changed anything it uses, the window offers to upgrade it and runs
   only the steps that changed - often just **Install**, which is all the cars
   and the in-game map need.
