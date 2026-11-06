@@ -24,6 +24,7 @@ import time
 import requests
 from shapely import from_wkb
 
+import knoxlog
 import knoxpaths
 import knoxstop
 
@@ -418,7 +419,14 @@ def elements(south: float, west: float, north: float, east: float, filters=None,
     for region in regions:
         path = _download(region, say, should_stop)
         say(None, f"reading the {region['name']} extract")
-        for el in _read(path, filters, (south, west, north, east), say, should_stop):
+        try:
+            found = _read(path, filters, (south, west, north, east), say, should_stop)
+        except UnicodeDecodeError as exc:
+            knoxlog.log.warning("osm: invalid UTF-8 in extract %s: %s", path, exc, exc_info=True)
+            raise ExtractUnavailable(
+                f"{os.path.basename(path)} contains text that is not valid UTF-8; "
+                "download a fresh copy or use Overpass") from exc
+        for el in found:
             out[(el["type"], el["id"])] = el
     return list(out.values())
 
