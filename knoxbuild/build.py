@@ -21,6 +21,7 @@ import random
 import re
 import os
 import sys
+import time
 
 import numpy as np
 from shapely.geometry import Polygon
@@ -1356,6 +1357,9 @@ PARALLEL_FROM = 60
 # random choice is seeded from it, see tbx._stable_seed) and on the code that
 # lays it out, so the same job under the same code gives the same file.
 CACHE_FILE = "build_cache.json"   # in the map folder, not buildings/: that is all .tbx
+# How often the cache is written while buildings are being made. A city's cache
+# is tens of megabytes, a second or two to write.
+CACHE_EVERY_S = 120
 
 
 def _code_fingerprint() -> str:
@@ -1410,19 +1414,46 @@ def _write_cache(out_dir: str, code: str, entries: dict) -> None:
         pass          # no cache means the next build lays everything out again
 
 
-def _make_all(jobs: list[tuple], tick=None) -> list[tuple[int, int, int]]:
+# Buildings handed to a worker at a time. The jobs come largest first, so small
+# batches spread the big ones over every worker; one batch of a 48th of the
+# town left a single worker an hour of the largest buildings while five sat idle.
+MAKE_BATCH = 16
+
+
+def _make_batch(jobs: list[tuple]) -> list[tuple]:
+    return [_make_one(job) for job in jobs]
+
+
+def _make_all(jobs: list[tuple], tick=None, should_stop=None,
+              on_result=None, make_batch=_make_batch) -> list[tuple[int, int, int]]:
     """Every building, in order, across processes when there are enough.
 
     KNOXBUILD_WORKERS=1 forces one process. If worker processes cannot start
     at all - some locked-down PCs refuse them - the work simply runs here.
-    `tick(done, total)` is called as results come in, for a progress readout.
+    `tick(done, total)` is called as results come in, for a progress readout;
+    `on_result(i, result)` with each building's result as soon as it is made.
+    A stop asked for while it runs (`should_stop`) drops the work not yet
+    started and raises knoxstop.Stopped. `make_batch` makes a list of jobs;
+    the tests hand it something quicker than laying out buildings.
     """
+    out: list = [None] * len(jobs)
+    done = 0
+
+    def keep(i: int, result) -> None:
+        nonlocal done
+        out[i] = result
+        done += 1
+        if on_result:
+            on_result(i, result)
+
     def run_here() -> list:
-        out = []
-        for job in jobs:
-            out.append(_make_one(job))
-            if tick and len(out) % 25 == 0:
-                tick(len(out), len(jobs))
+        for i, job in enumerate(jobs):
+            if out[i] is not None:
+                continue           # made before the pool gave out
+            knoxstop.check(should_stop, "the buildings")
+            keep(i, make_batch([job])[0])
+            if tick and done % 25 == 0:
+                tick(done, len(jobs))
         return out
 
     # the room solver's houses solved before the pool starts, so each worker
@@ -1433,21 +1464,40 @@ def _make_all(jobs: list[tuple], tick=None) -> list[tuple[int, int, int]]:
                   max(1, min(12, (os.cpu_count() or 2) - 2)))
     if workers <= 1 or len(jobs) < PARALLEL_FROM:
         return run_here()
-    from concurrent.futures import ProcessPoolExecutor
+    from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
     from concurrent.futures.process import BrokenProcessPool
 
+    pool = None
     try:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            out = []
-            for result in pool.map(_make_one, jobs,
-                                   chunksize=max(4, len(jobs) // (workers * 8))):
-                out.append(result)
-                if tick and len(out) % 25 == 0:
-                    tick(len(out), len(jobs))
-            return out
+        pool = ProcessPoolExecutor(max_workers=workers)
+        pending = {pool.submit(make_batch, jobs[s:s + MAKE_BATCH]): s
+                   for s in range(0, len(jobs), MAKE_BATCH)}
+        last_tick = 0
+        while pending:
+            # Woken at least every second, so a stop is seen while the big
+            # buildings are still being made.
+            finished, _ = wait(pending, timeout=1.0, return_when=FIRST_COMPLETED)
+            for fut in finished:
+                start = pending.pop(fut)
+                for k, result in enumerate(fut.result()):
+                    keep(start + k, result)
+            if tick and done - last_tick >= 25:
+                last_tick = done
+                tick(done, len(jobs))
+            knoxstop.check(should_stop, "the buildings")
+        pool.shutdown()
+        return out
     except (BrokenProcessPool, OSError) as exc:
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
         print(f"  (worker processes unavailable: {exc}; building in one process)")
         return run_here()
+    except BaseException:
+        # Stopped, or the window closed: the work not started is dropped
+        # rather than finished first, which on a city was hours.
+        if pool is not None:
+            pool.shutdown(wait=False, cancel_futures=True)
+        raise
 
 
 def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
@@ -1548,13 +1598,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     earlier_files = {f for f in os.listdir(bdir) if f.endswith(".tbx")}
     code = _code_fingerprint()
     earlier = _read_cache(out_dir, code)
-    # Gone until this build has finished and written it again. A build that
-    # stops half way leaves some files rewritten and some not, and a cache
-    # that still described the old ones would vouch for the wrong files.
-    try:
-        os.remove(os.path.join(out_dir, CACHE_FILE))
-    except OSError:
-        pass
+    # The cache stays as it is until the buildings start being written: nothing
+    # before that touches their files. Then it is cut down to what this build
+    # reuses and grows as each building is made (below), so a build that stops
+    # or crashes half way picks up where it was. Deleting it here instead - a
+    # half-written set of files must not be vouched for by the old record -
+    # cost a 232,000-building map its whole two and a half hours to a crash.
     # WorldEd writes into these but will not create them: BMP to TMX fails with
     # "Could not open file for writing" if the export directory is absent.
     os.makedirs(os.path.join(out_dir, "tmx"), exist_ok=True)
@@ -1713,6 +1762,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         # is laid out, so stopping here costs only the time spent.
         if placed_so_far % 64 == 0:
             knoxstop.check(should_stop, "the buildings")
+        # This loop is one process and, on a city, most of an hour: without a
+        # word from it the window sat on "Reading the map" at 0% the whole time.
+        if placed_so_far % 2000 == 0 and order:
+            say(f"Placing buildings: {min(placed_so_far, len(order)):,} of {len(order):,}",
+                0.04 * min(1.0, placed_so_far / len(order)))
         feat = geo["features"][i]
         oversize = False
         if retry:
@@ -1929,6 +1983,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                             measured, commercial, style, umask,
                             real_name if n == 0 else ""))
 
+    say("Fitting the buildings together", 0.04)
+
     # Walls shared with the building next door, now every building has its
     # tiles: no window, shop window or door goes in one, up to the height of
     # the neighbour. Laid out on its own footprint, a terrace of shops had
@@ -1938,9 +1994,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         dx0, dy0, dw, dh, dfp = d[2], d[3], d[4], d[5], d[6]
         view = owner[dy0:dy0 + dh, dx0:dx0 + dw]
         view[dfp.mask[:view.shape[0], :view.shape[1]]] = j
+    # Read once: building this list inside the loop, once per building, took
+    # 45 minutes on a 232,000-building map.
+    storeys = [job[2] for job in jobs]
     for j, d in enumerate(decided):
-        jobs[j] = jobs[j] + (_party_walls(owner, j, d[2], d[3], d[6].mask,
-                                          [job[2] for job in jobs]),)
+        jobs[j] = jobs[j] + (_party_walls(owner, j, d[2], d[3], d[6].mask, storeys),)
 
     # Basements, in build order from their own random stream, so a town keeps
     # the same ones (knoxbuild/basements.py). A building somebody made by
@@ -1989,8 +2047,30 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     def laid_out(done: int, total: int) -> None:
         say(f"Laying out buildings: {done:,} of {total:,}", 0.05 + 0.55 * done / total)
 
-    for j, result in zip(todo, _make_all([jobs[j] for j in todo], laid_out)):
+    def entry(j: int, r_: tuple) -> dict:
+        return {"key": keys[j], "result": [r_[0], r_[1], r_[2], r_[4], r_[5]]}
+
+    # From here the files are written, so the cache keeps only what is true of
+    # them: the buildings reused, then each one as it is made.
+    kept = {decided[j][0]: entry(j, r_) for j, r_ in enumerate(results)
+            if r_ is not None and not r_[3]}
+    _write_cache(out_dir, code, kept)
+    saved_at = time.time()
+
+    def made(i: int, result: tuple) -> None:
+        nonlocal saved_at
+        j = todo[i]
         results[j] = result
+        if not result[3]:
+            kept[decided[j][0]] = entry(j, result)
+        if time.time() - saved_at >= CACHE_EVERY_S:
+            _write_cache(out_dir, code, kept)
+            saved_at = time.time()
+
+    try:
+        _make_all([jobs[j] for j in todo], laid_out, should_stop, made)
+    finally:
+        _write_cache(out_dir, code, kept)
 
     basement_counts = {"house": 0, "large": 0, "installation": 0}
     for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,

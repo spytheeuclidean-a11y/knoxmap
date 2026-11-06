@@ -75,34 +75,23 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
     - Buildings that touch (corners count) are one building: a large building KnoxMap cut into parts is a single
       entry. (Touching rooms of one name stay separate rooms; WorldEd joins two such pairs in
       the 113-building map, out of 75, for no reason the data shows.)
-    The result has one item per building group, at the north-west corner of its first part."""
+    The result has one item per building group, at the north-west corner of its first part.
+
+    Worked one level at a time over arrays of the squares' owners: a dict keyed by every
+    square of every floor ran a 230,000-building map out of memory (MemoryError)."""
+    import numpy as np
+
     order = sorted(range(len(lots)), key=lambda i: (lots[i][2] // 300, lots[i][1] // 300, i))
-    owner: dict[tuple[int, int, int], tuple[int, int]] = {}
-    for i in order:
-        b, tx, ty, base = lots[i]
-        for z, floor in enumerate(b.floors):
-            for y, row in enumerate(floor.rooms):
-                for x, v in enumerate(row):
-                    if v > 0:
-                        owner[(tx + x, ty + y, base + z)] = (i, v)
-    squares: dict[tuple[int, int, int], set] = {}
-    for (x, y, z), (i, rid) in owner.items():
-        squares.setdefault((i, z, rid), set()).add((x, y))
-    # parts: (lot, level, room number) with squares left; group parts that touch
     rank = {lot: n for n, lot in enumerate(order)}
-    parts = sorted(squares, key=lambda k: (rank[k[0]], k[1], k[2]))
-    parent = {k: k for k in parts}
-
-    def find(k):
-        while parent[k] != k:
-            parent[k] = parent[parent[k]]
-            k = parent[k]
-        return k
-
-    at: dict[tuple[int, int, int], tuple[int, int, int]] = {}
-    for k in parts:
-        for (x, y) in squares[k]:
-            at[(x, y, k[1])] = k
+    # (lot, floor, height, width) by level, each floor sized by its own room grid
+    by_level: dict[int, list[tuple[int, int, int, int]]] = {}
+    for i in order:
+        b, _tx, _ty, base = lots[i]
+        for z, floor in enumerate(b.floors):
+            h = len(floor.rooms)
+            w = len(floor.rooms[0]) if h else 0
+            if h and w:
+                by_level.setdefault(base + z, []).append((i, z, h, w))
     lot_parent = list(range(len(lots)))
 
     def lfind(i):
@@ -111,13 +100,53 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
             i = lot_parent[i]
         return i
 
-    for k in parts:
-        for (x, y) in squares[k]:
-            for dx, dy in ((1, 0), (0, 1), (1, 1), (1, -1)):     # touching includes corners
-                for dz in (0,):
-                    n = at.get((x + dx, y + dy, k[1] + dz))
-                    if n and n[0] != k[0]:
-                        lot_parent[lfind(n[0])] = lfind(k[0])
+    # (lot, level, room number) -> rectangles of the squares it keeps
+    rects_of: dict[tuple[int, int, int], list] = {}
+    for level in sorted(by_level):
+        here = by_level[level]
+        x0 = min(lots[i][1] for i, _z, _h, _w in here)
+        y0 = min(lots[i][2] for i, _z, _h, _w in here)
+        W = max(lots[i][1] + w for i, _z, _h, w in here) - x0
+        H = max(lots[i][2] + h for i, _z, h, _w in here) - y0
+        owner = np.full((H, W), -1, np.int32)
+        rid = np.zeros((H, W), np.int32)
+        # in order, so a later building's room takes the square from an earlier one
+        for i, z, h, w in here:
+            b, tx, ty, _base = lots[i]
+            grid = np.asarray(b.floors[z].rooms, dtype=np.int32).reshape(h, w)
+            m = grid > 0
+            if not m.any():
+                continue
+            ys, xs = ty - y0, tx - x0
+            owner[ys:ys + h, xs:xs + w][m] = i
+            rid[ys:ys + h, xs:xs + w][m] = grid[m]
+        # lots with squares that touch on this level, corners included
+        for dx, dy in ((1, 0), (0, 1), (1, 1), (1, -1)):
+            a = owner[max(0, -dy):H - max(0, dy), max(0, -dx):W - max(0, dx)]
+            n = owner[max(0, dy):H - max(0, -dy), max(0, dx):W - max(0, -dx)]
+            sel = (a >= 0) & (n >= 0) & (a != n)
+            if not sel.any():
+                continue
+            pairs = np.unique(a[sel].astype(np.int64) * len(lots) + n[sel])
+            for p in pairs.tolist():
+                k, other = divmod(p, len(lots))
+                lot_parent[lfind(other)] = lfind(k)
+        # each (lot, room number) part's squares, in world tiles
+        flat = np.flatnonzero(owner.ravel() >= 0)
+        if not flat.size:
+            continue
+        keys = owner.ravel()[flat].astype(np.int64) << 32 | rid.ravel()[flat]
+        del owner, rid
+        sort = np.argsort(keys, kind="stable")
+        keys, flat = keys[sort], flat[sort]
+        starts = np.flatnonzero(np.r_[True, keys[1:] != keys[:-1]])
+        ends = np.r_[starts[1:], keys.size]
+        sx, sy = flat % W + x0, flat // W + y0
+        del flat, sort
+        for s, e, key in zip(starts.tolist(), ends.tolist(), keys[starts].tolist()):
+            rects_of[(key >> 32, level, key & 0xFFFFFFFF)] = room_rects(
+                set(zip(sx[s:e].tolist(), sy[s:e].tolist())))
+        del keys, sx, sy
     # A basement stays a building of its own, as in every map the game ships:
     # joined to the house above, the game took a player beside the house for
     # one inside it and took its roof off (knoxbuild/basements.py).
@@ -125,24 +154,16 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
     groups: dict[int, list[int]] = {}
     for i in order:
         groups.setdefault(lfind(i), []).append(i)
-    # Each lot's parts in order, so a group reads only its own - going through
-    # every part for every group was quadratic in the buildings on the map.
+    # Each lot's parts in order, so a group reads only its own.
     parts_of: dict[int, list] = {}
-    for k in parts:
+    for k in sorted(rects_of, key=lambda k: (rank[k[0]], k[1], k[2])):
         parts_of.setdefault(k[0], []).append(k)
     out = []
     for members in groups.values():
         first = members[0]
-        entries = []
-        merged: dict[tuple, dict] = {}
-        for k in (k for lot in members for k in parts_of.get(lot, ())):
-            root = find(k)
-            if root not in merged:
-                merged[root] = {"name": lots[k[0]][0].rooms[k[2] - 1].get("Name", ""), "z": k[1], "squares": set()}
-                entries.append(merged[root])
-            merged[root]["squares"] |= squares[k]
-        for e in entries:
-            e["rects"] = room_rects(e.pop("squares"))
+        entries = [{"name": lots[k[0]][0].rooms[k[2] - 1].get("Name", ""), "z": k[1],
+                    "rects": rects_of.pop(k)}
+                   for lot in members for k in parts_of.get(lot, ())]
         out.append((lots[first][1], lots[first][2], entries))
     return out
 

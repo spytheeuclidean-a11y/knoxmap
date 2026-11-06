@@ -31,7 +31,7 @@ from web.checks import (BASE_BYTES, BIG_AREA_KM2, BIG_TILES_PER_SIDE,
                         _shape_rings, _too_big_for_memory, tidy_scale)
 from web.common import (SAFE_NAME, _bbox_area_km2, _cos_lat, _json_body,
                         _map_dir, _worlded_exe, failed, log)
-from web.jobs import _PROGRESS_LOCK, _set_progress, _stopped, _stopper
+from web.jobs import _PROGRESS_LOCK, _hold, _set_progress, _stopped, _stopper
 from web.mapfiles import (_load_edits, _load_settings, _load_sketch,
                           _map_summary, _osm_cache_for, _population,
                           _save_design, _save_settings, _save_sketch)
@@ -145,6 +145,9 @@ def _generate(data):
     # holds nothing but the settings, and every failed attempt left one behind.
     made_here = not map_dir.exists()
     map_dir.mkdir(parents=True, exist_ok=True)
+    busy = _hold(map_dir, "generated")
+    if busy is not None:
+        return busy
 
     def forget_empty_folder() -> None:
         if made_here and not (map_dir / f"{map_name}_info.json").exists():
@@ -471,6 +474,9 @@ def api_buildings():
     map_dir = _map_dir(data.get("mapName", ""))
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
+    busy = _hold(map_dir, "built")
+    if busy is not None:
+        return busy
     settings = Settings.from_dict(data.get("settings"))         if data.get("settings") else _load_settings(map_dir)
     _save_settings(map_dir, settings)
     terrain = None

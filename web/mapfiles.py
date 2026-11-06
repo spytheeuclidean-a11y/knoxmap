@@ -179,6 +179,12 @@ def _map_summary(map_dir: Path) -> dict:
         "madeWith": mapstate.made_with(str(map_dir)),
         "current": knoxlog.version(),
         "stages": {k: v.get("version") for k, v in stages.items()},
+        # Its buildings were built and not drawn over since (a new Generate
+        # forgets the build stamp), so it can be compiled as it stands. The
+        # window only offered Compile straight after a build, so after a
+        # restart a built city had to be built again - hours - to compile it.
+        "buildingsReady": bool((mapstate.read(str(map_dir)).get("stages") or {}).get("build"))
+                          and (map_dir / f"{map_dir.name}.pzw").exists(),
         "needs": needs,
         "needsLabels": [mapstate.LABELS[s] for s in needs],
         # Where it is installed, and whether that copy came after the last
