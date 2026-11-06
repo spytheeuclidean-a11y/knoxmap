@@ -1,4 +1,74 @@
-# Changelog
+## 1.8.5.1
+
+- **The town follows the road that is drawn.** Roads are redrawn onto the
+  game's grid and its 45-degree runs and everything beside them is carried with
+  them - but that carry was worked out between junctions only, so wherever a
+  stretch between two junctions had been redrawn the town was left standing
+  where the old line was: houses a tile or two off their street, and the police
+  station's grown footprint straddling one, which dropped it from the map
+  altogether. A house keeps its distance from its road now, and every landmark
+  is laid out at the size the game gives that kind of building.
+- **Railways fit at the corridor's ends.** A coarse or clipped railway fragment
+  at the end of a corridor is fitted with a connected piece instead of a loop,
+  and an endpoint that falls between two native assembly ports is no longer
+  rejected - which used to abort the whole generation.
+- **An extract with bad text says so, and moves on.** Malformed UTF-8 in an OSM
+  extract is logged with the failing file's name and treated as an extract that
+  cannot be read: automatic mode falls back to Overpass, extract-only mode says
+  how to recover. Valid non-English names, cached extracts and whole-map builds
+  are untouched.
+- **Woodland drawn faster.** Woodland pixels are processed in strips by the
+  existing Rust worker: 11.4 s to 2.4 s on a cached Cookeville pass, the same
+  image, with the Python path kept as the fallback and small images left in
+  Python.
+- **An incomplete Python is repaired instead of crashing.** KnoxMap checks that
+  Flask, requests, numpy, Pillow, pyproj and Shapely load before it opens the
+  window; if they do not, Setup runs, the imports are checked again and a
+  corrupt package is retried once. The minimum is 64-bit Python 3.12 to match
+  the pinned packages, Shapely is 2.2.0 for Python 3.15, and Setup's own
+  runtime is pinned by SHA-256.
+- **For whoever works on KnoxMap.** The launcher's own checks now leave the
+  environment the launcher looks for, so "Run it on Windows" tests the launcher
+  instead of failing at its first step, and the rail fallback test no longer
+  needs a built worker beside the code to assert anything.
+
+## 1.8.5
+
+- **A new window.** KnoxMap opens on a Home screen with one search box: type a
+  street and number, a town or a city, press Enter and pick a result. Home also
+  lists your maps, with Update and Uninstall, your saved areas and *Check my
+  setup*. Menus along the top hold everything; tools on the left, Properties
+  and Layers on the right; every map you open gets a tab with an ✕ to close it
+  and can be popped out into its own window.
+- **One button does the next thing.** Above the map, a row of steps (Generate ›
+  Buildings › Compile › Install › Publish check) marked done, running or needing
+  to be redone, and one big button that does whatever comes next. While it runs
+  the button is Stop. Click a step to see its details: the population census,
+  the WorldEd fallback, the name and mod id for the game. Turned off, the
+  search results list showed the map through it; it has a solid panel now.
+- **Português (Brasil).** The whole window is translated - every line, the
+  settings and their explanations, the drop-down choices. Languages are picked
+  from a 🌐 menu, each in its own name, and a language file can name itself with
+  a `# name:` line; the README explains how.
+- **The fast road router is in the download.** `knoxroute.exe` was never put in
+  the releases, so the Vanilla curves road layout quietly fell back to a Python
+  search about 100× slower: minutes on a town became hours on a city. It is
+  built and packed for Windows, Linux and macOS like `knoxlots`, the release
+  fails if either is missing, and *Check my setup* says so if it ever is.
+- **Big maps.** Stop works within a second, even while a compile reads the
+  buildings or makes rows of cells. The pre-compile building check no longer
+  drops buildings over a wall decoration, runs on every core, remembers the
+  files it already checked and shows progress. A compile stopped by a crash is
+  carried on from where it stopped, but only for the same map. Update and
+  Install show a bar and a file count while a big map copies.
+- **Rails and bridges drawn faster.** Fitting the game's own rail pieces is
+  done by the Rust worker rather than in Python, bridge, railing and monument
+  footprint tests are batched, and a valid endpoint that falls between two
+  native ports is no longer rejected - which used to abort a whole generation.
+  A corridor that took 17 s takes 0.5 s. The Python path is kept as the
+  fallback, and Stop ends the native search.
+- **A standalone map is only itself.** Unticking Standalone no longer shows
+  Knox County as grey boxes or a second copy of the map behind it.
 
 ## 1.8.4.3
 
