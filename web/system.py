@@ -186,11 +186,13 @@ def _setup_report() -> dict:
          "fix": f"Run {setup} to extract it from your install."},
         # Added to the tools after KnoxMap 1.0's first setups: without them a
         # compile still works but lays no kerbs or road markings, silently.
-        {"id": "road_rules", "ok": _has_road_rules(tools), "label": "Kerbs and road markings",
+        {"id": "road_rules", "ok": knoxpaths.road_rules_ok(tools),
+         "label": "Kerbs and road markings",
          "fix": f"Run {setup} again to add them to the map tools."},
         # Likewise the big trees, and the tree sizes beside them: without
         # these rules a map still builds, and its woods are undergrowth.
-        {"id": "tree_rules", "ok": _has_tree_rules(tools), "label": "Big trees",
+        {"id": "tree_rules", "ok": knoxpaths.tree_rules_ok(tools),
+         "label": "Big trees",
          "fix": f"Run {setup} again to add them to the map tools."},
     ]
     # Off Windows the compiler is either one built for this system - what
@@ -351,40 +353,6 @@ def _missing_from_python() -> list[str]:
         except (ImportError, ValueError):
             missing.append(name)
     return missing
-
-
-def _has_road_rules(tools) -> bool:
-    if not tools:
-        return False
-    rules = tools / "config" / "Rules.txt"
-    try:
-        text = rules.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return False
-    # The newest rule, so tools patched before street furniture existed are
-    # sent back through Setup - and no blank litter tile, so are the ones
-    # patched while the litter rule still named trash_01_13 and 14, which the
-    # game draws as a question mark.
-    return "KnoxMap road Yard bed_soil" in text and "trash_01_13" not in text
-
-
-def _has_tree_rules(tools) -> bool:
-    """Whether the tools place big trees, and trees the game grows.
-
-    Two things, one answer, because one run of Setup writes both: the rules
-    for the jumbo sheets, and ordinary trees moved off the sheet indices the
-    game has no tile definition for - which drew, and were scenery.
-    """
-    if not tools:
-        return False
-    try:
-        text = (tools / "config" / "Rules.txt").read_text(encoding="utf-8",
-                                                          errors="replace")
-    except OSError:
-        return False
-    import re
-    return ("KnoxMap tree Giant tree" in text and "KnoxMap tree Small tree" in text
-            and not re.search(r"\be_\w+_1_(?:[89]|1[0-5])\b", text))
 
 
 def _overture_ready() -> bool:

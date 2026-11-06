@@ -9,8 +9,10 @@ another.
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 import unittest
+from pathlib import Path
 
 from knoxbuild import placement as P
 from knoxbuild.world import CELL_SIZE, choose_origin
@@ -156,6 +158,22 @@ class Standalone(AMapOnDisk):
         self.assertFalse(P.standalone(self.dir))
         self.assertEqual(P.saved(self.dir), (0, 0))
 
+    def test_taking_standalone_off_says_a_compile_is_needed(self):
+        # The map was compiled where it stood (cell 82,0) and standalone parked
+        # it at the corner. Standing it back down leaves it at the corner, and
+        # the lots in lots/ still name 82,0 - a "no" written down here is what
+        # let install refuse the map as moved since it was compiled.
+        self.compiled()
+        P.set_standalone(self.dir, "town", True)
+        done = P.set_standalone(self.dir, "town", False)
+        self.assertEqual(done["origin"], [0, 0])
+        self.assertTrue(done["needsCompile"])
+
+    def test_standalone_off_is_no_compile_when_the_lots_are_already_there(self):
+        self.compiled(cell_x=0, cell_y=0)
+        P.set_standalone(self.dir, "town", True)
+        self.assertFalse(P.set_standalone(self.dir, "town", False)["needsCompile"])
+
     def test_forgetting_the_place_forgets_standalone_too(self):
         P.set_standalone(self.dir, "town", True)
         P.forget(self.dir)
@@ -279,6 +297,123 @@ class MovingOne(AMapOnDisk):
     def test_a_map_with_nothing_compiled_cannot_be_in_the_wrong_place(self):
         self.assertIsNone(P.compiled_corner(self.dir))
         self.assertTrue(P.lots_match(self.dir, (500, 500)))
+
+
+class LeftoversFromWhereTheMapUsedToBe(unittest.TestCase):
+    """Compiling after a move writes the new lots beside the old ones.
+
+    The old ones are newer than everything they were compiled from, so nothing
+    called them stale: the corner they named stayed the place the map had
+    left, and install went on refusing it as "moved since it was last
+    compiled" however often it was compiled. Ticking Standalone parks a map at
+    cell 0,0, so putting it back somewhere real is exactly that.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        os.makedirs(os.path.join(self.dir, "lots"))
+        # A project's .pzw is named after its folder, everywhere in KnoxMap.
+        self.pzw = os.path.join(self.dir, os.path.basename(self.dir) + ".pzw")
+        self.write_pzw("90,0")
+
+    def write_pzw(self, origin, width=4, height=3):
+        with open(self.pzw, "w", encoding="utf-8") as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n'
+                    f'<world version="1.0" width="{width}" height="{height}">\n'
+                    f' <GenerateLots>\n  <worldOrigin origin="{origin}"/>\n'
+                    ' </GenerateLots>\n</world>\n')
+
+    def lots(self, x, y):
+        for name in (f"{x}_{y}.lotheader", f"chunkdata_{x}_{y}.bin",
+                     f"world_{x}_{y}.lotpack"):
+            open(os.path.join(self.dir, "lots", name), "w").close()
+
+    def left(self):
+        return sorted(os.listdir(os.path.join(self.dir, "lots")))
+
+    def test_lots_from_a_place_the_map_has_left_go(self):
+        from tools.compile_map import clear_outside_world
+        self.lots(0, 0)
+        self.lots(1, 0)      # where Standalone had parked the map
+        self.lots(105, 0)    # 90 cells = 27000 tiles, over 256
+        self.assertEqual(clear_outside_world(Path(self.dir)), 6)
+        self.assertEqual(self.left(), ["105_0.lotheader", "chunkdata_105_0.bin",
+                                       "world_105_0.lotpack"])
+
+    def test_the_lots_where_the_map_stands_now_stay(self):
+        from tools.compile_map import clear_outside_world
+        self.lots(105, 0)
+        self.lots(109, 0)    # the last of four cells across: 27000..28199 tiles
+        self.assertEqual(clear_outside_world(Path(self.dir)), 0)
+        self.assertEqual(len(self.left()), 6)
+
+    def test_a_map_at_the_corner_keeps_the_lots_at_the_corner(self):
+        from tools.compile_map import clear_outside_world
+        self.write_pzw("0,0")
+        self.lots(0, 0)
+        self.lots(105, 0)    # from before it was put at the corner
+        self.assertEqual(clear_outside_world(Path(self.dir)), 3)
+        self.assertEqual(self.left(), ["0_0.lotheader", "chunkdata_0_0.bin",
+                                       "world_0_0.lotpack"])
+
+    def test_a_project_that_says_nothing_is_left_alone(self):
+        from tools.compile_map import clear_outside_world
+        self.lots(0, 0)
+        os.remove(self.pzw)
+        self.assertEqual(clear_outside_world(Path(self.dir)), 0)
+        self.assertEqual(len(self.left()), 3)
+
+
+class WhereAMapReallyIs(AMapOnDisk):
+    """The choice, the build and the lots, answered in one place.
+
+    Each caller used to read those three records itself, in its own order, which
+    is how one could believe a map was at 70,0 while another read 0,0 - and why
+    install refused a map as "moved since it was last compiled" while the panel
+    above the button said it was ready.
+    """
+
+    def test_where_its_own_files_say_it_is(self):
+        here = P.where_is(self.dir, "town")
+        self.assertEqual(here["cell"], P.project_origin(self.dir, "town"))
+        self.assertEqual(here["source"], "built")
+        self.assertIsNone(here["chosen"])
+
+    def test_the_place_chosen_wins_over_where_it_was_built(self):
+        P.save(self.dir, (12, 34))
+        here = P.where_is(self.dir, "town")
+        self.assertEqual(here["cell"], (12, 34))
+        self.assertEqual(here["built"], P.project_origin(self.dir, "town"))
+        self.assertEqual(here["chosen"], (12, 34))
+        self.assertEqual(here["source"], "chosen")
+
+    def test_the_lots_are_reported_separately_from_where_the_map_is_going(self):
+        # Compiled at the corner, which is where Standalone parks a map; the
+        # project itself says 70,0, whose lots belong at 82,0.
+        self.compiled(cell_x=0, cell_y=0)
+        here = P.where_is(self.dir, "town")
+        self.assertEqual(here["cell"], (70, 0))
+        self.assertEqual(here["compiled"], (0, 0))
+        self.assertFalse(here["matches"])
+
+    def test_lots_where_the_map_is_going_do_match(self):
+        self.compiled(cell_x=82, cell_y=0)  # 70 cells of 300 tiles is lot 82
+        self.assertTrue(P.where_is(self.dir, "town")["matches"])
+
+    def test_moving_it_is_what_changes_the_answer(self):
+        self.compiled()
+        before = P.where_is(self.dir, "town")["cell"]
+        P.move(self.dir, "town", (120, 40))
+        after = P.where_is(self.dir, "town")
+        self.assertNotEqual(before, after["cell"])
+        self.assertFalse(after["matches"])
+
+    def test_the_window_is_told_which_record_decided(self):
+        P.set_standalone(self.dir, "town", True)
+        world = P.layout(self.dir, "town")
+        self.assertEqual(world["source"], "chosen")
+        self.assertEqual(world["map"]["x"], 0)
 
 
 class TheWorldAsItReallyIs(unittest.TestCase):

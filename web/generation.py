@@ -3,6 +3,7 @@ and handing a map to WorldEd.
 """
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import shutil
@@ -11,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, make_response, request, send_file
 
 import knoxfiles
 import knoxlog
@@ -38,9 +39,16 @@ from web.mapfiles import (_load_edits, _load_settings, _load_sketch,
 bp = Blueprint("generation", __name__)
 
 
+def _sketch_signature(drawn) -> str:
+    return hashlib.sha256(json.dumps(drawn, sort_keys=True).encode("utf-8")).hexdigest()
+
+
 @bp.route("/api/generate", methods=["POST"])
 def generate():
-    data = _json_body()
+    return _generate(_json_body())
+
+
+def _generate(data):
     # A map drawn on the editor's own sheet brings its own size and its own
     # corner of the world; the box and the features both come out of it, so
     # there is nothing to draw on the world map and nothing to download.
@@ -354,7 +362,11 @@ def generate():
     from_addresses = 0
     try:
         with open(map_dir / f"{map_name}_info.json", encoding="utf-8") as f:
-            from_addresses = json.load(f).get("houses_from_addresses", 0)
+            applied = json.load(f)
+        from_addresses = applied.get("houses_from_addresses", 0)
+        applied["sketch_hash"] = _sketch_signature(drawn)
+        applied["drawn_only"] = drawn_only
+        knoxfiles.write(str(map_dir / f"{map_name}_info.json"), applied)
     except (OSError, ValueError):
         pass
     log.info("generate %s: done, %d features, %dx%d tiles, rotation %.1f, "
@@ -461,6 +473,29 @@ def api_buildings():
         return jsonify({"error": "Unknown map."}), 404
     settings = Settings.from_dict(data.get("settings"))         if data.get("settings") else _load_settings(map_dir)
     _save_settings(map_dir, settings)
+    terrain = None
+    if "sketch" in data:
+        drawn = data["sketch"]
+        if not isinstance(drawn, dict) or not isinstance(drawn.get("features"), list):
+            return jsonify({"error": "Expected a GeoJSON FeatureCollection."}), 400
+        applied = knoxfiles.read(str(map_dir / f"{map_dir.name}_info.json"), "what the map is", default={})
+        drawn_only = bool(data.get("drawnOnly", applied.get("drawn_only", False)))
+        changed = (applied.get("sketch_hash") != _sketch_signature(drawn)
+                   or bool(applied.get("drawn_only")) != drawn_only)
+        # Old maps with no sketches need no terrain refresh on their first Build.
+        if "sketch_hash" not in applied and not drawn["features"] and not _load_sketch(map_dir).get("features"):
+            changed = drawn_only != bool(applied.get("drawn_only"))
+        if changed:
+            if not applied.get("bbox"):
+                return jsonify({"error": "Generate the map before building its drawings."}), 400
+            log.info("buildings %s: applying changed drawings before building", map_dir.name)
+            refreshed = make_response(_generate({
+                **applied["bbox"], "mapName": map_dir.name,
+                "metersPerTile": applied["meters_per_tile"], "shape": applied.get("shape"),
+                "settings": settings.to_dict(), "sketch": drawn, "drawnOnly": drawn_only}))
+            if refreshed.status_code >= 400:
+                return refreshed
+            terrain = refreshed.get_json()
     log.info("buildings %s: started", map_dir.name)
     # Say so now if this PC cannot hold the map's bitmaps, rather than after
     # minutes of work. Free memory moves, so only a 32-bit Python's hard 2 GB
@@ -510,7 +545,7 @@ def api_buildings():
     mapstate.stamp(str(map_dir), "build")
     log.info("buildings %s: %d files in %.1fs\n%s", map_dir.name, len(tbx),
              time.time() - t0, out.getvalue()[-3000:])
-    return jsonify({"count": len(tbx),
+    return jsonify({"count": len(tbx), "terrain": terrain,
                     "pzw": f"{map_dir.name}.pzw",
                     "settings": settings.to_dict(),
                     "population": _population(map_dir)})

@@ -33,11 +33,25 @@ jobs:
       - name: Python parses
         run: python -m compileall -q app.py knoxmap.py knoxmap_setup.py knoxpaths.py generator knoxbuild tools web worlded
 
+      # Mistakes, not style: an undefined name, a comparison that is always
+      # true, a statement that does nothing. pyproject.toml says why the wider
+      # rule set is not here yet.
+      - name: Lint
+        run: |
+          pip install -r requirements-dev.txt
+          ruff check .
+
       - name: JavaScript parses
         run: |
           for f in static/js/*.js; do
             node -e "new Function(require('fs').readFileSync('$f', 'utf8'))" && echo "ok $f"
           done
+
+      # An update deletes by .knoxmap_files.json: a module missing from it never
+      # reaches anybody, and a line left behind makes every update try to delete
+      # a file that is not there. Both are silent until a player reports one.
+      - name: The shipped file list is the release
+        run: python tools/check_manifest.py
 
       - name: Overpass rotation, cooldown and tile cache (offline)
         run: python -m unittest discover tests

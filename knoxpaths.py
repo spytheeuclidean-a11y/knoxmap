@@ -111,6 +111,86 @@ def worlded_gui() -> Path | None:
     return _tool("PZWorldEd", "PZWORLDED")
 
 
+def rules_text(tools: Path | None) -> str:
+    """The map tools' Rules.txt, or "" when there is not one to read."""
+    if not tools:
+        return ""
+    try:
+        return (Path(tools) / "config" / "Rules.txt").read_text(encoding="utf-8",
+                                                                  errors="replace")
+    except OSError:
+        return ""
+
+
+# --- what the tools' Rules.txt has to carry -------------------------------------
+#
+# Setup writes these rules (worlded/patch_rules_*.py) and the window's setup
+# card asks whether they are there. It is one question with one answer, so that
+# a run of Setup which says "set up" cannot leave a red row behind. A script
+# that exits 0 having written nothing - because the sheets it needs had not
+# been extracted yet - was exactly that, and only looking at the file showed it.
+
+def road_rules_ok(tools: Path | None) -> bool:
+    """Kerbs, road markings and street furniture, in their newest form.
+
+    The newest rule, so tools patched before street furniture existed are sent
+    back through Setup - and no blank litter tile, so are the ones patched
+    while the litter rule still named trash_01_13 and 14, which the game draws
+    as a question mark.
+    """
+    text = rules_text(tools)
+    return "KnoxMap road Yard bed_soil" in text and "trash_01_13" not in text
+
+
+def tree_rules_ok(tools: Path | None) -> bool:
+    """Big trees, and trees the game grows.
+
+    Two things, one answer, because one run of Setup writes both: the rules for
+    the jumbo sheets, and ordinary trees moved off the sheet indices the game
+    has no tile definition for - which drew, and were scenery.
+    """
+    import re
+
+    text = rules_text(tools)
+    return ("KnoxMap tree Giant tree" in text and "KnoxMap tree Small tree" in text
+            and not re.search(r"\be_\w+_1_(?:[89]|1[0-5])\b", text))
+
+
+def lay_rule_blocks(text: str, marker: str, blocks: list[str]) -> str:
+    """Our rule blocks, laid where the first of ours already sits.
+
+    Both patchers used to strip their own rules and append the new ones to the
+    end of the file. Setup runs the trees first and the roads second, so by the
+    next run the trees' rules were no longer last: each patcher put its own back
+    at the end, past the other's, and the two swapped places on every run - so
+    Rules.txt changed even when not one rule was different.
+
+    Rules.txt is an input to every compile (tools/compile_state.py hashes it), so
+    that churn threw away every incremental compile after every Setup, and made
+    a map look like it had not been compiled again at all.
+
+    Laid in place, a run that changes nothing writes nothing. Blocks left over
+    somewhere else in the file - somebody hand-edited Rules.txt - are dropped,
+    so the file ends up with one run of ours rather than two.
+    """
+    import re
+
+    body = "\n".join(blocks)
+    pattern = re.compile(rf"rule\n\{{\n    label = {re.escape(marker)} .*?\n\}}", re.S)
+    found = list(pattern.finditer(text))
+    if not found:
+        # `body` ends in its own newline, and the file has always ended with
+        # one: adding a second here made the first run leave a blank line at
+        # the end of the file, which the run after it then took away again.
+        return text.rstrip("\n") + "\n\n" + body
+    first = found[0]
+    tail = text[first.end():]
+    if len(found) > 1:
+        tail = pattern.sub("", tail)
+    rest = tail.lstrip("\n")
+    return text[:first.start()] + body + ("\n" + rest if rest.strip() else "")
+
+
 def command_for(program: Path | str) -> list[str]:
     """How to run one of the map tools here.
 

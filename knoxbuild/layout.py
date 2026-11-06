@@ -18,6 +18,10 @@ import heapq
 import random
 from collections import deque
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:                     # knoxbuild.tower imports this module, so
+    from .tower import TowerCore      # a real import here would be circular
 
 from . import catalog as C
 from . import furnish_rules as FR
@@ -4033,7 +4037,9 @@ def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:
     if not candidates:
         return
     _faces_street, _length, entry, wall = max(candidates)
-    width = min(3, len(wall))
+    if len(wall) < 3:
+        return
+    width = 3
     center = wall.index(entry)
     start = min(max(0, center - width // 2), len(wall) - width)
     opening = wall[start:start + width]
@@ -4049,9 +4055,7 @@ def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:
         elif door not in opening:
             doors.append(door)
     plan.doors = doors
-    # (x, y, dir) triples: entry first (this stays the middle leaf once the
-    # opening is centred on it), then its two new neighbours - tbx.py remaps
-    # this order to the catalog's actual left/mid/right tiles
+    # Keep the original entry first for driveway placement; export sorts panels spatially.
     plan.garage_door_tiles = tuple(ordered)
 
 def _entrance_priority(entrance: tuple[float, float, dict]) -> tuple:
@@ -7417,11 +7421,10 @@ def build_building(width: int, height: int, levels: int = 1,
                    plant=tcore is not None and lvl == tower_mod.plant_level(levels),
                    entrances=entrances if lvl == 0 else None,
                    profile=profile, mapped=mapped,
+                   garage_door=garage_door and lvl == 0,
                    party={e for e, up in (party or {}).items() if lvl < up})
         for lvl in range(levels)
     ]
-    if garage_door and storeys:
-        _widen_vehicle_entry(storeys[0], street)
     building = Building(width=width, height=height, storeys=storeys, profile=profile)
     if stairs is not None:
         for lvl in range(levels - 1):
@@ -7644,7 +7647,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
                profile: object | None = None,
                mapped: list | None = None,
                tower: "TowerCore | None" = None,
-               plant: bool = False) -> Plan:
+               plant: bool = False,
+               garage_door: bool = False) -> Plan:
     """Lay out and furnish one storey of the given tile size.
 
     `uses` are what OpenStreetMap says a commercial ground floor holds
@@ -7828,6 +7832,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
         # Before furnishing: the openings have to exist for _furnish to keep
         # them clear.
         _open_shopfronts(plan)
+    if ground and garage_door:
+        _widen_vehicle_entry(plan, street)
     _furnish(plan, rng, stairs, street)
     if mix_kind == "mall":
         _clear_concourse(plan)

@@ -1,0 +1,23 @@
+# Settings for the tools, not packaging: KnoxMap is run from its folder rather
+# than installed, so there is no build to configure here.
+#
+# The lint rules below are the ones that find mistakes rather than style: a
+# name that is not defined, a comparison that is always true, a statement with
+# no effect, a syntax error. They find nothing today, which is the point - the
+# check only speaks up when something is actually broken.
+#
+# The wider set is deliberately not selected. Against this repository it
+# reports about 2,400 findings, nearly all unused imports, long lines and
+# `except` clauses without a matching variable; gating a pull request on that
+# today would mean either a mechanical sweep of four hundred files or a wall of
+# ignores, and neither makes the app work better. Narrow now, widen when
+# somebody has the appetite for the sweep.
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+# Build output, game data Setup downloads, and the copies the updater keeps.
+extend-exclude = ["update", "vendor", "cache", "output", "graphify-out", "graft", "rust"]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]

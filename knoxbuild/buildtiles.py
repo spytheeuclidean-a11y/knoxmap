@@ -217,6 +217,8 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
             custom = custom_ends.get((x, y)) if end else None
         if custom:
             e = _entry(b, custom.get("InteriorTile" if r else "Tile", 0))
+            if not e:
+                return []
             t = _entry(b, custom.get("InteriorTrim" if r else "ExteriorTrim", 0))
             return [e.get(kind) or e.get(fallback, ""), t.get(kind if e.get(kind) else fallback, "")] + ([grime.get(kind, "")] if not r and ground else [])
         if r > 0:

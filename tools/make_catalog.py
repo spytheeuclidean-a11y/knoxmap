@@ -18,6 +18,7 @@ import os
 import pprint
 import re
 import sys
+from pathlib import Path
 
 
 def parse_tile_entries(path: str) -> list[dict]:
@@ -250,9 +251,30 @@ def erika_roles(furniture: dict, layers: dict) -> dict:
     return out
 
 
+# The committed catalog is not this generator's output any more: whole sections
+# (GAME_WALL_STYLES, the escalators) were added by hand and nothing here writes
+# them. Regenerating straight over it would drop them without a word - which is
+# the trap knoxbuild/catalog.py's own header warns about, and a warning in a
+# docstring nobody reads is not a guard. So the one path that would do it has to
+# be asked for out loud.
+COMMITTED = Path(__file__).resolve().parent.parent / "knoxbuild" / "catalog.py"
+
+
 def main(argv: list[str]) -> int:
     global TILES_2X
-    cfg_dir, out_path = argv[1], argv[2]
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    if len(args) < 2:
+        print(__doc__)
+        return 2
+    cfg_dir, out_path = args[0], args[1]
+    if Path(out_path).resolve() == COMMITTED and "--force" not in argv:
+        print(f"refusing to write {out_path}", file=sys.stderr)
+        print("  It is the catalog KnoxMap builds with, and it carries sections this "
+              "generator does not write:\n  GAME_WALL_STYLES and the escalators are "
+              "hand-added, so a regeneration would drop them.\n  Write somewhere "
+              "else and merge by hand, or pass --force to start again from the "
+              "game's config.", file=sys.stderr)
+        return 2
     TILES_2X = os.path.join(os.path.dirname(os.path.abspath(cfg_dir)), "Tiles", "2x")
     if not os.path.isdir(TILES_2X):
         TILES_2X = None

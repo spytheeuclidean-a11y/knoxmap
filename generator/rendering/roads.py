@@ -125,33 +125,12 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
 
 # --- railway ---------------------------------------------------------------
 
-RAIL_WIDTH_M = 1.0      # one tile of track; the tile carries ties and rails
-
-
 def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
-    """Lay the game's own railroad tile along each track.
+    """Lay connected vanilla straights, diagonals and bends along each track."""
+    from .rails import rail_paths, paint_track
 
-    The bed is ballast (landcover "railway"); on it we paint the vanilla
-    track tile, picking the of the two straight pieces by which way the line
-    runs: industry_railroad_01_6 climbs NE-SW, _7 NW-SE. Without this a rail
-    corridor is a bare gravel strip and reads as a sandy path.
-    """
-    width = max(1, _pixel_width(RAIL_WIDTH_M, proj.meters_per_tile))
-    for feat in buckets.get("railway", []):
-        if _is_polygon(feat):
-            continue
-        for ring in _feature_coords_px(feat, proj):
-            for (ax, ay), (bx, by) in zip(ring, ring[1:]):
-                dx, dy = bx - ax, by - ay
-                if abs(dx) + abs(dy) < 1.0:
-                    continue
-                # Which of the two straight pieces: the tile whose art runs
-                # east-west, or the one that runs north-south. A flat or a
-                # vertical run has dx*dy == 0, so the sign of the product put
-                # every one of them on the same tile and half the track lay
-                # across its own corridor.
-                colour = (C.RAIL_NW_SE if abs(dx) >= abs(dy) else C.RAIL_NE_SW)
-                draw.line([(ax, ay), (bx, by)], fill=colour, width=width)
+    for ring in rail_paths(buckets.get("railway", []), proj):
+        paint_track(draw, ring)
 
 
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,

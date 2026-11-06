@@ -389,6 +389,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         if fill is None:
             continue
         for feat in buckets.get(cat, []):
+            if cat == "railway" and not _is_polygon(feat):
+                continue  # the continuous track pass supplies its own ballast
             rings = _feature_coords_px(feat, proj)
             if cat in ROAD_WIDTHS_M and not _is_polygon(feat):
                 width_px = _pixel_width(_way_width_m(feat, cat), meters_per_tile)
@@ -402,8 +404,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
                 _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
 
-    # Rails after the ground: the ballast under them is the landscape pass's
-    # railway fill, and a bare bed reads as a sandy path.
+    # Track and ballast share the same continuous route.
     paint_rails(l_draw, buckets, proj)
 
     # Bridges over water squared to the tiles (generator/structures.py).

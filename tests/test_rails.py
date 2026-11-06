@@ -7,16 +7,19 @@ from PIL import Image, ImageDraw
 from generator import pz_colors as C
 from generator.osm import OSMFeature
 from generator.rendering import roads
+from generator.rendering import rails
 
 
 class _Proj:
     meters_per_tile = 1.0
+    width = 60
+    height = 40
 
 
 def _painted(ring):
     img = Image.new("RGB", (60, 40), C.DIRT)
     feat = OSMFeature(1, "way", {"railway": "rail"}, [[0.0, 0.0], [0.0, 1.0]])
-    with mock.patch.object(roads, "_feature_coords_px", return_value=[ring]):
+    with mock.patch.object(rails, "_feature_coords_px", return_value=[ring]):
         roads.paint_rails(ImageDraw.Draw(img), {"railway": [feat]}, _Proj())
     return img
 

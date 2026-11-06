@@ -20,6 +20,11 @@ DATASET_DIR = Path(os.environ.get("KNOXMAP_DATASET_CACHE") or (BASE_DIR / "cache
 # ceiling so a wrong URL can never fill the disk.
 MAX_BYTES = int(os.environ.get("KNOXMAP_DOWNLOAD_MAX_BYTES") or 2 * 1024 ** 3)
 ATTEMPTS = 3
+# A ceiling on the whole dataset cache, not just on one file. The per-download
+# cap stops one wrong URL filling the disk; nothing stopped ten right ones -
+# a few national extracts, a world raster or two, and the cache was however big
+# the last month of maps made it. The oldest files go first.
+MAX_CACHE_BYTES = int(os.environ.get("KNOXMAP_CACHE_MAX_BYTES") or 8 * 1024 ** 3)
 
 
 def dataset_dir(*parts: str) -> Path:
@@ -33,6 +38,62 @@ def map_dir(map_folder) -> Path:
     d = Path(map_folder) / ".knoxdata"
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def total_bytes(folder=None) -> int:
+    """How much the dataset cache (or `folder`) holds."""
+    folder = Path(folder or DATASET_DIR)
+    total = 0
+    if not folder.is_dir():
+        return 0
+    for p in folder.rglob("*"):
+        try:
+            if p.is_file():
+                total += p.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def prune(keep_bytes: int | None = None, folder=None, keep=None) -> int:
+    """Delete the oldest cached files until the cache is under its ceiling.
+
+    `keep` - the file just downloaded - is never one of them, so a download
+    that takes the cache over the limit cannot delete what it just fetched.
+    Returns how many files went. Best effort: a file somebody else has open is
+    left alone and counted as still there.
+    """
+    folder = Path(folder or DATASET_DIR)
+    limit = MAX_CACHE_BYTES if keep_bytes is None else keep_bytes
+    if not folder.is_dir():
+        return 0
+    held = Path(keep) if keep else None
+    files = []
+    total = 0
+    for p in folder.rglob("*"):
+        try:
+            if not p.is_file():
+                continue
+            size = p.stat().st_size
+            total += size
+            if p != held:
+                files.append((p.stat().st_mtime, size, p))
+        except OSError:
+            continue
+    if total <= limit:
+        return 0
+    files.sort()
+    removed = 0
+    for _when, size, p in files:
+        if total <= limit:
+            break
+        try:
+            p.unlink()
+        except OSError:
+            continue
+        total -= size
+        removed += 1
+    return removed
 
 
 def age_days(path) -> float:
@@ -105,6 +166,15 @@ def download(url: str, path, progress_cb=None, chunk: int = 1 << 20,
                         if progress_cb is not None:
                             progress_cb(done, total)
             os.replace(part, path)
+            # The cache has a ceiling of its own (MAX_CACHE_BYTES): this
+            # download may be the one that took it over, and the file it just
+            # wrote is the one that must survive.
+            gone = prune(keep=path)
+            if gone:
+                import knoxlog
+
+                knoxlog.log.info("cache: removed %d older downloads; the cache is "
+                                 "capped at %d bytes", gone, MAX_CACHE_BYTES)
             return path
         except Exception as exc:            # noqa: BLE001 - retried, then caller skips
             last = exc
