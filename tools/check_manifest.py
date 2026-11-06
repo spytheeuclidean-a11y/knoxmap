@@ -8,7 +8,7 @@ delete a file that is not there. Neither is visible until a player reports it,
 which is why this runs in CI.
 
 What a release ships is what release.yml puts in the zip: `git archive HEAD`,
-which honours .gitattributes export-ignore, plus the two binaries the release
+which honours .gitattributes export-ignore, plus the binaries the release
 step copies in. Asking git for that list, rather than walking the folder, is
 the difference between a check and a nuisance - the folder also holds build
 output, logs and scratch directories that never go near a release.
@@ -34,7 +34,7 @@ MANIFEST = ROOT / ".knoxmap_files.json"
 
 # Copied into each download after `git archive` ran (release.yml), so they are
 # in the release without being in the tree git knows about.
-ADDED_BY_RELEASE = {"KnoxMap.exe", "knoxlots.exe"}
+ADDED_BY_RELEASE = {"KnoxMap.exe", "knoxlots.exe", "knoxroute.exe"}
 
 
 def shipped() -> list[str] | None:

@@ -2,7 +2,7 @@
 name = "knoxroute"
 version = "0.1.0"
 edition = "2021"
-description = "The road router's search loop, out of the interpreter"
+description = "Road and railway terrain searches, out of the interpreter"
 
 [[bin]]
 name = "knoxroute"

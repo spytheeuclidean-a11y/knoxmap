@@ -126,12 +126,12 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
 
 # --- railway ---------------------------------------------------------------
 
-def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector, should_stop=None) -> None:
     """Lay connected vanilla straights, diagonals and bends along each track."""
     from .rails import rail_paths, paint_track
 
     for ring in rail_paths(buckets.get("railway", []), proj):
-        paint_track(draw, ring)
+        paint_track(draw, ring, should_stop)
 
 
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,

@@ -14,6 +14,8 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::io::{self, BufWriter, Read, Write};
 
+mod rails;
+
 const N: usize = 16;
 const INF: f64 = f64::INFINITY;
 const DONE: i32 = -1;
@@ -569,6 +571,10 @@ fn read_tables(r: &mut Reader<impl Read>) -> Tables {
 }
 
 fn main() {
+    if std::env::args().nth(1).as_deref() == Some("--rails") {
+        rails::run();
+        return;
+    }
     let mut r = Reader { inner: io::stdin() };
     if r.take(4) != b"KRTE" {
         die("not a knoxroute stream");

@@ -70,3 +70,5 @@ preset_exports/
 
 # Cargo build output
 rust/*/target/
+/knoxroute.exe
+/knoxroute

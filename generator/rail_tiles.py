@@ -3,7 +3,14 @@
 Ports use half-tile coordinates; offsets and tile positions use whole tiles.
 Straight and diagonal pieces share their end cross-sections with the bends.
 """
+import math
+
 from . import pz_colors as C
+
+# A nearest end port may be 1.5 tiles along an axis run and .5 across it.
+# Diagonals give the same bound: sqrt(2)**2 + (1/sqrt(2))**2 = 2.5.
+# A radius of 1.5 rejected valid fractional/clipped endpoints between pieces.
+RAIL_END_RADIUS = math.sqrt(2.5) + 1e-9
 
 # (entry port, exit port, entry direction, exit direction, (x, y, sheet, tile)...)
 ASSEMBLIES = (((-1, 2),

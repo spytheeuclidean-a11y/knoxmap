@@ -1,4 +1,4 @@
-"""The routing search, run out of the interpreter (``rust/knoxroute``).
+"""Road and railway searches, run out of the interpreter (``rust/knoxroute``).
 
 Python still works out the ground - the band's costs, the way the real line
 runs, the frontage density, the buildings, which corners a road may turn on -
@@ -15,15 +15,24 @@ Build it with::
 
 A search that has no worked-out turn field (`turnable`) is the "graph" mode:
 this client leaves that to the interpreter's own search rather than guess.
+
+``rail_search`` uses the same binary's ``--rails`` mode with an independent
+versioned frame, so older road workers still work and rails can fall back.
 """
 from __future__ import annotations
 
 import os
+import logging
 import struct
 import subprocess
 import threading
+import time
 
 import numpy as np
+
+import knoxstop
+
+from ..rail_tiles import RAIL_END_RADIUS
 
 from . import snap
 
@@ -212,3 +221,58 @@ class Router:
             self.proc.wait(timeout=10)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+
+
+def rail_search(guide, x0, y0, start, target, last_dir, assemblies, should_stop=None):
+    """Connected rail sections, or None when the native worker is unavailable.
+
+    KRL2: origin/dimensions, start state, target, endpoint radius, last heading,
+    assembly ports, then Pillow's L raster. Reply: KRL2, signed count (-1: no route), then
+    (tile_x, tile_y, assembly_index) triples. Start/target/ports use half tiles;
+    raster origin and result origins use whole tiles.
+    The existing no-argument road protocol is unchanged.
+    """
+    binary = exe()
+    if binary is None:
+        return None
+    knoxstop.check(should_stop, "the railways")
+    header = b"KRL2" + struct.pack("<8i3d3i", x0, y0, *guide.size, *start,
+                                    *target, RAIL_END_RADIUS, *last_dir, len(assemblies))
+    ports = b"".join(struct.pack("<8i", *a, *b, *incoming, *outgoing)
+                     for a, b, incoming, outgoing, _pieces in assemblies)
+    deadline = time.monotonic() + Router.SEARCH_TIMEOUT_S
+    try:
+        with subprocess.Popen([binary, "--rails"], stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)) as proc:
+            pending = header + ports + guide.tobytes()
+            try:
+                while True:
+                    knoxstop.check(should_stop, "the railways")
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("native railway search timed out")
+                    try:
+                        reply, error = proc.communicate(pending, timeout=0.1)
+                        break
+                    except subprocess.TimeoutExpired:
+                        pending = None   # communicate retains partially written input
+            finally:
+                if proc.poll() is None:
+                    proc.kill()
+                    proc.communicate()
+            if proc.returncode:
+                raise RuntimeError(error.decode("utf-8", errors="replace").strip() or "worker failed")
+        if len(reply) < 8 or reply[:4] != b"KRL2":
+            raise RuntimeError("invalid railway worker reply")
+        count, = struct.unpack_from("<i", reply, 4)
+        if count < -1 or count == 0 or len(reply) != 8 + 12 * max(count, 0):
+            raise RuntimeError("invalid railway worker result length")
+        sections = list(struct.iter_unpack("<iii", reply[8:]))
+        if any(not 0 <= row[2] < len(assemblies) for row in sections):
+            raise RuntimeError("invalid railway worker assembly")
+    except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
+        logging.getLogger(__name__).warning("native rail fitter unavailable; using Python: %s", exc)
+        return None
+    if count == -1:
+        raise ValueError("Railway cannot fit connected vanilla track within its mapped corridor")
+    return sections

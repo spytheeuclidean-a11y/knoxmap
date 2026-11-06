@@ -96,6 +96,11 @@ jobs:
           pattern: knoxlots-*
           path: knoxlots
 
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: knoxroute-*
+          path: knoxroute
+
       - name: Which version, and which systems it is for
         id: which
         run: |
@@ -155,6 +160,7 @@ jobs:
                 # binary, and it is no use on Linux or macOS.
                 cp KnoxMap.exe pack/windows/KnoxMap/
                 cp knoxlots/knoxlots-windows/knoxlots.exe pack/windows/KnoxMap/
+                cp knoxroute/knoxroute-windows/knoxroute.exe pack/windows/KnoxMap/
                 # KnoxMap.exe goes in last, and nothing may follow it.
                 # Updaters up to 1.4.7.1 unpack a release in the order its
                 # entries are stored and stop dead at the first file Windows
@@ -178,6 +184,8 @@ jobs:
                 # The Rust compiler for this system; a tarball keeps the executable bit.
                 cp "knoxlots/knoxlots-$system/knoxlots" "pack/$system/KnoxMap/knoxlots"
                 chmod +x "pack/$system/KnoxMap/knoxlots"
+                cp "knoxroute/knoxroute-$system/knoxroute" "pack/$system/KnoxMap/knoxroute"
+                chmod +x "pack/$system/KnoxMap/knoxroute"
                 (cd "pack/$system" && tar -czf "$GITHUB_WORKSPACE/KnoxMap-$v-$system.tar.gz" KnoxMap)
                 # The launchers must still be executable inside the tarball.
                 tar -tvzf "$GITHUB_WORKSPACE/KnoxMap-$v-$system.tar.gz" |
