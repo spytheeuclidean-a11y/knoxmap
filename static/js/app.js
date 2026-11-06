@@ -2665,9 +2665,8 @@ function setupPipeline(data) {
   // A map opened with its buildings already built can be compiled as it
   // stands; the button used to wake only after a build in this same window.
   if (data.buildingsReady) {
-    document.getElementById('worldedBtn').disabled = false;
-    document.getElementById('compileBtn').disabled = false;
-    note('compileNote', 'Ready — the buildings are built. Compile turns them into the game\'s files.');
+    const when = (data.builtAt || '').replace('T', ' ').slice(0, 16);
+    showBuilt(`Built${when ? ' ' + when : ''} → ${data.mapName}.pzw. Build again to lay them out afresh.`);
   }
   // Whatever the last compile of this map left behind, said again now: the
   // window has been closed and reopened since, and "done" would be a lie.
@@ -2684,6 +2683,18 @@ function setupPipeline(data) {
       showFailedCells(p.failed, p.cells);
     })
     .catch(() => { /* nothing to add if it cannot be asked */ });
+}
+
+// The buildings are there: Buildings is done, and both ways to compile are
+// open. The WorldEd note said "Generate the buildings first" even after they
+// were built.
+function showBuilt(text) {
+  note('buildingsNote', text, 'ok');
+  document.getElementById('worldedBtn').disabled = false;
+  document.getElementById('compileBtn').disabled = false;
+  note('compileNote', 'Ready — runs BMP to TMX and Generate Lots for you.');
+  note('worldedNote', 'Then File → BMP To TMX → All Cells… and '
+                      + 'File → Generate Lots 8x8 → All Cells…');
 }
 
 document.getElementById('buildingsBtn').addEventListener('click', async () => {
@@ -2721,11 +2732,8 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
     }
     if (!res.ok) throw apiError(data, res);
     if (data.terrain) renderResults(data.terrain);
-    note('buildingsNote', `${data.count} buildings → ${data.pzw}`, 'ok');
     renderCensus(data.population);
-    document.getElementById('worldedBtn').disabled = false;
-    document.getElementById('compileBtn').disabled = false;
-    note('compileNote', 'Ready — runs BMP to TMX and Generate Lots for you.');
+    showBuilt(`${data.count} buildings → ${data.pzw}`);
   } catch (err) {
     note('buildingsNote', err.message, 'bad');
   } finally {
