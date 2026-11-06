@@ -516,9 +516,57 @@
   }
 
   // A map opened or just made: it gets a tab, and the workspace shows it.
+  // A map opened from its tab, Home or the menu shows where it is: its area on
+  // the map, its scale and its kind of place - not the last map's, and not the
+  // defaults. Its settings are app.js's (openMap puts them back).
+  function showMapArea(data) {
+    const b = data.bbox;
+    if (!b || b.south == null) return;
+    let layer;
+    if (data.shape && data.shape.type) {
+      const polys = data.shape.type === 'Polygon' ? [data.shape.coordinates] : data.shape.coordinates;
+      layer = L.polygon(polys.map(rings => rings.map(ring => ring.map(([lon, lat]) => [lat, lon]))), SEL_STYLE);
+    } else layer = L.rectangle([[b.south, b.west], [b.north, b.east]], SEL_STYLE);
+    $('metersPerTile').value = data.metersPerTile || 1;
+    setSelection(layer);
+    map.fitBounds(layer.getBounds(), { padding: [20, 20] });
+    const kind = data.settings && data.settings.preset;
+    if (kind && [...$('preset').options].some(o => o.value === kind)) {
+      $('preset').value = kind;                    // no change event: that would reset its settings
+      document.querySelectorAll('.preset-card').forEach(c => {
+        const on = c.dataset.preset === kind;
+        c.classList.toggle('is-on', on);
+        c.setAttribute('aria-checked', on ? 'true' : 'false');
+      });
+    }
+  }
+  // An install that is still current counts as done: the steps used to say
+  // Install was next for a map that was already in the game.
+  function showInstalled(data) {
+    const inst = data.installed;
+    if (!inst || !inst.upToDate) return;
+    const when = (inst.at || '').replace('T', ' ').slice(0, 16);
+    note('installNote', `Installed${when ? ' ' + when : ''} to ${inst.modRoot}. Install again to replace it.`, 'ok');
+    $('installBtn').disabled = false;
+    $('publishCard').hidden = false;
+  }
+
+  // The placement check says "Ready to install" once it has loaded, after the
+  // map opened: an install that is still current is said again after it. A
+  // step run since makes that install out of date, so it is forgotten then.
+  const originalSay = sayIfInstallable;
+  sayIfInstallable = function () {
+    const ok = originalSay();
+    if (ok && ws.lastData && ws.lastData.mapName === currentMap) showInstalled(ws.lastData);
+    return ok;
+  };
+
   const originalRender = renderResults;
   renderResults = function (data) {
+    const opening = data.mapName !== currentMap;
     originalRender(data);
+    if (opening) showMapArea(data);
+    showInstalled(data);
     if (!ws.tabs.includes(data.mapName)) ws.tabs.push(data.mapName);
     ws.popped = ws.popped.filter(n => n !== data.mapName);
     document.querySelector(`.ws-docwin[data-map="${CSS.escape(data.mapName)}"]`)?.remove();
@@ -904,6 +952,7 @@
   // Polled, cheaply, for what has no event: the selection, the running map.
   let last = '';
   setInterval(() => {
+    if (runningMap && runningMap === currentMap && ws.lastData) ws.lastData.installed = null;
     const now = [!!currentRect, currentMap, runningMap, stoppingMap].join('|');
     if (now !== last) { last = now; render(); }
   }, 400);
@@ -937,6 +986,8 @@
   // A link that opens a place (?preset= or ?q=) goes straight to the map.
   const params = new URLSearchParams(location.search);
   if (params.has('preset') || params.has('q')) newMap();
+  // ?map=<name> opens one of your maps straight away.
+  if (params.get('map')) openTab(params.get('map'));
   window.addEventListener('resize', () => map.invalidateSize());
   window.knoxShell = { ws, goHome, newMap, openTab, closeTab, setTool, setView, openPop, closePop, render };
 })();
