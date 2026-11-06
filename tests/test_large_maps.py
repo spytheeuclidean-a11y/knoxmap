@@ -218,6 +218,35 @@ class CarryingOnACompile(unittest.TestCase):
         self._run(out, made, resume=False)
         self.assertEqual(made, [0, 1, 2, 3])
 
+    def _compile(self, stamp):
+        """compile_rust as far as making the cell sources: whether the rows a
+        stopped run left were still there when it got that far."""
+        project = Path(self.project)
+        (project / "town.pzw").write_text("<world/>", encoding="utf-8")
+        seen = {}
+
+        def make_map_source(project_, out, **kw):
+            seen["kept"] = sorted(p.name for p in Path(out).glob("row_*.done"))
+            raise knoxstop.Stopped("the compile")
+
+        with mock.patch.object(C, "knoxlots_exe", return_value="knoxlots"), \
+                mock.patch.object(C, "ensure_rail_rules"), \
+                mock.patch.object(C, "knoxpaths"), \
+                mock.patch.object(C, "prepare_output"), \
+                mock.patch.object(C, "_source_stamp", return_value=stamp), \
+                mock.patch.object(M, "make_map_source", make_map_source):
+            with self.assertRaises(knoxstop.Stopped):
+                C.compile_rust(self.project)
+        return seen["kept"]
+
+    def test_a_stopped_compile_is_carried_on_only_for_the_same_map(self):
+        src = Path(self.project) / ".knoxlots" / "src"
+        src.mkdir(parents=True)
+        (src / C.SOURCE_STAMP).write_text(json.dumps({"map": 1}), encoding="utf-8")
+        (src / "row_0.done").write_text("", encoding="utf-8")
+        self.assertEqual(self._compile({"map": 1}), ["row_0.done"])
+        self.assertEqual(self._compile({"map": 2}), [], "changed since: made afresh")
+
     def test_the_stamp_changes_with_the_map(self):
         project = Path(self.project)
         pzw = project / "town.pzw"

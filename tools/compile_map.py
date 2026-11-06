@@ -970,17 +970,41 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
     scratch = project / ".knoxlots"
     src, out = scratch / "src", scratch / "lots"
     finished = False
+    def phase(text: str, fraction: float) -> None:
+        if on_phase:
+            on_phase(text, fraction)
+
     with _only_one(project, run):
         try:
+            # Said before the check, which reads every building file: on a city
+            # that is most of an hour, and until a step was named the window
+            # showed the lots already there - 100% on a map compiled before.
+            phase("Checking the buildings", 0.0)
             # The same preparation the WorldEd path does, so a map compiled by
             # either one finds the same folders, and the same lots where the map
             # used to stand have already gone.
             prepare_output(project, run, knoxlots=True)
             if should_stop and should_stop():
                 raise knoxstop.Stopped("the compile")
-            def phase(text: str, fraction: float) -> None:
-                if on_phase:
-                    on_phase(text, fraction)
+            # The cell sources a stopped or failed run left are kept and carried
+            # on from, unless the map has changed since: a city's cell sources
+            # are an hour and a half, and a crash at row 34 of 49 threw them all
+            # away. The lot files knoxlots writes are always made afresh.
+            # After prepare_output, so a project it repaired counts as changed.
+            stamp = _source_stamp(project)
+            try:
+                same = json.loads((src / SOURCE_STAMP).read_text(encoding="utf-8")) == stamp
+            except (OSError, ValueError):
+                same = False
+            if not same:
+                shutil.rmtree(scratch, ignore_errors=True)
+            shutil.rmtree(out, ignore_errors=True)
+            src.mkdir(parents=True, exist_ok=True)
+            (src / SOURCE_STAMP).write_text(json.dumps(stamp), encoding="utf-8")
+            kept = len(list(src.glob("row_*.done")))
+            if kept:
+                knoxlog.log.info("compile %s [%s]: carrying on - %d rows of cells kept from "
+                                 "the last run", project.name, run, kept)
 
             phase("Reading the buildings", 0.0)
             make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop,
