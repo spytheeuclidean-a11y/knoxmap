@@ -2644,11 +2644,27 @@ function setupPipeline(data) {
   // it was compiled.
   loadPlacement(data.mapName);
   checkLots();
+  // A map opened with its buildings already built can be compiled as it
+  // stands; the button used to wake only after a build in this same window.
+  if (data.buildingsReady) {
+    document.getElementById('worldedBtn').disabled = false;
+    document.getElementById('compileBtn').disabled = false;
+    note('compileNote', 'Ready — the buildings are built. Compile turns them into the game\'s files.');
+  }
   // Whatever the last compile of this map left behind, said again now: the
   // window has been closed and reopened since, and "done" would be a lie.
+  // A compile still running is followed again rather than offered twice.
   fetch(`/api/compile-status?map=${encodeURIComponent(data.mapName)}`)
     .then(r => r.json())
-    .then(p => { if (p.state !== 'running') showFailedCells(p.failed, p.cells); })
+    .then(p => {
+      if (p.state === 'running' || p.state === 'stopping') {
+        document.getElementById('compileBtn').disabled = true;
+        showStop(data.mapName);
+        pollCompile();
+        return;
+      }
+      showFailedCells(p.failed, p.cells);
+    })
     .catch(() => { /* nothing to add if it cannot be asked */ });
 }
 
