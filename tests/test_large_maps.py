@@ -15,6 +15,7 @@ import numpy as np
 
 import knoxstop
 from knoxbuild import build as B
+from knoxbuild import repair as R
 from knoxbuild.buildheader import placed_rooms, room_rects
 from knoxbuild.settings import Settings
 from tools import compile_map as C
@@ -140,6 +141,117 @@ class MakingBuildings(unittest.TestCase):
         self.assertLess(len(made), len(jobs))
 
 
+def _nap(seconds):
+    time.sleep(seconds)
+    return seconds
+
+
+class StoppingACompile(unittest.TestCase):
+    def _pool(self, naps):
+        from concurrent.futures import ProcessPoolExecutor
+        pool = ProcessPoolExecutor(max_workers=2)
+        return pool, {pool.submit(_nap, s): n for n, s in enumerate(naps)}
+
+    def test_every_job_handed_over(self):
+        pool, pending = self._pool([0.2, 0.0, 0.1])
+        got = {}
+        M._gather(pool, pending, None, lambda fut, n: got.__setitem__(n, fut.result()))
+        self.assertEqual(got, {0: 0.2, 1: 0.0, 2: 0.1})
+
+    def test_a_stop_does_not_wait_for_the_jobs_running(self):
+        # Each job as long as a row of a city's cells: a stop used to wait them out.
+        pool, pending = self._pool([60, 60, 60])
+        asked = time.time() + 1.0
+        t0 = time.time()
+        with self.assertRaises(knoxstop.Stopped):
+            M._gather(pool, pending, lambda: time.time() > asked, lambda fut, n: None)
+        self.assertLess(time.time() - t0, 10.0)
+
+
+class CheckingTheBuildings(unittest.TestCase):
+    """The check before a compile: what it drops, and not doing it twice."""
+
+    def setUp(self):
+        self._dir = tempfile.TemporaryDirectory()
+        self.base = Path(self._dir.name)
+        (self.base / "buildings").mkdir()
+        self.refs = []
+        for n in range(5):
+            ref = f"buildings/b{n}.tbx"
+            (self.base / ref).write_text(f"<building {n}/>", encoding="utf-8")
+            self.refs.append(ref)
+        self.read = []
+
+    def tearDown(self):
+        self._dir.cleanup()
+
+    def _check(self, refs=None, should_stop=None):
+        def batch(paths, knoxlots):
+            self.read.extend(Path(p).name for p in paths)
+            return [["broken"] if p.endswith("b3.tbx") else [] for p in paths]
+
+        with mock.patch.object(R, "_check_batch", batch):
+            return R.check_lot_files(self.base, refs or self.refs, True, should_stop)
+
+    def test_a_file_checked_before_is_not_read_again(self):
+        first = self._check()
+        self.assertEqual(first["buildings/b3.tbx"], ["broken"])
+        self.assertEqual(len(self.read), 5)
+        self.read.clear()
+        self.assertEqual(self._check(), first)
+        self.assertEqual(self.read, [])
+        later = time.time() + 5
+        os.utime(self.base / "buildings" / "b1.tbx", (later, later))
+        self._check()
+        self.assertEqual(self.read, ["b1.tbx"], "only the one that changed")
+
+    def test_a_missing_file_is_said_without_reading(self):
+        got = self._check(self.refs + ["buildings/gone.tbx"])
+        self.assertEqual(got["buildings/gone.tbx"], ["the file is missing"])
+        self.assertNotIn("gone.tbx", self.read)
+
+    def test_a_stop_keeps_what_was_checked(self):
+        refs = []
+        for n in range(120):
+            ref = f"buildings/many{n}.tbx"
+            (self.base / ref).write_text("<building/>", encoding="utf-8")
+            refs.append(ref)
+        with mock.patch.object(R, "PARALLEL_CHECK_FROM", 10 ** 9):
+            with self.assertRaises(knoxstop.Stopped):
+                self._check(refs, should_stop=lambda: len(self.read) > 0)
+            self.assertEqual(len(self.read), 50, "stopped after the first batch")
+            self.read.clear()
+            self._check(refs)
+        self.assertEqual(len(self.read), 70, "the first 50 were kept")
+
+    def test_furniture_out_of_its_room_does_not_drop_a_building(self):
+        import sys
+        tools = str(Path(R.__file__).resolve().parent.parent / "tools")
+        if tools not in sys.path:
+            sys.path.insert(0, tools)
+        with mock.patch("validate_tbx.check", return_value=[]) as check:
+            R._check_building(self.base / self.refs[0], True)
+        self.assertIs(check.call_args.kwargs.get("flaws"), False)
+
+
+class InstallingACity(unittest.TestCase):
+    def test_the_copy_says_how_far_it_has_got(self):
+        from tools import make_map_mod as K
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "town")
+            os.makedirs(os.path.join(project, "lots"))
+            files = []
+            for i in range(60):
+                path = os.path.join(project, "lots", f"world_{i}_0.lotpack")
+                Path(path).write_bytes(b"x")
+                files.append(path)
+            seen = []
+            with mock.patch.object(K, "collect", return_value=(files, [])):
+                K.package(project, "town", "town", mods_dir=os.path.join(d, "mods"),
+                          on_progress=lambda done, total: seen.append((done, total)))
+        self.assertEqual(seen, [(25, 60), (50, 60), (60, 60)])
+
+
 class CarryingOnACompile(unittest.TestCase):
     def _run(self, out, rows_made, fail_at=None, resume=True):
         calls = {"read": 0}
@@ -190,6 +302,35 @@ class CarryingOnACompile(unittest.TestCase):
         made.clear()
         self._run(out, made, resume=False)
         self.assertEqual(made, [0, 1, 2, 3])
+
+    def _compile(self, stamp):
+        """compile_rust as far as making the cell sources: whether the rows a
+        stopped run left were still there when it got that far."""
+        project = Path(self.project)
+        (project / "town.pzw").write_text("<world/>", encoding="utf-8")
+        seen = {}
+
+        def make_map_source(project_, out, **kw):
+            seen["kept"] = sorted(p.name for p in Path(out).glob("row_*.done"))
+            raise knoxstop.Stopped("the compile")
+
+        with mock.patch.object(C, "knoxlots_exe", return_value="knoxlots"), \
+                mock.patch.object(C, "ensure_rail_rules"), \
+                mock.patch.object(C, "knoxpaths"), \
+                mock.patch.object(C, "prepare_output"), \
+                mock.patch.object(C, "_source_stamp", return_value=stamp), \
+                mock.patch.object(M, "make_map_source", make_map_source):
+            with self.assertRaises(knoxstop.Stopped):
+                C.compile_rust(self.project)
+        return seen["kept"]
+
+    def test_a_stopped_compile_is_carried_on_only_for_the_same_map(self):
+        src = Path(self.project) / ".knoxlots" / "src"
+        src.mkdir(parents=True)
+        (src / C.SOURCE_STAMP).write_text(json.dumps({"map": 1}), encoding="utf-8")
+        (src / "row_0.done").write_text("", encoding="utf-8")
+        self.assertEqual(self._compile({"map": 1}), ["row_0.done"])
+        self.assertEqual(self._compile({"map": 2}), [], "changed since: made afresh")
 
     def test_the_stamp_changes_with_the_map(self):
         project = Path(self.project)

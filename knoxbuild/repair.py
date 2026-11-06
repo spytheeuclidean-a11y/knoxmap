@@ -23,11 +23,16 @@ the log, and the original is kept as <map>.pzw.bak.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import shutil
 import sys
 from pathlib import Path
+
+import knoxfiles
+import knoxstop
 
 CELL = 300
 
@@ -38,17 +43,148 @@ _ATTR = re.compile(r'(\w+)="([^"]*)"')
 
 
 def _check_building(path: Path, knoxlots: bool | None = None) -> list[str]:
+    """Why a compile could not take this building file, or []. What only
+    looks wrong (validate_tbx's `flaws`) is not a reason to drop it."""
     tools = Path(__file__).resolve().parent.parent / "tools"
     if str(tools) not in sys.path:
         sys.path.insert(0, str(tools))
     import validate_tbx
-    return validate_tbx.check(str(path), knoxlots)
+    try:
+        return validate_tbx.check(str(path), knoxlots, flaws=False)
+    except Exception as exc:  # noqa: BLE001 - unreadable counts as broken
+        return [f"could not be read: {exc}"]
+
+
+def _check_batch(paths: list[str], knoxlots: bool) -> list[list[str]]:
+    return [_check_building(Path(p), knoxlots) for p in paths]
+
+
+# Each building file is read and checked before every compile: about 12 ms a
+# file, so 54 minutes for a city of 270,000 on one core, with nothing on the
+# screen and no way to stop it. So they are checked across every core, a few
+# hundred at a time, and what was found is kept beside the map: the next
+# compile reads again only the files that changed since.
+CHECKED_FILE = ".buildings_checked.json"
+CHECK_BATCH = 500
+PARALLEL_CHECK_FROM = 300
+
+
+def _checker(knoxlots: bool) -> str:
+    """What the kept answers were given by: the rules and the catalogue they
+    read. A change to either asks every file again."""
+    h = hashlib.sha1(repr(knoxlots).encode())
+    root = Path(__file__).resolve().parent.parent
+    for rel in ("tools/validate_tbx.py", "knoxbuild/catalog.py"):
+        try:
+            h.update((root / rel).read_bytes())
+        except OSError:
+            pass
+    return h.hexdigest()
+
+
+def check_lot_files(base: Path, refs: list[str], knoxlots: bool | None = None,
+                    should_stop=None, on_progress=None) -> dict[str, list[str]]:
+    """{ref: why the compile cannot take it, or []} for the files a project's
+    lots name, relative to `base`. `on_progress(done, total)` is told as it
+    goes; a stop asked for (`should_stop`) raises knoxstop.Stopped, keeping
+    what was checked by then for the next time."""
+    if knoxlots is None:
+        try:
+            from tools.compile_map import default_backend
+            knoxlots = default_backend() == "rust"
+        except Exception:  # noqa: BLE001 - as validate_tbx would decide
+            knoxlots = False
+    key = _checker(knoxlots)
+    kept_path = base / CHECKED_FILE
+    try:
+        with open(kept_path, encoding="utf-8") as f:
+            kept = json.load(f)
+        files = kept["files"] if kept.get("checker") == key else {}
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        files = {}
+
+    # Size and time of every file, from one listing of each folder: asked one
+    # file at a time, a city's 270,000 took nearly three minutes before the
+    # first was checked.
+    listed: dict[str, dict[str, list]] = {}
+    for folder in {os.path.dirname(ref) for ref in refs if ref}:
+        found = listed[folder] = {}
+        try:
+            with os.scandir(base / folder) as it:
+                for entry in it:
+                    if entry.is_file():
+                        st = entry.stat()
+                        found[entry.name] = [st.st_size, st.st_mtime_ns]
+        except OSError:
+            pass
+
+    out: dict[str, list[str]] = {}
+    todo: list[tuple[str, list]] = []           # (ref, [size, mtime_ns])
+    for ref in refs:
+        seen = listed.get(os.path.dirname(ref), {}).get(os.path.basename(ref)) if ref else None
+        if seen is None and ref:
+            try:                    # named in another case, say: asked directly
+                st = (base / ref).stat()
+                if (base / ref).is_file():
+                    seen = [st.st_size, st.st_mtime_ns]
+            except OSError:
+                pass
+        if seen is None:
+            out[ref] = ["the file is missing"]
+        elif not ref.lower().endswith(".tbx"):
+            out[ref] = []
+        else:
+            was = files.get(ref)
+            if isinstance(was, list) and len(was) == 3 and was[:2] == seen:
+                out[ref] = was[2]
+            else:
+                todo.append((ref, seen))
+    total = len(refs)
+    done = total - len(todo)
+    if on_progress:
+        on_progress(done, total)
+
+    def keep(part: list[tuple[str, list]], found: list[list[str]]) -> None:
+        nonlocal done
+        for (ref, seen), why in zip(part, found):
+            out[ref] = why
+            files[ref] = seen + [why]
+        done += len(part)
+        if on_progress:
+            on_progress(done, total)
+
+    try:
+        if len(todo) < PARALLEL_CHECK_FROM or (os.cpu_count() or 1) < 2:
+            for s in range(0, len(todo), 50):
+                knoxstop.check(should_stop, "the compile")
+                part = todo[s:s + 50]
+                keep(part, _check_batch([str(base / r) for r, _ in part], knoxlots))
+        else:
+            from concurrent.futures import ProcessPoolExecutor
+            pool = ProcessPoolExecutor(max_workers=os.cpu_count())
+            parts = [todo[s:s + CHECK_BATCH] for s in range(0, len(todo), CHECK_BATCH)]
+            pending = {pool.submit(_check_batch, [str(base / r) for r, _ in part],
+                                   knoxlots): part for part in parts}
+            knoxstop.gather(pool, pending, should_stop,
+                            lambda fut, part: keep(part, fut.result()), "the compile")
+    finally:
+        if todo:
+            try:
+                knoxfiles.write(str(kept_path), {"checker": key, "files": {
+                    r: files[r] for r in refs if r in files}})
+            except OSError:
+                pass            # checked again next time, that is all
+    return out
 
 
 def repair_project(pzw: str | os.PathLike, check_buildings: bool = True,
-                   knoxlots: bool | None = None) -> dict:
+                   knoxlots: bool | None = None, should_stop=None,
+                   on_progress=None) -> dict:
     """Repair the project in place. Returns what was done:
-    {"moved": n, "dropped": [(what, why), ...], "changed": bool}."""
+    {"moved": n, "dropped": [(what, why), ...], "changed": bool}.
+
+    `should_stop` and `on_progress(done, total)` are for checking the building
+    files, which is most of the time on a big map (check_lot_files)."""
     path = Path(pzw)
     with open(path, encoding="utf-8", errors="replace", newline="") as f:
         text = f.read()
@@ -94,6 +230,11 @@ def repair_project(pzw: str | os.PathLike, check_buildings: bool = True,
 
     base = path.parent
     checked: dict[str, list[str]] = {}
+    if check_buildings:
+        refs = list(dict.fromkeys(
+            dict(_ATTR.findall(body)).get("map", "")
+            for key in order for _ind, kind, body in cells[key]["entries"] if kind == "lot"))
+        checked = check_lot_files(base, refs, knoxlots, should_stop, on_progress)
     placed: dict[tuple[int, int], list] = {k: [] for k in order}
 
     def on_map(cx, cy):
@@ -125,17 +266,9 @@ def repair_project(pzw: str | os.PathLike, check_buildings: bool = True,
                 continue
             if kind == "lot":
                 ref = attrs.get("map", "")
-                if ref not in checked:
+                if ref not in checked:          # not checking the buildings
                     target = (base / ref) if ref else None
-                    if not ref or not target.is_file():
-                        checked[ref] = ["the file is missing"]
-                    elif check_buildings and ref.lower().endswith(".tbx"):
-                        try:
-                            checked[ref] = _check_building(target, knoxlots)
-                        except Exception as exc:  # noqa: BLE001 - unreadable counts as broken
-                            checked[ref] = [f"could not be read: {exc}"]
-                    else:
-                        checked[ref] = []
+                    checked[ref] = [] if ref and target.is_file() else ["the file is missing"]
                 if checked[ref]:
                     report["dropped"].append((label, "; ".join(checked[ref][:2])))
                     continue

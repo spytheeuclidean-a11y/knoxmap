@@ -83,34 +83,37 @@ Windows   Double-click KnoxMap.exe
 Linux     ./knoxmap.sh
 macOS     ./knoxmap.sh
 
-A window opens with a map of the world on the left and the steps on the
-right. If anything is still missing, it says so at the top under
-"Setup isn't finished", with what to do about it.
+A window opens on Home. If anything is still missing, a bar at the top
+says "Setup isn't finished", with what to do about it.
 
 
 STEP 4 - CHOOSE A PLACE
 -----------------------
 
-Type a place in the search box and press Enter. Pick it from the list. Use
+On Home, type a place in the big search box - your street and house
+number, a town or a city - and press Enter. Pick it from the list. Use
 the "outline" button on a result to take its real boundary instead of a box
 around it.
 
-Or draw your own: the square and circle tools down the left-hand side.
+Or draw your own: pick the Area tool on the left, then the rectangle,
+polygon, circle or freehand button on the map's left edge.
 
-Watch the panel on the right as you do. It tells you how big the map will
-be in tiles and cells, and how much of the limit you are using. If it turns
-red and says you are over the limit, either drag a smaller area or change
-Scale to 2 m per tile.
+Watch the Properties panel on the right as you do. It tells you how big the
+map will be in tiles and cells, how much memory and time it needs, and how
+much of the limit you are using. If it says you are over the limit, either
+draw a smaller area or change Scale to 2 m per tile.
 
 A good first map is a small town, or a few streets of a city - roughly one
 to two kilometres across. A whole city takes hours and a lot of memory.
 Start small; you can always make a bigger one afterwards.
 
 
-STEP 5 - THE FOUR BUTTONS
--------------------------
+STEP 5 - ONE BUTTON, FOUR STEPS
+-------------------------------
 
-Press them in order. Each one needs the one before it.
+Above the map is a row of steps, and one big button at its right end. It
+always does whatever comes next, so you can just keep pressing it. Click a
+step's name to see more about it.
 
   1. Generate map   Downloads the area from OpenStreetMap and draws the
                     ground: roads, pavements, rivers, woods, railways.
@@ -125,9 +128,12 @@ Press them in order. Each one needs the one before it.
 
   4. Install        Copies the finished map into your mods folder.
 
-There is a Stop button while anything is running. It stops the work and
-leaves your drawn area and settings alone, so pressing the button again
-starts the same map over.
+While anything is running, the big button says Stop. It stops the work and
+leaves your drawn area and settings alone, so pressing it again starts the
+same map over.
+
+Every map you open gets a tab, like in a browser. The x closes it; the
+other button pops it out into its own window.
 
 
 STEP 6 - PLAY IT
@@ -143,7 +149,8 @@ Press M in game for the paper map.
 IF SOMETHING GOES WRONG
 -----------------------
 
-The window has a "report a problem" link at the top. It gathers the log
+The window has a "report a problem" link at the top (and in the Help
+menu). It gathers the log
 and a description of your PC, with your name taken out of the file paths,
 so somebody can see what happened.
 
@@ -174,8 +181,11 @@ A FEW THINGS WORTH KNOWING
 * Your maps live in the output folder inside KnoxMap. Updating KnoxMap
   never touches them.
 
-* Opening a map again from "Your maps" lets you rerun any step without
-  drawing the area again.
+* Opening a map again from "Your maps" on Home lets you rerun any step
+  without drawing the area again.
+
+* The window speaks English, Português (Brasil), Русский, Español and
+  Türkçe: pick one from the globe at the top.
 
 * Optional mods that make maps nicer, if you subscribe to them on the
   Workshop: Erika's Tiles (glass shop fronts and street signs), Elevators

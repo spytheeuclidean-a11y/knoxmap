@@ -193,6 +193,16 @@ def _memory() -> str:
     return "unknown"
 
 
+def _road_router() -> str:
+    """Whether knoxroute is here: without it one road layout is a hundred times slower,
+    so a report about a slow map should say at once which it was."""
+    try:
+        from generator.roadgraph import rustsearch
+        return "found" if rustsearch.available() else "not found (slow roads)"
+    except Exception:  # noqa: BLE001 - the summary must never fail
+        return "unknown"
+
+
 def system_summary() -> str:
     import locale
     import shutil
@@ -217,6 +227,7 @@ def system_summary() -> str:
             f" (Build 42: {knoxpaths.is_build42(knoxpaths.pz_install_dir())})",
             f"Tools:    {knoxpaths.mapping_tools_dir() or 'not installed'}",
             f"Compiler: {'found' if knoxpaths.worlded_cli() else 'not found'}",
+            f"Road router: {_road_router()}",
             f"Erika's Tiles: {'yes' if knoxpaths.erikas_tiles_ready() else 'no'}, "
             f"Elevators: {'yes' if knoxpaths.elevators_mod_installed() else 'no'}, "
             f"Spawn Selector: {'yes' if knoxpaths.spawn_selector_installed() else 'no'}",

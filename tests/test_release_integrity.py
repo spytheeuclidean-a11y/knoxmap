@@ -31,7 +31,7 @@ class TheShippedFileList(unittest.TestCase):
         # copied into every download; neither is committed (see
         # test_the_binaries_come_from_the_release_and_not_the_repository), so a
         # checkout is expected not to have them.
-        from_release = {"KnoxMap.exe", "knoxlots.exe"}
+        from_release = {"KnoxMap.exe", "knoxlots.exe", "knoxroute.exe"}
         missing = [f for f in self.files
                    if f not in from_release and not (ROOT / f).exists()]
         self.assertEqual(missing, [], "an update cannot put these back")
@@ -56,10 +56,12 @@ class TheShippedFileList(unittest.TestCase):
         # copied into every download, and neither belongs in the repository. A
         # copy built here still works - it is just not committed.
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-        for name in ("/KnoxMap.exe", "/knoxlots.exe"):
+        # knoxroute.exe was left out of every download until 1.8.4.3, and the
+        # road layouts that need it quietly ran a hundred times slower.
+        for name in ("/KnoxMap.exe", "/knoxlots.exe", "/knoxroute.exe"):
             self.assertIn(name, ignored)
-        for name in ("KnoxMap.exe", "knoxlots.exe"):
-            self.assertIn(name, self.files, "a download has to carry both")
+        for name in ("KnoxMap.exe", "knoxlots.exe", "knoxroute.exe"):
+            self.assertIn(name, self.files, "a download has to carry all three")
 
     def test_it_has_a_version(self):
         # updater.py compares this with the changelog heading; a manifest from a
