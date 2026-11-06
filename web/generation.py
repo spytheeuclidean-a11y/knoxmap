@@ -317,7 +317,17 @@ def _generate(data):
                     type(exc).__name__, exc)
 
     osm_time = time.time() - t0
-    _set_progress(map_name, stage="render", features=len(features))
+    # "Vanilla curves, built-up streets square" routes every street through
+    # knoxroute. Without it the same search runs in Python, about a hundred times
+    # slower: releases up to 1.8.4.3 never shipped it, and a city sat on
+    # "Routing the roads" for days with nothing to say why. Said, so the window
+    # can say it too.
+    from generator.roadgraph import rustsearch
+    slow_roads = int(settings.straight_roads) == 3 and not rustsearch.available()
+    if slow_roads:
+        log.warning("generate %s: the road router (knoxroute) was not found - routing the "
+                    "roads in Python, which is far slower", map_name)
+    _set_progress(map_name, stage="render", features=len(features), slowRoads=slow_roads)
 
     try:
         result = renderer.render(

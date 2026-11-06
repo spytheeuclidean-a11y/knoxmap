@@ -209,7 +209,16 @@ def _setup_report() -> dict:
                     "install it with your package manager (apt install wine, pacman -S "
                     "wine, dnf install wine), or set KNOXMAP_WINE to the build you want "
                     "used. Everything except Compile works without either."})
+    from generator.roadgraph import rustsearch
     optional = [
+        # Not needed to make a map, but without it the road layout that squares
+        # built-up streets is about a hundred times slower: hours, or days on a city.
+        {"id": "road_router", "ok": rustsearch.available(),
+         "label": "Fast road router (knoxroute)",
+         "fix": "Without it, Road layout's \"Vanilla curves, built-up streets square\" "
+                "routes roads about a hundred times slower. Update KnoxMap to a release "
+                "that includes knoxroute, or build it: cargo build --release in "
+                "rust/knoxroute. The other road layouts don't need it."},
         {"id": "elevators", "ok": knoxpaths.elevators_mod_installed(),
          "label": "Elevators mod (optional)",
          "fix": "Subscribe to it on the Steam Workshop for working lifts in tall buildings."},

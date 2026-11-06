@@ -116,7 +116,8 @@ const fx = (() => {
           : `${Math.max(6, Math.round(8 + 62 * done / total))}%`;
       } else if (p.stage === 'roads') {
         $('#gen-stage').textContent = 'Routing the roads';
-        $('#gen-detail').textContent = `${(p.done || 0).toLocaleString()} of ${(p.total || 0).toLocaleString()} stretches`;
+        $('#gen-detail').textContent = `${(p.done || 0).toLocaleString()} of ${(p.total || 0).toLocaleString()} stretches`
+          + (p.slowRoads ? ' · slow: the fast road router is missing' : '');
         $('#gen-bar').style.width = `${Math.round(70 + 12 * (p.done || 0) / Math.max(1, p.total || 1))}%`;
       } else if (p.stage === 'render') {
         $('#gen-stage').textContent = 'Drawing the terrain';

@@ -34,7 +34,7 @@ MANIFEST = ROOT / ".knoxmap_files.json"
 
 # Copied into each download after `git archive` ran (release.yml), so they are
 # in the release without being in the tree git knows about.
-ADDED_BY_RELEASE = {"KnoxMap.exe", "knoxlots.exe"}
+ADDED_BY_RELEASE = {"KnoxMap.exe", "knoxlots.exe", "knoxroute.exe"}
 
 
 def shipped() -> list[str] | None:
