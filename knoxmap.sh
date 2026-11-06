@@ -7,8 +7,9 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 export PYTHONUTF8=1
-if [ ! -x ".venv/bin/python" ]; then
-  echo "First run - setting KnoxMap up."
+if [ ! -x ".venv/bin/python" ] || ! .venv/bin/python knoxruntime.py >/dev/null 2>&1; then
+  echo "Setting up or repairing KnoxMap's Python environment."
   ./setup.sh
 fi
+.venv/bin/python knoxruntime.py
 exec .venv/bin/python knoxmap.py "$@"

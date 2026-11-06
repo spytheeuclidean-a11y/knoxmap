@@ -12,7 +12,7 @@
   <img alt="Project Zomboid Build 42" src="https://img.shields.io/badge/Project%20Zomboid-Build%2042-8b0000"/>
   <img alt="Windows 10/11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078d6"/>
   <img alt="Linux and macOS" src="https://img.shields.io/badge/Linux%20%C2%B7%20macOS-supported-4c8b2b"/>
-  <img alt="Python 3.10+" src="https://img.shields.io/badge/Python-3.10%2B-3776ab"/>
+  <img alt="Python 3.12+" src="https://img.shields.io/badge/Python-3.12%2B-3776ab"/>
   <img alt="Unofficial fan project" src="https://img.shields.io/badge/unofficial-fan%20project-555"/>
 </p>
 
@@ -104,7 +104,7 @@ Steam · an internet connection. Python is optional: if your PC doesn't have it,
 setup downloads a private copy into the KnoxMap folder.
 
 **On Linux or macOS** it is `./setup.sh` once and `./knoxmap.sh` after that,
-and you need your own 64-bit Python 3.10+. Everything works; Compile runs the
+and you need your own 64-bit Python 3.12+. Everything works; Compile runs the
 map tools through Wine, which a PC playing Project Zomboid through Proton
 already has. See [LINUX.md](LINUX.md).
 
@@ -114,7 +114,7 @@ already has. See [LINUX.md](LINUX.md).
    elsewhere — and unpack it anywhere. (Or `git clone` it for the latest
    changes.)
 2. **Double-click `KnoxMap.exe`.** The first time, it runs setup for you, which:
-   - uses your Python 3.10+ if you have one, or downloads the official python.org
+   - uses your Python 3.12+ if you have one, or downloads the official python.org
      build (checked against its fingerprint) into the folder if not,
    - creates a private Python environment inside the KnoxMap folder,
    - downloads the free [PZ Mapping Tools](https://github.com/Unjammer/PZ_Mapping_Tools),

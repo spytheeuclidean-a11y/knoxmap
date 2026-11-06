@@ -15,13 +15,13 @@ export PYTHONUTF8=1
 PY=""
 for candidate in python3 python; do
   if command -v "$candidate" >/dev/null 2>&1 &&
-     "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 10) or sys.maxsize <= 2**32)' 2>/dev/null; then
+     "$candidate" -c 'import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)' 2>/dev/null; then
     PY="$candidate"
     break
   fi
 done
 if [ -z "$PY" ]; then
-  echo "KnoxMap needs 64-bit Python 3.10 or newer."
+  echo "KnoxMap needs 64-bit Python 3.12 or newer."
   echo "Install it with your package manager, for example:"
   echo "    sudo apt install python3 python3-venv python3-pip     # Debian, Ubuntu"
   echo "    sudo pacman -S python                                 # Arch"
@@ -47,9 +47,9 @@ fi
 
 # An environment built by a 32-bit Python stays 32-bit, and a town-sized map
 # needs more memory than one can address.
-if [ -x ".venv/bin/python" ] && ! .venv/bin/python -c 'import sys; sys.exit(sys.maxsize <= 2**32)' 2>/dev/null; then
-  echo "The Python environment is 32-bit, which runs out of memory on a big map."
-  echo "Making it again with 64-bit Python..."
+if [ -x ".venv/bin/python" ] && ! .venv/bin/python -c 'import sys; sys.exit(sys.version_info < (3, 12) or sys.maxsize <= 2**32)' 2>/dev/null; then
+  echo "The Python environment needs 64-bit Python 3.12 or newer."
+  echo "Making it again with a supported Python..."
   rm -rf .venv
 fi
 
@@ -59,6 +59,11 @@ if [ ! -x ".venv/bin/python" ]; then
 fi
 echo "Installing Python packages..."
 .venv/bin/python -m pip install --disable-pip-version-check -q -r requirements.txt
+if ! .venv/bin/python knoxruntime.py; then
+  echo "Repairing Python packages whose installed files could not be loaded..."
+  .venv/bin/python -m pip install --disable-pip-version-check -q --force-reinstall --no-cache-dir -r requirements.txt
+  .venv/bin/python knoxruntime.py
+fi
 
 # Both of these are worth saying before the long download, not after it.
 if [ "$(uname -s)-$(uname -m)" != "Linux-x86_64" ] &&
