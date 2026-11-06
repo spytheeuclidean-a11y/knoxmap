@@ -140,6 +140,33 @@ class MakingBuildings(unittest.TestCase):
         self.assertLess(len(made), len(jobs))
 
 
+def _nap(seconds):
+    time.sleep(seconds)
+    return seconds
+
+
+class StoppingACompile(unittest.TestCase):
+    def _pool(self, naps):
+        from concurrent.futures import ProcessPoolExecutor
+        pool = ProcessPoolExecutor(max_workers=2)
+        return pool, {pool.submit(_nap, s): n for n, s in enumerate(naps)}
+
+    def test_every_job_handed_over(self):
+        pool, pending = self._pool([0.2, 0.0, 0.1])
+        got = {}
+        M._gather(pool, pending, None, lambda fut, n: got.__setitem__(n, fut.result()))
+        self.assertEqual(got, {0: 0.2, 1: 0.0, 2: 0.1})
+
+    def test_a_stop_does_not_wait_for_the_jobs_running(self):
+        # Each job as long as a row of a city's cells: a stop used to wait them out.
+        pool, pending = self._pool([60, 60, 60])
+        asked = time.time() + 1.0
+        t0 = time.time()
+        with self.assertRaises(knoxstop.Stopped):
+            M._gather(pool, pending, lambda: time.time() > asked, lambda fut, n: None)
+        self.assertLess(time.time() - t0, 10.0)
+
+
 class CarryingOnACompile(unittest.TestCase):
     def _run(self, out, rows_made, fail_at=None, resume=True):
         calls = {"read": 0}
