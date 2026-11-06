@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.8.4.3
+
+- **Real track.** A railway is laid with the game's own rail pieces instead of
+  a line of one tile: straight runs, bends and junctions are fitted to the
+  mapped centre line, over a dirt bed. Fragmented ways are joined, minor
+  drift is straightened, parallel tracks line up, and the short spur, yard and
+  crossover branches that clutter a corridor are left out. Buildings, fences
+  and vegetation keep off the track.
+- **Garages look like garages.** A low brown shingle gable in place of the
+  flat slab, with white gable ends, across orientations and widths; concrete
+  floors inside; and one wide door in the opening rather than a row of doors
+  with a post between them.
+- **Back yards vary.** A house's yard is a family's with a grill, a laundry
+  line, a garden, or bare ground, fenced in one of four styles, deeper or
+  shallower, chosen from the house's own seed - so a rebuild puts the same
+  yard back on the same house.
+- **Streets without kinks.** Small sideways steps in a road are straightened,
+  junctions and one-way limits are kept, and the houses beside a street are
+  placed from the final snapped line rather than the one it replaced.
+- **Consistent road edges.** Asphalt and sidewalks are the same width end to
+  end with 45-degree corners instead of the extra-width tile at a bend, across
+  a way that the map splits in two, and the clearance masks and the selection
+  outline follow the same shape.
+- **Build uses the drawing on the screen.** A sketch that was changed since
+  the last build is picked up, its terrain and footprints refreshed first; one
+  that was not is left alone instead of being regenerated.
+- **A ramp lands on the deck it climbs to.** Two ramp tops in a hundred had no
+  deck over them, because the ramp's last tile crossed a railway bridge; the
+  missing deck is laid in the ramp's own direction and capped with the rest.
+- **Cities that fit in memory and carry on.** Room tables are made level by
+  level, so a cell's compile no longer dies for want of memory; a stalled
+  build is broken into smaller batches with progress that moves; a compile or
+  a build stopped by a crash is carried on from where it stopped rather than
+  started again.
+- **One KnoxMap per map, and a closed window stops its work.** Generating,
+  building and compiling a map take its lock, so a second copy cannot work on
+  the same map alongside the first; closing the window asks every running job
+  to stop.
+- **Compile after a restart.** The window offers Compile for a map that is
+  already built, and follows a compile that is already running, instead of
+  only offering it straight after a build.
+- **A standalone map is only itself.** Knox County is no longer drawn behind
+  it, so the world it sits in is its own.
+- **A compile that fails says why.** An error with no message used to produce
+  "Compile failed" and nothing else; it now names the failure, and a compile
+  that ran out of memory says so and keeps what it made.
+- **For whoever works on KnoxMap.** A ruff configuration and a dev
+  requirements file, so a contributor gets the same feedback CI does; the
+  shipped-file list is in the repository and checked in CI, so a new module
+  cannot be left out of a release in silence; and the update routes have tests
+  for what they refuse.
+
 ## 1.8.4.2
 
 - **Five optional data layers.** A map can now read ground cover from ESA
