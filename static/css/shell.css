@@ -60,7 +60,9 @@ body.ws-loading > * { visibility: hidden; }
 .ws .topbar select.language { display: none; }
 .ws-lang { background: none; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--muted);
   font: 12px var(--font); padding: 1px 7px; cursor: pointer; margin-right: 6px; white-space: nowrap; }
-.ws #search-results { position: absolute; top: calc(100% + 4px); left: 0; width: min(560px, 90vw); z-index: 1300; }
+.ws #search-results { position: absolute; top: calc(100% + 4px); left: 0; width: min(560px, 90vw); z-index: 1300;
+  margin: 0; background: var(--panel); border: 1px solid var(--line-strong); border-top-color: var(--line-strong);
+  border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.55); }
 .ws .byline { margin-left: auto; margin-right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ws .topbar .version-wrap { flex: none; }
 
