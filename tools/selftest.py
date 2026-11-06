@@ -3890,6 +3890,8 @@ def check_build_audits(check, out: str) -> None:
 def check_straight_roads(check) -> None:
     """Knox County roads: every road in grid or 45-degree runs, roads that met
     still meeting, and the buildings beside them moved with them."""
+    from shapely.geometry import LineString, Point
+
     from generator.octilinear import straighten_roads
     from generator.renderer import Projector, _is_polygon, classify
 
@@ -3902,6 +3904,13 @@ def check_straight_roads(check) -> None:
                    [(300, 400 + 60 * math.sin(t / 10)) for t in range(0, 32)])
     house = way({"building": "house"}, box(300, 170, 312, 180))
     before = proj.to_px(*house.geometry[0])
+
+    def gap() -> float:
+        """How far the house's nearest corner is from the main road, in tiles."""
+        line = LineString([proj.to_px(*p) for p in main.geometry])
+        return min(Point(proj.to_px(*p)).distance(line) for p in house.geometry)
+
+    was_gap = gap()
     feats = [main, side, crescent, house]
     straighten_roads(feats, proj, classify, _is_polygon)
 
@@ -3921,6 +3930,10 @@ def check_straight_roads(check) -> None:
           "a long road at 12 degrees becomes straight, not a staircase")
     after = proj.to_px(*house.geometry[0])
     check(math.dist(before, after) > 0.5, "the houses beside a road move with it")
+    # Not just "moved a little": it has to sit the same way against the road
+    # it was beside, or the town has drifted off the street the game will draw.
+    check(abs(gap() - was_gap) <= 1.0,
+          f"and stay the same distance from it ({was_gap:.1f} tiles before, {gap():.1f} after)")
 
 
 def check_missing_drive(check) -> None:

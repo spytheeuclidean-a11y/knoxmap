@@ -389,30 +389,56 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
 
     # --- the roads, from the moved points ---------------------------------
     snapped = _round_together(moved, segs, normals, p0, pinned)
+    drawn: list = []                  # each road as it now stands, in tiles
     for f, held, verts in zip(roads, rigid, road_vertices):
         if held:
+            drawn.append(None)
             continue
         path = [snapped[verts[0]]]
         for v in verts[1:]:
             path += _legs(path[-1], snapped[v])
         path = _tidy(path)
-        if len(path) >= 2:
-            f.geometry = [proj.to_latlon(x, y) for x, y in path]
+        if len(path) < 2:
+            drawn.append(None)
+            continue
+        drawn.append(path)
+        f.geometry = [proj.to_latlon(x, y) for x, y in path]
 
     # --- everything else moves with the roads near it ---------------------
-    disp = np.asarray(snapped, dtype=float) - p0
+    # Sampled along each road as it is drawn now, against the line it was
+    # drawn on: a road that comes out as grid and 45-degree runs leaves that
+    # line by up to MAX_MOVE_TILES, and the town has to go with the road that
+    # is really there. Sampling the junctions alone said "nothing moved"
+    # wherever the run between two junctions had been redrawn.
     samples = []
-    for held, verts, px in zip(rigid, road_vertices, road_px):
-        if held:
+    for held, px, path in zip(rigid, road_px, drawn):
+        if held or path is None:
             continue
-        # Sample along each stretch, the move blended between its ends.
-        for a, b in zip(verts, verts[1:]):
-            pa, pb = p0[a], p0[b]
-            steps = max(1, int(np.hypot(*(pb - pa)) / FIELD_CELL))
+        for a, b in zip(path, path[1:]):
+            qa, qb = np.array(a, dtype=float), np.array(b, dtype=float)
+            steps = max(1, int(np.hypot(*(qb - qa)) / FIELD_CELL))
             for t in np.linspace(0.0, 1.0, steps + 1):
-                samples.append((pa + (pb - pa) * t, disp[a] * (1 - t) + disp[b] * t))
+                q = qa + (qb - qa) * t
+                was = np.array(_on_line(px, q), dtype=float)
+                samples.append((was, q - was))
     _carry(features, roads, displacement(samples, proj))
     return len(roads)
+
+
+def _on_line(line: list, q) -> tuple[float, float]:
+    """The point of `line` - a road's [(x, y), ...] before it was redrawn -
+    nearest `q` in tiles, so a corner of the redrawn road knows where the
+    road it replaced used to be."""
+    best, best_d = line[0], float("inf")
+    for (ax, ay), (bx, by) in zip(line, line[1:]):
+        dx, dy = bx - ax, by - ay
+        span = dx * dx + dy * dy
+        t = 0.0 if not span else max(0.0, min(1.0, ((q[0] - ax) * dx + (q[1] - ay) * dy) / span))
+        p = (ax + dx * t, ay + dy * t)
+        d = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2
+        if d < best_d:
+            best, best_d = p, d
+    return best
 
 
 def displacement(samples, proj):
