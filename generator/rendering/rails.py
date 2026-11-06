@@ -152,6 +152,13 @@ def rail_sections(points, *, backend="rust", should_stop=None):
     port = actions[first_dir][0][1]
     start = tuple(2 * round(points[0][i] - port[i] / 2) + port[i] for i in (0, 1)) + first_dir
     target = tuple(2 * v for v in points[-1])
+    _, entry, exit, _ = actions[first_dir][0]
+    delta = tuple(b-a for a, b in zip(entry, exit))
+    if len(points) == 2 and math.dist(*points) < math.hypot(*delta) / 2:
+        # A sub-piece fragment needs its phase centred, not a circuit back to the end.
+        starts = [tuple(start[i] + 2*shift*first_dir[i] for i in (0, 1)) + first_dir
+                  for shift in (0, -1, 1)]
+        start = min(starts, key=lambda s: math.dist(tuple(s[i]+delta[i] for i in (0, 1)), target))
     x0, y0 = (math.floor(min(p[i] for p in points)) - 10 for i in (0, 1))
     x1, y1 = (math.ceil(max(p[i] for p in points)) + 10 for i in (0, 1))
     guide = Image.new("L", (x1 - x0 + 1, y1 - y0 + 1), 255)
@@ -159,6 +166,10 @@ def rail_sections(points, *, backend="rust", should_stop=None):
     local = [(x - x0, y - y0) for x, y in points]
     for radius in range(9, -1, -1):
         draw.line(local, fill=radius * radius, width=radius * 2 + 1)
+        # Fixed-size pieces may overhang clipped endpoints, especially on coarse maps.
+        for x, y in (local[0], local[-1]):
+            cap = min(radius, math.ceil(RAIL_END_RADIUS))
+            draw.ellipse((x-cap, y-cap, x+cap, y+cap), fill=radius * radius)
     if backend == "rust":
         from ..roadgraph.rustsearch import rail_search
         sections = rail_search(guide, x0, y0, start, target, last_dir, ASSEMBLIES, should_stop)
