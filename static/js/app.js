@@ -60,7 +60,7 @@ L.tileLayer('/tiles/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 const drawnItems = new L.FeatureGroup().addTo(map);
-const SEL_STYLE = { color: '#a5e266', weight: 2, fillOpacity: 0.1, className: 'sel-rect' };
+const SEL_STYLE = { color: '#3d8bfd', weight: 2, fillOpacity: 0.1, className: 'sel-rect' };
 const drawControl = new L.Control.Draw({
   draw: {
     polyline: false, marker: false, circlemarker: false,
@@ -232,7 +232,7 @@ function updateRotateHandle() {
 
   if (!rotateHandleStem) {
     rotateHandleStem = L.polyline([pos.stemStartLatLng, pos.handleLatLng], {
-      color: '#a5e266',
+      color: '#3d8bfd',
       weight: 2,
       opacity: 0.9,
       interactive: false,
@@ -549,7 +549,7 @@ function startLasso(button) {
   let trail = null;
   const down = (e) => {
     points = [e.latlng];
-    trail = L.polyline(points, { color: '#a5e266', weight: 2, dashArray: '4 4' }).addTo(map);
+    trail = L.polyline(points, { color: '#3d8bfd', weight: 2, dashArray: '4 4' }).addTo(map);
     map.on('mousemove', move);
   };
   const move = (e) => { points.push(e.latlng); trail.setLatLngs(points); };
@@ -909,7 +909,7 @@ function haversineKm(lat1, lon1, lat2, lon2) {
 
 const SETTING_LABELS = {
   zombies_per_resident:['Zombies per person', 'Each person who lived or worked here becomes this many zombies.'],
-  m2_per_person:       ['Living space (m²)', 'Per resident. Lower = more crowded homes = more zombies. ~50 city, 45 town, 60 suburb.'],
+  m2_per_person:       ['Living space (m²)', 'Per resident. Less space means more crowded homes, so more zombies. About 50 in a city, 45 in a town, 60 in a suburb.'],
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
   tree_density:        ['Woodland', 'Scales tree cover everywhere: the woods, the gardens and the scrub over open ground. Trees are cover to hide in.'],
   forest_density:      ['Forests', 'Scales the woods the mapper drew, on top of Woodland. Thick forest round a thinly planted town, or the other way about.'],
@@ -3183,7 +3183,7 @@ const SKETCH_COLOURS = {
 
 function sketchStyle(kind) {
   const cat = (sketchPalette.find(e => e.id === kind) || {}).category;
-  const colour = SKETCH_COLOURS[cat] || '#a5e266';
+  const colour = SKETCH_COLOURS[cat] || '#3d8bfd';
   return { color: colour, weight: 3, fillColor: colour, fillOpacity: 0.3 };
 }
 
@@ -3207,7 +3207,7 @@ function paletteMarkup() {
         data-kind="${e.id}" data-geometry="${e.geometry}"
         title="${escapeHtml(Object.entries(e.tags)
           .map(([k, v]) => k + '=' + v).join(', '))}">
-        <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#a5e266'}"></span>
+        <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#3d8bfd'}"></span>
         ${escapeHtml(e.label)}</button>`).join('')}
     </div>`).join('');
 }
@@ -3575,7 +3575,7 @@ function boardDrawSheet() {
   // a map that has only just been given a size does not exist yet, and it
   // threw before a single line of the sheet was drawn.
   boardSheet = L.rectangle([[0, 0], [h, w]], {
-    pane: 'tilePane', color: '#a5e266', weight: 2, fill: true,
+    pane: 'tilePane', color: '#3d8bfd', weight: 2, fill: true,
     fillColor: '#0b0d0b', fillOpacity: 1, interactive: false }).addTo(boardMap);
   const lines = [];
   for (let x = BOARD_GRID_M; x < w; x += BOARD_GRID_M) lines.push([[0, x], [h, x]]);
@@ -5397,14 +5397,14 @@ function drawWorld() {
 
   if (mineNow) {
     const clash = placeClashes(placePicked || placeWorld.map);
-    const edge = clash.length ? '#dc5046' : '#a5e266';
+    const edge = clash.length ? '#dc5046' : '#3d8bfd';
     if (placePreview && placePreview.complete && placePreview.naturalWidth) {
       ctx.globalAlpha = 0.95;
       ctx.drawImage(placePreview, mineNow.x * k, mineNow.y * k,
                     mineNow.w * k, mineNow.h * k);
       ctx.globalAlpha = 1;
     } else {
-      ctx.fillStyle = clash.length ? 'rgba(220,80,70,0.35)' : 'rgba(165,226,102,0.35)';
+      ctx.fillStyle = clash.length ? 'rgba(220,80,70,0.35)' : 'rgba(61,139,253,0.35)';
       ctx.fillRect(mineNow.x * k, mineNow.y * k, mineNow.w * k, mineNow.h * k);
     }
     ctx.strokeStyle = edge;

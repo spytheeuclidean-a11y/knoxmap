@@ -89,7 +89,7 @@ input[readonly] { background: var(--bg); color: var(--muted); }
 .btn:hover:not(:disabled) { background: var(--hover); }
 .btn:disabled { color: var(--faint); cursor: default; background: transparent; border-color: var(--line); }
 .btn-primary { width: 100%; padding: 9px; background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
-.btn-primary:hover:not(:disabled) { background: #b7ea80; }
+.btn-primary:hover:not(:disabled) { background: #5a9cff; }
 .btn-primary:disabled { background: var(--accent-soft); border-color: var(--accent-soft); color: var(--faint); }
 .btn-small { padding: 3px 8px; font-size: 13px; }
 /* .btn sets display, which beats the browser's own rule for [hidden] -
@@ -151,9 +151,9 @@ input[readonly] { background: var(--bg); color: var(--muted); }
   height: 7px;
   margin-left: 5px;
   border-radius: 50%;
-  background: #a5e266;
+  background: #3d8bfd;
   vertical-align: 2px;
-  box-shadow: 0 0 0 2px rgba(165, 226, 102, 0.22);
+  box-shadow: 0 0 0 2px rgba(61, 139, 253, 0.22);
 }
 .version-dot[hidden] { display: none; }
 .version-dot.ready { background: #ffc857; box-shadow: 0 0 0 2px rgba(255, 200, 87, 0.22); }
@@ -208,8 +208,8 @@ path.sel-rect { cursor: move; }
   height: 26px;
   border-radius: 50%;
   background: var(--panel, #1d201b);
-  border: 1.5px solid var(--accent, #a5e266);
-  color: var(--accent, #a5e266);
+  border: 1.5px solid var(--accent, #3d8bfd);
+  color: var(--accent, #3d8bfd);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -223,10 +223,10 @@ path.sel-rect { cursor: move; }
 
 .rotate-handle-btn:hover {
   background: var(--hover, #2b3027);
-  border-color: #b7ea80;
+  border-color: #5a9cff;
   color: #ffffff;
   transform: scale(1.15);
-  box-shadow: 0 3px 10px rgba(165, 226, 102, 0.4);
+  box-shadow: 0 3px 10px rgba(61, 139, 253, 0.4);
 }
 
 .rotate-handle-btn:active,
@@ -242,7 +242,7 @@ body.rotate-dragging .rotate-handle-btn {
   left: 50%;
   transform: translateX(-50%);
   background: var(--panel, #1d201b);
-  border: 1px solid var(--accent, #a5e266);
+  border: 1px solid var(--accent, #3d8bfd);
   color: var(--text, #e6e5de);
   font-size: 11px;
   font-weight: 600;

@@ -666,7 +666,8 @@
     compile: 'Turns the map into the game’s own files.',
     install: 'Copies it into your Zomboid mods folder, ready to play.',
   };
-  const cardOf = s => s.card && results.querySelector(`.pipe-card[data-step="${s.card}"]`);
+  // Wherever the card is: in its list, or open under its chip.
+  const cardOf = s => s.card && document.querySelector(`.pipe-card[data-step="${s.card}"]`);
   const generating = () => !!runningMap && !currentMap;
   function stepState(s) {
     if (s.id === 'generate') {

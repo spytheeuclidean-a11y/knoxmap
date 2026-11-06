@@ -5,6 +5,24 @@
 
 /* A column: the bars take what they need and the work area takes the rest,
    whether or not the setup warning is showing. */
+/* Neutral greys and a blue accent, as people expect a desktop tool to look;
+   KnoxMap's green stays in its logo. Warnings and errors keep their colours. */
+body.ws {
+  --bg: #1e1f22;
+  --panel: #26272b;
+  --field: #2f3136;
+  --hover: #35373c;
+  --text: #e4e4e6;
+  --muted: #a8aab0;
+  --faint: #7c7f86;
+  --line: #36383e;
+  --line-strong: #474a51;
+  --accent: #3d8bfd;
+  --accent-ink: #ffffff;
+  --accent-soft: #1d3352;
+}
+.ws .btn-primary:hover:not(:disabled) { background: #5a9cff; }
+.ws .btn-primary:disabled { background: var(--field); border-color: var(--line); color: var(--faint); }
 body.ws { display: flex; flex-direction: column; height: 100vh; min-height: 560px; overflow: hidden; }
 body.ws > * { flex: none; }
 body.ws > main { flex: 1 1 auto; min-height: 0; }
@@ -53,7 +71,7 @@ body.ws-loading > * { visibility: hidden; }
 .ws #setupCard h2 { font-size: 13px; margin: 0; }
 .ws #setupCard p { margin: 0; }
 .ws #setupCard .setup-list { display: flex; gap: 12px; margin: 0; padding: 0; flex-wrap: wrap; }
-.ws-options { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: #191b17;
+.ws-options { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--panel);
   border-bottom: 1px solid var(--line); color: var(--muted); flex-wrap: wrap; min-height: 34px; }
 .ws-options b { color: var(--text); font-weight: 600; }
 .ws-options .sep { width: 1px; height: 18px; background: var(--line-strong); }
@@ -129,6 +147,9 @@ body.ws-loading > * { visibility: hidden; }
   overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
   box-shadow: 0 10px 28px rgba(0,0,0,.6); padding: 10px 12px; }
 .ws-pop .pipe-card { border: 0; padding: 0; margin: 0; background: none; }
+.ws-pop .pipe-title { display: none; }
+/* A step's note is a sentence to read, not a label. */
+.ws .step-note { text-transform: none; letter-spacing: normal; font-size: 12px; margin-left: 0; }
 .ws-pop .pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .ws-pop .pop-head b { font-size: 14px; }
 .ws-pop .pop-head .x { margin-left: auto; }
@@ -154,7 +175,9 @@ body.ws-loading > * { visibility: hidden; }
 .ws-home .map-list > li { flex-wrap: wrap; }
 .ws-home #presetsPanel > summary { display: none; }
 .ws-home .credit { color: var(--faint); font-size: 12px; margin: 0; }
-.ws-world { position: absolute; inset: 0; background: var(--bg); z-index: 850; overflow: auto; padding: 14px; }
+.ws-world { position: absolute; inset: 0; background: var(--bg); z-index: 1050; overflow: auto; padding: 14px 18px; }
+.ws-world .place-standalone { display: flex; align-items: center; gap: 8px; }
+.ws-world .place-standalone input { width: auto; margin: 0; }
 .ws-world[hidden] { display: none; }
 .ws-world #placeCanvas { width: 100%; height: auto; max-height: calc(100% - 150px); }
 
@@ -183,7 +206,7 @@ body.ws-loading > * { visibility: hidden; }
 .ws-pnl.ws-float .ws-pnl-body { flex: 1; }
 .ws-docwin { width: 380px; height: 300px; min-width: 220px; min-height: 160px; background: var(--panel);
   display: flex; flex-direction: column; }
-.ws-docwin img { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #10120f; }
+.ws-docwin img { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: var(--bg); }
 .ws-docwin .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-guide { position: absolute; background: #ff5fd2; z-index: 1001; pointer-events: none; display: none; }
 .ws-guide.v { width: 1px; top: 0; bottom: 0; } .ws-guide.h { height: 1px; left: 0; right: 0; }
