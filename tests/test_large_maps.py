@@ -234,6 +234,24 @@ class CheckingTheBuildings(unittest.TestCase):
         self.assertIs(check.call_args.kwargs.get("flaws"), False)
 
 
+class InstallingACity(unittest.TestCase):
+    def test_the_copy_says_how_far_it_has_got(self):
+        from tools import make_map_mod as K
+        with tempfile.TemporaryDirectory() as d:
+            project = os.path.join(d, "town")
+            os.makedirs(os.path.join(project, "lots"))
+            files = []
+            for i in range(60):
+                path = os.path.join(project, "lots", f"world_{i}_0.lotpack")
+                Path(path).write_bytes(b"x")
+                files.append(path)
+            seen = []
+            with mock.patch.object(K, "collect", return_value=(files, [])):
+                K.package(project, "town", "town", mods_dir=os.path.join(d, "mods"),
+                          on_progress=lambda done, total: seen.append((done, total)))
+        self.assertEqual(seen, [(25, 60), (50, 60), (60, 60)])
+
+
 class CarryingOnACompile(unittest.TestCase):
     def _run(self, out, rows_made, fail_at=None, resume=True):
         calls = {"read": 0}
