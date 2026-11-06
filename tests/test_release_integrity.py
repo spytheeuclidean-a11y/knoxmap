@@ -27,7 +27,13 @@ class TheShippedFileList(unittest.TestCase):
         self.assertNotIn("test_pipeline.py", self.files)
 
     def test_every_shipped_file_is_on_disk(self):
-        missing = [f for f in self.files if not (ROOT / f).exists()]
+        # KnoxMap.exe and knoxlots.exe are built by the release workflow and
+        # copied into every download; neither is committed (see
+        # test_the_binaries_come_from_the_release_and_not_the_repository), so a
+        # checkout is expected not to have them.
+        from_release = {"KnoxMap.exe", "knoxlots.exe"}
+        missing = [f for f in self.files
+                   if f not in from_release and not (ROOT / f).exists()]
         self.assertEqual(missing, [], "an update cannot put these back")
 
     def test_the_list_is_a_set(self):

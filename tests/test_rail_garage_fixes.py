@@ -22,12 +22,31 @@ from worlded import patch_rules_roads
 
 
 ROOT = Path(catalog.__file__).resolve().parents[1]
+TOOLS_RULES = ROOT / "vendor/PZMappingTools/config/Rules.txt"
+
+
+def _rules_for(folder: str) -> Path:
+    """A config folder holding the rules KnoxMap writes, without the tools.
+
+    These tests used to copy the PZMappingTools `Rules.txt` in, which is not in
+    the repository - CI has no vendor folder, so they errored there and only
+    ever ran on a machine with the tools installed. The rules they care about
+    are the ones KnoxMap adds itself, written into an empty file by the same
+    code Setup runs.
+    """
+    config = Path(folder) / "config"
+    config.mkdir(exist_ok=True)
+    (config / "Rules.txt").write_text("", encoding="utf-8")
+    with contextlib.redirect_stdout(io.StringIO()):
+        patch_rules_roads.main(["patch_rules_roads", folder])
+    return config / "Rules.txt"
 
 
 class RailGarageFixes(unittest.TestCase):
     def test_rail_tiles_survive_matching_street_detail_overlays(self):
         from generator.rail_tiles import RAIL_RULES
-        rules = load_rules(str(ROOT / "vendor/PZMappingTools/config/Rules.txt"))
+        with TemporaryDirectory() as folder:
+            rules = load_rules(str(_rules_for(folder)))
         for label, colour, expected in RAIL_RULES:
             with self.subTest(tile=expected):
                 pal = Palette()
@@ -42,11 +61,10 @@ class RailGarageFixes(unittest.TestCase):
             config = Path(folder) / "config"
             config.mkdir()
             path = config / "Rules.txt"
-            path.write_text((ROOT / "vendor/PZMappingTools/config/Rules.txt").read_text(
-                encoding="utf-8") + '\nrule\n{\n    label = Railroad NE-SW\n'
-                '    bitmap = 0\n    color = 200 30 200\n'
-                '    tiles = industry_railroad_01_6\n    layer = 0_Floor\n}\n',
-                encoding="utf-8")
+            path.write_text("rule\n{\n    label = Railroad NE-SW\n"
+                            "    bitmap = 0\n    color = 200 30 200\n"
+                            "    tiles = industry_railroad_01_6\n    layer = 0_Floor\n}\n",
+                            encoding="utf-8")
             with contextlib.redirect_stdout(io.StringIO()):
                 self.assertTrue(ensure_rail_rules(Path(folder)))
                 self.assertFalse(ensure_rail_rules(Path(folder)))
@@ -104,13 +122,15 @@ class RailGarageFixes(unittest.TestCase):
         self.assertEqual(len(joined), 1)
         self.assertEqual(list(rail_sections(joined[0])), list(rail_sections(points)))
 
+    @unittest.skipUnless(TOOLS_RULES.exists(),
+                         "needs the mapping tools' own Rules.txt, from which the "
+                         "ground blends come; a checkout has no vendor folder")
     def test_track_has_both_rails_and_sleepers_over_solid_ground(self):
         with TemporaryDirectory() as folder:
             config = Path(folder) / "config"
             config.mkdir()
             path = config / "Rules.txt"
-            path.write_text((ROOT / "vendor/PZMappingTools/config/Rules.txt").read_text(
-                encoding="utf-8"), encoding="utf-8")
+            path.write_text(TOOLS_RULES.read_text(encoding="utf-8"), encoding="utf-8")
             with contextlib.redirect_stdout(io.StringIO()):
                 patch_rules_roads.main(["patch_rules_roads", folder])
                 once = path.read_text(encoding="utf-8")
