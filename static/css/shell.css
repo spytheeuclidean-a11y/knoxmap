@@ -1,0 +1,223 @@
+/* The workspace: a menu bar, the tool's options, tools on the left, the open
+   maps as tabs with one row of steps over the map, and the panels on the right.
+   shell.js arranges the page's own controls into it; this file only lays it
+   out. KnoxMap's palette and font come from app.css. */
+
+/* A column: the bars take what they need and the work area takes the rest,
+   whether or not the setup warning is showing. */
+body.ws { display: flex; flex-direction: column; height: 100vh; min-height: 560px; overflow: hidden; }
+body.ws > * { flex: none; }
+body.ws > main { flex: 1 1 auto; min-height: 0; }
+.ws #basemaps { z-index: 800; }
+body.ws-loading > * { visibility: hidden; }
+
+/* ---- menu bar ------------------------------------------------------------- */
+.ws .topbar { gap: 2px; padding: 0 10px; height: 34px; position: relative; z-index: 1200; flex-wrap: nowrap; }
+.ws .topbar h1 { font-size: 14px; margin-right: 10px; }
+.ws .topbar .logo { width: 22px; height: 22px; image-rendering: pixelated; }
+.ws-menu { position: relative; }
+.ws-menu > button { background: none; border: 0; color: var(--text); font: inherit; padding: 4px 9px;
+  border-radius: 4px; cursor: pointer; }
+.ws-menu > button:hover, .ws-menu.open > button { background: var(--hover); }
+.ws-drop { position: absolute; top: 100%; left: 0; min-width: 270px; margin-top: 3px; padding: 5px;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.55); display: none; max-height: 80vh; overflow-y: auto; z-index: 1300; }
+.ws-menu.open .ws-drop { display: block; }
+.ws-drop button { display: flex; width: 100%; align-items: center; gap: 8px; background: none; border: 0;
+  color: var(--text); font: inherit; padding: 5px 8px; border-radius: 4px; text-align: left; cursor: pointer; }
+.ws-drop button:not(:disabled):hover { background: var(--accent-soft); }
+.ws-drop button:disabled { opacity: .4; cursor: default; }
+.ws-drop kbd { margin-left: auto; padding-left: 16px; font: 11px var(--mono); color: var(--faint); }
+.ws-drop hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.ws-drop .label { padding: 4px 8px 2px; color: var(--faint); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.ws-drop .mark { width: 12px; text-align: center; flex: none; color: var(--accent); }
+
+/* The place search lives in the bar, always one click away. */
+.ws #search-box { position: relative; top: auto; left: auto; right: auto; transform: none; margin: 0 0 0 14px;
+  flex: 0 1 440px; min-width: 220px; z-index: 1250; box-shadow: none; display: flex; align-items: center;
+  gap: 8px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px; }
+.ws #search-box input[type="search"] { flex: 1; min-width: 0; width: auto; }
+.ws #search-box .search-scope { flex: none; white-space: nowrap; font-size: 11px; margin: 0; }
+.ws #map-hint { display: none; }
+.ws .topbar select.language { display: none; }
+.ws-lang { background: none; border: 1px solid var(--line-strong); border-radius: 4px; color: var(--muted);
+  font: 12px var(--font); padding: 1px 7px; cursor: pointer; margin-right: 6px; white-space: nowrap; }
+.ws #search-results { position: absolute; top: calc(100% + 4px); left: 0; width: min(560px, 90vw); z-index: 1300; }
+.ws .byline { margin-left: auto; margin-right: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws .topbar .version-wrap { flex: none; }
+
+/* ---- setup banner, options bar ------------------------------------------- */
+.ws #setupCard { margin: 0; border-radius: 0; border-width: 0 0 1px; padding: 6px 14px; display: flex;
+  gap: 10px; align-items: center; flex-wrap: wrap; }
+.ws #setupCard[hidden] { display: none; }
+.ws #setupCard h2 { font-size: 13px; margin: 0; }
+.ws #setupCard p { margin: 0; }
+.ws #setupCard .setup-list { display: flex; gap: 12px; margin: 0; padding: 0; flex-wrap: wrap; }
+.ws-options { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: #191b17;
+  border-bottom: 1px solid var(--line); color: var(--muted); flex-wrap: wrap; min-height: 34px; }
+.ws-options b { color: var(--text); font-weight: 600; }
+.ws-options .sep { width: 1px; height: 18px; background: var(--line-strong); }
+.ws-options .lock { color: var(--warn); }
+
+/* ---- the work area --------------------------------------------------------- */
+.ws main { display: grid; grid-template-columns: 44px minmax(0, 1fr) 5px var(--dock-w, 340px);
+  height: auto; min-height: 0; }
+.ws-tools { background: var(--panel); border-right: 1px solid var(--line); display: flex;
+  flex-direction: column; align-items: center; gap: 3px; padding: 8px 0; }
+.ws-tools button { width: 32px; height: 32px; border: 0; border-radius: 5px; background: none;
+  cursor: pointer; display: grid; place-items: center; color: var(--muted); }
+.ws-tools button:not(:disabled):hover { background: var(--hover); color: var(--text); }
+.ws-tools button.on { background: var(--accent-soft); color: var(--accent); }
+.ws-tools button:disabled { opacity: .35; cursor: default; }
+.ws-tools svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round; }
+.ws-tools hr { width: 22px; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+
+/* A column again: the tabs, steps and upgrade note come and go, and the map
+   takes whatever height they leave. */
+.ws-center { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.ws-center > * { flex: none; }
+.ws #map-pane { flex: 1 1 auto; min-height: 0; }
+/* Leaflet's own draw buttons show only with the Area tool. */
+.ws:not(.tool-area) .leaflet-draw, .ws:not(.tool-area) .lasso-control { display: none; }
+
+/* tabs */
+.ws-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 4px 8px 0; background: var(--bg);
+  border-bottom: 1px solid var(--line); min-height: 32px; }
+.ws-tabs.drop-here { background: var(--accent-soft); }
+.ws-tab { display: flex; align-items: center; gap: 6px; padding: 4px 6px 4px 10px; border: 1px solid var(--line);
+  border-bottom: 0; border-radius: 5px 5px 0 0; background: var(--panel); color: var(--muted); cursor: pointer;
+  max-width: 260px; user-select: none; touch-action: none; position: relative; overflow: hidden; font-size: 13px; }
+.ws-tab.on { background: var(--hover); color: var(--text); border-color: var(--line-strong); }
+.ws-tab.home { padding-right: 10px; }
+.ws-tab .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-tab button { background: none; border: 0; color: var(--faint); cursor: pointer; width: 18px; height: 18px;
+  border-radius: 3px; display: grid; place-items: center; padding: 0; font-size: 12px; }
+.ws-tab button:hover { background: var(--line); color: var(--text); }
+.ws-tab .busy { position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: repeating-linear-gradient(-45deg, var(--warn) 0 7px, #26210f 7px 14px); }
+.ws-tabs .newtab { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 4px 8px; font-size: 15px; }
+.ws-tabs .view { margin-left: auto; margin-bottom: 4px; display: inline-flex; border: 1px solid var(--line-strong);
+  border-radius: 4px; overflow: hidden; }
+.ws-tabs .view button { background: none; border: 0; padding: 2px 10px; cursor: pointer; color: var(--muted); font: inherit; font-size: 12px; }
+.ws-tabs .view button.on { background: var(--accent); color: var(--accent-ink); font-weight: 600; }
+
+/* the steps: one slim row, and one button that does the next thing */
+.ws-flow { display: flex; align-items: center; gap: 2px; padding: 5px 10px; background: var(--hover);
+  border-bottom: 1px solid var(--line); min-height: 40px; position: relative; z-index: 1100; }
+.ws-flow[hidden] { display: none; }
+.ws-chip { flex: none; white-space: nowrap; display: flex; align-items: center; gap: 5px; padding: 2px 10px; border-radius: 999px;
+  border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; position: relative;
+  overflow: hidden; font: inherit; font-size: 13px; }
+.ws-chip:hover { background: var(--field); }
+.ws-chip .ic { width: 14px; text-align: center; font-weight: 700; }
+.ws-chip.done { color: var(--text); } .ws-chip.done .ic { color: var(--accent); }
+.ws-chip.error { color: var(--bad); border-color: var(--bad); }
+.ws-chip.next { color: var(--text); border-color: var(--accent); }
+.ws-chip.locked { opacity: .45; }
+.ws-chip.running { color: var(--text); border-color: var(--warn); }
+.ws-chip.running::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px;
+  background: repeating-linear-gradient(-45deg, var(--warn) 0 7px, #26210f 7px 14px); }
+.ws-flow .arrow { color: var(--faint); font-size: 11px; }
+.ws-flow .msg { margin-left: auto; color: var(--muted); font-size: 12px; text-align: right; max-width: 46%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-flow .msg.bad { color: var(--bad); } .ws-flow .msg.ok { color: var(--accent); }
+.ws-flow .go { margin-left: 10px; width: auto; flex: none; white-space: nowrap; padding: 4px 14px; }
+.ws-flow .msg { flex: 1 1 auto; min-width: 0; }
+.ws-flow .arrow { flex: none; }
+.ws-pop { position: absolute; top: calc(100% + 4px); z-index: 1150; width: min(560px, 92%); max-height: 70vh;
+  overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 10px 28px rgba(0,0,0,.6); padding: 10px 12px; }
+.ws-pop .pipe-card { border: 0; padding: 0; margin: 0; background: none; }
+.ws-pop .pop-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ws-pop .pop-head b { font-size: 14px; }
+.ws-pop .pop-head .x { margin-left: auto; }
+.ws-pop #results-grid { grid-template-columns: 1fr; }
+.ws-upgrade { margin: 0; border-radius: 0; }
+
+/* ---- the stage: the map, Home over it, the game world ---------------------- */
+.ws-home { position: absolute; inset: 0; overflow-y: auto; background: var(--bg); z-index: 1050; padding: 26px 30px 40px; }
+.ws-bigsearch .btn { width: auto; flex: none; padding: 8px 20px; }
+.ws-bigsearch input { min-width: 0; width: auto; }
+.ws-home[hidden] { display: none; }
+.ws-home-in { max-width: 960px; margin: 0 auto; display: grid; gap: 22px; }
+.ws-hero h1 { margin: 0 0 4px; font-size: 22px; text-wrap: balance; }
+.ws-hero p { margin: 0 0 12px; color: var(--muted); }
+.ws-bigsearch { display: flex; gap: 8px; }
+.ws-bigsearch input { flex: 1; font-size: 15px; padding: 8px 12px; background: var(--field);
+  border: 1px solid var(--line-strong); border-radius: 6px; color: var(--text); }
+.ws-or { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+.ws-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
+.ws-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 22px; align-items: start; }
+.ws-home h2 { margin: 0 0 8px; font-size: 14px; display: flex; gap: 10px; align-items: baseline; }
+.ws-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
+.ws-home .map-list > li { flex-wrap: wrap; }
+.ws-home #presetsPanel > summary { display: none; }
+.ws-home .credit { color: var(--faint); font-size: 12px; margin: 0; }
+.ws-world { position: absolute; inset: 0; background: var(--bg); z-index: 850; overflow: auto; padding: 14px; }
+.ws-world[hidden] { display: none; }
+.ws-world #placeCanvas { width: 100%; height: auto; max-height: calc(100% - 150px); }
+
+/* ---- panels on the right, which can float and be resized ------------------- */
+.ws-vsplit { cursor: col-resize; background: var(--line); }
+.ws-vsplit:hover, .ws-vsplit.on { background: var(--accent); }
+.ws #controls { padding: 0; gap: 0; overflow-y: auto; display: flex; flex-direction: column; border-left: 0; }
+.ws #controls.drop-here { outline: 2px dashed var(--accent); outline-offset: -4px; background: var(--accent-soft); }
+.ws-pnl { border-bottom: 1px solid var(--line); background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
+.ws-pnl-head { display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 8px; background: var(--panel);
+  font-weight: 600; font-size: 12px; user-select: none; cursor: grab; touch-action: none; }
+.ws-pnl-head .tw { background: none; border: 0; cursor: pointer; color: var(--muted); padding: 0 2px; }
+.ws-pnl-head .acts { margin-left: auto; display: flex; gap: 2px; }
+.ws-pnl-head .acts button { background: none; border: 0; cursor: pointer; color: var(--muted);
+  width: 22px; height: 20px; border-radius: 3px; display: grid; place-items: center; }
+.ws-pnl-head .acts button:hover { background: var(--hover); color: var(--text); }
+.ws-pnl-head svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.ws-pnl-body { padding: 8px 10px 10px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
+.ws-pnl.shut .ws-pnl-body, .ws-pnl.shut .ws-grip { display: none; }
+.ws-pnl.shut .tw { transform: rotate(-90deg); }
+.ws-grip { height: 5px; cursor: row-resize; border-top: 1px solid var(--line); flex: none; }
+.ws-grip:hover, .ws-grip.on { background: var(--accent); }
+.ws-float { position: absolute; z-index: 1000; border: 1px solid var(--line-strong); border-radius: 7px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.6); overflow: hidden; resize: both; }
+.ws-pnl.ws-float { width: 340px; max-height: calc(100% - 20px); }
+.ws-pnl.ws-float .ws-pnl-body { flex: 1; }
+.ws-docwin { width: 380px; height: 300px; min-width: 220px; min-height: 160px; background: var(--panel);
+  display: flex; flex-direction: column; }
+.ws-docwin img { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #10120f; }
+.ws-docwin .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-guide { position: absolute; background: #ff5fd2; z-index: 1001; pointer-events: none; display: none; }
+.ws-guide.v { width: 1px; top: 0; bottom: 0; } .ws-guide.h { height: 1px; left: 0; right: 0; }
+.ws-sub-h { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--faint); margin: 2px 0 -4px; }
+.ws #controls .panel { margin: 0; border: 0; padding: 0; background: none; box-shadow: none; }
+.ws #controls details > summary { cursor: pointer; }
+.ws-toolpanel > details { border: 0; }
+.ws-toolpanel > details > summary { display: none; }
+
+/* layers */
+.ws-layers { list-style: none; margin: 0; padding: 0; }
+.ws-layers li { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 4px; }
+.ws-layers .eye { background: none; border: 0; color: var(--muted); cursor: pointer; width: 20px; padding: 0; font-size: 14px; }
+.ws-layers .eye.off { color: var(--line-strong); }
+.ws-layers .sw { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.ws-layers .n { margin-left: auto; color: var(--faint); font-size: 12px; }
+
+/* status bar */
+.ws-status { display: flex; align-items: center; gap: 12px; padding: 3px 12px; background: var(--panel);
+  border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; min-height: 28px; }
+.ws-status #status { margin: 0; }
+.ws-status .right { margin-left: auto; font-variant-numeric: tabular-nums; }
+
+/* dialogs */
+.ws-dialog { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: grid; place-items: center; z-index: 2000; }
+.ws-dialog[hidden] { display: none; }
+.ws-dialog .ws-card { width: min(640px, 94vw); max-height: 86vh; overflow-y: auto; display: grid; gap: 10px; }
+.ws-dialog h3 { margin: 0; font-size: 15px; display: flex; align-items: center; }
+.ws-dialog h3 .btn { margin-left: auto; }
+.ws-dialog details > summary { display: none; }
+.ws-holder { display: none !important; }
+
+@media (max-width: 860px) {
+  .ws main { grid-template-columns: 44px minmax(0, 1fr); }
+  .ws #controls, .ws-vsplit, .ws .byline { display: none; }
+  .ws-cols { grid-template-columns: 1fr; }
+}

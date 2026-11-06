@@ -23,7 +23,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PAGE = os.path.join(ROOT, "templates", "index.html")
 SCRIPTS = (os.path.join(ROOT, "static", "js", "app.js"),
-           os.path.join(ROOT, "static", "js", "fx.js"))
+           os.path.join(ROOT, "static", "js", "fx.js"),
+           os.path.join(ROOT, "static", "js", "shell.js"))
 OUT = os.path.join(ROOT, "lang", "english.txt")
 
 HEADER = """\

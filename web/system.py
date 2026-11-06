@@ -93,12 +93,30 @@ def _language_strings(path: Path) -> dict:
     return out
 
 
+def _language_name(path: Path) -> str:
+    """What the language calls itself: a "# name: Português (Brasil)" line near the
+    top, else the file's name - which cannot carry an accent or a bracket."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for _ in range(30):
+                line = f.readline()
+                if not line:
+                    break
+                if line.lower().startswith("# name:"):
+                    name = line.split(":", 1)[1].strip()
+                    if name:
+                        return name[:40]
+    except OSError:
+        pass
+    return path.stem[:1].upper() + path.stem[1:]
+
+
 @bp.route("/api/languages")
 def api_languages():
     files = sorted(LANG_DIR.glob("*.txt")) if LANG_DIR.is_dir() else []
     import knoxpaths
     return jsonify({
-        "languages": [{"file": f.stem, "name": f.stem[:1].upper() + f.stem[1:],
+        "languages": [{"file": f.stem, "name": _language_name(f),
                        "lines": len(_language_strings(f))} for f in files],
         "current": knoxpaths.load_config().get("language", "english"),
         "folder": str(LANG_DIR),
