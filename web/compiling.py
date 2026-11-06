@@ -186,10 +186,19 @@ def api_compile():
             with _PROGRESS_LOCK:
                 _COMPILE[name] = {"state": "error", "errorId": eid,
                                   "error": "Compile timed out."}
-        except Exception as exc:
-            eid = knoxlog.record(exc, f"compile {name}: failed")
+        except MemoryError as exc:
+            eid = knoxlog.record(exc, f"compile {name}: ran out of memory")
             with _PROGRESS_LOCK:
-                _COMPILE[name] = {"state": "error", "errorId": eid, "error": str(exc)}
+                _COMPILE[name] = {"state": "error", "errorId": eid, "error": (
+                    "The compile ran out of memory. Close other programs and press "
+                    "Compile again: what it had already made is kept.")}
+        except Exception as exc:
+            # A MemoryError, among others, has no message: the window said
+            # "Compile failed" and nothing else, and the log line ended in a space.
+            what = str(exc) or type(exc).__name__
+            eid = knoxlog.record(exc, f"compile {name}: failed - {what}")
+            with _PROGRESS_LOCK:
+                _COMPILE[name] = {"state": "error", "errorId": eid, "error": what}
 
     threading.Thread(target=worker, daemon=True).start()
     return jsonify({"started": True, "expected": _expected_cells(map_dir)})
