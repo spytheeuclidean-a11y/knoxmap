@@ -13,9 +13,15 @@ from .projection import Projector
 # slicing through at its own angle should not turn the town around it.
 GRID_ROADS = {"road_minor", "road_medium", "road_service", "pedestrian"}
 # How strongly the streets must agree on a direction before the map is turned
-# to it: 1 is a perfect grid, 0 no preference. Measured on test maps, gridded
-# towns sit well above this and old organic centres below it.
-ALIGN_MIN_STRENGTH = 0.25
+# to it: 1 is a perfect grid, 0 no preference. This is measured against *all*
+# road in the box, so a town with a second phase, or rural lanes round it,
+# scores low even when its winning district is a perfectly good grid: measured
+# maps whose roads were left staircased scored 0.135 (a clear -38.9 degree
+# grid), 0.223 and 0.234, while a single-phase town scored 0.281. The old 0.25
+# cut-off turned none of the first three, so every street stayed at its
+# real-world angle. The district clustering already rejects a town with no
+# grid; this only has to reject a stray lane.
+ALIGN_MIN_STRENGTH = 0.12
 # Per-district street grid (dominant_road_angle). The map is one tile grid and
 # is turned by one angle, but the angle is chosen *per neighbourhood* now: the
 # bbox is cut into cells of this many metres, each cell measures its own local

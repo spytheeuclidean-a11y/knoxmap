@@ -457,10 +457,11 @@ def _clear_building_vegetation(veg: Image.Image, feats: list[OSMFeature],
 def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None:
     """Keep mapped woodland and scrub off every rasterized road surface."""
     import numpy as np
+    from ..rail_tiles import RAIL_RULES
 
     road_colours = np.array((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
                              C.DARKEST_ASPHALT, C.DARK_POTHOLE,
-                             C.LIGHT_POTHOLE), dtype=np.uint8)
+                             C.LIGHT_POTHOLE) + tuple(colour for _, colour, _ in RAIL_RULES), dtype=np.uint8)
     width, height = landscape.size
     for top in range(0, height, 256):
         bottom = min(height, top + 256)

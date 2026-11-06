@@ -264,6 +264,8 @@ EXTRA_FLOORS = {
     "tile_small":   "floors_interior_tilesandwood_01_7",
     "hall_runner":  "floors_interior_tilesandwood_01_28",
     "office_grey":  "floors_interior_tilesandwood_01_44",
+    # Bare concrete, the industrial kit's floor (the same one basements lay).
+    "concrete":     "carpentry_02_056",
     # Civic floors, measured in the buildings that hold a policeoffice. A
     # station is hard floor throughout: its cells are tilesandwood_01_18 and
     # nothing else, its corridors _18 and _17, its lockers and lavatories _17.

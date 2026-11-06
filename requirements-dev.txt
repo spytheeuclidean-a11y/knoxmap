@@ -1,0 +1,14 @@
+# What a contributor needs on top of requirements.txt. Never installed by
+# Setup: a player's copy has no use for a linter, and every package here is one
+# more thing that can fail on their machine.
+#
+#   pip install -r requirements-dev.txt
+#
+# The tests themselves run on unittest, with no dependencies at all:
+#
+#   python -m unittest discover tests
+#
+# pytest is here for running one file or one test by name, which unittest makes
+# awkward (`python -m pytest tests/test_placement.py -k leftovers`).
+ruff==0.17.4
+pytest==8.4.2

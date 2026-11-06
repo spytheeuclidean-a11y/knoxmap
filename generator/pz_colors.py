@@ -146,6 +146,13 @@ DUMPSTER_ORANGE_E0 = (12, 39, 212)
 DUMPSTER_ORANGE_E1 = (12, 39, 213)
 # Ground: the stone slabs of a front path or a stoop (Rules.txt "Paving Stone 4").
 PAVING_STONE = (190, 180, 180)
+# Track cross-sections: rail, sleepers, rail, over solid ballast.
+RAIL_NE_SW = (200, 30, 200)
+RAIL_NW_SE = (201, 31, 201)
+RAIL_NE_SW_W = (202, 32, 202)
+RAIL_NE_SW_E = (203, 33, 203)
+RAIL_NW_SE_N = (204, 34, 204)
+RAIL_NW_SE_S = (205, 35, 205)
 
 # Zombie spawn map: grayscale, 10x smaller than landscape/vegetation.
 # (0,0,0) = no spawns, (255,255,255) = max spawn density.
@@ -155,6 +162,8 @@ LANDSCAPE_COLORS = {
     DARK_GRASS, MEDIUM_GRASS, LIGHT_GRASS, SAND,
     DARK_ASPHALT, MEDIUM_ASPHALT, LIGHT_ASPHALT, DARKEST_ASPHALT,
     PALE_CONCRETE, PAVING, CLAY, DIRT,
+    RAIL_NE_SW, RAIL_NW_SE, RAIL_NE_SW_W, RAIL_NE_SW_E,
+    RAIL_NW_SE_N, RAIL_NW_SE_S,
     WATER, DARK_POTHOLE, LIGHT_POTHOLE,
 }
 VEGETATION_COLORS = {

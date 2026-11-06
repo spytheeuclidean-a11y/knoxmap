@@ -201,12 +201,19 @@ def _blur(a: np.ndarray, radius: int) -> np.ndarray:
     return a
 
 
-def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray) -> list:
+def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray, original: np.ndarray, pinned: np.ndarray) -> list:
     """Whole tiles for the points, the same row for every point along one
     east-west run, the same column along a north-south one and the same
     diagonal along a diagonal one - rounded one at a time, the ends of a long
     straight road can land either side of a tile edge, and it jogs."""
     n = len(moved)
+    reach = MAX_MOVE_TILES / math.sqrt(2)
+    lower = np.ceil(original - reach).astype(int)
+    upper = np.floor(original + reach).astype(int)
+    if pinned is not None:
+        lower[pinned] = upper[pinned] = np.rint(original[pinned]).astype(int)
+    bounds = {kind: [list(lower[:, axis]), list(upper[:, axis])]
+              for kind, axis in (("row", 1), ("col", 0))}
     parent = {kind: list(range(n)) for kind in ("row", "col", "down", "up")}
 
     def find(kind, a):
@@ -216,7 +223,9 @@ def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray) ->
             a = p[a]
         return a
 
-    for (a, b), (nx, ny) in zip(segs, normals):
+    order = sorted(range(len(segs)), key=lambda i: -math.dist(original[segs[i, 0]], original[segs[i, 1]]))
+    for edge in order:
+        (a, b), (nx, ny) = segs[edge], normals[edge]
         if abs(nx) < 1e-9:
             kind = "row"                  # runs along x: normal is (0, ±1)
         elif abs(ny) < 1e-9:
@@ -227,6 +236,12 @@ def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray) ->
             kind = "up"                   # along (-1, 1): x + y is constant
         ra, rb = find(kind, int(a)), find(kind, int(b))
         if ra != rb:
+            if kind in bounds:
+                lo, hi = bounds[kind]
+                left, right = max(lo[ra], lo[rb]), min(hi[ra], hi[rb])
+                if left > right:
+                    continue
+                lo[rb], hi[rb] = left, right
             parent[kind][ra] = rb
 
     def shared(kind, values):
@@ -234,12 +249,12 @@ def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray) ->
         for k in range(n):
             groups.setdefault(find(kind, k), []).append(values[k])
         mean = {g: round(sum(v) / len(v)) for g, v in groups.items()}
-        # Only where the run really did come out straight. A road the fit
-        # could not straighten - because straightening it would have dragged
-        # it off the map it is a model of - was still averaged onto one row
-        # here, which moved it bodily sideways and left the roads it met
-        # behind. That run keeps its own shape and is rounded point by point.
-        together = {g: len(v) > 1 and max(abs(x - mean[g]) for x in v) <= ROUND_SPREAD
+        # Axis runs share a tile only within their original movement bounds.
+        # Diagonals keep the fit's smaller rounding tolerance.
+        if kind in bounds:
+            lo, hi = bounds[kind]
+            mean = {g: min(hi[g], max(lo[g], m)) for g, m in mean.items()}
+        together = {g: len(v) > 1 and (kind in bounds or max(abs(x - mean[g]) for x in v) <= ROUND_SPREAD)
                     for g, v in groups.items()}
         return ([mean[find(kind, k)] for k in range(n)],
                 [together[find(kind, k)] for k in range(n)])
@@ -264,7 +279,30 @@ def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray) ->
             # Where two diagonals cross, both hold.
             y = (up[k] - down[k]) // 2
             x = down[k] + y
+        x = min(upper[k, 0], max(lower[k, 0], x))
+        y = min(upper[k, 1], max(lower[k, 1], y))
         out.append((int(x), int(y)))
+    return out
+
+
+def _square_short_bends(p0, segs, normals, pinned):
+    """Square small kinks between long grid runs, keeping major diagonals."""
+    lengths = np.linalg.norm(p0[segs[:, 1]] - p0[segs[:, 0]], axis=1)
+    axial = np.min(np.abs(normals), axis=1) < 1e-9
+    incident = {}
+    for i, (a, b) in enumerate(segs):
+        if axial[i]:
+            incident.setdefault(a, []).append(i)
+            incident.setdefault(b, []).append(i)
+    out = normals.copy()
+    for i, (a, b) in enumerate(segs):
+        if axial[i] or lengths[i] > MAX_MOVE_TILES or pinned[a] or pinned[b]:
+            continue
+        before = [j for j in incident.get(a, ()) if lengths[j] >= 2 * lengths[i]]
+        after = [j for j in incident.get(b, ()) if lengths[j] >= 2 * lengths[i]]
+        if before and after:
+            j = max(before + after, key=lambda j: lengths[j])
+            out[i] = normals[j]
     return out
 
 
@@ -337,6 +375,7 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
     if not segs:
         return 0
     segs, normals, weights = np.array(segs), np.array(normals), np.array(weights)
+    normals = _square_short_bends(p0, segs, normals, pinned)
     moved = _fit(p0, segs, normals, weights, pinned)
     # Nothing may be dragged a block from where the survey put it. Whatever
     # wanted to be is pinned and the fit run again - the roads around it take
@@ -349,7 +388,7 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
         moved = _fit(p0, segs, normals, weights, pinned)
 
     # --- the roads, from the moved points ---------------------------------
-    snapped = _round_together(moved, segs, normals)
+    snapped = _round_together(moved, segs, normals, p0, pinned)
     for f, held, verts in zip(roads, rigid, road_vertices):
         if held:
             continue
@@ -361,7 +400,7 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
             f.geometry = [proj.to_latlon(x, y) for x, y in path]
 
     # --- everything else moves with the roads near it ---------------------
-    disp = moved - p0
+    disp = np.asarray(snapped, dtype=float) - p0
     samples = []
     for held, verts, px in zip(rigid, road_vertices, road_px):
         if held:

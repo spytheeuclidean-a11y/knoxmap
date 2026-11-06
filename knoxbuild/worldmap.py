@@ -143,6 +143,7 @@ def write(out_dir: str, map_name: str, proj, info: dict,
         replay(feats, proj, classify, _is_polygon, info, out_dir, map_name)
     clip = shape_px(info.get("shape"), proj)
     streets: dict[str, list[tuple[LineString, float]]] = {}
+    railways = []
     for feat in feats:
         if feat.kind == "node":
             continue
@@ -170,12 +171,7 @@ def write(out_dir: str, map_name: str, proj, info: dict,
             if name and cat in NAMED_CLASSES:
                 streets.setdefault(name, []).append((line, width_tiles))
         elif cat == "railway" and not _is_polygon(feat):
-            line = _line(feat, proj)
-            if line is not None:
-                poly = _clean(line.buffer(RAIL_WIDTH_M / metres_per_tile / 2,
-                                          cap_style=2, join_style=2))
-                if poly is not None:
-                    features.append((poly, "railway", "rail"))
+            railways.append(feat)
         elif cat in AREA_VALUE and _is_polygon(feat):
             key, value = AREA_VALUE[cat]
             for ring in _outer_rings(feat, proj):
@@ -194,6 +190,13 @@ def write(out_dir: str, map_name: str, proj, info: dict,
                 if poly is not None and poly.area >= MIN_PLACE_TILES:
                     spot = poly.representative_point()
                     labels.append((name, "text-place", PLACE_SCALE, spot.x, spot.y))
+
+    from generator.rendering.rails import rail_paths
+    for path in rail_paths(railways, proj):
+        poly = _clean(LineString(path).buffer(RAIL_WIDTH_M / metres_per_tile / 2,
+                                             cap_style=2, join_style=2))
+        if poly is not None:
+            features.append((poly, "railway", "rail"))
 
     for sea in sea_polygons(feats, proj):
         for part in getattr(sea, "geoms", None) or [sea]:

@@ -1414,7 +1414,11 @@ loadPresets();
 
 // ---- setup check -----------------------------------------------------------------
 
+let setupChecking = false;
+
 async function checkSetup() {
+  if (setupChecking) return;
+  setupChecking = true;
   try {
     const res = await fetch('/api/setup-status');
     const data = await res.json();
@@ -1429,8 +1433,18 @@ async function checkSetup() {
         <b>${escapeHtml(c.label)}</b>${c.ok ? '' : ` — ${escapeHtml(c.fix)}`}</li>`).join('');
     card.hidden = false;
   } catch (_) { /* the page still works without the check */ }
+  finally { setupChecking = false; }
 }
 checkSetup();
+// Setup.bat installs into the map tools' folder from another window, and this
+// card is worked out once when the page opens. A row it got wrong went on
+// saying "Run Setup.bat again" long after Setup had done it, which reads as
+// Setup having failed. Coming back to the window asks again, as does a
+// finished health check.
+window.addEventListener('focus', checkSetup);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) checkSetup();
+});
 
 // ---- health check ----------------------------------------------------------------
 //
@@ -1471,6 +1485,10 @@ document.getElementById('healthBtn').addEventListener('click', async () => {
     out.innerHTML = `<p class="hint">Could not check: ${escapeHtml(err.message)}</p>`;
   } finally {
     btn.disabled = false;
+    // The same checks the card above is built from, so it is filled in again
+    // from this answer: Setup run while the window was open used to leave the
+    // card saying "Run Setup.bat again" for the rest of the session.
+    checkSetup();
   }
 });
 
@@ -2676,7 +2694,8 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       // Sent again so the buildings can be regenerated with different
       // settings without re-downloading the town from OSM.
-      body: JSON.stringify({ mapName: currentMap, settings: settingsForRequest() }),
+      body: JSON.stringify({ mapName: currentMap, settings: settingsForRequest(),
+                             sketch: sketchGeoJSON() }),
     });
     const data = await res.json();
     if (wasStopped(data, res)) {
@@ -2685,6 +2704,7 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
       return;
     }
     if (!res.ok) throw apiError(data, res);
+    if (data.terrain) renderResults(data.terrain);
     note('buildingsNote', `${data.count} buildings → ${data.pzw}`, 'ok');
     renderCensus(data.population);
     document.getElementById('worldedBtn').disabled = false;

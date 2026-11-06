@@ -80,7 +80,9 @@ LANDSCAPE_FILL = {
     "dirt_path": C.DIRT,
     "paved_path": C.PALE_CONCRETE,
     "pier": C.PALE_CONCRETE,
-    "railway": C.LIGHT_ASPHALT,
+    # Dirt, not lightgravel: a rail bed is bare earth and gravel, and the pale
+    # gravel strip read as a sandy footpath across the whole map.
+    "railway": C.DIRT,
     "grass": C.MEDIUM_GRASS,
     "park": C.MEDIUM_GRASS,
     "farmland": C.LIGHT_GRASS,

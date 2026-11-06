@@ -1,12 +1,21 @@
 # The Windows launcher, built by .github/workflows/launcher.yml and put in
 # the Windows download. A binary does not belong in the repository.
 /KnoxMap.exe
+# The Rust map compiler, built by .github/workflows/knoxlots.yml and put in
+# every download. Same rule as the launcher: the release carries the binary,
+# the repository carries the source (rust/knoxlots) - not one of each, which is
+# what it used to be. A copy built here by hand still works; it just is not
+# committed. `git rm --cached knoxlots.exe` untracks the one that is.
+/knoxlots.exe
+/knoxlots
 
 # Python
 __pycache__/
 *.py[cod]
 .venv/
 venv/
+.ruff_cache/
+.pytest_cache/
 
 # Generated maps, OpenStreetMap downloads and compiled lots. Large, and built
 # from OSM data rather than source. The folder itself is kept.
@@ -49,7 +58,6 @@ logs/
 
 # Downloaded updates (updater.py)
 update/
-.knoxmap_files.json
 
 # Buildings built by hand (knoxbuild/presets.py, knoxbuild/designer.py).
 # Somebody's own buildings, kept beside the app rather than in it.

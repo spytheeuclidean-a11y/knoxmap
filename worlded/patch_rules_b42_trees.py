@@ -47,6 +47,9 @@ import shutil
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import knoxpaths  # noqa: E402
+
 # The green one on each sheet. Deciduous sheets run bare, snowy, spring,
 # summer, autumn, late autumn; the evergreens have no seasons to run through.
 # Which of them is stored matters less than it looks - Knox County's own maps
@@ -216,7 +219,6 @@ def main(argv: list[str]) -> int:
     # Our own rules, rewritten whole, so a changed tile reaches an install
     # patched by an older version.
     old = len(re.findall(rf"label = {MARKER} ", text))
-    text = re.sub(rf"\n?rule\n\{{\n    label = {MARKER} .*?\n\}}\n?", "\n", text, flags=re.S)
     blocks = []
     for label, (r, g, b), tiles in ours:
         listed = "".join(f"        {t}\n" for t in tiles)
@@ -227,11 +229,14 @@ def main(argv: list[str]) -> int:
                       f"    tiles = [\n{listed}    ]\n"
                       "    layer = 0_Vegetation\n"
                       "}\n")
-    text = text.rstrip("\n") + "\n\n" + "\n".join(blocks)
+    # Laid where the last run put them, not appended: Setup runs this before
+    # the roads patcher, and appending made the two take turns being last, so
+    # Rules.txt changed on every setup and every incremental compile with it.
+    text = knoxpaths.lay_rule_blocks(text, MARKER, blocks)
 
     if text == before:
         print("trees already up to date")
-        return 0
+        return _finish(root)
     rules.write_text(text, encoding="utf-8")
     print(f"tree tiles repointed  : {n_trees} across "
           f"{len(DECIDUOUS)} species and {len(SIZE_INDEX)} sizes")
@@ -241,7 +246,23 @@ def main(argv: list[str]) -> int:
               f"sheet for: {', '.join(sorted(set(left_out))[:4])}")
     print(f"flower tiles repointed: {n_flowers} -> {FLOWER_SHEET}")
     print(f"wrote {rules}")
-    return 0
+    return _finish(root)
+
+
+def _finish(root: Path) -> int:
+    """0 when the file is what the window's setup card asks for, else 3.
+
+    The same question, from the same place (knoxpaths.tree_rules_ok), so Setup
+    can trust this exit code. It used to be 0 for a run that wrote nothing -
+    the jumbo sheets not extracted yet, say - which meant Setup reported success
+    while the card stayed red, with nothing anywhere saying why.
+    """
+    if knoxpaths.tree_rules_ok(root):
+        return 0
+    print("the tree rules are still not the ones the map tools need: KnoxMap's "
+          "rules are missing or a tree still stands on a picture the game does "
+          "not define as one", file=sys.stderr)
+    return 3
 
 
 if __name__ == "__main__":

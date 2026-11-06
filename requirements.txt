@@ -1,8 +1,20 @@
-flask>=3.0
-pillow>=10.0
-requests>=2.31
-pyproj>=3.6
-shapely>=2.0
-osmium>=4.0
-numpy>=1.26
-pywebview>=6.0
+# What Setup installs, pinned to the versions KnoxMap is run against.
+#
+# These used to be floors ("flask>=3.0", "numpy>=1.26"), which meant a Setup run
+# six months later installed whatever was newest that day - a major version
+# nobody had tested - on a player's PC, and they had no way back. Setup.bat and
+# setup.sh both install this file, so it is the only version list that matters.
+#
+# A full `pip freeze` cannot be used here instead: pywebview pulls different
+# packages on each system (pythonnet on Windows, Qt on Linux, pyobjc on macOS),
+# so a freeze from one machine will not install on another. So the eight
+# packages KnoxMap imports are pinned exactly, and pip resolves their own
+# dependencies.
+flask==3.1.3
+pillow==12.3.0
+requests==2.34.2
+pyproj==3.8.0
+shapely==2.1.2
+osmium==4.3.2
+numpy==2.5.3
+pywebview==6.2.1

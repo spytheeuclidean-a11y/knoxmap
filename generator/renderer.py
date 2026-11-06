@@ -42,7 +42,7 @@ from .rendering.furniture import (CRACK_SHARE, DRAIN_EVERY,
                                   ROAD_FURNITURE_INTERVALS, SPEED_BY_WIDTH,
                                   SPEED_SIGN_EVERY, _mod_tiles_ready,
                                   _paint_street_furniture)  # noqa: F401
-from .rendering.geometry import (_draw_line, _draw_polygon, _feature_coords_px,
+from .rendering.geometry import (_draw_line, _draw_roads, _draw_polygon, _feature_coords_px,
                                  _is_polygon, _paint_multipolygon,
                                  _pixel_width)  # noqa: F401
 from .rendering.gridangle import (ALIGN_MIN_STRENGTH, DISTRICT_CELL_M,
@@ -60,7 +60,8 @@ from .rendering.projection import (Projector, _ceil_to, _inside, cover_bbox,
                                    shape_px)  # noqa: F401
 from .rendering.roads import (_paint_road_details, _pave_dense_ground,
                               _real_kerbs, _road_hierarchy_image,
-                              _smooth_road_edges, _weather_roads)  # noqa: F401
+                              _smooth_road_edges, _weather_roads,
+                              paint_rails)  # noqa: F401
 from .rendering.sea import sea_polygons  # noqa: F401
 from .rendering.shape import THROUGH_ROADS, _clip_to_shape  # noqa: F401
 from .rendering.vegetation import (BOX_STRIP_ROWS, GARDEN_CLEAR_OF_HOUSE,
@@ -366,32 +367,29 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             # use: painted first, a park or a lawn mapped up to the kerb erased
             # the pavement and the tarmac met the grass. One pass so a side
             # street's pavement cannot cut across the high street it joins.
-            for road in ("road_service", "road_minor", "road_medium", "road_major"):
-                for feat in buckets.get(road, []):
-                    if _is_polygon(feat):
-                        continue
-                    margin = _sidewalk_width_m(feat, road)
-                    width_px = _pixel_width(_way_width_m(feat, road) + 2 * margin,
-                                            meters_per_tile)
-                    _draw_line(l_draw, ground_rings(feat),
-                               C.PALE_CONCRETE, width_px)
-            for road in ("road_service", "road_minor", "road_medium", "road_major"):
-                for feat in buckets.get(road, []):
-                    if _is_polygon(feat):
-                        continue
-                    verge = _verge_width_m(feat, road)
-                    width_px = _pixel_width(_way_width_m(feat, road) + 2 * verge,
-                                            meters_per_tile)
-                    _draw_line(l_draw, ground_rings(feat),
-                               C.DARK_GRASS, width_px)
+            for fill, margin_for in ((C.PALE_CONCRETE, _sidewalk_width_m),
+                                     (C.DARK_GRASS, _verge_width_m)):
+                strokes = []
+                for road in ("road_service", "road_minor", "road_medium", "road_major"):
+                    for feat in buckets.get(road, []):
+                        if _is_polygon(feat):
+                            continue
+                        width = _way_width_m(feat, road) + 2 * margin_for(feat, road)
+                        strokes.append((_pixel_width(width, meters_per_tile), ground_rings(feat)))
+                _draw_roads(landscape, strokes, fill)
         fill = LANDSCAPE_FILL.get(cat)
         if fill is None:
             continue
+        if cat in ROAD_WIDTHS_M:
+            strokes = [(_pixel_width(_way_width_m(feat, cat), meters_per_tile), ground_rings(feat))
+                       for feat in buckets.get(cat, []) if not _is_polygon(feat)]
+            _draw_roads(landscape, strokes, fill)
         for feat in buckets.get(cat, []):
+            if cat == "railway" and not _is_polygon(feat):
+                continue  # the continuous track pass supplies its own ballast
             rings = _feature_coords_px(feat, proj)
             if cat in ROAD_WIDTHS_M and not _is_polygon(feat):
-                width_px = _pixel_width(_way_width_m(feat, cat), meters_per_tile)
-                _draw_line(l_draw, ground_rings(feat), fill, width_px)
+                continue  # Painted together so split ways share the same beveled join.
             elif feat.kind == "relation":
                 _paint_multipolygon(landscape, feat, proj, fill)
             elif _is_polygon(feat):
@@ -400,6 +398,9 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 # A river or canal mapped only as its centre line.
                 metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
                 _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
+
+    # Track and ballast share the same continuous route.
+    paint_rails(l_draw, buckets, proj)
 
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:

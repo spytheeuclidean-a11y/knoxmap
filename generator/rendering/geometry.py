@@ -102,3 +102,42 @@ def _draw_line(draw: ImageDraw.ImageDraw, rings: list[list[tuple[float, float]]]
             if r > 0:
                 for x, y in ring:
                     draw.ellipse((x - r, y - r, x + r, y + r), fill=fill)
+
+
+def _draw_roads(image: Image.Image, strokes, fill) -> None:
+    """Constant-width road strokes, joined across OSM ways with 45-degree bevels."""
+    from shapely.geometry import LineString
+    from shapely.ops import linemerge, unary_union
+
+    groups = {}
+    for width, rings in strokes:
+        width = max(1, int(round(width)))
+        for ring in rings:
+            points = [(round(x, 6), round(y, 6)) for x, y in ring]
+            if len(set(points)) > 1:
+                groups.setdefault(width, []).append(points)
+    for width, rings in groups.items():
+        if width == 1:
+            _draw_line(ImageDraw.Draw(image), rings, fill, width)
+            continue
+        # Pillow includes both polygon boundaries: subtract one to keep even widths exact.
+        shift = 0.5 if width % 2 == 0 else 0.0
+        lines = [LineString([(x + shift, y + shift) for x, y in ring]) for ring in rings]
+        network = unary_union(lines)
+        if network.geom_type == "MultiLineString":
+            network = linemerge(network)
+        surface = network.buffer((width - 1) / 2, cap_style="round", join_style="bevel")
+        if surface.is_empty:
+            continue
+        x0, y0, x1, y1 = surface.bounds
+        left, top = max(0, math.floor(x0)), max(0, math.floor(y0))
+        right, bottom = min(image.width, math.ceil(x1) + 1), min(image.height, math.ceil(y1) + 1)
+        if right <= left or bottom <= top:
+            continue
+        mask = Image.new("L", (right - left, bottom - top), 0)
+        draw = ImageDraw.Draw(mask)
+        for poly in getattr(surface, "geoms", None) or [surface]:
+            draw.polygon([(round(x - left), round(y - top)) for x, y in poly.exterior.coords], fill=255)
+            for hole in poly.interiors:
+                draw.polygon([(round(x - left), round(y - top)) for x, y in hole.coords], fill=0)
+        image.paste(fill, (left, top, right, bottom), mask)

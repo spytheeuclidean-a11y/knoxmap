@@ -53,9 +53,19 @@ _PEAK_DEPTHS = {1: "Point5", 2: "One", 3: "OnePoint5", 4: "Two", 5: "TwoPoint5"}
 _NO_CAPS = {"cappedW": False, "cappedN": False, "cappedE": False, "cappedS": False}
 
 
-def _peak_depth(across: int) -> str:
-    """BuildingEd's depth for a 45-degree peaked roof this many tiles across."""
-    return _PEAK_DEPTHS.get(across, "Three")
+_SHALLOW_DEPTH = "OnePoint5"
+
+
+def _peak_depth(across: int, shallow: bool = False) -> str:
+    """BuildingEd's depth for a 45-degree peaked roof this many tiles across.
+
+    `shallow` lowers it: on a garage the full depth is a roof taller than the
+    walls beneath it.
+    """
+    depth = _PEAK_DEPTHS.get(across, "Three")
+    if shallow and depth in ("Three", "TwoPoint5", "Two"):
+        return _SHALLOW_DEPTH
+    return depth
 
 
 # A one-storey part of a two-storey house is pitched too (it was always flat); only a strip
@@ -74,7 +84,7 @@ MANY_WING_PEAK30_MAX = 7
 MANY_WING_MIN_PITCHED_AREA = 8
 
 
-def _roof_pieces(rects, peaked: bool, roof30: bool = True):
+def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False, gable_only: bool = False):
     """(RoofType, Depth, caps, (x, y, w, h)) for each roof over a footprint.
 
     Flat roofs are never capped: at depth three a cap is a storey-high wall of
@@ -99,19 +109,23 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True):
         along_x = rw >= rh
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
         steep_block = len(rects) >= MANY_WING_RECTS and across > MANY_WING_PEAK30_MAX
-        if not roof30 or steep_block or across > PEAK30_MAX_ACROSS + 2 or across < PEAK_MIN_TILES:
+        if not roof30 or across < 3 or (not gable_only and (
+                steep_block or across > PEAK30_MAX_ACROSS + 2 or across < PEAK_MIN_TILES)):
             cap = dict(_NO_CAPS)
             if along_x:
                 cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
-                out.append(("PeakWE", _peak_depth(rh), cap, (rx, ry, rw, rh)))
+                out.append(("PeakWE", _peak_depth(rh, shallow), cap, (rx, ry, rw, rh)))
             else:
                 cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
-                out.append(("PeakNS", _peak_depth(rw), cap, (rx, ry, rw, rh)))
+                out.append(("PeakNS", _peak_depth(rw, shallow), cap, (rx, ry, rw, rh)))
             continue
         odd = across if across % 2 else across - 1
+        if gable_only:
+            # Stock shallow gables stop at eleven; surplus stays behind the far eave.
+            odd = min(odd, PEAK30_MAX_ACROSS)
         # Hips only on small houses: across a wide one the four slopes meet
         # in a tall point that looks like a hat.
-        hip = single and odd <= HIP_MAX_ACROSS and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0
+        hip = not gable_only and single and odd <= HIP_MAX_ACROSS and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0
         cap = dict(_NO_CAPS)
         if along_x:
             box = (rx, ry + (rh - odd), rw, odd)
@@ -299,6 +313,15 @@ def render_tbx(plan: Plan | Building, name: str,
             entry, curtains = style["shop_front"]
             front_idx = _add(entries, entry)
             front_curtains = _add(entries, curtains)
+    # Garages use the stock low shingled gable, independent of their wall style.
+    garage_only = bool(building.rooms) and all(r.kind == "garage"
+                                               for r in building.rooms)
+    garage_kit = next(s["roof"] for s in C.HOUSE_STYLES if s["name"] == "brick") if garage_only else None
+    if garage_kit:
+        garage_kit = dict(garage_kit, caps=next(s["roof"]["caps"] for s in C.HOUSE_STYLES if s["name"] == "clapboard"))
+        slope_idx = _add(entries, garage_kit["slopes"])
+        top_idx = _add(entries, garage_kit["tops"])
+        peaked = roof30 = True
     # With Erika's Tiles, a shop front is a wall of glass in a painted frame,
     # not windows set in brick, and a sign hangs over it.
     runs: list[tuple[str, int, int, int]] = []
@@ -335,13 +358,13 @@ def render_tbx(plan: Plan | Building, name: str,
     # building a cap entry whose gaps are its own exterior wall.
     ext_tiles = entries[exterior_idx - 1]["tiles"]
     if ext_tiles.get("West") and ext_tiles.get("North"):
-        base = ((style or {}).get("roof") or {}).get("caps") or entries[C.ROOF_CAP - 1]
+        base = (garage_kit or (style or {}).get("roof") or {}).get("caps") or entries[C.ROOF_CAP - 1]
         cap = dict(base["tiles"])
         cap["CapGapE3"], cap["CapGapS3"] = ext_tiles["West"], ext_tiles["North"]
         entries.append({"category": "roof_caps", "tiles": cap})
         roof_cap_idx = len(entries)
 
-    rooftop = [] if peaked else _rooftop(
+    rooftop = [] if peaked or garage_only else _rooftop(
         storeys[-1].grid, building.width, building.height, name)
     # Which furniture roles this building actually uses, in first-use order.
     roles: list[str] = []
@@ -560,7 +583,8 @@ def render_tbx(plan: Plan | Building, name: str,
         # still three door objects - BuildingEd has no object that spans more
         # than one tile - but each takes its own third of the garage door
         # tile instead of all three using the plain house door.
-        garage_tiles = getattr(storey, "garage_door_tiles", ())
+        garage_tiles = sorted(getattr(storey, "garage_door_tiles", ()),
+                              key=lambda edge: edge[0] if edge[2] == "N" else -edge[1])
 
         for x, y, direction in storey.doors:
             # In the shop glass: a glass door, framed by the glass wall itself.
@@ -568,11 +592,13 @@ def render_tbx(plan: Plan | Building, name: str,
             garage_pos = (garage_tiles.index((x, y, direction))
                           if (x, y, direction) in garage_tiles else None)
             if garage_pos is not None:
-                # garage_tiles is (center, neighbour, neighbour): position 0
-                # is the original door tile before _widen_vehicle_entry grew
-                # it sideways, which ends up in the middle of the opening, not
-                # on the left. remap to the catalog's left/mid/right order.
-                garage_slot = (1, 0, 2)[garage_pos]
+                # IsoDoor links panels along +x for N walls and -y for W walls.
+                garage_slot = garage_pos
+                # Garage sprites supply their own frame; clear the single-door jambs.
+                out.append("  <object" + _attrs([
+                    ("type", "wall"), ("length", 1), ("InteriorTile", 0),
+                    ("ExteriorTrim", 0), ("InteriorTrim", 0), ("x", x), ("y", y),
+                    ("dir", "N" if direction == "W" else "W"), ("Tile", 0)]) + "/>")
                 attrs = [("type", "door"), ("FrameTile", 0),
                          ("x", x), ("y", y), ("dir", direction),
                          ("Tile", C.GARAGE_DOOR[garage_slot])]
@@ -660,7 +686,8 @@ def render_tbx(plan: Plan | Building, name: str,
         if roof and any(any(row) for row in exposed):
             rects = roof_rects(exposed)
             for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(
-                    rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30):
+                    rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30,
+                    gable_only=garage_only):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),

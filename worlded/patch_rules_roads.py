@@ -21,6 +21,10 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import knoxpaths  # noqa: E402
+from generator.rail_tiles import RAIL_RULES
+
 # Rules.txt has no comment syntax - a "#" line makes WorldEd reject the whole
 # file - so the rules carry the marker in their labels instead.
 MARKER = "KnoxMap road"
@@ -184,12 +188,33 @@ def main(argv: list[str]) -> int:
         print(__doc__)
         return 2
     rules_path = Path(argv[1]) / "config" / "Rules.txt"
+    if not rules_path.is_file():
+        # Said as a sentence, not as a traceback: Setup prints what a script
+        # says into logs/setup.log, and that is where somebody reads it.
+        print(f"Rules.txt not found under {rules_path.parent}", file=sys.stderr)
+        return 2
     text = rules_path.read_text(encoding="utf-8", errors="replace")
     # Replace every rule of ours with the current set, so a changed tile or
     # layer reaches an install patched by an older version.
     old = len(re.findall(rf"label = {MARKER} ", text))
-    text = re.sub(rf"\n?rule\n\{{\n    label = {MARKER} .*?\n\}}\n?", "\n", text, flags=re.S)
+    # The old transparent single rail replaced 0_Floor, leaving black holes.
+    # Our own blocks are rewritten in place further down, by
+    # knoxpaths.lay_rule_blocks, rather than stripped and appended - appending
+    # is what made this file change on every Setup (see that function).
+    text = re.sub(r"\n?rule\s*\{\s*label = Railroad (?:NE-SW|NW-SE)\s.*?\}\s*",
+                  "\n", text, flags=re.S)
     blocks = []
+    rail_blocks = []
+    for label, (r, g, b), rail in RAIL_RULES:
+        for tile, layer in (("lightgravel", "0_Floor"), (rail, "0_FloorOverlay6")):
+            rail_blocks.append(
+                "rule\n{\n"
+                f"    label = {MARKER} {label} {layer}\n"
+                "    bitmap = 0\n"
+                f"    color = {r} {g} {b}\n"
+                f"    tiles = {tile}\n"
+                f"    layer = {layer}\n"
+                "}\n")
     tilesets = Path(argv[1]) / "config" / "Tilesets.txt"
     rules = list(RULES)
     if tilesets.exists() and "Erikas_Tiles.pack/street_roadsigns_erika_01\n" in \
@@ -215,15 +240,32 @@ def main(argv: list[str]) -> int:
             f"    tiles = {tile}\n"
             f"    layer = {layer}\n"
             "}\n")
-    new_text = text.rstrip("\n") + "\n\n" + "\n".join(blocks)
+    # Track must survive asphalt cracks and other details sharing its overlay.
+    blocks.extend(rail_blocks)
+    new_text = knoxpaths.lay_rule_blocks(text, MARKER, blocks)
     if new_text == rules_path.read_text(encoding="utf-8", errors="replace"):
         print("road details already up to date")
-        return 0
+        return _finish(Path(argv[1]))
     rules_path.write_text(new_text, encoding="utf-8")
     print(f"wrote {len(blocks)} road detail rules to {rules_path} (replacing {old})")
     if dropped:
         print(f"    left out {len(dropped)} blank tiles: {', '.join(sorted(set(dropped)))}")
-    return 0
+    return _finish(Path(argv[1]))
+
+
+def _finish(root: Path) -> int:
+    """0 when the file is what the window's setup card asks for, else 3.
+
+    The same question, from the same place (knoxpaths.road_rules_ok), so Setup
+    can trust this exit code: a file without the kerb and street-furniture
+    rules is not "set up", however cleanly the run went.
+    """
+    if knoxpaths.road_rules_ok(root):
+        return 0
+    print("the road rules are still not the ones the map tools need: the kerb and "
+          "street-furniture rules are missing, or the litter rule still names a "
+          "blank tile", file=sys.stderr)
+    return 3
 
 
 if __name__ == "__main__":
