@@ -58,7 +58,6 @@ logs/
 
 # Downloaded updates (updater.py)
 update/
-.knoxmap_files.json
 
 # Buildings built by hand (knoxbuild/presets.py, knoxbuild/designer.py).
 # Somebody's own buildings, kept beside the app rather than in it.

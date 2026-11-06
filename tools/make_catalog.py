@@ -5,6 +5,12 @@ names come from the same data BuildingEd itself loads:
 
     python tools/make_catalog.py ../PZMappingTools/config /tmp/catalog_gen.py
 
+This is a starting point, not a round trip. The committed
+`knoxbuild/catalog.py` was generated here once and then extended by hand -
+GAME_WALL_STYLES, the escalators, the interior wall sets and others are not
+in this script's output - so running it over the committed file would drop
+those sections. Write somewhere else and diff, never in place.
+
 Entries are selected by tile NAME, never by position. An earlier version indexed
 into BuildingTemplates.txt numerically, which silently pointed at the wrong
 entries when run against a different revision of the file - and picked
