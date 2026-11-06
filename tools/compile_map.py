@@ -540,9 +540,12 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-@contextlib.contextmanager
-def _only_one(project: Path, run: str):
-    """Hold this project's compile lock for the length of a run."""
+def claim(project: Path, run: str, doing: str = "compiled") -> None:
+    """Take this project's lock, or raise RuntimeError while another KnoxMap
+    process holds it. Generating and building take it as well as compiling:
+    two windows open at once once built the same 232,000-building map side by
+    side, each taking the memory the other needed."""
+    project = Path(project)
     path = project / LOCK_FILE
     try:
         held = json.loads(path.read_text(encoding="utf-8"))
@@ -552,23 +555,42 @@ def _only_one(project: Path, run: str):
         pid = int(held.get("pid") or 0)
         if pid != os.getpid() and _pid_alive(pid):
             raise RuntimeError(
-                f"{project.name} is already being compiled (run {held.get('run')}, "
-                f"process {pid}). Wait for that to finish, or stop it, rather than "
-                f"running two - they write the same files.")
-        knoxlog.log.warning("compile %s [%s]: cleared a lock left by run %s (process "
-                            "%s is gone)", project.name, run, held.get("run"), pid)
+                f"{project.name} is already being {held.get('doing') or 'compiled'} "
+                f"(run {held.get('run')}, process {pid}) - by another KnoxMap window, or "
+                f"one still running after its window closed. Wait for that to finish, "
+                f"or stop it, rather than running two - they write the same files.")
+        if pid != os.getpid():
+            knoxlog.log.warning("%s [%s]: cleared a lock left by run %s (process %s is gone)",
+                                project.name, run, held.get("run"), pid)
     try:
-        path.write_text(json.dumps({"pid": os.getpid(), "run": run,
+        path.write_text(json.dumps({"pid": os.getpid(), "run": run, "doing": doing,
                                     "started": time.time()}), encoding="utf-8")
     except OSError:
         pass                      # a lock that cannot be written is not a reason to stop
+
+
+def release(project: Path, run: str) -> None:
+    """Let go of a lock taken with claim(), if it is still this run's."""
+    path = Path(project) / LOCK_FILE
     try:
-        yield
-    finally:
+        held = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    if isinstance(held, dict) and held.get("run") == run:
         try:
             path.unlink()
         except OSError:
             pass
+
+
+@contextlib.contextmanager
+def _only_one(project: Path, run: str, doing: str = "compiled"):
+    """Hold this project's lock for the length of a run."""
+    claim(project, run, doing)
+    try:
+        yield
+    finally:
+        release(project, run)
 
 
 def failed_cells(project_dir: str | Path) -> list[dict]:

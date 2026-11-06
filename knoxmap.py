@@ -98,7 +98,46 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001 - see in_a_browser
         knoxlog.log.warning("no native window (%s); opening a browser instead", exc)
         return show_in_browser(url)
+    end_jobs()
     return 0
+
+
+def _busy_threads() -> list[threading.Thread]:
+    """Threads doing a job for the window: requests, and the compile's worker."""
+    return [t for t in threading.enumerate()
+            if t is not threading.current_thread() and t.is_alive()
+            and ("process_request_thread" in t.name or t.name.endswith("(worker)"))]
+
+
+def end_jobs(grace: float = 15.0) -> None:
+    """The window is gone: stop whatever it left running, and leave.
+
+    Python will not exit while a process pool still has work queued, so a
+    window closed while a city's buildings were being laid out left KnoxMap
+    running unseen for hours - holding memory, and building the same map
+    alongside the next window opened on it. Every job is asked to stop, as the
+    Stop button does (it keeps what is finished), given a few seconds to do so,
+    and whatever is left of its worker processes is ended with it.
+    """
+    import multiprocessing
+
+    import knoxlog
+
+    if not _busy_threads() and not multiprocessing.active_children():
+        return                      # nothing running: leave the usual way
+    from web import jobs
+    jobs.stop_all()
+    # Until the jobs have stopped and saved what they had. A stopped pool's
+    # worker processes idle on after it, so they are not waited for.
+    deadline = time.time() + grace
+    while time.time() < deadline and _busy_threads():
+        time.sleep(0.25)
+    for child in multiprocessing.active_children():
+        child.terminate()
+    knoxlog.log.info("window closed: running jobs stopped")
+    import logging
+    logging.shutdown()
+    os._exit(0)
 
 
 def in_a_browser() -> bool:
@@ -149,6 +188,7 @@ def show_in_browser(url: str) -> int:
         while True:
             time.sleep(3600)
     except KeyboardInterrupt:
+        end_jobs()
         return 0
 
 

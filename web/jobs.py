@@ -37,11 +37,44 @@ def _set_progress(map_name: str, **fields) -> None:
 # off the list when the job it stopped notices, so the next run is not
 # stopped before it starts.
 _STOPPING: set[str] = set()
+# Every job, at once: the window has closed (knoxmap.py).
+_STOP_ALL = threading.Event()
 
 
 def _stopper(map_name: str):
     """A callable the long jobs poll: True once the window has asked."""
-    return lambda: map_name in _STOPPING
+    return lambda: map_name in _STOPPING or _STOP_ALL.is_set()
+
+
+def stop_all() -> None:
+    """Ask every running job to stop, as the window does when it closes."""
+    _STOP_ALL.set()
+    log.info("stop: every job, the window has closed")
+
+
+def _hold(map_dir, doing: str):
+    """Take the map's lock for the length of this request, so a second KnoxMap
+    process cannot generate, build or compile the same map alongside it
+    (tools/compile_map.claim). Returns the reply to send instead when another
+    one holds it, else None; the lock goes with the reply."""
+    import uuid
+
+    from flask import after_this_request
+
+    from tools.compile_map import claim, release
+
+    run = uuid.uuid4().hex[:8]
+    try:
+        claim(map_dir, run, doing)
+    except RuntimeError as exc:
+        return failed(str(exc), 409)
+
+    @after_this_request
+    def _let_go(response):
+        release(map_dir, run)
+        return response
+
+    return None
 
 
 def _done_stopping(map_name: str) -> None:
