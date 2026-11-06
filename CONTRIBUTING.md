@@ -33,6 +33,27 @@ disk). It is not in CI because it needs a real generated map and `knoxlots`.
 The manifest and mismatch-reporting unit checks need no extra test framework:
 `python -m unittest discover -s tests -p test_regression_maps.py`.
 
+## Native terrain search
+
+Build the road/rail worker before testing terrain changes:
+
+```text
+cargo test --release --locked --manifest-path rust/knoxroute/Cargo.toml
+cargo build --release --locked --manifest-path rust/knoxroute/Cargo.toml
+python -m unittest tests.test_rust_rails tests.test_continuous_rails tests.test_road_layout
+```
+
+`knoxroute --rails` runs the rail assembly search over the exact corridor raster
+Pillow produces. Python retains projection, raster painting and file handling.
+The rail search preserves Python's queue order, rounding and assembly ports;
+`rail_sections(points, backend="python")` is the reference for parity checks.
+A missing or incompatible worker falls back to Python. Stop requests terminate
+the native process and return through the existing stopped-job handler.
+
+Releases carry `knoxroute.exe` (Windows) or executable `knoxroute` (Linux/macOS).
+The `KNOXROUTE` environment variable can select another build; otherwise the
+app checks its own directory, then `rust/knoxroute/target/release`.
+
 ## Never commit
 
 - **Project Zomboid files**, including tile sheets extracted by Setup

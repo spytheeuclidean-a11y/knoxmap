@@ -1,13 +1,16 @@
 """Fit connected vanilla rail assemblies to mapped railway centre lines."""
 from collections import defaultdict
 import heapq
+import logging
 import math
 
 import numpy as np
 from PIL import Image, ImageDraw
 from shapely.geometry import LineString, box
 
-from ..rail_tiles import ASSEMBLIES, rail_colour
+import knoxstop
+
+from ..rail_tiles import ASSEMBLIES, RAIL_END_RADIUS, rail_colour
 from .geometry import _feature_coords_px, _is_polygon
 
 
@@ -120,8 +123,11 @@ def joined_tracks(rings):
         yield chain
 
 
-def rail_sections(points):
+def rail_sections(points, *, backend="rust", should_stop=None):
     """Yield (tile origin x, y, assembly) with matching ports at every join."""
+    if backend not in {"rust", "python"}:
+        raise ValueError(f"Unknown rail backend: {backend}")
+    knoxstop.check(should_stop, "the railways")
     points = [(float(x), float(y)) for x, y in points]
     points = [p for i, p in enumerate(points) if not i or p != points[i - 1]]
     if len(points) < 2:
@@ -153,6 +159,12 @@ def rail_sections(points):
     local = [(x - x0, y - y0) for x, y in points]
     for radius in range(9, -1, -1):
         draw.line(local, fill=radius * radius, width=radius * 2 + 1)
+    if backend == "rust":
+        from ..roadgraph.rustsearch import rail_search
+        sections = rail_search(guide, x0, y0, start, target, last_dir, ASSEMBLIES, should_stop)
+        if sections is not None:
+            yield from sections
+            return
     costs = guide.load()
 
     def deviation(x, y):
@@ -166,11 +178,15 @@ def rail_sections(points):
     queue = [(remaining(start) * 1.15, 0.0, start)]
     best, parents = {start: 0.0}, {}
     final = None
+    visited = 0
     while queue:
+        if visited % 256 == 0:
+            knoxstop.check(should_stop, "the railways")
+        visited += 1
         _, cost, state = heapq.heappop(queue)
         if cost != best.get(state):
             continue
-        if state != start and remaining(state) <= 1.5 and state[2:] == last_dir:
+        if state != start and remaining(state) <= RAIL_END_RADIUS and state[2:] == last_dir:
             final = state
             break
         for index, entry, exit, heading in actions[state[2:]]:
@@ -199,8 +215,12 @@ def rail_sections(points):
     yield from reversed(path)
 
 
-def paint_track(draw, points):
+def paint_track(draw, points, should_stop=None):
     """Paint complete connected pieces; never shift a straight strip sideways."""
-    for ox, oy, index in rail_sections(points):
-        for x, y, sheet, tile in ASSEMBLIES[index][4]:
-            draw.point((ox + x, oy + y), fill=rail_colour(sheet, tile))
+    try:
+        for ox, oy, index in rail_sections(points, should_stop=should_stop):
+            for x, y, sheet, tile in ASSEMBLIES[index][4]:
+                draw.point((ox + x, oy + y), fill=rail_colour(sheet, tile))
+    except ValueError:
+        logging.getLogger(__name__).error("Rail fitting failed for tile path %r", points)
+        raise

@@ -400,7 +400,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
 
     # Track and ballast share the same continuous route.
-    paint_rails(l_draw, buckets, proj)
+    paint_rails(l_draw, buckets, proj, should_stop)
 
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:

@@ -53,6 +53,9 @@ jobs:
       - name: The shipped file list is the release
         run: python tools/check_manifest.py
 
+      - name: Native terrain search for Python parity checks
+        run: cargo build --release --locked --manifest-path rust/knoxroute/Cargo.toml
+
       - name: Overpass rotation, cooldown and tile cache (offline)
         run: python -m unittest discover tests
 

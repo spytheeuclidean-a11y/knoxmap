@@ -335,6 +335,17 @@ def _substring(line: LineString, a: float, b: float) -> LineString:
     return substring(line, a, b)
 
 
+def _covered_tiles(shape, x0, y0, x1, y1):
+    """Tile centres inside the shape, in row order, without per-tile Points."""
+    import numpy as np
+    from shapely import contains_xy
+
+    xs = np.arange(x0, x1, dtype=float) + 0.5
+    for y in range(y0, y1):
+        for offset in np.flatnonzero(contains_xy(shape, xs, y + 0.5)):
+            yield x0 + int(offset), y
+
+
 def _lay_run(plan: Plan, line: LineString, h, level: int, width: float, cat: str, proj) -> None:
     half = width / 2
     area = line.buffer(half, cap_style=2)
@@ -342,37 +353,35 @@ def _lay_run(plan: Plan, line: LineString, h, level: int, width: float, cat: str
     deck: dict[int, set] = {}
     ramps: set = set()
     tops: list = []
-    for y in range(max(0, y0), min(proj.height, y1 + 1)):
-        for x in range(max(0, x0), min(proj.width, x1 + 1)):
-            centre = Point(x + 0.5, y + 0.5)
-            if not area.contains(centre):
-                continue
-            s = line.project(centre)
-            height = h(s)
-            if height <= 0:
-                continue
-            steps = int(round(height * RAMP_STEPS))
-            z, seg = divmod(steps, RAMP_STEPS)
-            if steps == 0:
-                continue
-            plan.clear_veg.add((x, y))
-            if seg == 0:
-                plan.put(x, y, z, "Floor", DECK_FLOOR)
-                deck.setdefault(z, set()).add((x, y))
-                continue
-            ahead = line.interpolate(min(line.length, s + 1)).coords[0]
-            behind = line.interpolate(max(0.0, s - 1)).coords[0]
-            dx, dy = ahead[0] - behind[0], ahead[1] - behind[1]
-            if h(min(line.length, s + 1)) < h(max(0.0, s - 1)):
-                dx, dy = -dx, -dy
-            if abs(dx) >= abs(dy):
-                direction = "E" if dx > 0 else "W"
-            else:
-                direction = "S" if dy > 0 else "N"
-            plan.put(x, y, z, "Floor", ramp_tile(direction, seg))
-            ramps.add((x, y))
-            if seg == RAMP_STEPS - 1:
-                tops.append((x, y, z, direction))
+    for x, y in _covered_tiles(area, max(0, x0), max(0, y0),
+                               min(proj.width, x1 + 1), min(proj.height, y1 + 1)):
+        centre = Point(x + 0.5, y + 0.5)
+        s = line.project(centre)
+        height = h(s)
+        if height <= 0:
+            continue
+        steps = int(round(height * RAMP_STEPS))
+        z, seg = divmod(steps, RAMP_STEPS)
+        if steps == 0:
+            continue
+        plan.clear_veg.add((x, y))
+        if seg == 0:
+            plan.put(x, y, z, "Floor", DECK_FLOOR)
+            deck.setdefault(z, set()).add((x, y))
+            continue
+        ahead = line.interpolate(min(line.length, s + 1)).coords[0]
+        behind = line.interpolate(max(0.0, s - 1)).coords[0]
+        dx, dy = ahead[0] - behind[0], ahead[1] - behind[1]
+        if h(min(line.length, s + 1)) < h(max(0.0, s - 1)):
+            dx, dy = -dx, -dy
+        if abs(dx) >= abs(dy):
+            direction = "E" if dx > 0 else "W"
+        else:
+            direction = "S" if dy > 0 else "N"
+        plan.put(x, y, z, "Floor", ramp_tile(direction, seg))
+        ramps.add((x, y))
+        if seg == RAMP_STEPS - 1:
+            tops.append((x, y, z, direction))
     _cap_tops(plan, tops, deck, proj)
     footprint = set(ramps).union(*deck.values()) if deck else set(ramps)
     for z, tiles in deck.items():
@@ -432,9 +441,8 @@ def rail_water(plan: Plan, landscape, water_colour) -> None:
     w, h = landscape.size
     for shape in plan.water_rails:
         x0, y0, x1, y1 = (int(math.floor(v)) for v in shape.bounds)
-        tiles = {(x, y) for y in range(max(0, y0), min(h, y1 + 1))
-                 for x in range(max(0, x0), min(w, x1 + 1))
-                 if shape.contains(Point(x + 0.5, y + 0.5))}
+        tiles = set(_covered_tiles(shape, max(0, x0), max(0, y0),
+                                   min(w, x1 + 1), min(h, y1 + 1)))
         for x, y in tiles:
             for (nx, ny), (ex, ey, side) in (((x - 1, y), (x, y, "W")), ((x + 1, y), (x + 1, y, "W")),
                                              ((x, y - 1), (x, y, "N")), ((x, y + 1), (x, y + 1, "N"))):
@@ -604,8 +612,7 @@ def plan_monuments(feats: list, proj, meters_per_tile: float, plan: Plan) -> Non
 
 def _cells(shape) -> list[tuple[int, int]]:
     x0, y0, x1, y1 = (int(math.floor(v)) for v in shape.bounds)
-    cells = [(x, y) for y in range(y0, y1 + 1) for x in range(x0, x1 + 1)
-             if shape.contains(Point(x + 0.5, y + 0.5))]
+    cells = list(_covered_tiles(shape, x0, y0, x1 + 1, y1 + 1))
     if not cells:
         c = shape.centroid
         cells = [(int(c.x), int(c.y))]

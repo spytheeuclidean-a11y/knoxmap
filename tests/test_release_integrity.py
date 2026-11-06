@@ -27,13 +27,9 @@ class TheShippedFileList(unittest.TestCase):
         self.assertNotIn("test_pipeline.py", self.files)
 
     def test_every_shipped_file_is_on_disk(self):
-        # KnoxMap.exe and knoxlots.exe are built by the release workflow and
-        # copied into every download; neither is committed (see
-        # test_the_binaries_come_from_the_release_and_not_the_repository), so a
-        # checkout is expected not to have them.
-        from_release = {"KnoxMap.exe", "knoxlots.exe", "knoxroute.exe"}
-        missing = [f for f in self.files
-                   if f not in from_release and not (ROOT / f).exists()]
+        from tools.check_manifest import ADDED_BY_RELEASE
+        # Source checkouts do not carry the binaries built by release jobs.
+        missing = [f for f in self.files if f not in ADDED_BY_RELEASE and not (ROOT / f).exists()]
         self.assertEqual(missing, [], "an update cannot put these back")
 
     def test_the_list_is_a_set(self):
@@ -52,16 +48,14 @@ class TheShippedFileList(unittest.TestCase):
 
     def test_the_binaries_come_from_the_release_and_not_the_repository(self):
         # It used to be one of each: KnoxMap.exe ignored, knoxlots.exe committed.
-        # Both are built by a workflow (launcher.yml, knoxlots.yml), both are
-        # copied into every download, and neither belongs in the repository. A
-        # copy built here still works - it is just not committed.
+        # Native binaries are built by the launcher/knoxlots workflows and
+        # copied into downloads. The repository carries their source; a copy
+        # built here still works, but is not committed.
         ignored = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
-        # knoxroute.exe was left out of every download until 1.8.4.3, and the
-        # road layouts that need it quietly ran a hundred times slower.
         for name in ("/KnoxMap.exe", "/knoxlots.exe", "/knoxroute.exe"):
             self.assertIn(name, ignored)
         for name in ("KnoxMap.exe", "knoxlots.exe", "knoxroute.exe"):
-            self.assertIn(name, self.files, "a download has to carry all three")
+            self.assertIn(name, self.files, "a download has to carry every native binary")
 
     def test_it_has_a_version(self):
         # updater.py compares this with the changelog heading; a manifest from a
