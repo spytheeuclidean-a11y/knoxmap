@@ -169,9 +169,17 @@ PARALLEL_READ_FROM = 300
 
 
 def _read_rooms(project: str, names: list[str]) -> list:
-    """The room tables' view of each building (knoxbuild.buildtiles.parse_tbx_rooms)."""
-    return [parse_tbx_rooms(open(os.path.join(project, "buildings", f"{n}.tbx"), encoding="utf-8").read())
-            for n in names]
+    """The room tables' view of each building (knoxbuild.buildtiles.parse_tbx_rooms),
+    each floor's room numbers as one small array. As lists of lists, the rooms of a
+    232,000-building map held about 10 GB until the room tables were made."""
+    out = []
+    for n in names:
+        with open(os.path.join(project, "buildings", f"{n}.tbx"), encoding="utf-8") as f:
+            b = parse_tbx_rooms(f.read())
+        for floor in b.floors:
+            floor.rooms = np.asarray(floor.rooms, dtype=np.int32).reshape(b.height, b.width)
+        out.append(b)
+    return out
 
 
 def read_buildings(project: str, names: list[str], workers: int | None = None, should_stop=None) -> list:
@@ -199,61 +207,79 @@ def read_buildings(project: str, names: list[str], workers: int | None = None, s
     return out
 
 
+def _row_done(out: str, cy: int) -> str:
+    return os.path.join(out, f"row_{cy}.done")
+
+
 def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
-                    workers: int | None = None, should_stop=None, on_row=None, on_start=None) -> int:
-    """Write the cell sources of a map into `out`, one process per row of cells."""
+                    workers: int | None = None, should_stop=None, on_row=None, on_start=None,
+                    resume: bool = False) -> int:
+    """Write the cell sources of a map into `out`, one process per row of cells.
+
+    Each finished row is marked in `out`. With `resume`, the rows a stopped or
+    failed run already finished are kept rather than made again - and when that
+    is all of them, the buildings are not even read. The caller decides whether
+    what is in `out` is still from the same map (compile_map.compile_rust)."""
     from concurrent import futures
     name = os.path.basename(os.path.normpath(project))
     head = bitmaps._bmp_header(os.path.join(project, f"{name}.bmp"))
     w, h = head[0], head[1]
-    lots = read_lots(project)
-
-    # Room tables need every building at once (they touch, and a later lot takes squares).
-    # Only the rooms are kept; the parsed buildings go.
-    parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
-        read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
-    kept = [(t, (b, tx, ty, lv)) for (t, *_), (b, tx, ty, lv) in zip(lots, parsed) if b.floors]
-    placed = placed_rooms([lot for _t, lot in kept])
-    reach = [(b.width, b.height) for b, *_ in parsed]
-    del parsed
-
-    if on_start:
-        on_start()
     origin = project_origin(project)
     cys = list(range(origin[1] // SIDE, (origin[1] + h - 1) // SIDE + 1))
     rows = len(cys)
-    bands = []
-    for cy in cys:
-        lo = cy * SIDE - origin[1] - MARGIN
-        hi = cy * SIDE - origin[1] + SIDE + MARGIN
-        bands.append([(t, tx, ty, lv) for (t, tx, ty, lv, _w, _h), (_bw, bh) in zip(lots, reach)
-                      if ty - MARGIN < hi and ty + bh + MARGIN > lo])
     os.makedirs(out, exist_ok=True)
-    if workers is None:
-        workers = max(1, min(os.cpu_count() or 1, int(_free_gb() // GB_PER_ROW_WORKER) or 1))
+    done = [cy for cy in cys if resume and os.path.exists(_row_done(out, cy))]
+    todo = [cy for cy in cys if cy not in done]
+
     written = 0
-    if workers == 1:
-        for i, cy in enumerate(cys):
-            if should_stop and should_stop():
-                raise knoxstop.Stopped("the compile")
-            written += _row(project, out, cy, bands[i], placed, seed, seams, (w, h))
+    if todo:
+        lots = read_lots(project)
+        # Room tables need every building at once (they touch, and a later lot takes
+        # squares). Only the rooms are kept; the parsed buildings go.
+        parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
+            read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
+        kept = [(t, (b, tx, ty, lv)) for (t, *_), (b, tx, ty, lv) in zip(lots, parsed) if b.floors]
+        placed = placed_rooms([lot for _t, lot in kept])
+        reach = [(b.width, b.height) for b, *_ in parsed]
+        del parsed, kept
+
+        if on_start:
+            on_start()
+        bands = {}
+        for cy in todo:
+            lo = cy * SIDE - origin[1] - MARGIN
+            hi = cy * SIDE - origin[1] + SIDE + MARGIN
+            bands[cy] = [(t, tx, ty, lv) for (t, tx, ty, lv, _w, _h), (_bw, bh) in zip(lots, reach)
+                         if ty - MARGIN < hi and ty + bh + MARGIN > lo]
+
+        def finished(cy: int, n: int) -> None:
+            with open(_row_done(out, cy), "w", encoding="utf-8"):
+                pass
             if on_row:
-                on_row(i + 1, rows)
-    else:
-        with futures.ProcessPoolExecutor(max_workers=workers) as pool:
-            jobs = [pool.submit(_row, project, out, cy, bands[i], placed, seed, seams, (w, h))
-                    for i, cy in enumerate(cys)]
-            try:
-                for n, fut in enumerate(futures.as_completed(jobs), 1):
-                    written += fut.result()
-                    if on_row:
-                        on_row(n, rows)
-                    if should_stop and should_stop():
-                        raise knoxstop.Stopped("the compile")
-            except BaseException:
-                for fut in jobs:
-                    fut.cancel()
-                raise
+                on_row(len(done) + n, rows)
+
+        if workers is None:
+            workers = max(1, min(os.cpu_count() or 1, int(_free_gb() // GB_PER_ROW_WORKER) or 1))
+        if workers == 1:
+            for n, cy in enumerate(todo, 1):
+                if should_stop and should_stop():
+                    raise knoxstop.Stopped("the compile")
+                written += _row(project, out, cy, bands[cy], placed, seed, seams, (w, h))
+                finished(cy, n)
+        else:
+            with futures.ProcessPoolExecutor(max_workers=workers) as pool:
+                jobs = {pool.submit(_row, project, out, cy, bands[cy], placed, seed, seams, (w, h)): cy
+                        for cy in todo}
+                try:
+                    for n, fut in enumerate(futures.as_completed(jobs), 1):
+                        written += fut.result()
+                        finished(jobs[fut], n)
+                        if should_stop and should_stop():
+                            raise knoxstop.Stopped("the compile")
+                except BaseException:
+                    for fut in jobs:
+                        fut.cancel()
+                    raise
     name = os.path.basename(os.path.normpath(project))
     spawn = f"{name}_ZombieSpawnMap.bmp"
     lines = ["format = knoxlots-source 1", f"origin_x = {origin[0]}",

@@ -755,6 +755,48 @@ def default_backend() -> str:
     return "rust" if knoxlots_exe() else "worlded"
 
 
+# Beside the cell sources: what they were made from, so a later run knows
+# whether it can carry on from them.
+SOURCE_STAMP = "stamp.json"
+
+
+def _source_stamp(project: Path) -> dict:
+    """Everything the cell sources are made from, cheaply: the map's own files
+    by size and time, when it was generated and built, and the code that turns
+    them into cells. Any change means the sources are made again from nothing."""
+    import hashlib
+
+    from knoxbuild import mapstate
+    from tools.terrain_source import project_origin, rules_path
+
+    def seen(path: Path) -> list:
+        try:
+            st = path.stat()
+            return [st.st_size, st.st_mtime_ns]
+        except OSError:
+            return []
+
+    name = project.name
+    files = {f: seen(project / f) for f in (f"{name}.pzw", f"{name}.bmp", f"{name}_veg.bmp",
+                                              f"{name}_ZombieSpawnMap.bmp")}
+    try:
+        rules = Path(rules_path())
+        files["Rules.txt"], files["Blends.txt"] = seen(rules), seen(rules.parent / "Blends.txt")
+    except Exception:  # noqa: BLE001 - no map tools: the compile fails on its own later
+        pass
+    code = hashlib.sha1()
+    for rel in ("tools/map_source.py", "tools/terrain_source.py", "knoxbuild/buildheader.py",
+                "knoxbuild/buildtiles.py"):
+        try:
+            code.update((BASE_DIR / rel).read_bytes())
+        except OSError:
+            pass
+    stages = mapstate.read(str(project)).get("stages") or {}
+    return {"version": knoxlog.version(), "code": code.hexdigest(), "files": files,
+            "origin": list(project_origin(str(project))),
+            "made": {s: (stages.get(s) or {}).get("at") for s in ("generate", "build")}}
+
+
 def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: int | None = None,
                  on_phase=None) -> int:
     """Compile with knoxlots instead of WorldEd: no bitmap limit, no batches.
@@ -777,9 +819,27 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
     run = uuid.uuid4().hex[:8]
     scratch = project / ".knoxlots"
     src, out = scratch / "src", scratch / "lots"
-    shutil.rmtree(scratch, ignore_errors=True)
+    finished = False
     with _only_one(project, run):
         try:
+            # The cell sources a stopped or failed run left are kept and carried
+            # on from, unless the map has changed since: a city's cell sources
+            # are an hour and a half, and a crash at row 34 of 49 threw them all
+            # away. The lot files knoxlots writes are always made afresh.
+            stamp = _source_stamp(project)
+            try:
+                same = json.loads((src / SOURCE_STAMP).read_text(encoding="utf-8")) == stamp
+            except (OSError, ValueError):
+                same = False
+            if not same:
+                shutil.rmtree(scratch, ignore_errors=True)
+            shutil.rmtree(out, ignore_errors=True)
+            src.mkdir(parents=True, exist_ok=True)
+            (src / SOURCE_STAMP).write_text(json.dumps(stamp), encoding="utf-8")
+            kept = len(list(src.glob("row_*.done")))
+            if kept:
+                knoxlog.log.info("compile %s [%s]: carrying on - %d rows of cells kept from "
+                                 "the last run", project.name, run, kept)
             if should_stop and should_stop():
                 raise knoxstop.Stopped("the compile")
             def phase(text: str, fraction: float) -> None:
@@ -790,7 +850,7 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
             make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop,
                             on_row=lambda n, rows: phase(f"Building the cells: row {n} of {rows}",
                                                          0.05 + 0.55 * n / rows),
-                            on_start=lambda: phase("Building the cells", 0.05))
+                            on_start=lambda: phase("Building the cells", 0.05), resume=True)
             total = len(list(src.glob("cell_*.kcell"))) or 1
             phase(f"Writing lot files: 0 of {total} cells", 0.6)
 
@@ -817,9 +877,11 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
             if on_progress:
                 on_progress(cells, cells, cells)
             knoxlog.log.info("compile %s [%s]: knoxlots wrote %d cells", project.name, run, cells)
+            finished = True
             return cells
         finally:
-            shutil.rmtree(scratch, ignore_errors=True)
+            # Kept for the next run after a stop or a failure (see above).
+            shutil.rmtree(scratch if finished else out, ignore_errors=True)
 
 
 def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
