@@ -109,6 +109,25 @@ def patch_both(path: Path) -> str:
     return (path / "config" / "Rules.txt").read_text(encoding="utf-8")
 
 
+class MissingTreeCatalogue(unittest.TestCase):
+    def test_old_catalogue_gets_missing_sheets_without_replacing_existing_entries(self):
+        from knoxmap_setup import ensure_tree_catalogue
+        from tools.extract_tiles import read_tilesets_txt
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "Tilesets.txt"
+            original = "tileset\n{\n    file = custom.pack/e_redmaple_1\n    size = 8,3\n}\n"
+            path.write_text(original, encoding="utf-8")
+            ensure_tree_catalogue(path)
+            once = path.read_text(encoding="utf-8")
+            sizes, packs = read_tilesets_txt(str(path))
+            self.assertTrue(once.startswith(original))
+            self.assertEqual(packs["e_redmaple_1"], "custom.pack")
+            self.assertEqual(sizes["e_redmapleJUMBOXXL_1"], (8, 3))
+            self.assertEqual(packs["e_redmapleJUMBOXXL_1"], "JumboTreesBigs2x.pack")
+            ensure_tree_catalogue(path)
+            self.assertEqual(path.read_text(encoding="utf-8"), once)
+
+
 class BothPatchersLeaveTheFileAlone(unittest.TestCase):
     """The trees and the roads patch the same file, one after the other.
 

@@ -326,6 +326,28 @@ def find_game() -> Path | None:
         say("      media/texturepacks folder. Try again, or press Enter to skip.")
 
 
+def ensure_tree_catalogue(tilesets: Path) -> None:
+    """Restore Build 42 tree sheets absent from older mapping-tools catalogues."""
+    from tools.extract_tiles import read_tilesets_txt
+    from worlded.patch_rules_b42_trees import DECIDUOUS, EVERGREEN
+
+    sizes, _packs = read_tilesets_txt(str(tilesets))
+    entries = [("f_flowerbed_1", "Tiles2x.pack", 4)]
+    for sheet in DECIDUOUS + EVERGREEN:
+        rows = 3 if sheet in DECIDUOUS else (1 if sheet == "e_americanholly_1" else 2)
+        entries.append((sheet, "Tiles2x.pack", rows))
+        stem = sheet[:-2]
+        entries.append((stem + "JUMBO_1", "JumboTrees2x.pack", 2 if sheet in DECIDUOUS else 1))
+        for size in ("XL", "XXL"):
+            entries.append((stem + "JUMBO" + size + "_1", "JumboTreesBigs2x.pack", 3))
+    missing = [(name, pack, rows) for name, pack, rows in entries if name not in sizes]
+    if missing:
+        with tilesets.open("a", encoding="utf-8") as f:
+            for name, pack, rows in missing:
+                f.write(f"\ntileset\n{{\n    file = {pack}/{name}\n    size = 8,{rows}\n}}\n")
+        say(f"      added {len(missing)} missing tree and flower sheets to the tile catalogue")
+
+
 def configure_tools(tools: Path, game: Path | None) -> None:
     step(4, "Tile artwork and tool configuration")
     config_dir = tools / "config"
@@ -374,6 +396,7 @@ def configure_tools(tools: Path, game: Path | None) -> None:
         full = config_dir / "Tilesets.txt.pre-prune"
         if full.exists():
             shutil.copyfile(full, tilesets)
+        ensure_tree_catalogue(tilesets)
         catalog, _packs = extract_tiles.read_tilesets_txt(str(tilesets))
         # Sheets extracted before the split-sheet fix lack the tiles B42 keeps in
         # the floor packs - flat roof tops among them - so merge those in once.
