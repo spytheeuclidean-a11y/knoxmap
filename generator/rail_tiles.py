@@ -7,6 +7,11 @@ import math
 
 from . import pz_colors as C
 
+
+class RailFitError(ValueError):
+    """No connected arrangement fits the mapped railway corridor."""
+
+
 # A nearest end port may be 1.5 tiles along an axis run and .5 across it.
 # Diagonals give the same bound: sqrt(2)**2 + (1/sqrt(2))**2 = 2.5.
 # A radius of 1.5 rejected valid fractional/clipped endpoints between pieces.
