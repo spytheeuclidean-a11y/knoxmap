@@ -47,6 +47,7 @@ def api_features(name: str):
                                  "more, or it was made by a version whose "
                                  "filters have changed. Generate it again and "
                                  "its features can be edited."}), 404
+    features = osm.proposed_roads(features, settings.include_proposed_roads)
     # Only what is being looked at, which is what keeps a town editable.
     view = None
     try:

@@ -183,7 +183,7 @@ class QueryFilters(unittest.TestCase):
         self.assertIn('node["entrance"]', osm._build_query(*BOX))
         # 14: gate nodes, so a fence has a way through it.
         # 15: address interpolation lines, so their ends are not houses.
-        self.assertEqual(osm.FILTERS_VERSION, 15)
+        self.assertEqual(osm.FILTERS_VERSION, 16)
 
     def test_fetches_the_gates_on_a_fence(self):
         # A fence is drawn as one line with the gate as a node on it, so

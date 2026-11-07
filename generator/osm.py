@@ -403,6 +403,7 @@ OVERPASS_FILTERS: Sequence[str] = (
     'way["landuse"="quarry"]',
     # roads
     'way["highway"]',
+    'way["proposed:highway"]',
     'way["area:highway"]',
     'way["place"="square"]',
     # Monuments, statues and fountains: generator/structures.py
@@ -482,7 +483,7 @@ OVERPASS_FILTERS: Sequence[str] = (
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 15
+FILTERS_VERSION = 16
 
 
 @dataclass
@@ -492,6 +493,26 @@ class OSMFeature:
     tags: dict
     geometry: list        # for way: list of (lat, lon); relation: list of ring lists
     role_geoms: list = field(default_factory=list)  # relation members with roles
+
+
+def proposed_roads(features, enabled):
+    """Select proposed ways without changing the cached OSM features."""
+    from dataclasses import replace
+
+    result = []
+    for feat in features:
+        tags = feat.tags
+        highway = tags.get("highway")
+        proposed = highway == "proposed" or (not highway and "proposed:highway" in tags)
+        if proposed:
+            if not enabled:
+                continue
+            kind = tags.get("proposed") or tags.get("proposed:highway") or "residential"
+            if kind in ("yes", "road", "proposed"):
+                kind = "residential"
+            feat = replace(feat, tags={**tags, "highway": kind})
+        result.append(feat)
+    return result
 
 
 def _build_query(south: float, west: float, north: float, east: float,
@@ -1303,6 +1324,8 @@ def classify(tags: dict, area: bool = False) -> str | None:
 
     h = tags.get("highway")
     if h:
+        if h == "proposed":
+            return None
         if h in {"motorway", "trunk", "primary", "motorway_link", "trunk_link",
                  "primary_link"}:
             return "road_major"
