@@ -1,3 +1,15 @@
+## 1.8.5.3
+
+- **Proposed roads are optional.** Enable Proposed roads in More settings to
+  include roads marked as proposed in OpenStreetMap. Existing OSM caches are
+  refreshed to retrieve the additional tags.
+- **Unfittable railways no longer stop generation.** A railway that cannot fit
+  the game's connected track pieces is logged and left blank while the rest of
+  the map continues generating.
+- **Less rifle-script console spam.** The guaranteed rifle script now ignores
+  nested item-picker containers. Reinstall existing generated maps to update
+  the script, including all enabled KnoxMap maps that contain it.
+
 ## 1.8.5.2
 
 - **Extracts work in more Windows folders.** Paths containing accented or other
