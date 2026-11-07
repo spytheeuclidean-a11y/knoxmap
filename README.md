@@ -100,8 +100,10 @@ actually lived, and installs the result as a mod.
 ## Quick start
 
 **You need:** Windows 10 or 11 · **Project Zomboid Build 42** installed through
-Steam · an internet connection. Python is optional: if your PC doesn't have it,
-setup downloads a private copy into the KnoxMap folder.
+Steam · an internet connection · the [Microsoft Visual C++ x64 Redistributable](https://aka.ms/vc14/vc_redist.x64.exe)
+version 14.51.36247 or newer. Python is optional: if your PC doesn't have it,
+setup downloads a private copy into the KnoxMap folder. If Setup says the C++
+runtime is missing or old, install it from that link, then run Setup again.
 
 **On Linux or macOS** it is `./setup.sh` once and `./knoxmap.sh` after that,
 and you need your own 64-bit Python 3.12+. Everything works; Compile runs the

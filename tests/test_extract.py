@@ -1,5 +1,6 @@
 """Map data from a downloaded regional extract instead of live Overpass queries."""
 import os
+import shutil
 import struct
 import sys
 import tempfile
@@ -203,6 +204,28 @@ class ReadingAnExtract(unittest.TestCase):
     def read(self, bbox):
         with mock.patch.object(extract, "cache_dir", lambda: self.dir):
             return extract._read(self.path, self.filters, bbox, lambda *a: None, None)
+
+    @unittest.skipUnless(os.name == "nt", "Windows native paths")
+    def test_unicode_directory_with_disk_index(self):
+        directory = tempfile.mkdtemp(dir=self.dir, prefix="\u00c1rea-\u65e5\u672c-")
+        path = os.path.join(directory, "test.osm.pbf")
+        shutil.copyfile(self.path, path)
+        try:
+            extract._native_path(path)
+        except extract.ExtractUnavailable:
+            self.skipTest("Windows short paths are unavailable on this volume")
+        with mock.patch.object(extract, "cache_dir", return_value=directory), \
+             mock.patch.object(extract, "BIG_EXTRACT_BYTES", 0):
+            got = extract._read(path, self.filters, (9.99, 19.99, 10.03, 20.03),
+                                lambda *a: None, None)
+        self.assertEqual({(e["type"], e["id"]) for e in got},
+                         {("node", 5), ("way", 100), ("relation", 200)})
+
+    @unittest.skipUnless(os.name == "nt", "Windows native paths")
+    def test_unavailable_short_path_falls_back(self):
+        with mock.patch("ctypes.windll.kernel32.GetShortPathNameW", return_value=0):
+            with self.assertRaisesRegex(extract.ExtractUnavailable, "Overpass"):
+                extract._native_path("C:/\u65e5\u672c/test.osm.pbf")
 
     def test_what_is_wanted_and_inside_comes_out(self):
         got = {(e["type"], e["id"]) for e in self.read((9.99, 19.99, 10.03, 20.03))}

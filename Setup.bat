@@ -52,6 +52,8 @@ if not exist %VENV_PYTHON% (
   %PY% -m venv .venv || goto :fail
   if exist ".venv\bin\python.exe" call :msys_warning
 )
+set "SETUP_REASON=Microsoft Visual C++ x64 runtime is missing or too old"
+%VENV_PYTHON% knoxruntime.py --check-vc || goto :fail
 echo Installing Python packages...
 set "SETUP_REASON=the packages in requirements.txt could not be installed"
 %VENV_PYTHON% -m pip install --disable-pip-version-check -q -r requirements.txt || goto :fail
