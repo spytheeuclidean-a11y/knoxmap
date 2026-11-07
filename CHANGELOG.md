@@ -1,3 +1,16 @@
+## 1.8.5.2
+
+- **Extracts work in more Windows folders.** Paths containing accented or other
+  non-English characters are passed to the OSM reader through a compatible
+  Windows path. If the system cannot supply one, automatic mode falls back to
+  Overpass and extract-only mode explains what to do.
+- **Big trees on older mapping tools.** Setup restores missing Build 42 tree and
+  flower entries to the tile catalogue before extracting artwork from the game.
+- **Windows C++ runtime check.** Windows now requires the Microsoft Visual C++
+  x64 Redistributable 14.51.36247 or newer. Setup explains where to get it if
+  it is missing or too old. The minimum is the current version checked for this
+  release; it does not require the full compiler or Build Tools.
+
 ## 1.8.5.1
 
 - **The town follows the road that is drawn.** Roads are redrawn onto the

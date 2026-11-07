@@ -239,7 +239,7 @@ jobs:
                 macos)   printf '| macOS | `KnoxMap-%s-macos.tar.gz` | `tar -xzf` it, then `./setup.sh` and `./knoxmap.sh` |\n' "$v" ;;
               esac
             done
-            printf '\nLinux and macOS need 64-bit Python 3.10+ of your own; see LINUX.md.\n'
+            printf '\nLinux and macOS need 64-bit Python 3.12+ of your own; see LINUX.md.\n'
             printf '\n`KnoxMap.exe` finds Python, runs setup the first time and opens\n'
             printf 'the window. `KnoxMap.bat` is still in the folder and does the same,\n'
             printf 'for anyone who would rather read what they are running. Windows may\n'
