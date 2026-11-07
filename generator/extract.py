@@ -53,6 +53,21 @@ def cache_dir() -> str:
     return os.path.join(str(knoxpaths.BASE_DIR), "cache", "extracts")
 
 
+def _native_path(path: str) -> str:
+    """Give libosmium an ASCII Windows path when the real path is Unicode."""
+    if os.name != "nt" or path.isascii():
+        return path
+    import ctypes
+    get_short = ctypes.windll.kernel32.GetShortPathNameW
+    size = get_short(path, None, 0)
+    if size:
+        result = ctypes.create_unicode_buffer(size)
+        if get_short(path, result, size) and result.value.isascii():
+            return result.value
+    raise ExtractUnavailable("Windows cannot provide a compatible path for the local extract; "
+                             "use Overpass or move KnoxMap to a folder with an ASCII path")
+
+
 def available() -> bool:
     try:
         import osmium  # noqa: F401
@@ -253,12 +268,18 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
 
     south, west, north, east = bbox
     big = os.path.getsize(path) > BIG_EXTRACT_BYTES
+    path = _native_path(path)
+    source = osmium.io.File(path, "pbf")
     index_file = None
     if big:
         index_file = tempfile.NamedTemporaryFile(
             dir=cache_dir(), suffix=".nodes", delete=False)
         index_file.close()
-        locations = f"sparse_file_array,{index_file.name}"
+        try:
+            locations = f"sparse_file_array,{_native_path(index_file.name)}"
+        except ExtractUnavailable:
+            os.remove(index_file.name)
+            raise
     else:
         locations = "flex_mem"
 
@@ -284,7 +305,7 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
         say(None, "reading the relations")
         relations: dict[int, dict] = {}
         member_of: dict[int, list[int]] = {}
-        for i, rel in enumerate(osmium.FileProcessor(path, osmium.osm.RELATION)
+        for i, rel in enumerate(osmium.FileProcessor(source, osmium.osm.RELATION)
                                 .with_filter(osmium.filter.KeyFilter(*keys))):
             if i % 20000 == 0:
                 knoxstop.check(should_stop, "the download")
@@ -305,7 +326,7 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
         say(None, "reading the map data")
         geometry: dict[int, list] = {}
         touches: set[int] = set()
-        for i, obj in enumerate(osmium.FileProcessor(path, osmium.osm.NODE | osmium.osm.WAY)
+        for i, obj in enumerate(osmium.FileProcessor(source, osmium.osm.NODE | osmium.osm.WAY)
                                 .with_locations(locations)
                                 .with_filter(osmium.filter.KeyFilter(*keys).enable_for(osmium.osm.NODE))):
             if i % 1000 == 0:
@@ -363,7 +384,7 @@ def _read(path: str, filters: list[Filter], bbox, say, should_stop) -> list[dict
         if missing:
             say(None, "reading the rest of the larger areas")
             # Nodes are read too, because the locations are built from them.
-            for i, way in enumerate(osmium.FileProcessor(path, osmium.osm.NODE | osmium.osm.WAY)
+            for i, way in enumerate(osmium.FileProcessor(source, osmium.osm.NODE | osmium.osm.WAY)
                                     .with_locations(locations)
                                     .with_filter(osmium.filter.EntityFilter(osmium.osm.WAY))
                                     .with_filter(osmium.filter.IdFilter(missing))):
