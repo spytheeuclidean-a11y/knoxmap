@@ -18,16 +18,58 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class RuntimeCheck(unittest.TestCase):
+    def test_windows_runtime_rejects_missing_or_older_and_accepts_newer(self):
+        with mock.patch.object(knoxruntime.sys, 'platform', 'win32'):
+            for version in (None, (14, 50, 35719, 0)):
+                with self.subTest(version=version), \
+                     mock.patch.object(knoxruntime, 'vc_runtime_version', return_value=version), \
+                     contextlib.redirect_stderr(io.StringIO()) as error:
+                    self.assertEqual(knoxruntime.check_vc_runtime(), 1)
+                    self.assertIn('https://aka.ms/vc14/vc_redist.x64.exe', error.getvalue())
+            for version in (knoxruntime.MIN_VC_RUNTIME, (15, 0, 0, 0)):
+                with self.subTest(version=version), \
+                     mock.patch.object(knoxruntime, 'vc_runtime_version', return_value=version):
+                    self.assertEqual(knoxruntime.check_vc_runtime(), 0)
+
+    def test_other_platforms_do_not_require_the_windows_runtime(self):
+        with mock.patch.object(knoxruntime.sys, 'platform', 'linux'), \
+             mock.patch.object(knoxruntime, 'vc_runtime_version') as version:
+            self.assertEqual(knoxruntime.check_vc_runtime(), 0)
+            version.assert_not_called()
+
+    def test_old_runtime_stops_startup_before_imports(self):
+        with mock.patch.object(knoxruntime, 'check_vc_runtime', return_value=1), \
+             mock.patch.object(knoxruntime.importlib, 'import_module') as load:
+            self.assertEqual(knoxruntime.check(), 1)
+            load.assert_not_called()
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows registry')
+    def test_registry_reads_x64_runtime(self):
+        import winreg
+        version = dict(Installed=1, Major=14, Minor=51, Bld=36247, Rbld=0)
+        with mock.patch.object(winreg, 'OpenKey') as opened, \
+             mock.patch.object(winreg, 'QueryValueEx', side_effect=lambda key, name: (version[name], 0)):
+            self.assertEqual(knoxruntime.vc_runtime_version(), knoxruntime.MIN_VC_RUNTIME)
+            self.assertTrue(opened.call_args.args[3] & winreg.KEY_WOW64_64KEY)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows registry')
+    def test_missing_registry_entry_is_reported_as_missing(self):
+        import winreg
+        with mock.patch.object(winreg, 'OpenKey', side_effect=FileNotFoundError):
+            self.assertIsNone(knoxruntime.vc_runtime_version())
+
     def test_missing_flask_is_reported_with_the_interpreter(self):
         error = io.StringIO()
-        with mock.patch.object(knoxruntime.importlib, 'import_module', side_effect=ModuleNotFoundError("No module named 'flask'")), \
+        with mock.patch.object(knoxruntime, 'check_vc_runtime', return_value=0), \
+                mock.patch.object(knoxruntime.importlib, 'import_module', side_effect=ModuleNotFoundError("No module named 'flask'")), \
                 contextlib.redirect_stderr(error):
             self.assertEqual(knoxruntime.check(), 1)
         self.assertIn('flask', error.getvalue())
         self.assertIn(sys.executable, error.getvalue())
 
     def test_latest_python_is_not_rejected_by_an_upper_version_limit(self):
-        with mock.patch.object(knoxruntime.sys, 'version_info', (3, 15)), \
+        with mock.patch.object(knoxruntime, 'check_vc_runtime', return_value=0), \
+                mock.patch.object(knoxruntime.sys, 'version_info', (3, 15)), \
                 mock.patch.object(knoxruntime.importlib, 'import_module') as load:
             self.assertEqual(knoxruntime.check(), 0)
         self.assertEqual([call.args[0] for call in load.call_args_list], list(knoxruntime.NEEDED))
@@ -40,7 +82,9 @@ class RuntimeCheck(unittest.TestCase):
         load.assert_not_called()
 
     def test_real_python_without_site_packages_fails_without_opening_the_app(self):
-        result = subprocess.run([sys.executable, '-S', str(ROOT/'knoxruntime.py')],
+        result = subprocess.run([sys.executable, '-S', '-c',
+                                 'import knoxruntime; knoxruntime.check_vc_runtime=lambda:0; '
+                                 'raise SystemExit(knoxruntime.check())'], cwd=ROOT,
                                 capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 1)
         self.assertIn('flask', result.stderr)
@@ -49,6 +93,8 @@ class RuntimeCheck(unittest.TestCase):
         for name in ('KnoxMap.bat', 'Setup.bat', 'knoxmap.sh', 'setup.sh', 'win/knoxmap_launcher.c'):
             with self.subTest(name=name):
                 self.assertIn('knoxruntime.py', (ROOT/name).read_text(encoding='utf-8'))
+        setup = (ROOT/'Setup.bat').read_text(encoding='utf-8')
+        self.assertLess(setup.index('knoxruntime.py --check-vc'), setup.index('-m pip install'))
 
 
 @unittest.skipUnless(os.name == 'nt', 'Windows launchers')

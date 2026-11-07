@@ -23,6 +23,21 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
           cache: pip
+      - name: Install required Visual C++ runtime
+        run: |
+          python knoxruntime.py --check-vc
+          if ($LASTEXITCODE -ne 0) {
+            $installer = Join-Path $env:RUNNER_TEMP 'vc_redist.x64.exe'
+            Invoke-WebRequest 'https://aka.ms/vc14/vc_redist.x64.exe' -OutFile $installer
+            $signature = Get-AuthenticodeSignature $installer
+            if ($signature.Status -ne 'Valid' -or $signature.SignerCertificate.Subject -notmatch 'CN=Microsoft Corporation') {
+              throw 'Visual C++ runtime installer signature is not valid'
+            }
+            $result = Start-Process -FilePath $installer -ArgumentList '/install', '/quiet', '/norestart' -Wait -PassThru
+            if ($result.ExitCode -notin @(0, 3010)) { throw "Visual C++ runtime install failed: $($result.ExitCode)" }
+          }
+          python knoxruntime.py --check-vc
+          if ($LASTEXITCODE -ne 0) { throw 'Required Visual C++ runtime is not installed' }
       - name: Install the release dependencies
         run: python -m pip install -r requirements.txt
       - name: Build the native launcher
