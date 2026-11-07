@@ -132,6 +132,7 @@ def write(out_dir: str, map_name: str, proj, info: dict,
     # does not get the newer tags - it writes a map with the buildings on it
     # and not one road, river or wood.
     feats = osm.load_cache(cache, wanted, filters=None) or []
+    feats = osm.proposed_roads(feats, info.get("include_proposed_roads", 0))
     if not feats:
         print(f"  paper map           : no download beside the map "
               f"({os.path.basename(cache)}), so it has buildings only - "

@@ -1126,6 +1126,7 @@ def _points_of_use(out_dir: str, info: dict, map_name: str, proj) -> dict:
     grid: dict = {}
     # As the paper map does: this reads the download, it never fetches one.
     feats = osm.load_cache(cache, wanted, filters=None) or []
+    feats = osm.proposed_roads(feats, info.get("include_proposed_roads", 0))
     # Points drawn by hand count too. They are kept beside the map rather than
     # in the download (web/mapfiles.py, _save_sketch), so reading only the cache left a
     # petrol station somebody placed themselves with no forecourt and no

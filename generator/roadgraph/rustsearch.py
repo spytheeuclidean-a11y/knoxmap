@@ -32,7 +32,7 @@ import numpy as np
 
 import knoxstop
 
-from ..rail_tiles import RAIL_END_RADIUS
+from ..rail_tiles import RAIL_END_RADIUS, RailFitError
 
 from . import snap
 
@@ -274,5 +274,5 @@ def rail_search(guide, x0, y0, start, target, last_dir, assemblies, should_stop=
         logging.getLogger(__name__).warning("native rail fitter unavailable; using Python: %s", exc)
         return None
     if count == -1:
-        raise ValueError("Railway cannot fit connected vanilla track within its mapped corridor")
+        raise RailFitError("Railway cannot fit connected vanilla track within its mapped corridor")
     return sections

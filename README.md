@@ -251,6 +251,7 @@ setting is put into an open map with only the steps it needs.
 | **Flats above / Flats chance** | How readily large untagged buildings become blocks of flats. |
 | **Tallest building** | The storey limit, up to 31. Real heights from OpenStreetMap are used where mapped. Tall cities take much longer to compile. |
 | **Straighten streets** | 1 turns the map so its main street grid runs along the tiles; 0 keeps north straight up, with diagonal streets as staircases. |
+| **Proposed roads** | On includes roads marked as proposed in OpenStreetMap, using their proposed road type when known. Off leaves them out. |
 | **Knox County roads** | 1 lays every road in straight runs along the tiles and on 45-degree diagonals, like the game's own map: curves become straight sides with 45-degree corners, and the buildings, parks and car parks move with their streets and stand upright beside them. Streets end up a little way off their real places. 0 draws roads as mapped. |
 | **Woodland**, **Parking**, **Room size** | What they say. |
 | **Seed** | The same area and seed always give the same town. |

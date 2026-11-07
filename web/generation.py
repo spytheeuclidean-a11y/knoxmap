@@ -258,6 +258,7 @@ def _generate(data):
         log.info("generate %s: %d removed, %d moved, %d retagged by hand",
                  map_name, used["removed"], used["moved"], used["tags"])
 
+    features = osm.proposed_roads(features, settings.include_proposed_roads)
     drawn_features = sketch.features(drawn)
     if drawn_features:
         features = list(features) + drawn_features
@@ -343,6 +344,7 @@ def _generate(data):
             osm_bbox=osm_bbox,
             shape=shape,
             straight_roads=int(settings.straight_roads),
+            include_proposed_roads=int(settings.include_proposed_roads),
             fill_frontage=int(settings.fill_frontage),
             landcover_for=landcover_for,
             climate=(layers.climate if layers else None),

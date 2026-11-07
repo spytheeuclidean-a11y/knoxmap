@@ -10,7 +10,7 @@ from shapely.geometry import LineString, box
 
 import knoxstop
 
-from ..rail_tiles import ASSEMBLIES, RAIL_END_RADIUS, rail_colour
+from ..rail_tiles import ASSEMBLIES, RAIL_END_RADIUS, RailFitError, rail_colour
 from .geometry import _feature_coords_px, _is_polygon
 
 
@@ -216,7 +216,7 @@ def rail_sections(points, *, backend="rust", should_stop=None):
             parents[next_state] = (state, index, entry)
             heapq.heappush(queue, (candidate + remaining(next_state) * 1.15, candidate, next_state))
     if final is None:
-        raise ValueError("Railway cannot fit connected vanilla track within its mapped corridor")
+        raise RailFitError("Railway cannot fit connected vanilla track within its mapped corridor")
     path = []
     while final != start:
         previous, index, entry = parents[final]
@@ -229,9 +229,12 @@ def rail_sections(points, *, backend="rust", should_stop=None):
 def paint_track(draw, points, should_stop=None):
     """Paint complete connected pieces; never shift a straight strip sideways."""
     try:
-        for ox, oy, index in rail_sections(points, should_stop=should_stop):
-            for x, y, sheet, tile in ASSEMBLIES[index][4]:
-                draw.point((ox + x, oy + y), fill=rail_colour(sheet, tile))
-    except ValueError:
-        logging.getLogger(__name__).error("Rail fitting failed for tile path %r", points)
-        raise
+        sections = list(rail_sections(points, should_stop=should_stop))
+    except RailFitError:
+        logging.getLogger(__name__).warning(
+            "Skipping railway that cannot fit connected track (%d points, from %s to %s)",
+            len(points), points[0] if points else None, points[-1] if points else None)
+        return
+    for ox, oy, index in sections:
+        for x, y, sheet, tile in ASSEMBLIES[index][4]:
+            draw.point((ox + x, oy + y), fill=rail_colour(sheet, tile))

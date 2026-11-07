@@ -13,18 +13,54 @@ from PIL import Image, ImageDraw
 
 import knoxstop
 from generator.rail_tiles import ASSEMBLIES, RAIL_END_RADIUS
-from generator.rendering.rails import rail_sections, paint_track
+from generator.rendering.rails import RailFitError, rail_sections, paint_track
 from generator.roadgraph import rustsearch
 
 
 class Fallback(unittest.TestCase):
-    def test_an_unfittable_path_is_logged_and_not_silently_dropped(self):
+    def test_an_unfittable_path_is_logged_and_left_blank(self):
         points = [(0, 0), (2, 0), (2, 2)]
-        with mock.patch("generator.rendering.rails.rail_sections", side_effect=ValueError("no route")), \
-                self.assertLogs("generator.rendering.rails", level="ERROR") as log:
-            with self.assertRaises(ValueError):
-                paint_track(ImageDraw.Draw(Image.new("RGB", (10, 10))), points)
-        self.assertIn(repr(points), log.output[0])
+        image = Image.new("RGB", (20, 20))
+        def partial_then_fail():
+            yield (5, 5, 0)
+            raise RailFitError("no route")
+        with mock.patch("generator.rendering.rails.rail_sections", return_value=partial_then_fail()), \
+                self.assertLogs("generator.rendering.rails", level="WARNING") as log:
+            paint_track(ImageDraw.Draw(image), points)
+        self.assertIsNone(image.getbbox())
+        self.assertIn("Skipping", log.output[0])
+        self.assertIn(str(points[-1]), log.output[0])
+
+    def test_one_failed_track_does_not_stop_the_next(self):
+        from generator.rendering.roads import paint_rails
+        tracks = [[(0, 0), (3, 0)], [(5, 5), (9, 5)]]
+        image = Image.new("RGB", (30, 30))
+        with mock.patch("generator.rendering.rails.rail_paths", return_value=tracks), \
+             mock.patch("generator.rendering.rails.rail_sections",
+                        side_effect=[RailFitError("no route"), iter([(10, 10, 0)])]), \
+             self.assertLogs("generator.rendering.rails", level="WARNING"):
+            paint_rails(ImageDraw.Draw(image), {}, None)
+        self.assertIsNotNone(image.getbbox())
+
+    def test_unexpected_value_errors_and_cancellation_still_propagate(self):
+        for error in (ValueError("invalid data"), knoxstop.Stopped("stop")):
+            with self.subTest(error=error), \
+                 mock.patch("generator.rendering.rails.rail_sections", side_effect=error), \
+                 self.assertRaises(type(error)):
+                paint_track(ImageDraw.Draw(Image.new("RGB", (10, 10))), [(0, 0), (2, 0)])
+
+    def test_native_no_route_is_skipped(self):
+        proc = mock.MagicMock()
+        proc.poll.return_value = 0
+        proc.returncode = 0
+        proc.communicate.return_value = (b"KRL2" + struct.pack("<i", -1), b"")
+        proc.__enter__.return_value = proc
+        image = Image.new("RGB", (20, 20))
+        with mock.patch.object(rustsearch, "exe", return_value="knoxroute"), \
+             mock.patch.object(rustsearch.subprocess, "Popen", return_value=proc), \
+             self.assertLogs("generator.rendering.rails", level="WARNING"):
+            paint_track(ImageDraw.Draw(image), [(5, 5), (10, 5)])
+        self.assertIsNone(image.getbbox())
 
     def test_missing_or_old_worker_keeps_the_python_result(self):
         points = [(5, 10), (50, 17)]

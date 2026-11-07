@@ -48,6 +48,7 @@ class Settings:
     # that, with built-up streets kept on the grid and off the buildings (3).
     # 2 and 3 take minutes on a town (generator/roadgraph).
     straight_roads: int = 1
+    include_proposed_roads: int = 0
 
     # --- terrain ---------------------------------------------------------
     # Multiplies how much tree cover the map gets: the woods the mapper drew,
@@ -259,6 +260,7 @@ LIMITS = {
     # Past 45 either way it is the same grid again, a quarter turn round.
     "rotate_degrees": (-45.0, 45.0),
     "straight_roads": (0, 3),
+    "include_proposed_roads": (0, 1),
     "max_size": (8, 250),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),
