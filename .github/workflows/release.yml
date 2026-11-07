@@ -268,7 +268,7 @@ jobs:
             *' '*) latest=--latest ;;
             *)     latest=--latest=false ;;
           esac
-          title="KnoxMap $(printf '%s' "$VERSION" | sed 's/-\([a-z]\)/ \1/')"
+          title="$(printf '%s' "$VERSION" | sed 's/-\([a-z]\)/ \1/')"
           if gh release view "$TAG" >/dev/null 2>&1; then
             # Published by hand: the release page is already there and the
             # files are not, which is exactly what the updater cannot see.
