@@ -37,16 +37,11 @@ local NEEDED_CAPACITY = 12
 
 --- The square a container sits on, or nil.
 -- OnFillContainer(roomName, containerType, itemContainer) is the signature
--- the game's own LootLog.lua uses, and the square comes off the container's
--- parent, as it does there. This used to take whichever argument answered
--- getSourceGrid, which is not how vanilla finds the square and is not a
--- method the object has: Build 42 hands the event an ItemPickerContainer,
--- and indexing a Java object for a method it has not got raises inside
--- Kahlua. The pcall caught it, but the engine logs the whole stack trace
--- before the pcall ever sees it, so every container filled anywhere near one
--- of these boxes wrote a page of Java into console.txt.
+-- the game's own LootLog.lua uses, but nested bags can pass a different Java
+-- userdata. Kahlua logs a missing method before pcall can catch it.
 local function squareOf(container)
-    if container == nil or type(container) ~= "userdata" then return nil end
+    if container == nil or type(container) ~= "userdata"
+        or not instanceof(container, "ItemContainer") then return nil end
     local ok, square = pcall(function()
         local parent = container:getParent()
         return parent and parent:getSquare() or nil
