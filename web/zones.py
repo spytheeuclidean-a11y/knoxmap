@@ -68,7 +68,10 @@ def api_edits(name: str):
     if request.method == "GET":
         return jsonify(_load_edits(map_dir))
     changes = mapedits.clean(_json_body())
-    _save_edits(map_dir, changes)
+    try:
+        _save_edits(map_dir, changes)
+    except OSError as exc:
+        return failed(f"The map edits could not be saved: {exc}", 500, exc)
     return jsonify({"changes": mapedits.count(changes), **changes})
 
 
@@ -104,7 +107,10 @@ def api_design(name: str):
     design = _json_body()
     if not isinstance(design, dict):
         return jsonify({"error": "Expected a sheet."}), 400
-    _save_design(map_dir, design)
+    try:
+        _save_design(map_dir, design)
+    except OSError as exc:
+        return failed(f"The drawing could not be saved: {exc}", 500, exc)
     south, west, north, east = sketch.design_bbox(design)
     made = sketch.features(sketch.design_to_drawn(design))
     drawn = design.get("features")
@@ -242,7 +248,10 @@ def api_sketch(name: str):
     drawn = _json_body()
     if not isinstance(drawn, dict):
         return jsonify({"error": "Expected a GeoJSON FeatureCollection."}), 400
-    _save_sketch(map_dir, drawn)
+    try:
+        _save_sketch(map_dir, drawn)
+    except OSError as exc:
+        return failed(f"The drawing could not be saved: {exc}", 500, exc)
     made = sketch.features(drawn)
     sent = drawn.get("features")
     return jsonify({"saved": len(sent) if isinstance(sent, (list, tuple)) else 0,

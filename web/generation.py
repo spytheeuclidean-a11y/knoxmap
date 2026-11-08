@@ -149,8 +149,10 @@ def _generate(data):
     if busy is not None:
         return busy
 
+    drawing_saved = False
+
     def forget_empty_folder() -> None:
-        if made_here and not (map_dir / f"{map_name}_info.json").exists():
+        if made_here and not drawing_saved and not (map_dir / f"{map_name}_info.json").exists():
             shutil.rmtree(map_dir, ignore_errors=True)
 
     bbox = (south, west, north, east)
@@ -158,18 +160,27 @@ def _generate(data):
     # use the same ones without the page having to send them again - and so a
     # map from last week can be reproduced exactly.
     settings = Settings.from_dict(data.get("settings"))
-    _save_settings(map_dir, settings)
+    try:
+        _save_settings(map_dir, settings)
+    except OSError as exc:
+        forget_empty_folder()
+        return failed(f"Could not save this map's settings: {exc}.", 500, exc)
 
     # The drawn map, kept beside the real one. The page sends it when there is
     # one; when there is not, whatever was drawn for this map last time is used
     # again, so Generate map twice over does not quietly lose it.
-    if isinstance(design, dict):
-        _save_design(map_dir, design)
-    drawn = data.get("sketch")
-    if drawn is None:
-        drawn = _load_sketch(map_dir)
-    else:
-        _save_sketch(map_dir, drawn)
+    try:
+        if isinstance(design, dict):
+            _save_design(map_dir, design)
+        drawn = data.get("sketch")
+        if drawn is None:
+            drawn = _load_sketch(map_dir)
+        else:
+            _save_sketch(map_dir, drawn)
+        drawing_saved = isinstance(design, dict) or bool(
+            drawn.get("features") if isinstance(drawn, dict) else False)
+    except OSError as exc:
+        return failed(f"Could not save this map's drawing: {exc}.", 500, exc)
     drawn_only = bool(data.get("drawnOnly"))
 
     # What to download. A map turned to its street grid (see
@@ -490,7 +501,10 @@ def api_buildings():
     if busy is not None:
         return busy
     settings = Settings.from_dict(data.get("settings"))         if data.get("settings") else _load_settings(map_dir)
-    _save_settings(map_dir, settings)
+    try:
+        _save_settings(map_dir, settings)
+    except OSError as exc:
+        return failed(f"Could not save this map's settings: {exc}.", 500, exc)
     terrain = None
     if "sketch" in data:
         drawn = data["sketch"]
@@ -608,10 +622,13 @@ def api_zombies():
     # the preset being asked for, so "town" after a recount at 1.5 stayed 1.5.
     settings = Settings.from_dict(data.get("settings"))         if data.get("settings") else _load_settings(map_dir)
     try:
+        _save_settings(map_dir, settings)
+    except OSError as exc:
+        return failed(f"Could not save this map's settings: {exc}.", 500, exc)
+    try:
         summary = recount(str(map_dir), settings)
     except FileNotFoundError as exc:
         return failed(f"Cannot recount zombies: {exc}.", 400, exc)
-    _save_settings(map_dir, settings)
     return jsonify({"population": summary})
 
 
