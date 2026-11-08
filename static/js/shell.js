@@ -134,6 +134,11 @@
   const world = make('div', 'ws-world');
   world.hidden = true;
   pane.appendChild(world);
+  // The 2.5D isometric in-game view over the map.
+  const isoView = make('div', 'ws-iso');
+  isoView.id = 'wsIso';
+  isoView.hidden = true;
+  pane.appendChild(isoView);
   const guideV = make('div', 'ws-guide v'), guideH = make('div', 'ws-guide h');
   pane.append(guideV, guideH);
 
@@ -269,6 +274,7 @@
         + item('Language…', () => setTimeout(() => langMenu.querySelector('button').click(), 0)),
       View: () => item('Real place', () => setView('place'), { on: ws.view === 'place', radio: true, off: !open })
         + item('Game world', () => setView('world'), { on: ws.view === 'world', radio: true, off: !open })
+        + item('In-game 2.5D', () => setView('iso'), { on: ws.view === 'iso', radio: true, off: !open })
         + label('Basemap')
         + [...document.querySelectorAll('#basemaps button')].map(b =>
             item(b.textContent, () => b.click(), { on: b.classList.contains('is-on'), radio: true })).join('')
@@ -414,6 +420,7 @@
     if (ws.home) h = '<b>Home</b><span>Search for a place to start, or open one of your maps.</span>';
     else if (ws.view === 'world') h = '<b>Game world</b><span>Where the map sits in the world every installed map shares. '
       + 'Click to put it somewhere else; Standalone plays it on its own.</span>';
+    else if (ws.view === 'iso') h = '<b>In-game 2.5D</b><span>2.5D isometric view of your town and furnished buildings. Pan and zoom with the mouse.</span>';
     else h = {
       move: '<b>Move</b><span>Drag to look around, scroll to zoom. Pick a tool on the left to draw.</span>',
       area: `<b>Area</b><span>Draw it with the buttons on the map’s left edge: rectangle, polygon, circle, or ✎ freehand.
@@ -461,7 +468,9 @@
       h += `<span class="view"><button type="button" data-view="place" class="${ws.view === 'place' ? 'on' : ''}"
           title="The real place, where you choose and edit the area">Real place</button>
         <button type="button" data-view="world" class="${ws.view === 'world' ? 'on' : ''}"
-          title="Where the map sits in the game’s world">Game world</button></span>`;
+          title="Where the map sits in the game’s world">Game world</button>
+        <button type="button" data-view="iso" class="${ws.view === 'iso' ? 'on' : ''}"
+          title="2.5D Isometric in-game view of your buildings and town">In-game 2.5D</button></span>`;
     }
     tabs.innerHTML = h;
   }
@@ -496,6 +505,8 @@
     currentMap = null;
     ws.view = 'place';
     world.hidden = true;
+    isoView.hidden = true;
+    if (window.closeIsoView) window.closeIsoView();
     closePop();
   }
   // One map at a time is worked on: a step reports back to the cards of the map
@@ -587,6 +598,7 @@
     ws.lastData = data;
     showMap();
     if (ws.view === 'world') setView('world');
+    else if (ws.view === 'iso') setView('iso');
   };
 
   // Home: where a new user starts, and where every map is.
@@ -791,18 +803,25 @@
 
   // =========================== the game's world ===========================
   function setView(v) {
-    if (v === 'world' && !currentMap) return;
+    if ((v === 'world' || v === 'iso') && !currentMap) return;
     ws.view = v;
     const place = results.querySelector('.pipe-card[data-step="place"] .pipe-body');
     if (v === 'world') {
+      isoView.hidden = true;
       world.innerHTML = '<h3 style="margin:0 0 8px">Place it in the game’s world</h3>';
       world.appendChild($('placePanel'));
       world.hidden = false;
       if (ws.tool !== 'move') { ws.tool = 'move'; body.classList.remove('tool-area'); }
       if (typeof drawWorld === 'function') requestAnimationFrame(drawWorld);
+    } else if (v === 'iso') {
+      if (place && !place.contains($('placePanel'))) place.appendChild($('placePanel'));
+      world.hidden = true;
+      isoView.hidden = false;
+      if (window.showIsoView) window.showIsoView(currentMap);
     } else {
       if (place && !place.contains($('placePanel'))) place.appendChild($('placePanel'));
       world.hidden = true;
+      isoView.hidden = true;
       map.invalidateSize();
     }
     render();

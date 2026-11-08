@@ -187,6 +187,124 @@ def api_world_picture(name: str):
                      max_age=86400, conditional=True)
 
 
+@bp.route("/api/iso-info/<name>")
+def api_iso_info(name: str):
+    """Metadata about a map's compiled isometric views."""
+    import json
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Unknown map."}), 404
+    lots = map_dir / "lots"
+    compiled = lots.is_dir() and any(lots.glob("*.lotheader"))
+
+    info_path = map_dir / f"{map_dir.name}_info.json"
+    info = {}
+    if info_path.is_file():
+        try:
+            info = json.loads(info_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+
+    pics_dir = map_dir / "pictures"
+    pictures = {}
+    if pics_dir.is_dir():
+        for p in ("town.png", "close.png", "inside.png"):
+            target = pics_dir / p
+            if target.is_file():
+                pictures[p.replace(".png", "")] = f"/output/{map_dir.name}/pictures/{p}?t={int(target.stat().st_mtime)}"
+
+    return jsonify({
+        "name": map_dir.name,
+        "compiled": compiled,
+        "width_tiles": int(info.get("width_tiles") or 0),
+        "height_tiles": int(info.get("height_tiles") or 0),
+        "cells_x": int(info.get("cells_x") or 0),
+        "cells_y": int(info.get("cells_y") or 0),
+        "building_count": int(info.get("building_count") or 0),
+        "pictures": pictures,
+    })
+
+
+@bp.route("/api/iso-render/<name>")
+def api_iso_render(name: str):
+    """Render an area of the compiled map in 2.5D isometric view."""
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Unknown map."}), 404
+    lots = map_dir / "lots"
+    if not (lots.is_dir() and any(lots.glob("*.lotheader"))):
+        return jsonify({"error": "Map is not compiled yet."}), 400
+
+    from tools import render_lots
+    from knoxbuild.picture import _trim, picture as make_picture
+
+    # Scale parameter (1.0 = native in-game zoom)
+    try:
+        scale = float(request.args.get("scale", 1.0))
+    except ValueError:
+        scale = 1.0
+    scale = max(0.05, min(1.0, scale))
+
+    roofs = request.args.get("roofs", "1") in ("1", "true", "yes", "on")
+    floor_arg = request.args.get("floor")
+    if floor_arg is not None and floor_arg != "":
+        try:
+            max_level = int(floor_arg)
+        except ValueError:
+            max_level = None if roofs else 0
+    else:
+        max_level = None if roofs else 0
+
+    box_arg = request.args.get("box")
+    if box_arg:
+        try:
+            x, y, w, h = [int(float(v)) for v in box_arg.split(",")]
+        except ValueError:
+            return jsonify({"error": "box must be x,y,w,h"}), 400
+        # Clamp dimensions to prevent excessive memory usage
+        w = max(10, min(w, 200 if scale >= 0.5 else 400))
+        h = max(10, min(h, 200 if scale >= 0.5 else 400))
+    else:
+        # Default: if full map requested without box, check existing pictures first
+        pics_dir = map_dir / "pictures"
+        target_name = "town.png" if roofs else "inside.png"
+        target_path = pics_dir / target_name
+        if target_path.is_file():
+            return send_file(target_path, mimetype="image/png")
+        # Otherwise generate full picture
+        try:
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            make_picture(map_dir, target_path, roofs=roofs)
+            if target_path.is_file():
+                return send_file(target_path, mimetype="image/png")
+        except Exception as exc:
+            return failed(f"Could not draw picture: {exc}", 500, exc)
+        return jsonify({"error": "Could not render picture."}), 500
+
+    # Cache key for box renders
+    cache_dir = map_dir / "pictures" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file = cache_dir / f"iso_{x}_{y}_{w}_{h}_s{scale:.2f}_r{1 if roofs else 0}_m{max_level}.png"
+
+    if cache_file.is_file():
+        return send_file(cache_file, mimetype="image/png")
+
+    try:
+        drawn = render_lots.render(str(map_dir), x, y, w, h, max_level=max_level, scale=scale)
+    except Exception as exc:
+        return failed(f"Render failed: {exc}", 500, exc)
+
+    if drawn is None:
+        return jsonify({"error": "Nothing compiled in this area."}), 404
+
+    trimmed = _trim(drawn)
+    try:
+        trimmed.save(cache_file, "PNG")
+        return send_file(cache_file, mimetype="image/png")
+    except Exception as exc:
+        return failed(f"Saving render failed: {exc}", 500, exc)
+
+
 @bp.route("/api/save", methods=["POST"])
 def api_save():
     """Save a map's file where the player can find it and show it in Explorer.
