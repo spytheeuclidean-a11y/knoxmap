@@ -42,7 +42,8 @@ YARD_DEPTH = 9           # back yard, from the back wall to the back fence
 YARD_MIN_DEPTH = 4
 YARD_SIDE = 2            # how far the fence stands out past the house's sides
 PAVED = (C.PALE_CONCRETE, C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT)
-CROSSABLE = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.DIRT)
+CROSSABLE = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.DIRT,
+             C.DIRT_ROWS_H, C.DIRT_ROWS_V)
 YARD_FENCE_STYLES = ("tall_wooden", "short_wooden", "white_picket", "short_chainlink")
 YARD_ARCHETYPES = ("family", "grill", "laundry", "garden", "bare")
 YARD_ARCHETYPE_WEIGHTS = (30, 22, 18, 18, 12)

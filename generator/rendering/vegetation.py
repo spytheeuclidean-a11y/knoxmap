@@ -16,16 +16,19 @@ import knoxstop
 
 def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
-                      density: float = 1.0, should_stop=None) -> None:
+                      density: float = 1.0, should_stop=None,
+                      extra_forest=None) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
-                     {"forest", "scrub", "tree_single"}], proj, density, should_stop)
+                     {"forest", "scrub", "tree_single"}], proj, density, should_stop,
+                    extra_forest=extra_forest)
 
 
 def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
-                    density: float = 1.0, should_stop=None) -> None:
+                    density: float = 1.0, should_stop=None,
+                    extra_forest=None) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,
@@ -62,6 +65,12 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                 x, y = rings[0][0]
                 r = max(1, int(2 / proj.meters_per_tile))
                 mask_draw.ellipse((x - r, y - r, x + r, y + r), fill=255)
+
+    if extra_forest is not None and extra_forest.any():
+        # WorldCover tree cover OSM left blank: a wood like any mapped one.
+        import numpy as np
+        mask = Image.fromarray(np.maximum(np.asarray(mask),
+                                          extra_forest.astype(np.uint8) * 255), "L")
 
     # Build a "border band" of the forest mask so we can paint edges lighter.
     eroded = mask.filter(ImageFilter.MinFilter(5))
@@ -311,8 +320,11 @@ WILD_GROUND = (C.DARK_GRASS, C.MEDIUM_GRASS)
 
 
 def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
-                       proj: Projector, density: float = 1.0) -> int:
-    """Scatter trees and scrub over open grass. Returns what was planted."""
+                       proj: Projector, density: float = 1.0, exclude=None) -> int:
+    """Scatter trees and scrub over open grass. Returns what was planted.
+
+    `exclude` (bool array) is ground WorldCover has a class for, which grows
+    what its class says (landcover_veg.py) instead of a guess."""
     import numpy as np
 
     if density <= 0:
@@ -331,6 +343,8 @@ def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
     # verge, and the road details pass has its own plans for them.
     free &= ~_box_any(~open_ground, WILD_CLEAR_OF_PAVING)
     del open_ground
+    if exclude is not None:
+        free &= ~exclude
 
     h, w = free.shape
     step = max(2, int(round(WILD_TREE_EVERY_M / proj.meters_per_tile)))
@@ -373,8 +387,8 @@ GROVE_SEED = 5513
 
 
 def _paint_groves(veg: Image.Image, landscape: Image.Image,
-                  proj: Projector, density: float = 1.0) -> int:
-    """Woods on open grass. Returns the tiles planted."""
+                  proj: Projector, density: float = 1.0, exclude=None) -> int:
+    """Woods on open grass, off `exclude`. Returns the tiles planted."""
     import numpy as np
 
     if density <= 0:
@@ -389,6 +403,8 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
     del vegp
     free &= ~_box_any(~open_ground, WILD_CLEAR_OF_PAVING)
     del open_ground
+    if exclude is not None:
+        free &= ~exclude
     h, w = free.shape
     if not free.any():
         return 0

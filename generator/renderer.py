@@ -12,10 +12,12 @@ meters-per-tile scale stays consistent.
 """
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass
 from typing import Iterable
 
+import numpy as np
 from PIL import Image, ImageDraw
 
 import knoxfiles
@@ -51,7 +53,11 @@ from .rendering.gridangle import (ALIGN_MIN_STRENGTH, DISTRICT_CELL_M,
 from .rendering.landcover import (AREA_CATEGORIES, DENSE_COVERAGE,
                                   GREEN_CATEGORIES, LANDSCAPE_FILL,
                                   LANDSCAPE_ORDER, VEG_CATEGORIES,
-                                  WATERWAY_WIDTH_M)  # noqa: F401
+                                  WATERWAY_WIDTH_M, paint_markers,
+                                  refine_owned, resized_grid,
+                                  settle_markers)  # noqa: F401
+from .rendering.fields import paint_fields, paint_pools, paint_rocks
+from .rendering.landcover_veg import plant_landcover
 from .rendering.outputs import (AREA_TAGS, LINE_TAGS, OPENING_PATHS,
                                 _areas_geojson, _build_preview,
                                 _build_spawn_map, _lines_geojson,
@@ -98,6 +104,9 @@ class RenderResult:
     height: int
     cells_x: int
     cells_y: int
+
+
+_log = logging.getLogger("knoxmap.renderer")
 
 
 # The Road layout setting (straight_roads) past Knox County's straight runs (1):
@@ -236,6 +245,27 @@ def _paint_relief_ground(landscape: Image.Image, metres, span=None) -> None:
     landscape.paste(Image.fromarray(arr, "RGB"), (0, 0))
 
 
+# OSM wetland that gets pools: marsh, swamp, bog, reed bed, or untyped. Not
+# wet meadow, which is a field that floods.
+POOL_WETLANDS = {None, "marsh", "swamp", "bog", "reedbed"}
+# WorldCover classes relief may band: tree cover, shrubland, grassland,
+# built-up - grass ground that stays grass.
+RELIEF_CLASSES = (10, 20, 30, 50)
+
+
+def _polygon_mask(feats, proj):
+    """Bool array, True inside any of the features' polygons."""
+    mask = Image.new("L", (proj.width, proj.height), 0)
+    draw = ImageDraw.Draw(mask)
+    for feat in feats:
+        if not _is_polygon(feat):
+            continue
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 3:
+                draw.polygon(ring, fill=255)
+    return np.asarray(mask) > 0
+
+
 def _paint_landcover(landscape: Image.Image, grid) -> None:
     """Paint the WorldCover base, one class per tile, under the OSM features.
 
@@ -302,13 +332,20 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # the shape is built.
     clip = shape_px(shape, proj)
     landscape = Image.new("RGB", (proj.width, proj.height), C.DARK_GRASS)
+    landcover_grid = None
     if landcover_for is not None:
-        # Optional WorldCover ground under everything OSM paints (knoxdata).
+        # Optional WorldCover ground under everything OSM paints (knoxdata),
+        # in marker colours until OSM has painted, so what OSM left blank can
+        # be told apart (generator/rendering/landcover.py).
         try:
-            _paint_landcover(landscape, landcover_for(proj.width, proj.height))
-        except Exception:               # noqa: BLE001 - optional, never fatal
-            pass
-    if elevation is not None:
+            landcover_grid = landcover_for(proj.width, proj.height)
+            if landcover_grid is not None:
+                landcover_grid = resized_grid(landcover_grid, landscape.size)
+                paint_markers(landscape, landcover_grid)
+        except Exception as exc:        # noqa: BLE001 - optional, never fatal
+            _log.warning("worldcover skipped: %s: %s", type(exc).__name__, exc)
+            landcover_grid = None
+    if elevation is not None and landcover_grid is None:
         # Optional 3DEP relief (knoxdata): compressed into the ground under
         # OSM, since Project Zomboid's outdoor ground is flat by format.
         try:
@@ -480,23 +517,83 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:
         l_draw.rectangle(deck.bounds, fill=LANDSCAPE_FILL.get(cat, C.MEDIUM_ASPHALT))
+    owned = None
+    if landcover_grid is not None:
+        # OSM has painted: what is still a marker is WorldCover's.
+        owned = settle_markers(landscape, landcover_grid)
+        # Woods and scrub OSM maps paint no ground, only trees, so they are
+        # claimed here.
+        owned &= ~_polygon_mask(
+            [f for f in vegetation_feats
+             if classify(f.tags, _is_polygon(f)) in {"forest", "scrub"}], proj)
     _pave_dense_ground(landscape, building_feats, buckets, proj)
     for paved in lifted.paving:
         l_draw.polygon(list(paved.exterior.coords), fill=C.PAVING)
     if clip is not None:
         _clip_to_shape(landscape, clip, buckets, proj)
     _weather_roads(landscape, proj)
+    if owned is not None:
+        refine_owned(landscape, landcover_grid, owned)
+        if elevation is not None:
+            # Relief bands the ground OSM left blank, as it does the whole
+            # ground without WorldCover - but only the grassy classes: its
+            # bands are flat ground colours, and would turn a hillside lake,
+            # marsh or rock field into grass, and cropland past being
+            # ploughed (fields only take light grass).
+            try:
+                banded = landscape.copy()
+                _paint_relief_ground(banded, elevation, elevation_span)
+                grassy = owned & np.isin(landcover_grid, RELIEF_CLASSES)
+                landscape.paste(banded, (0, 0),
+                                Image.fromarray(grassy.astype("uint8") * 255))
+            except Exception:           # noqa: BLE001 - optional, never fatal
+                pass
+
+    # Ground that is more than a colour: fields on farmland and cropland, rock
+    # fields on bare ground (generator/rendering/fields.py).
+    try:
+        farm_rings = [ring for f in buckets.get("farmland", [])
+                      if f.tags.get("landuse") == "farmland" and _is_polygon(f)
+                      for ring in _feature_coords_px(f, proj) if len(ring) >= 3]
+        cropland = owned & (landcover_grid == 40) if owned is not None else None
+        paint_fields(landscape, vegetation, proj, farm_rings, cropland)
+        if owned is not None:
+            paint_rocks(landscape, vegetation, proj, landcover_grid, owned)
+    except Exception as exc:            # noqa: BLE001 - never lose a map to it
+        _log.warning("fields skipped: %s: %s", type(exc).__name__, exc)
+    forest = None
+    if owned is not None:
+        try:
+            forest, _counts = plant_landcover(vegetation, landscape, landcover_grid,
+                                              owned, proj, density=tree_density)
+        except Exception as exc:        # noqa: BLE001 - optional, never fatal
+            _log.warning("worldcover planting skipped: %s: %s", type(exc).__name__, exc)
+            owned = None
 
     knoxstop.check(should_stop, "the terrain")
     # The woods the mapper drew take both dials; the gardens and the scrub
     # over open ground take the overall one only.
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
-                      density=tree_density * forest_density, should_stop=should_stop)
+                      density=tree_density * forest_density, should_stop=should_stop,
+                      extra_forest=forest)
+    # Pools in the marsh, after its reeds (generator/rendering/fields.py).
+    try:
+        wet = _polygon_mask([f for f in buckets.get("wetland", [])
+                             if f.tags.get("wetland") in POOL_WETLANDS], proj)
+        if owned is not None:
+            wet |= owned & np.isin(landcover_grid, (90, 95))
+        if wet.any():
+            paint_pools(landscape, vegetation, proj, wet,
+                        _polygon_mask(building_feats, proj))
+    except Exception as exc:            # noqa: BLE001 - never lose a map to it
+        _log.warning("pools skipped: %s: %s", type(exc).__name__, exc)
     _paint_parks(vegetation, landscape, buckets.get("park", []), proj,
                  density=tree_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
-    _paint_wild_growth(vegetation, landscape, proj, density=tree_density)
-    _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density)
+    # Where WorldCover has a class, it says what grows; elsewhere, a guess.
+    _paint_wild_growth(vegetation, landscape, proj, density=tree_density, exclude=owned)
+    _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density,
+                  exclude=owned)
     # Last of the planting: some of the trees now down become the big ones,
     # which need a square of their own and so can only be chosen once it is
     # settled what stands where.
