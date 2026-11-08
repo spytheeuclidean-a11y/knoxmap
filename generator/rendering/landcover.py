@@ -131,8 +131,16 @@ VEG_CATEGORIES = {"forest", "scrub", "tree_single", "hedge", "orchard",
 # A city block is paved when buildings cover at least this share of it - the
 # same line knoxbuild draws between a city and a suburb.
 # Measured: central Paris, Kadikoy and a Tokyo neighbourhood sit at 0.4-0.5, a
-# US suburb and a French village around 0.16.
-DENSE_COVERAGE = 0.28
+# US suburb and a French village around 0.16. Set to the bottom of that
+# downtown band: at 0.28 every old town got slabs of concrete two blocks wide,
+# standing where the yards and trees should be.
+DENSE_COVERAGE = 0.40
+# And a block whose area is bigger than this is not a city block at all. A
+# rural road grid throws blocks a kilometre across - one farm, one works and a
+# couple of houses clear the coverage line easily - and paving the whole of one
+# is the big concrete field that reads as ground nobody landscaped. 200 x 200
+# tiles is a long Manhattan block; past that the yards stay grass.
+MAX_PAVED_BLOCK = 200 * 200
 # Mapped green space keeps its grass however built-up the area around it is.
 GREEN_CATEGORIES = {"park", "grass", "sports", "cemetery", "orchard", "farmland",
                     "wetland", "hospital_grounds"}

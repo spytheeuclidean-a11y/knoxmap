@@ -131,6 +131,9 @@ class Plan:
     open_units: set = field(default_factory=set)
     # Wall edges carrying a switch, painting or mirror; windows keep off them.
     wall_pieces: set = field(default_factory=set)
+    # The sleeve of floor round each room's way in that no optional piece may
+    # take: one tile either side of the walkway and of every door.
+    sleeve: set = field(default_factory=set)
     # Ground-floor windows that are a shop front, glazed with big panels.
     shop_front: set = field(default_factory=set)
     # What the building is (build_plan's kind), for rooms furnished by it: an
@@ -1373,12 +1376,21 @@ MANSION_FLOOR_TILES = HOUSE_BIG_FLOOR
 # Rooms a mansion dresses past its wishlist: the pictures, rugs, bookcases and
 # lamps a house with money has in every room. Roles, mapped by the palette and
 # the game's own art like any other.
+# Paintings are wall furniture: they hang over a wall square and take no floor,
+# so a gallery of them costs a mansion's rooms nothing. Shelves are the
+# opposite, and a study is the one room that wants them wall to wall.
 MANSION_EXTRA = {
-    "livingroom": ["chandelier", "shag_rug"],
-    "hall": ["chandelier"],
-    "dining": ["piano", "chandelier", "rug_wide"],
-    "bedroom": ["rug_small"],
-    "bathroom": ["rug_small"],
+    "livingroom": ["piano", "painting", "painting", "plant", "bookshelf",
+                   "shag_rug", "armchair", "lamp", "clock"],
+    "hall": ["painting", "painting", "painting", "plant", "mirror_small",
+             "sidetable", "bookshelf"],
+    "dining": ["painting", "painting", "plant", "lamp", "rug_wide", "clock",
+               "bookshelf"],
+    "office": ["erika_shelves_2", "erika_shelves_6", "bookshelf", "bookshelf",
+               "painting", "plant", "clock"],
+    "bedroom": ["painting", "painting", "plant", "lamp", "mirror", "bookshelf",
+                "rug_small"],
+    "bathroom": ["plant", "mirror_small", "rug_small"],
 }
 # And the floors it lays: dark wood and red carpet underfoot, white tile in the
 # wet rooms. A kind it does not list keeps the house's own floor. These are
@@ -4415,6 +4427,10 @@ CORE_ART_EVERY = 3
 # and wall art came to 11.8% of everything in a house. Not every room in a
 # house has a picture in it.
 WALL_ART_CAP = 1
+# What a mansion hangs in a room: two or three pictures down a wall, where a
+# house hangs one. Pictures take wall squares, not floor, so this costs a room
+# nothing but the wall.
+MANSION_ART_CAP = 3
 WALL_ART_CHANCE = 0.55
 # Workplaces hang nothing. Knox County's school rooms carry 0.19 pieces of
 # wall decoration per 10 m2 and ours sat at 0.21, but with Erika's Tiles
@@ -4862,7 +4878,15 @@ def _place_windows(building: "Building", kind: str | None,
                      for x, y, d, ix, iy in wall}
             for edge in sorted(under):
                 spot = where.get(edge)
-                if spot is None or edge in blocked or worse(edge) or not spaced(*edge):
+                if spot is None or edge in blocked or not spaced(*edge):
+                    continue
+                # A facade is built in columns. Where the window below stands
+                # and a dresser or a shelf is against the wall upstairs, the
+                # window goes in anyway: the clear-up moves the piece, and
+                # dropping the column instead is what gave the town away.
+                # A hemmed edge - furniture both sides of a pocket - still
+                # gives way, because there the window cannot be opened.
+                if worse(edge) and edge not in behind:
                     continue
                 idx = storey.grid[spot[1]][spot[0]]
                 if not idx:
@@ -5835,9 +5859,19 @@ def _furnish(plan: Plan, rng: random.Random,
         # the plants.
         walk = _room_walkway(plan, idx, door_tiles, stairs)
         keep_clear = door_tiles | stair_tiles | walk
-        no_go = door_tiles | walk
         room_cells = {(x, y) for y in range(r.y0, r.y1 + 1)
                       for x in range(r.x0, r.x1 + 1) if plan.grid[y][x] == idx}
+        # A walkway one tile wide is a squeeze: a wardrobe on one side and a
+        # sofa on the other and the way through is a needle's eye, which is
+        # what "furniture blocks the doorway" looks like in the game. Keep a
+        # sleeve of floor either side of the way in, and either side of the
+        # door itself, so the way through is never narrowed below two tiles.
+        sleeve = {(x + dx, y + dy) for x, y in walk
+                  for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+        sleeve |= {(x + dx, y + dy) for x, y in door_tiles
+                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+        sleeve = (sleeve - walk - door_tiles) & room_cells
+        no_go = door_tiles | walk
 
         floor = FR.OpenFloor(room_cells, walk, POCKET_TILES)
         counted = [start]
@@ -5901,7 +5935,7 @@ def _furnish(plan: Plan, rng: random.Random,
         if r.kind in interiors.STORES and interiors.furnish_store(
                 plan, idx, r, rng, door_tiles, stair_tiles | walk, street):
             interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
-                                 door_edges, no_go, keeps_open)
+                                 door_edges, no_go, keeps_open, walk)
             continue
         pal = palettes.get(r.unit)
         if pal is None:
@@ -6037,8 +6071,13 @@ def _furnish(plan: Plan, rng: random.Random,
                                      - plan.profile.wear * 0.12))
             if plan.profile.wealth >= 0.78 and plan.profile.wear < 0.3:
                 art_cap = 2
+        if plan.grand:
+            # A mansion's walls carry a gallery where a house's walls carry one
+            # print, and every one of its rooms is hung: the cap is what stops
+            # a floor-area wishlist turning into wallpaper.
+            art_cap = MANSION_ART_CAP
         art = (art_cap if plan.kind in ART_FREE_KINDS
-               else 0 if rng.random() < art_chance else art_cap)
+               else 0 if (plan.grand or rng.random() < art_chance) else art_cap)
         for i in range(target):
             role = base[i % len(base)]
             if i >= len(base) and _once(role):
@@ -6108,20 +6147,6 @@ def _furnish(plan: Plan, rng: random.Random,
                     wishlist.remove(role)
 
         def place(role):
-            if role == "chandelier":
-                candidates = sorted(((x, y) for y in range(r.y0 + 1, r.y1)
-                                     for x in range(r.x0 + 1, r.x1)),
-                                    key=lambda p: abs(2 * p[0] - r.x0 - r.x1)
-                                    + abs(2 * p[1] - r.y0 - r.y1))
-                for x, y in candidates:
-                    cells = _cells_for(role, x, y, "W")
-                    if all(_room_at(plan, cx, cy) == idx and (cx, cy) not in no_go
-                           and all(_room_at(plan, cx + dx, cy + dy) == idx
-                                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
-                           for cx, cy in cells):
-                        plan.furniture.append((role, x, y, "W"))
-                        return
-                return
             if role == "bath_mat":
                 # A mat is walked over, so it may lie on the walkway.
                 mat = _bath_mat_spot(plan, idx, r, occupied, door_tiles | stair_tiles)
@@ -6148,7 +6173,17 @@ def _furnish(plan: Plan, rng: random.Random,
                                                    mirror_orient))
                         return
             if _is_wall_piece(role):
-                for x, y, facing in sorted(floor_slots, key=on_facade):
+                # A picture goes on bare wall before it goes behind a dresser,
+                # and on the north wall before the west one. Both are the same
+                # drawing question: the game draws a floor piece after the
+                # thing on the wall of its own tile, so a picture hung where a
+                # wardrobe or a piano stands is drawn over the piece instead of
+                # behind it - a framed print floating across a bookshelf. Bare
+                # wall first; then the north wall, which is drawn first.
+                for x, y, facing in sorted(
+                        floor_slots,
+                        key=lambda s: ((s[0], s[1]) in occupied,
+                                       0 if s[2] == "N" else 1, on_facade(s))):
                     if hang(role, x, y, facing):
                         break
                 return
@@ -6166,6 +6201,12 @@ def _furnish(plan: Plan, rng: random.Random,
                 ax, ay = _wall_anchor(role, x, y, orient, wanted)
                 cells = _cells_for(role, ax, ay, orient)
                 if any(c in occupied or c in no_go or c in toilet_fronts for c in cells):
+                    continue
+                # A bed or a stove may stand in the sleeve round the way
+                # through; a dresser or a plant may not, or the way through
+                # is a needle's eye between two tall pieces.
+                if (sleeve and FR.priority(role, r.kind) != FR.ESSENTIAL
+                        and any(c in sleeve for c in cells)):
                     continue
                 if any(_room_at(plan, cx, cy) != idx for cx, cy in cells):
                     continue
@@ -6234,10 +6275,19 @@ def _furnish(plan: Plan, rng: random.Random,
                          pal.get("counter", "counter"), side_rank, keeps_open)
         for role in [x for x in wishlist if FR.priority(x, r.kind) == FR.ESSENTIAL]:
             place(role)
+        # Pictures take the wall before the furniture does. A dresser, a
+        # bookshelf or a piano keeps off a wall that already carries something
+        # (keep_off), so art hung last - which is where decoration sorts -
+        # ended up sharing its tile with the piece in front of it, and the
+        # game draws that piece over the picture. Hung first, the picture has
+        # bare wall behind it and the room stands off it.
+        for role in [x for x in wishlist if _is_wall_piece(x) and x != SWITCH]:
+            place(role)
         if not centre_first:
             centre()
         for role in FR.in_priority_order(
-                [x for x in wishlist if FR.priority(x, r.kind) != FR.ESSENTIAL], r.kind):
+                [x for x in wishlist if FR.priority(x, r.kind) != FR.ESSENTIAL
+                 and not (_is_wall_piece(x) and x != SWITCH)], r.kind):
             place(role)
 
         if commercial_kitchen:
@@ -6251,9 +6301,10 @@ def _furnish(plan: Plan, rng: random.Random,
                           keeps_open=keeps_open)
         _pair_up(plan, idx, occupied, no_go, keeps_open)
         _stand_on_something(plan, idx, r, pal)
+        plan.sleeve |= sleeve
         if not r.is_core:
             interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
-                                 door_edges, no_go, keeps_open)
+                                 door_edges, no_go, keeps_open, walk)
 
 
 # Pieces drawn at worktop height: a sink, a television, a table lamp, a pot
@@ -7548,24 +7599,32 @@ def build_building(width: int, height: int, levels: int = 1,
         above = bool(setback_at) and lvl >= setback_at
         return seed + 977 * (1 + int(above))
 
-    storeys = [
-        build_plan(width, height, commercial=commercial or (shops and lvl == 0),
-                   seed=_plan_seed(lvl),
-                   kind="retail" if shops and lvl == 0 else kind,
-                   mask=upper_mask if setback_at and lvl >= setback_at else mask,
-                   ground=(lvl == 0), settings=settings,
-                   core=core, level=lvl, levels=levels, stairs=stairs,
-                   corridor=corridor, shaft=shaft, shaft_door=shaft_door,
-                   street=street, uses=uses, hotel=hotel,
-                   extra_shafts=tcore.lifts[1:] if tcore is not None else None,
-                   tower=tcore,
-                   plant=tcore is not None and lvl == tower_mod.plant_level(levels),
-                   entrances=entrances if lvl == 0 else None,
-                   profile=profile, mapped=mapped,
-                   garage_door=garage_door and lvl == 0,
-                   party={e for e, up in (party or {}).items() if lvl < up})
-        for lvl in range(levels)
-    ]
+    foot = (sum(1 for row in mask for cell in row if cell) if mask else width * height)
+    # A mansion is a big house, not a tall one: 12x11 over two storeys is a
+    # house that happens to have an upstairs, and dressing every one of those
+    # as a mansion put a piano and a gallery in half the town.
+    mansion = kind in (None, "house") and foot >= MANSION_FLOOR_TILES
+
+    def _storey(lvl: int):
+        return build_plan(width, height, commercial=commercial or (shops and lvl == 0),
+                          seed=_plan_seed(lvl),
+                          kind="retail" if shops and lvl == 0 else kind,
+                          mask=upper_mask if setback_at and lvl >= setback_at else mask,
+                          ground=(lvl == 0), settings=settings,
+                          core=core, level=lvl, levels=levels, stairs=stairs,
+                          corridor=corridor, shaft=shaft, shaft_door=shaft_door,
+                          street=street, uses=uses, hotel=hotel,
+                          extra_shafts=tcore.lifts[1:] if tcore is not None else None,
+                          tower=tcore,
+                          plant=tcore is not None and lvl == tower_mod.plant_level(levels),
+                          entrances=entrances if lvl == 0 else None,
+                          profile=profile, mapped=mapped,
+                          garage_door=garage_door and lvl == 0,
+                          party={e for e, up in (party or {}).items() if lvl < up})
+
+    # The ground floor first: a mansion's floors above it are opened over its
+    # hall, and that has to be known before they are laid out.
+    storeys = [_storey(lvl) for lvl in range(levels)]
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
                         grand=bool(storeys) and storeys[0].grand)
     if stairs is not None:
@@ -7584,6 +7643,8 @@ def build_building(width: int, height: int, levels: int = 1,
     from . import interiors
     interiors.one_wood(building, random.Random(f"{seed}:wood"))
     return building
+
+
 
 
 # Towers step back: from this many storeys the top part is set in from the
@@ -7811,12 +7872,13 @@ def build_plan(width: int, height: int, commercial: bool = False,
     plan = Plan(width=width, height=height, mask=mask, core=core,
                 corridor=corridor, kind=kind, party=set(party or ()),
                 profile=profile)
-    # A large house, by the floor its storeys hold: the whole house's floor
-    # against HOUSE_BIG_FLOOR, so two storeys of 130 count where one floor of
-    # 130 does not. It gets the finishes and the dressing of an old, rich
-    # house (_furnish, tbx.floor_options) rather than more of the same.
+    # A large house, by the ground floor it covers. Counting the whole
+    # house's floor against HOUSE_BIG_FLOOR made a 12x11 house with an
+    # upstairs a mansion - two storeys of 132 cleared 260 - so half a town got
+    # a gallery, a piano and a book-lined study, and bedrooms came out half
+    # furniture. A mansion is a big house, not a tall one.
     plan.grand = (kind in (None, "house")
-                  and _footprint(plan) * max(1, levels) >= MANSION_FLOOR_TILES)
+                  and _footprint(plan) >= MANSION_FLOOR_TILES)
     shop_floor = kind in ("shop", "retail", "restaurant") and ground and tower is None
     mix_kind = "offices" if kind in ("shop", "restaurant") and not ground else kind
     # Rooms in a flat are smaller than rooms in a house, and there have to be

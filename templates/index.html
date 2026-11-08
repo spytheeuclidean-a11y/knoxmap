@@ -143,6 +143,26 @@
       </details>
     </section>
 
+    <div id="toolsBody" class="tools-body">
+        <h4>Extract file — pick one for every map</h4>
+        <p class="hint">Pick a <code>.osm.pbf</code> and every map reads that file, instead of
+          KnoxMap asking Geofabrik which extract covers the area. If the file cannot be
+          read the map stops and says why, rather than quietly asking the public servers.</p>
+        <input id="pbfFile" type="text" spellcheck="false" placeholder="C:\maps\tennessee-latest.osm.pbf">
+        <button id="pbfBrowse" class="btn btn-small" type="button">Browse…</button>
+        <button id="pbfUse" class="btn btn-small" type="button">Use this file</button>
+        <button id="pbfClear" class="btn btn-small" type="button">Choose by area</button>
+        <span id="pbfNote" class="step-note"></span>
+        <div class="field-label" style="margin-top: 10px; font-weight: 600;">Check the file before building</div>
+        <p class="hint">Says whether the extract is whole, whether it covers the area, and whether
+          there are roads and buildings in it. Exit code and report come from the same check as
+          <code>tools/verify_pbf.py</code>.</p>
+        <button id="pbfCheck" class="btn btn-small" type="button">Check it</button>
+        <span id="pbfCheckNote" class="step-note"></span>
+        <pre id="pbfReport" class="pbf-report" hidden></pre>
+
+    </div>
+
     <section class="panel" id="mapsCard" hidden>
       <details id="mapsPanel">
         <summary>Your maps <span class="count" id="mapsCount"></span></summary>

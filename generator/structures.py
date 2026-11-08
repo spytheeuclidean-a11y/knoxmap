@@ -284,6 +284,16 @@ def plan_bridges(buckets: dict, proj, meters_per_tile: float, way_width, plan: P
                 else:
                     plan.water_rails.append(run.buffer(width / 2, cap_style=2))
                 continue
+            # A flyover is only walkable where its ramps line up with the tile
+            # grid. Laid along a diagonal the ramp tiles step one at a time and
+            # never join the deck, so the player sees a bridge over the street
+            # and cannot get onto it. A diagonal crossing is left at ground
+            # level instead: it meets the road below as a junction, which a
+            # player can use. Axis-aligned flyovers keep their ramps.
+            (ax, ay), (bx, by) = run.coords[0], run.coords[-1]
+            dx, dy = abs(bx - ax), abs(by - ay)
+            if zones and min(dx, dy) > 0.2 * max(dx, dy):
+                continue
             offset_line = _extend(run, ground_ends, RAMP_STEPS * level + 4, used)
             # Where the run starts inside the extended line.
             shift = offset_line.project(Point(run.coords[0]))

@@ -854,11 +854,13 @@ def fetch_features_tiled(south: float, west: float, north: float, east: float,
     de-duplicated on (kind, osm_id) and keep their whole shape.
     """
     source = osm_source()
-    if source != "overpass":
+    from . import extract
+    # A file the developer picked is read whatever the data source says: having
+    # Overpass selected as well would make the pick a suggestion again.
+    if source != "overpass" or extract.local_path():
         # A town is hundreds of queries against servers other people run and
         # pay for. OpenStreetMap is also published as files, and reading one on
         # this PC asks nobody for anything (generator/extract.py).
-        from . import extract
         try:
             if not extract.available():
                 raise extract.ExtractUnavailable(
@@ -866,8 +868,11 @@ def fetch_features_tiled(south: float, west: float, north: float, east: float,
             return extract.features(south, west, north, east, progress=progress,
                                     should_stop=should_stop)
         except extract.ExtractUnavailable as exc:
-            if source == "extract":
-                raise OverpassError(f"The OpenStreetMap extract could not be used: {exc}") from None
+            # A file the developer picked is the answer, not a suggestion: if it
+            # cannot be read, say so rather than quietly asking the servers.
+            if source == "extract" or extract.forced():
+                raise OverpassError(
+                    f"The OpenStreetMap extract could not be used: {exc}") from None
             _say(progress, 1, 1, f"no extract ({exc}) - asking the Overpass servers instead")
             knoxlog.log.warning("osm: no extract (%s); using Overpass", exc)
 
