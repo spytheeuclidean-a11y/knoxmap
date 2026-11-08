@@ -1,24 +1,63 @@
-## 1.8.5.4
+## 1.8.5.5
 
-- **Mansions and living rooms.** A big house gets a gallery of pictures and a
-  study lined with books, and is judged by the ground floor it covers - two
-  storeys of 132 tiles was being dressed as a mansion, which put a piano in
-  half the town, half-filled the bedrooms with furniture and knocked the
-  upstairs windows out of their columns. Chandeliers are gone. Smaller living
-  rooms and finished basements put the sofa facing the TV.
+- **A mansion is a big house, not a tall one.** Large houses were judged by
+  the whole house's floor, so two storeys of 132 tiles cleared the bar and a
+  12x11 house with an upstairs got a gallery, a piano and a book-lined study.
+  Half a town was dressed as a mansion: bedrooms came out half furniture and
+  the upstairs windows fell out of their columns. The rule is the ground floor
+  it covers.
+- **A mansion hangs a gallery and keeps a study of books.** Pictures were
+  counted inside a room's piece budget, so adding them to the wishlist came to
+  nothing; a mansion raises the wall-art cap instead, and its study is books
+  wall to wall.
+- **A picture takes the wall before the bookshelf does.** Wall art hung last,
+  after a dresser or shelf had taken the wall, and the game drew the piece over
+  the print. It hangs before the room's furniture now, on bare wall first and
+  on the north wall before the west one.
+- **Chandeliers are gone.** Two tiles that never joined, placed off the room's
+  middle, more of them with every storey.
 - **A doorway keeps a sleeve of floor.** One tile either side of a room's
   walkway, and of every door in it, is off limits to anything but a bed or a
   stove: a dresser on one side and a sofa on the other left a single tile to
   walk through, which is what furniture blocking a doorway looks like in the
   game. Free tiles pinched to one tile between two pieces fell from 666 to 375
-  across thirty houses; the coat rack that stood beside every outside door
-  went with it.
-- **A picture takes the wall before the bookshelf does.** Wall art hangs
-  before the room's furniture, on bare wall first and on the north wall before
-  the west one, so a dresser cannot end up drawn over the print.
-- **No two-storey foyer.** A .tbx cannot say a floor is open to the one below:
-  a level with no floor tile over a room reads as outdoors, so a carved and
-  railed opening still rendered as two holes with no wall.
+  across thirty houses, and the coat rack beside every outside door went with
+  it.
+- **Upstairs windows stand over the ones below.** A window bay is kept where
+  the window below stands even with furniture against that wall, instead of
+  sliding along to the next clear stretch.
+- **No two-storey foyer.** A .tbx cannot say that a floor is open to the one
+  below: a level with no floor tile over a room reads as outdoors, so a carved
+  and railed opening still came out as two holes with no wall.
+- **Concrete fields are gone.** A street was paved where only a quarter of its
+  frontage was built up, and rural blocks are a kilometre across, so one farm
+  paved a whole field. A block over 200x200 tiles is never paved wall to wall.
+- **Road spikes and diagonal flyovers.** A pavement tile with no pavement
+  either side of it - a diagonal step in the kerb - becomes grass instead of a
+  lone lip, and a flyover whose crossing is more than a fifth off square is a
+  ground junction, because its ramps cannot line up with the tile grid.
+- **Gas pumps are two tiles.** Each pump was drawn as one tile of a two-tile
+  sprite. Half pumps are placed as a pair now, dropped rather than drawn cut
+  when the second half will not fit, and a fuel station mapped only as a point
+  gets pumps on a pad instead of a little station of its own.
+- **Say which extract to build from.** The Tools tab takes an .osm.pbf:
+  Browse, Use, Clear, and Check. A picked file is read where it lies and wins
+  over the guess at a Geofabrik region; if it cannot be read the map stops
+  rather than quietly asking the public servers instead. The checker reports
+  size, bounding box, object counts and what is tagged as road, building,
+  water and green, and warns about a class that is missing.
+- **Every module ships.** The extract tools were missing from the shipped-file
+  list, which is what the updater deletes by: a file missing from it never
+  reaches anybody's install.
+
+Rebuild the buildings, compile and reinstall an existing map to see the
+interior and window changes.
+
+## 1.8.5.4
+
+- **Mansions and living rooms.** Large houses get richer interiors, a piano
+  and chandeliers. Chandeliers are placed away from doorways, and smaller
+  living rooms and finished basements try to put the sofa facing the TV.
 - **Roofs stay on houses.** Roofs that could come out missing now use a
   supported shape, and flat roofs no longer get floating vents and hatches.
 - **Safer map saves.** KnoxMap reports when settings, drawings or edits cannot
