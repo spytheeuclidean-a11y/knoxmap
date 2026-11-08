@@ -33,6 +33,11 @@ WATER = (0, 138, 255)
 DARK_POTHOLE = (110, 100, 100)
 LIGHT_POTHOLE = (130, 120, 120)
 
+# Ploughed fields: furrowed dirt, rows running across the map (H) or down it
+# (V). Stock WorldEd Rules.txt has both ("Horizontal Dirt", "Vertical Dirt").
+DIRT_ROWS_H = (120, 110, 95)
+DIRT_ROWS_V = (120, 100, 75)
+
 # Vegetation colors — used in the `_veg.bmp` bitmap. Several of these are
 # only valid when painted on top of a specific landscape color (see guide).
 TREES = (255, 0, 0)
@@ -46,6 +51,14 @@ BUSHES = (250, 0, 160)                  # bushes, any ground — hedges
 DENSE_BUSHES_GRASS = (200, 0, 200)      # must sit on DARK_GRASS — wetland
 FLOWERS = (200, 100, 200)               # flowers, any ground — cemeteries
 VEG_NOTHING = (0, 0, 0)
+# Standing corn, two kinds, for fields ("Farm Corn 1/2 (dead)" in the stock
+# Rules.txt: vegetation_farm_01_32..47, low bushes you push through).
+CORN_1 = (255, 128, 0)
+CORN_2 = (220, 100, 0)
+# Rock, for tundra and bare ground ("Boulders" and "Boulders (walkable)" in
+# the stock Rules.txt). BOULDERS block the way; ROCKS can be walked over.
+BOULDERS = (140, 160, 140)
+ROCKS = (100, 120, 100)
 
 # The big trees, each one a single tile whose picture is several tiles across.
 # Build 42's own world generator plants them as the ordinary tree of a wood -
@@ -164,13 +177,13 @@ LANDSCAPE_COLORS = {
     PALE_CONCRETE, PAVING, CLAY, DIRT,
     RAIL_NE_SW, RAIL_NW_SE, RAIL_NE_SW_W, RAIL_NE_SW_E,
     RAIL_NW_SE_N, RAIL_NW_SE_S,
-    WATER, DARK_POTHOLE, LIGHT_POTHOLE,
+    WATER, DARK_POTHOLE, LIGHT_POTHOLE, DIRT_ROWS_H, DIRT_ROWS_V,
 }
 VEGETATION_COLORS = {
     TREES, TREES_DARK_GRASS, SPARSE_TREES, GRASS_ON_DARK,
     LOT_OF_GRASS_AND_TREES, BUSHES_TREES_DARK_GRASS, VEG_NOTHING,
     BUSHES, DENSE_BUSHES_GRASS, FLOWERS,
-    TREE_BIG, TREE_HUGE, TREE_GIANT,
+    TREE_BIG, TREE_HUGE, TREE_GIANT, CORN_1, CORN_2, BOULDERS, ROCKS,
 }
 
 CELL_SIZE = 300  # tiles per cell side — fixed by the game engine

@@ -9,6 +9,7 @@ from ..osm import OSMFeature, classify
 from .geometry import _feature_coords_px, _is_polygon
 from .projection import Projector
 from . import woodland
+from .noise import lattices, smooth_noise
 
 import knoxstop
 
@@ -392,25 +393,12 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
     if not free.any():
         return 0
 
-    rng = np.random.default_rng(GROVE_SEED)
     big = max(8, int(round(GROVE_CELL_M / proj.meters_per_tile)))
     small = max(4, int(round(GROVE_RAGGED_M / proj.meters_per_tile)))
-    lat_big = rng.random((h // big + 3, w // big + 3), dtype=np.float32)
-    lat_small = rng.random((h // small + 3, w // small + 3), dtype=np.float32)
-
-    def lattice(lat, cell, ys, xs):
-        fy, fx = ys / cell, xs / cell
-        y0, x0 = fy.astype(int), fx.astype(int)
-        ty, tx = fy - y0, fx - x0
-        ty, tx = ty * ty * (3 - 2 * ty), tx * tx * (3 - 2 * tx)   # smoothstep
-        y1, x1 = y0 + 1, x0 + 1
-        top = lat[np.ix_(y0, x0)] * (1 - tx) + lat[np.ix_(y0, x1)] * tx
-        bot = lat[np.ix_(y1, x0)] * (1 - tx) + lat[np.ix_(y1, x1)] * tx
-        return top * (1 - ty[:, None]) + bot * ty[:, None]
+    lats = lattices(h, w, [(big, 0.85), (small, 0.15)], GROVE_SEED)
 
     def noise(ys, xs):
-        return (0.85 * lattice(lat_big, big, ys, xs)
-                + 0.15 * lattice(lat_small, small, ys, xs))
+        return smooth_noise(ys, xs, lats)
 
     # The edge is where the noise is high enough for `share` of the open
     # ground to lie above it, read off a thin sample rather than every tile.
