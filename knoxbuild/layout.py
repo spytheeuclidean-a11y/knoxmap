@@ -5189,9 +5189,6 @@ _SIDE_OF_VECTOR = {(1, 0): "E", (-1, 0): "W", (0, 1): "S", (0, -1): "N"}
 _OPPOSITE_SIDE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 
 
-LIVING_GROUP_MIN_TILES = 16
-
-
 def _furnish_living(plan: Plan, idx: int, room: Room,
                     occupied: set[tuple[int, int]],
                     keep_clear: set[tuple[int, int]],
@@ -5199,11 +5196,11 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
     """The television against a wall, the sofa straight across from it facing
     it, the coffee table between, an armchair at the side and a rug under the
     table: how people arrange a living room. Tries each wall and each spot
-    along it, the most open first, and takes the first that fits whole. False
-    if none does, and the room is laid out the old way."""
+    along it, the most open first, and takes the first that fits. In a tight
+    room it can omit the table. Returns false if no aligned pair fits."""
     cells = {(x, y) for y in range(room.y0, room.y1 + 1)
              for x in range(room.x0, room.x1 + 1) if _room_at(plan, x, y) == idx}
-    if len(cells) < LIVING_GROUP_MIN_TILES:
+    if len(cells) < 9:
         return False
     sofa = palette.get("sofa", "sofa")
     armchair = palette.get("armchair", "armchair")
@@ -5225,7 +5222,7 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
         origin = (bounds[ox_name], bounds[oy_name])
         length = (room.x1 - room.x0 + 1) if along[0] else (room.y1 - room.y0 + 1)
         depth = (room.y1 - room.y0 + 1) if along[0] else (room.x1 - room.x0 + 1)
-        if depth < 4 or length < 3:
+        if depth < 3 or length < 3:
             continue
 
         def tile(a, d, origin=origin, along=along, into=into):
@@ -5242,10 +5239,8 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
     options.sort(key=lambda o: o[:4])
 
     for _blocked, _outside, _d, side, tile, length, depth, along in options:
-        # Four deep is the television, a step, the table and the sofa back
-        # to the far wall: two in five living rooms are that narrow or under
-        # twenty tiles, and got the sofa and the table wherever they fell.
-        sofa_d = 4 if depth >= 6 else 3
+        # Leave out the table when the room only fits the television and sofa.
+        sofa_d = 4 if depth >= 6 else min(3, depth - 1)
         centre = length // 2
         spots = sorted(range(1, length - 1), key=lambda a: (abs(a - centre), a))
         table_orient = "N" if side in "NS" else "W"
@@ -5255,9 +5250,9 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
             sf_orient = _facing(sofa, _OPPOSITE_SIDE[side])
             sf_at, sf_cells = footprint(sofa, sf_orient, tile(a, sofa_d))
             tv_orient = _facing("tv", side)
-            parts = [("tv", tv_orient, tv_at, tv_cells),
-                     ("coffee_table", table_orient, tb_at, tb_cells),
-                     (sofa, sf_orient, sf_at, sf_cells)]
+            pair = [("tv", tv_orient, tv_at, tv_cells),
+                    (sofa, sf_orient, sf_at, sf_cells)]
+            parts = pair + [("coffee_table", table_orient, tb_at, tb_cells)]
             # The armchair at the end of the table, turned to face it.
             for lateral in (1, -1):
                 back = _SIDE_OF_VECTOR[(along[0] * lateral, along[1] * lateral)]
@@ -5269,10 +5264,12 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
                     break
             else:
                 if not _living_fits(plan, idx, parts, cells, taken, tile(a, 1), keeps_open):
-                    continue
+                    parts = pair
+                    if not _living_fits(plan, idx, parts, cells, taken, tile(a, 1), keeps_open):
+                        continue
             rug = "rug_wide" if side in "NS" else "rug"
             rug_at, rug_cells = footprint(rug, "W", tile(a, 2))
-            if rug in C.FURNITURE and all(c in cells for c in rug_cells):
+            if len(parts) > 2 and rug in C.FURNITURE and all(c in cells for c in rug_cells):
                 plan.furniture.append((rug, rug_at[0], rug_at[1], "W"))
             for role, orient, at, cs in parts:
                 plan.furniture.append((role, at[0], at[1], orient))
@@ -5310,6 +5307,8 @@ def _furnish_middle(plan: Plan, idx: int, room: Room,
     if room.kind == "livingroom" and _furnish_living(
             plan, idx, room, occupied, keep_clear, palette, keeps_open):
         return 1
+    if room.kind == "livingroom":
+        return 0
 
     def own(group):
         return [(palette.get(role, role), dx, dy, o) for role, dx, dy, o in group]
@@ -6082,6 +6081,9 @@ def _furnish(plan: Plan, rng: random.Random,
             before = len(plan.furniture)
             if not office and not eatery and not trade_fitted:
                 _furnish_middle(plan, idx, r, occupied, keep_clear, pal, keeps_open)
+            if r.kind == "livingroom" and not any(
+                    role == "tv" for role, *_ in plan.furniture[before:]):
+                wishlist[:] = [role for role in wishlist if role != "tv"]
             # The center group already supplied its focal pieces; do not add
             # them again from the room wishlist.
             for role, *_ in plan.furniture[before:]:
@@ -6097,6 +6099,20 @@ def _furnish(plan: Plan, rng: random.Random,
                     wishlist.remove(role)
 
         def place(role):
+            if role == "chandelier":
+                candidates = sorted(((x, y) for y in range(r.y0 + 1, r.y1)
+                                     for x in range(r.x0 + 1, r.x1)),
+                                    key=lambda p: abs(2 * p[0] - r.x0 - r.x1)
+                                    + abs(2 * p[1] - r.y0 - r.y1))
+                for x, y in candidates:
+                    cells = _cells_for(role, x, y, "W")
+                    if all(_room_at(plan, cx, cy) == idx and (cx, cy) not in no_go
+                           and all(_room_at(plan, cx + dx, cy + dy) == idx
+                                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+                           for cx, cy in cells):
+                        plan.furniture.append((role, x, y, "W"))
+                        return
+                return
             if role == "bath_mat":
                 # A mat is walked over, so it may lie on the walkway.
                 mat = _bath_mat_spot(plan, idx, r, occupied, door_tiles | stair_tiles)

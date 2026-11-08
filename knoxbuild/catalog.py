@@ -20152,11 +20152,11 @@ FURNITURE.update({'pew': {'W': {'0,2': 'location_community_church_small_01_048',
            'S': {'0,0': 'recreational_01_028', '1,0': 'recreational_01_029'},
            'W': {'0,0': 'recreational_01_013', '0,1': 'recreational_01_012'},
            'E': {'0,0': 'recreational_01_031', '0,1': 'recreational_01_030'}},
- # lighting_indoor_03_0-1: one chandelier in two halves, IsHigh (the game draws
+ # lighting_indoor_03_0-1: the halves join horizontally at diagonal offsets; IsHigh (the game draws
  # it at the ceiling) with a 12-tile light radius. It is radially symmetric, so
  # its two tiles do for a north wall as well as the west one it is drawn for.
- 'chandelier': {'W': {'0,0': 'lighting_indoor_03_000', '1,0': 'lighting_indoor_03_001'},
-                'N': {'0,0': 'lighting_indoor_03_000', '1,0': 'lighting_indoor_03_001'}},
+ 'chandelier': {'W': {'0,1': 'lighting_indoor_03_000', '1,0': 'lighting_indoor_03_001'},
+                'N': {'0,1': 'lighting_indoor_03_000', '1,0': 'lighting_indoor_03_001'}},
  'phone': {'W': {'0,0': 'location_business_office_generic_02_000'},
            'N': {'0,0': 'location_business_office_generic_02_001'},
            'E': {'0,0': 'location_business_office_generic_02_002'},

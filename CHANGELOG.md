@@ -1,5 +1,8 @@
 ## 1.8.5.3
 
+- **TVs face seating in small living rooms.** A sofa and TV can now fit
+  without a coffee table, including in finished basements. If no aligned
+  pair fits, the TV is left out rather than placed opposite other furniture.
 - **Large houses are mansions inside.** A house whose storeys add up to
   `HOUSE_BIG_FLOOR` tiles or more of floor now lays dark wood and red carpet in
   its living rooms, halls and bedrooms and white tile in its kitchens and

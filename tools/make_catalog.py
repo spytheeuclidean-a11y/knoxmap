@@ -665,7 +665,7 @@ def main(argv: list[str]) -> int:
         "E": {"0,0": "recreational_01_031", "0,1": "recreational_01_030"}}
     furniture_layers["piano"] = "Furniture"
     furniture["chandelier"] = {
-        o: {"0,0": "lighting_indoor_03_000", "1,0": "lighting_indoor_03_001"}
+        o: {"0,1": "lighting_indoor_03_000", "1,0": "lighting_indoor_03_001"}
         for o in ("W", "N")}
     # A ceiling piece, so it does not stand on the floor: FloorFurniture keeps
     # it out of the walkways and off the window wall's clear stretch, and the

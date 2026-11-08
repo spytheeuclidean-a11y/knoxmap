@@ -1,0 +1,65 @@
+import random
+import unittest
+
+from knoxbuild import catalog, layout
+
+
+class MansionLivingFixes(unittest.TestCase):
+    def test_chandelier_halves_join_across_the_screen(self):
+        tiles = catalog.FURNITURE['chandelier']['W']
+        self.assertEqual(tiles, {'0,1': 'lighting_indoor_03_000',
+                                 '1,0': 'lighting_indoor_03_001'})
+        self.assertFalse(layout._blocks('chandelier'))
+
+    def test_chandelier_is_inside_the_room_not_at_a_door(self):
+        room = layout.Room(0, 0, 7, 7, kind='hall')
+        plan = layout.Plan(8, 8, rooms=[room], grid=[[1] * 8 for _ in range(8)],
+                           doors=[(0, 3, 'W')], kind='house', grand=True)
+        layout._furnish(plan, random.Random(7))
+        lights = [(x, y, o) for role, x, y, o in plan.furniture if role == 'chandelier']
+        self.assertEqual(len(lights), 1)
+        x, y, orient = lights[0]
+        for cx, cy in layout._cells_for('chandelier', x, y, orient):
+            self.assertNotIn((cx, cy), layout._door_tiles(plan))
+            self.assertTrue(all(layout._room_at(plan, cx + dx, cy + dy) == 1
+                                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))))
+
+    def test_small_living_rooms_pair_tv_with_sofa(self):
+        for width, height in ((3, 3), (3, 4), (4, 4), (5, 4), (6, 5)):
+            with self.subTest(size=(width, height)):
+                room = layout.Room(0, 0, width - 1, height - 1, kind='livingroom')
+                plan = layout.Plan(width, height, rooms=[room],
+                                   grid=[[1] * width for _ in range(height)], kind='house')
+                self.assertTrue(layout._furnish_living(plan, 1, room, set(), set(), {}))
+                tv = next(item for item in plan.furniture if item[0] == 'tv')
+                sofa = next(item for item in plan.furniture if item[0] == 'sofa')
+                self.assertEqual(sofa[3], layout._OPPOSITE_SIDE[tv[3]])
+                dx, dy = layout._STEP[tv[3]]
+                self.assertTrue(any((sx - tv[1]) * -dy == (sy - tv[2]) * -dx
+                                    and (sx - tv[1]) * dx + (sy - tv[2]) * dy < 0
+                                    for sx, sy in layout._cells_for(*sofa)))
+
+    def test_generated_houses_and_basements_keep_tv_facing_seating(self):
+        checked = 0
+        for kind in ('house', 'basement_house_rec'):
+            for seed in range(10):
+                plan = layout.build_plan(12, 10, kind=kind, seed=seed)
+                for room_id, room in enumerate(plan.rooms, 1):
+                    if room.kind != 'livingroom':
+                        continue
+                    items = [f for f in plan.furniture
+                             if layout._room_at(plan, f[1], f[2]) == room_id]
+                    for tv in (f for f in items if f[0] == 'tv'):
+                        checked += 1
+                        dx, dy = layout._STEP[tv[3]]
+                        self.assertTrue(any(
+                            role.startswith('sofa') and orient == layout._OPPOSITE_SIDE[tv[3]]
+                            and any((sx - tv[1]) * dy == (sy - tv[2]) * dx
+                                    and (sx - tv[1]) * dx + (sy - tv[2]) * dy < 0
+                                    for sx, sy in layout._cells_for(role, x, y, orient))
+                            for role, x, y, orient in items), (kind, seed, items))
+        self.assertGreater(checked, 0)
+
+
+if __name__ == '__main__':
+    unittest.main()
