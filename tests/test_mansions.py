@@ -12,9 +12,13 @@ class MansionHouses(unittest.TestCase):
                                       level=0, levels=1).grand)
         self.assertTrue(L.build_plan(16, 17, seed=7, kind='house',
                                      level=0, levels=1).grand)
-        # Two storeys of 132: no floor of it is large, the house is.
-        self.assertTrue(L.build_plan(12, 11, seed=7, kind='house',
-                                     level=0, levels=2).grand)
+        # Two storeys of 132 is a house with an upstairs, not a mansion. The
+        # rule is the ground floor it covers, not the house's total floor:
+        # counting both storeys made half a town grand.
+        self.assertFalse(L.build_plan(12, 11, seed=7, kind='house',
+                                      level=0, levels=2).grand)
+        self.assertTrue(L.build_plan(17, 16, seed=7, kind='house',
+                                     level=0, levels=2).grand, "a big house still is one")
         # A block of flats is not somebody's mansion.
         self.assertFalse(L.build_plan(20, 20, seed=7, kind='apartment',
                                       level=0, levels=3).grand)

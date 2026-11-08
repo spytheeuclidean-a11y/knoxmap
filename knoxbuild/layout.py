@@ -4875,7 +4875,15 @@ def _place_windows(building: "Building", kind: str | None,
                      for x, y, d, ix, iy in wall}
             for edge in sorted(under):
                 spot = where.get(edge)
-                if spot is None or edge in blocked or worse(edge) or not spaced(*edge):
+                if spot is None or edge in blocked or not spaced(*edge):
+                    continue
+                # A facade is built in columns. Where the window below stands
+                # and a dresser or a shelf is against the wall upstairs, the
+                # window goes in anyway: the clear-up moves the piece, and
+                # dropping the column instead is what gave the town away.
+                # A hemmed edge - furniture both sides of a pocket - still
+                # gives way, because there the window cannot be opened.
+                if worse(edge) and edge not in behind:
                     continue
                 idx = storey.grid[spot[1]][spot[0]]
                 if not idx:
@@ -7553,7 +7561,10 @@ def build_building(width: int, height: int, levels: int = 1,
         return seed + 977 * (1 + int(above))
 
     foot = (sum(1 for row in mask for cell in row if cell) if mask else width * height)
-    mansion = kind in (None, "house") and foot * max(1, levels) >= MANSION_FLOOR_TILES
+    # A mansion is a big house, not a tall one: 12x11 over two storeys is a
+    # house that happens to have an upstairs, and dressing every one of those
+    # as a mansion put a piano and a gallery in half the town.
+    mansion = kind in (None, "house") and foot >= MANSION_FLOOR_TILES
 
     def _storey(lvl: int, below_hall=None):
         return build_plan(width, height, commercial=commercial or (shops and lvl == 0),
@@ -7896,12 +7907,13 @@ def build_plan(width: int, height: int, commercial: bool = False,
     plan = Plan(width=width, height=height, mask=mask, core=core,
                 corridor=corridor, kind=kind, party=set(party or ()),
                 profile=profile)
-    # A large house, by the floor its storeys hold: the whole house's floor
-    # against HOUSE_BIG_FLOOR, so two storeys of 130 count where one floor of
-    # 130 does not. It gets the finishes and the dressing of an old, rich
-    # house (_furnish, tbx.floor_options) rather than more of the same.
+    # A large house, by the ground floor it covers. Counting the whole
+    # house's floor against HOUSE_BIG_FLOOR made a 12x11 house with an
+    # upstairs a mansion - two storeys of 132 cleared 260 - so half a town got
+    # a gallery, a piano and a book-lined study, and bedrooms came out half
+    # furniture. A mansion is a big house, not a tall one.
     plan.grand = (kind in (None, "house")
-                  and _footprint(plan) * max(1, levels) >= MANSION_FLOOR_TILES)
+                  and _footprint(plan) >= MANSION_FLOOR_TILES)
     shop_floor = kind in ("shop", "retail", "restaurant") and ground and tower is None
     mix_kind = "offices" if kind in ("shop", "restaurant") and not ground else kind
     # Rooms in a flat are smaller than rooms in a house, and there have to be
