@@ -22,6 +22,86 @@ WORLDCOVER_PAINT = {
 }
 
 
+# While OSM paints, WorldCover's ground stands in these colours, one per class,
+# none of them a ground colour. Whatever is still a marker once OSM has painted
+# is ground OSM left blank - which comparing colours after the fact cannot
+# tell, since OSM's grass over WorldCover's grass is the same grass.
+MARKER = {code: (3, 7, code) for code in WORLDCOVER_PAINT}
+assert not set(MARKER.values()) & C.LANDSCAPE_COLORS
+
+_STRIP = 1024
+
+
+def resized_grid(grid, size):
+    """The class grid at the image's size (width, height), nearest class."""
+    import numpy as np
+    from PIL import Image
+
+    grid = np.asarray(grid, dtype="uint8")
+    if (grid.shape[1], grid.shape[0]) == tuple(size):
+        return grid
+    return np.asarray(Image.fromarray(grid, "L").resize(tuple(size), Image.NEAREST))
+
+
+def paint_markers(landscape, grid) -> None:
+    """Paint each classified tile in its class's marker colour."""
+    import numpy as np
+    from PIL import Image
+
+    grid = resized_grid(grid, landscape.size)
+    w = landscape.size[0]
+    for top in range(0, grid.shape[0], _STRIP):
+        g = grid[top:top + _STRIP]
+        if not g.any():
+            continue
+        rgb = np.array(landscape.crop((0, top, w, top + g.shape[0])))
+        for code, colour in MARKER.items():
+            rgb[g == code] = colour
+        landscape.paste(Image.fromarray(rgb, "RGB"), (0, top))
+
+
+def settle_markers(landscape, grid):
+    """Turn marker colours into the classes' ground colours. Returns `owned`:
+    a bool array, True where the tile is still WorldCover's (OSM left it)."""
+    import numpy as np
+    from PIL import Image
+
+    grid = resized_grid(grid, landscape.size)
+    w, h = landscape.size
+    owned = np.zeros((h, w), dtype=bool)
+    for top in range(0, h, _STRIP):
+        g = grid[top:top + _STRIP]
+        if not g.any():
+            continue
+        rgb = np.array(landscape.crop((0, top, w, top + g.shape[0])))
+        for code, colour in MARKER.items():
+            hit = (g == code) & np.all(rgb == colour, axis=2)
+            if hit.any():
+                rgb[hit] = WORLDCOVER_PAINT[code]
+                owned[top:top + g.shape[0]] |= hit
+        landscape.paste(Image.fromarray(rgb, "RGB"), (0, top))
+    return owned
+
+
+def refine_owned(landscape, grid, owned) -> None:
+    """Drop from `owned` (in place) any tile no longer its class's colour:
+    dense paving and the drawn shape's clipping repaint after OSM."""
+    import numpy as np
+
+    grid = resized_grid(grid, landscape.size)
+    w, h = landscape.size
+    for top in range(0, h, _STRIP):
+        o = owned[top:top + _STRIP]
+        if not o.any():
+            continue
+        g = grid[top:top + o.shape[0]]
+        rgb = np.asarray(landscape.crop((0, top, w, top + o.shape[0])))
+        same = np.zeros(o.shape, dtype=bool)
+        for code, colour in WORLDCOVER_PAINT.items():
+            same |= (g == code) & np.all(rgb == colour, axis=2)
+        o &= same
+
+
 # --- feature painting ------------------------------------------------------
 
 # Paint order for landscape: later categories overwrite earlier ones, so this
