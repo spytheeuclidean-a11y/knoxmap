@@ -191,3 +191,154 @@ def paint_fields(landscape, veg, proj, polygons, cropland) -> int:
     if cropland is not None and cropland.any():
         plots += _cropland(landscape, veg, proj, cropland)
     return plots
+
+
+# --- pools in wetland -------------------------------------------------------
+#
+# A marsh mapped as solid reeds is a hedge maze. Real ones are broken by open
+# water: small pools among the reeds, banked by the thickest growth. They come
+# from a small-scale noise field cut at the top tenth, which gives separate
+# blobs a few to a dozen tiles across rather than one lake. Water cannot be
+# walked through in Project Zomboid, so the share is kept low and the pools
+# stay off roads, paths, buildings and the marsh's own edge.
+POOL_SHARE = 0.10
+POOL_CELL_M = 10.0
+POOL_CLEAR_TILES = 2
+POOL_SEED = 7001
+
+# --- rock fields ----------------------------------------------------------
+#
+# Moss and lichen is tundra or bare upland: low ground cover broken by stone.
+# Bare / sparse vegetation is scree, quarry spoil, desert. Both get clumps of
+# low rocks you can walk over and the odd boulder that blocks the way, kept
+# off roads and paths so it never closes a route; tundra also gets patches of
+# moss (dark grass) and the odd low bush.
+ROCK_SHARE = {100: 0.30, 60: 0.10}
+BOULDER_SHARE = {100: 0.03, 60: 0.01}
+MOSS_SHARE = 0.30
+ROCK_CLUMP_M = 25.0
+MOSS_CELL_M = 30.0
+ROCK_CLEAR_TILES = 2
+ROCK_SEED = 8123
+TUNDRA_BUSH = 0.02
+
+
+def _reach(mask, radius: int, outside: bool):
+    """True wherever `mask` is true within `radius` tiles; past the map edge
+    counts as `outside`."""
+    from .vegetation import _box_any
+
+    if not outside:
+        return _box_any(mask, radius)
+    padded = np.pad(mask, radius, constant_values=True)
+    return _box_any(padded, radius)[radius:-radius, radius:-radius]
+
+
+def _threshold(region, lats, share: float):
+    """The noise value above which `share` of `region` lies, read off every
+    fourth tile."""
+    from .noise import smooth_noise
+
+    h, w = region.shape
+    sy, sx = np.arange(0, h, 4), np.arange(0, w, 4)
+    sample = smooth_noise(sy.astype(np.float32), sx.astype(np.float32), lats)
+    sample = sample[region[::4, ::4]]
+    if sample.size == 0:
+        return None
+    return float(np.quantile(sample, 1.0 - share))
+
+
+def _strips(h: int):
+    for top in range(0, h, STRIP_ROWS):
+        yield top, min(h, top + STRIP_ROWS)
+
+
+def paint_pools(landscape, veg, proj, wet, blocked) -> int:
+    """Open-water pools in the `wet` tiles, none on or near `blocked` ones
+    (buildings) or the edge of the wet. Returns the pool tiles."""
+    from .noise import lattices, smooth_noise
+
+    if wet is None or not wet.any():
+        return 0
+    h, w = wet.shape
+    allowed = wet & ~_reach(~wet | blocked, POOL_CLEAR_TILES, outside=True)
+    if not allowed.any():
+        return 0
+    cell = max(3, int(round(POOL_CELL_M / proj.meters_per_tile)))
+    lats = lattices(h, w, [(cell, 1.0)], POOL_SEED)
+    edge = _threshold(wet, lats, POOL_SHARE)
+    if edge is None:
+        return 0
+    pool = np.zeros((h, w), dtype=bool)
+    xs = np.arange(w, dtype=np.float32)
+    for top, bottom in _strips(h):
+        if not allowed[top:bottom].any():
+            continue
+        n = smooth_noise(np.arange(top, bottom, dtype=np.float32), xs, lats)
+        pool[top:bottom] = allowed[top:bottom] & (n > edge)
+    if not pool.any():
+        return 0
+    bank = wet & ~pool & _reach(pool, 1, outside=False)
+    for top, bottom in _strips(h):
+        p, b = pool[top:bottom], bank[top:bottom]
+        if not (p.any() or b.any()):
+            continue
+        land = np.array(landscape.crop((0, top, w, bottom)))
+        vegp = np.array(veg.crop((0, top, w, bottom)))
+        land[p] = C.WATER
+        vegp[p] = C.VEG_NOTHING
+        land[b] = C.DARK_GRASS
+        vegp[b] = C.DENSE_BUSHES_GRASS
+        landscape.paste(Image.fromarray(land, "RGB"), (0, top))
+        veg.paste(Image.fromarray(vegp, "RGB"), (0, top))
+    return int(pool.sum())
+
+
+def paint_rocks(landscape, veg, proj, grid, owned) -> int:
+    """Rock fields on WorldCover moss and lichen (100) and bare ground (60)
+    that OSM left blank. Returns the rock and boulder tiles."""
+    from .noise import lattices, smooth_noise
+
+    if grid is None or owned is None:
+        return 0
+    h, w = owned.shape
+    open_ = ~_reach(~owned, ROCK_CLEAR_TILES, outside=False)
+    clump = max(3, int(round(ROCK_CLUMP_M / proj.meters_per_tile)))
+    moss_cell = max(3, int(round(MOSS_CELL_M / proj.meters_per_tile)))
+    xs = np.arange(w, dtype=np.float32)
+    tile_ids = None
+    placed = 0
+    for code, share in ROCK_SHARE.items():
+        region = owned & (grid == code)
+        if not region.any():
+            continue
+        lats = lattices(h, w, [(clump, 0.8), (max(2, clump // 3), 0.2)], ROCK_SEED + code)
+        edge = _threshold(region, lats, min(1.0, 2 * share))
+        moss_lats = lattices(h, w, [(moss_cell, 1.0)], ROCK_SEED + 1000 + code)
+        moss_edge = _threshold(region, moss_lats, MOSS_SHARE) if code == 100 else None
+        boulder_p = BOULDER_SHARE[code] / max(1e-6, 2 * share)
+        for top, bottom in _strips(h):
+            r = region[top:bottom]
+            if not r.any():
+                continue
+            ys = np.arange(top, bottom, dtype=np.float32)
+            tile_ids = (np.arange(top, bottom, dtype=np.int64)[:, None] * w
+                        + np.arange(w, dtype=np.int64)[None, :])
+            land = np.array(landscape.crop((0, top, w, bottom)))
+            vegp = np.array(veg.crop((0, top, w, bottom)))
+            land[r] = C.DIRT
+            if moss_edge is not None:
+                land[r & (smooth_noise(ys, xs, moss_lats) > moss_edge)] = C.DARK_GRASS
+            inside = r & (smooth_noise(ys, xs, lats) > edge)
+            roll = _hash01(tile_ids, ROCK_SEED + code)
+            rocks = inside & (roll < 0.5)
+            boulders = rocks & open_[top:bottom] & (_hash01(tile_ids, ROCK_SEED + code + 1) < boulder_p)
+            vegp[rocks] = C.ROCKS
+            vegp[boulders] = C.BOULDERS
+            if code == 100:
+                bush = r & ~rocks & (_hash01(tile_ids, ROCK_SEED + 2) < TUNDRA_BUSH)
+                vegp[bush] = C.BUSHES
+            placed += int(rocks.sum())
+            landscape.paste(Image.fromarray(land, "RGB"), (0, top))
+            veg.paste(Image.fromarray(vegp, "RGB"), (0, top))
+    return placed
