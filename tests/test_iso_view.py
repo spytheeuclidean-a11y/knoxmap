@@ -43,6 +43,20 @@ class IsoViewEndpointTests(unittest.TestCase):
         self.assertEqual(resp_cached.status_code, 200)
         self.assertEqual(resp_cached.data, resp.data)
 
+    def test_iso_render_custom_rectangular_box_with_interiors(self):
+        # Request a non-square area with furnished interiors (roofs=0)
+        resp = self.client.get("/api/iso-render/Bum_Bum?box=1100,950,40,30&scale=1.0&roofs=0")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content_type, "image/png")
+        self.assertGreater(len(resp.data), 1000)
+
+    def test_iso_render_custom_rectangular_box_with_roofs(self):
+        # Request the same area with roofs (roofs=1)
+        resp = self.client.get("/api/iso-render/Bum_Bum?box=1100,950,40,30&scale=1.0&roofs=1")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.content_type, "image/png")
+        self.assertGreater(len(resp.data), 1000)
+
 
 if __name__ == "__main__":
     unittest.main()

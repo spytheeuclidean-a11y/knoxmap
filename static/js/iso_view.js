@@ -1,6 +1,6 @@
 // Isometric 2.5D game view for KnoxMap.
 // Displays the dimetric in-game rendering of Project Zomboid maps with pan,
-// zoom, interiors/roofs toggling, and on-demand 1:1 HD sector rendering.
+// zoom, interiors/roofs toggling, interactive box selection, and on-demand 1:1 HD sector rendering.
 
 (() => {
   let activeMap = null;
@@ -25,6 +25,22 @@
   let loadHdHereBtn = null;
   let backOverviewBtn = null;
   let cellSelect = null;
+  let drawBoxBtn = null;
+
+  // Interactive selection marquee & popover
+  let selectionLayer = null;
+  let selectionMarquee = null;
+  let selectionBadge = null;
+  let selectionPopover = null;
+  let popoverDim = null;
+  let popoverCoords = null;
+
+  let isDrawModeActive = false;
+  let isBoxSelecting = false;
+  let boxStartX = 0;
+  let boxStartY = 0;
+  let currentSelection = null; // { x, y, w, h }
+  let currentSector = null;    // { x, y, w, h, roofs }
 
   // Progress overlay elements and state
   let overlay = null;
@@ -63,6 +79,10 @@
             </div>
           </div>
 
+          <!-- Draw area selection tool -->
+          <button type="button" class="btn btn-small btn-draw" id="isoDrawBoxBtn"
+                  title="Draw an area rectangle to render in 1:1 HD with roofs or furnished interiors (Shift + Drag)">🔲 Draw area</button>
+
           <!-- Quick Load HD of current view -->
           <button type="button" class="btn btn-small btn-hd" id="isoLoadHdHere"
                   title="Render this current view at 100% crystal-clear in-game resolution">🔍 Load HD here</button>
@@ -71,24 +91,24 @@
           <div class="iso-bar-sector" id="isoSectorBar" hidden style="display: none;">
             <button type="button" class="btn btn-small" id="isoBackOverview"
                     title="Back to full town overview">◀ Full town</button>
+
+            <!-- Roofs / Interiors segmented toggle for current sector -->
+            <div class="iso-sector-toggle" role="group" aria-label="Sector display mode">
+              <button type="button" class="btn btn-small is-on" id="isoSectorRoofsBtn"
+                      title="Render this sector with roofs">🏠 Roofs</button>
+              <button type="button" class="btn btn-small" id="isoSectorInteriorsBtn"
+                      title="Render this sector with furnished building interiors">🪑 Interiors</button>
+            </div>
+
             <label>Cell:
               <select id="isoCellSelect" class="iso-cell-select" title="Jump directly to any compiled cell">
                 <option value="">(Select cell)</option>
               </select>
             </label>
-            <label>X: <input type="number" id="isoSectorX" min="0" step="50" value="1200"></label>
-            <label>Y: <input type="number" id="isoSectorY" min="0" step="50" value="1050"></label>
-            <label>Size:
-              <select id="isoSectorSize">
-                <option value="40">40 × 40</option>
-                <option value="60" selected>60 × 60</option>
-                <option value="80">80 × 80</option>
-                <option value="120">120 × 120</option>
-              </select>
-            </label>
-            <label class="iso-check">
-              <input type="checkbox" id="isoSectorRoofs" checked> Roofs
-            </label>
+            <label>X: <input type="number" id="isoSectorX" min="0" step="10" value="1200"></label>
+            <label>Y: <input type="number" id="isoSectorY" min="0" step="10" value="1050"></label>
+            <label>W: <input type="number" id="isoSectorW" min="10" max="200" step="10" value="60"></label>
+            <label>H: <input type="number" id="isoSectorH" min="10" max="200" step="10" value="60"></label>
             <button type="button" class="btn btn-small btn-primary" id="isoRenderBtn">Render HD</button>
           </div>
 
@@ -109,6 +129,29 @@
             <img id="isoImg" class="iso-img" alt="Isometric game view" draggable="false" />
           </div>
 
+          <!-- Interactive Marquee Selection Layer & Floating Action Popover -->
+          <div class="iso-selection-layer" id="isoSelectionLayer" hidden style="display: none;">
+            <div class="iso-selection-marquee" id="isoSelectionMarquee" style="display: none;">
+              <span class="iso-selection-badge" id="isoSelectionBadge">60 × 60</span>
+            </div>
+            <div class="iso-selection-popover" id="isoSelectionPopover" hidden style="display: none;">
+              <div class="iso-popover-head">
+                <span class="iso-popover-title">🔲 Selected area</span>
+                <button type="button" class="iso-popover-close" id="isoPopoverClose" title="Close (Esc)">✕</button>
+              </div>
+              <div class="iso-popover-body">
+                <div class="iso-popover-dim" id="isoPopoverDim">60 × 60 tiles</div>
+                <div class="iso-popover-coords" id="isoPopoverCoords">X: 1200 · Y: 1050</div>
+              </div>
+              <div class="iso-popover-actions">
+                <button type="button" class="btn btn-small btn-primary" id="isoPopoverRoofs"
+                        title="Render selected area with roofs at native 1:1 HD">🏠 With roofs</button>
+                <button type="button" class="btn btn-small btn-interiors" id="isoPopoverInteriors"
+                        title="Render selected area with furnished interiors at native 1:1 HD">🪑 Furnished interiors</button>
+              </div>
+            </div>
+          </div>
+
           <!-- Progress overlay with progress bar, clock & cancel button -->
           <div class="iso-overlay" id="isoOverlay" hidden style="display: none;">
             <div class="iso-progress-box">
@@ -127,7 +170,7 @@
           </div>
 
           <div class="iso-hud">
-            <span class="iso-tip">Drag to pan · Scroll to zoom · Double-click anywhere to view in HD 1:1</span>
+            <span class="iso-tip">Drag to pan · Scroll to zoom · Shift+drag or [Draw area] to select HD sector · Double-click for HD</span>
           </div>
 
           <div class="iso-empty" id="isoEmpty" hidden style="display: none;">
@@ -151,6 +194,14 @@
     loadHdHereBtn = document.getElementById('isoLoadHdHere');
     backOverviewBtn = document.getElementById('isoBackOverview');
     cellSelect = document.getElementById('isoCellSelect');
+    drawBoxBtn = document.getElementById('isoDrawBoxBtn');
+
+    selectionLayer = document.getElementById('isoSelectionLayer');
+    selectionMarquee = document.getElementById('isoSelectionMarquee');
+    selectionBadge = document.getElementById('isoSelectionBadge');
+    selectionPopover = document.getElementById('isoSelectionPopover');
+    popoverDim = document.getElementById('isoPopoverDim');
+    popoverCoords = document.getElementById('isoPopoverCoords');
 
     overlay = document.getElementById('isoOverlay');
     progressKicker = document.getElementById('isoProgressKicker');
@@ -181,28 +232,29 @@
     }
 
     progressStartTime = Date.now();
+    const durationMs = Math.max(1000, estimatedSecs * 1000);
 
     progressTimer = setInterval(() => {
-      const elapsed = (Date.now() - progressStartTime) / 1000;
-      const mins = Math.floor(elapsed / 60);
-      const secs = Math.floor(elapsed % 60);
-      if (progressClock) {
-        progressClock.textContent = `⏱️ ${mins}:${String(secs).padStart(2, '0')}`;
-      }
+      const elapsed = Date.now() - progressStartTime;
+      const sec = Math.floor(elapsed / 1000);
+      const min = Math.floor(sec / 60);
+      const remSec = String(sec % 60).padStart(2, '0');
+      if (progressClock) progressClock.textContent = `⏱️ ${min}:${remSec}`;
 
-      // Smooth simulated progress curve approaching 92% at estimatedSecs
       let p = 0;
-      if (elapsed <= estimatedSecs) {
-        p = Math.round((elapsed / estimatedSecs) * 85);
+      if (elapsed < durationMs * 0.4) {
+        p = Math.round((elapsed / (durationMs * 0.4)) * 50);
+      } else if (elapsed < durationMs) {
+        const t = (elapsed - durationMs * 0.4) / (durationMs * 0.6);
+        p = Math.round(50 + t * 40);
       } else {
-        const extra = elapsed - estimatedSecs;
-        p = Math.min(96, Math.round(85 + (extra / (extra + 5)) * 11));
+        const extra = (elapsed - durationMs) / 1000;
+        p = Math.min(98, Math.round(90 + (1 - Math.exp(-extra / 4)) * 8));
       }
 
       if (progressBar) progressBar.style.width = `${p}%`;
       if (progressPercent) progressPercent.textContent = `${p}%`;
 
-      // Update descriptive subtitles as time progresses
       if (progressSub) {
         if (p < 25) {
           progressSub.textContent = 'Loading building data…';
@@ -255,6 +307,26 @@
     }
   }
 
+  // Determine current image bounding box in tile coordinates
+  function getCurrentImageBox() {
+    const W = mapInfo?.width_tiles || 2400;
+    const H = mapInfo?.height_tiles || 2100;
+    if (currentMode === 'sector' && currentSector) {
+      return { x: currentSector.x, y: currentSector.y, w: currentSector.w, h: currentSector.h };
+    }
+    if (currentMode === 'close') {
+      const close = Math.min(320, Math.max(120, Math.floor(Math.min(W, H) / 3)));
+      return {
+        x: Math.max(0, Math.floor(W / 2 - close / 2)),
+        y: Math.max(0, Math.floor(H / 2 - close / 2)),
+        w: close,
+        h: close,
+      };
+    }
+    // 'town' and 'inside' (inside_town.png)
+    return { x: 0, y: 0, w: W, h: H };
+  }
+
   // Convert current screen coordinates to map tile coordinates (X, Y)
   function screenPointToTile(clientX, clientY) {
     const viewport = document.getElementById('isoViewport');
@@ -269,14 +341,13 @@
     const imgX = (vcx - panX) / scale;
     const imgY = (vcy - panY) / scale;
 
-    const W = mapInfo.width_tiles || 2400;
-    const H = mapInfo.height_tiles || 2100;
+    const box = getCurrentImageBox();
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
 
     const cx = iw / 2;
     const cy = ih / 2;
-    const half = iw / (W + H);
+    const half = iw / (box.w + box.h);
     const quarter = half / 2;
 
     const dx = imgX - cx;
@@ -285,8 +356,10 @@
     const t_dx = (dx / half + dy / quarter) / 2;
     const t_dy = (dy / quarter - dx / half) / 2;
 
-    const tileX = Math.max(0, Math.min(W, Math.round(W / 2 + t_dx)));
-    const tileY = Math.max(0, Math.min(H, Math.round(H / 2 + t_dy)));
+    const mapW = mapInfo.width_tiles || 2400;
+    const mapH = mapInfo.height_tiles || 2100;
+    const tileX = Math.max(0, Math.min(mapW, Math.round(box.x + box.w / 2 + t_dx)));
+    const tileY = Math.max(0, Math.min(mapH, Math.round(box.y + box.h / 2 + t_dy)));
 
     return { x: tileX, y: tileY };
   }
@@ -298,12 +371,189 @@
     return screenPointToTile(rect.left + rect.width / 2, rect.top + rect.height / 2);
   }
 
+  // Box selection marquee logic
+  function startBoxSelect(clientX, clientY) {
+    const viewport = document.getElementById('isoViewport');
+    if (!viewport || !selectionLayer || !selectionMarquee) return;
+
+    isBoxSelecting = true;
+    boxStartX = clientX;
+    boxStartY = clientY;
+    currentSelection = null;
+
+    if (selectionPopover) {
+      selectionPopover.hidden = true;
+      selectionPopover.style.display = 'none';
+    }
+
+    selectionLayer.hidden = false;
+    selectionLayer.style.display = 'block';
+
+    const rect = viewport.getBoundingClientRect();
+    const vx = clientX - rect.left;
+    const vy = clientY - rect.top;
+
+    selectionMarquee.style.display = 'block';
+    selectionMarquee.style.left = `${vx}px`;
+    selectionMarquee.style.top = `${vy}px`;
+    selectionMarquee.style.width = '0px';
+    selectionMarquee.style.height = '0px';
+  }
+
+  function updateBoxSelect(clientX, clientY) {
+    if (!isBoxSelecting) return;
+    const viewport = document.getElementById('isoViewport');
+    if (!viewport || !selectionMarquee) return;
+
+    const rect = viewport.getBoundingClientRect();
+    const minScreenX = Math.min(boxStartX, clientX);
+    const maxScreenX = Math.max(boxStartX, clientX);
+    const minScreenY = Math.min(boxStartY, clientY);
+    const maxScreenY = Math.max(boxStartY, clientY);
+
+    const vx = minScreenX - rect.left;
+    const vy = minScreenY - rect.top;
+    const vw = maxScreenX - minScreenX;
+    const vh = maxScreenY - minScreenY;
+
+    selectionMarquee.style.left = `${vx}px`;
+    selectionMarquee.style.top = `${vy}px`;
+    selectionMarquee.style.width = `${vw}px`;
+    selectionMarquee.style.height = `${vh}px`;
+
+    // Convert 4 screen corners to tile coordinates
+    const p1 = screenPointToTile(minScreenX, minScreenY);
+    const p2 = screenPointToTile(maxScreenX, minScreenY);
+    const p3 = screenPointToTile(minScreenX, maxScreenY);
+    const p4 = screenPointToTile(maxScreenX, maxScreenY);
+
+    const mapW = mapInfo?.width_tiles || 2400;
+    const mapH = mapInfo?.height_tiles || 2100;
+
+    const minTx = Math.max(0, Math.min(p1.x, p2.x, p3.x, p4.x));
+    const maxTx = Math.min(mapW, Math.max(p1.x, p2.x, p3.x, p4.x));
+    const minTy = Math.max(0, Math.min(p1.y, p2.y, p3.y, p4.y));
+    const maxTy = Math.min(mapH, Math.max(p1.y, p2.y, p3.y, p4.y));
+
+    const selW = Math.max(10, Math.min(200, maxTx - minTx));
+    const selH = Math.max(10, Math.min(200, maxTy - minTy));
+
+    currentSelection = { x: minTx, y: minTy, w: selW, h: selH };
+
+    if (selectionBadge) {
+      selectionBadge.textContent = `${selW} × ${selH} tiles`;
+    }
+  }
+
+  function finishBoxSelect(clientX, clientY) {
+    if (!isBoxSelecting) return;
+    isBoxSelecting = false;
+
+    const viewport = document.getElementById('isoViewport');
+    const dist = Math.hypot(clientX - boxStartX, clientY - boxStartY);
+    if (dist < 15 || !currentSelection) {
+      clearBoxSelection();
+      return;
+    }
+
+    // Position action popover next to marquee
+    if (viewport && selectionPopover) {
+      const rect = viewport.getBoundingClientRect();
+      const minScreenX = Math.min(boxStartX, clientX);
+      const maxScreenX = Math.max(boxStartX, clientX);
+      const minScreenY = Math.min(boxStartY, clientY);
+      const maxScreenY = Math.max(boxStartY, clientY);
+
+      const vx = minScreenX - rect.left;
+      const vy = minScreenY - rect.top;
+      const vw = maxScreenX - minScreenX;
+      const vh = maxScreenY - minScreenY;
+
+      const popWidth = 270;
+      const popLeft = Math.max(12, Math.min(rect.width - popWidth - 16, vx + (vw - popWidth) / 2));
+      const popTop = (vy > 140) ? (vy - 110) : (vy + vh + 12);
+
+      selectionPopover.style.left = `${Math.round(popLeft)}px`;
+      selectionPopover.style.top = `${Math.round(popTop)}px`;
+
+      if (popoverDim) {
+        popoverDim.textContent = `${currentSelection.w} × ${currentSelection.h} tiles (${(currentSelection.w * currentSelection.h).toLocaleString()} tiles)`;
+      }
+      if (popoverCoords) {
+        popoverCoords.textContent = `X: ${currentSelection.x} · Y: ${currentSelection.y}`;
+      }
+
+      selectionPopover.hidden = false;
+      selectionPopover.style.display = 'flex';
+    }
+
+    // Update sector toolbar inputs
+    updateSectorInputs(currentSelection.x, currentSelection.y, currentSelection.w, currentSelection.h);
+
+    if (isDrawModeActive) {
+      toggleDrawMode(false, true);
+    }
+  }
+
+  function clearBoxSelection() {
+    isBoxSelecting = false;
+    currentSelection = null;
+    if (selectionMarquee) selectionMarquee.style.display = 'none';
+    if (selectionPopover) {
+      selectionPopover.hidden = true;
+      selectionPopover.style.display = 'none';
+    }
+    if (selectionLayer) {
+      selectionLayer.hidden = true;
+      selectionLayer.style.display = 'none';
+    }
+  }
+
+  function toggleDrawMode(forceState, keepSelection = false) {
+    isDrawModeActive = typeof forceState === 'boolean' ? forceState : !isDrawModeActive;
+    const viewport = document.getElementById('isoViewport');
+    if (drawBoxBtn) {
+      drawBoxBtn.classList.toggle('is-on', isDrawModeActive);
+      drawBoxBtn.textContent = isDrawModeActive ? '✕ Cancel draw' : '🔲 Draw area';
+    }
+    if (viewport) {
+      viewport.classList.toggle('is-drawing-tool', isDrawModeActive);
+    }
+    if (!isDrawModeActive && !keepSelection) {
+      clearBoxSelection();
+    }
+  }
+
+  function updateSectorInputs(x, y, w, h) {
+    const inX = document.getElementById('isoSectorX');
+    const inY = document.getElementById('isoSectorY');
+    const inW = document.getElementById('isoSectorW');
+    const inH = document.getElementById('isoSectorH');
+    if (inX) inX.value = x;
+    if (inY) inY.value = y;
+    if (inW) inW.value = w;
+    if (inH) inH.value = h;
+  }
+
+  function updateSectorToggle(roofs) {
+    const btnRoofs = document.getElementById('isoSectorRoofsBtn');
+    const btnInteriors = document.getElementById('isoSectorInteriorsBtn');
+    if (btnRoofs) btnRoofs.classList.toggle('is-on', roofs === 1);
+    if (btnInteriors) btnInteriors.classList.toggle('is-on', roofs === 0);
+  }
+
   function bindEvents() {
     const viewport = document.getElementById('isoViewport');
 
-    // Pan with mouse
+    // Pan with mouse or start drawing box if draw tool active / Shift held
     viewport.addEventListener('mousedown', e => {
-      if (e.target.closest('button, input, select, label, .iso-empty, .iso-overlay')) return;
+      if (e.target.closest('button, input, select, label, .iso-empty, .iso-overlay, .iso-selection-popover')) return;
+
+      if (isDrawModeActive || e.shiftKey) {
+        startBoxSelect(e.clientX, e.clientY);
+        return;
+      }
+
       isDragging = true;
       startX = e.clientX - panX;
       startY = e.clientY - panY;
@@ -311,13 +561,21 @@
     });
 
     window.addEventListener('mousemove', e => {
+      if (isBoxSelecting) {
+        updateBoxSelect(e.clientX, e.clientY);
+        return;
+      }
       if (!isDragging) return;
       panX = e.clientX - startX;
       panY = e.clientY - startY;
       applyTransform();
     });
 
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', e => {
+      if (isBoxSelecting) {
+        finishBoxSelect(e.clientX, e.clientY);
+        return;
+      }
       if (!isDragging) return;
       isDragging = false;
       viewport.classList.remove('is-dragging');
@@ -342,11 +600,14 @@
 
     // Double-click on any building/street renders that sector in HD 1:1
     viewport.addEventListener('dblclick', e => {
-      if (e.target.closest('button, input, select, label, .iso-overlay')) return;
+      if (e.target.closest('button, input, select, label, .iso-overlay, .iso-selection-popover')) return;
       const { x, y } = screenPointToTile(e.clientX, e.clientY);
-      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
-      const roofs = currentMode === 'inside' ? 0 : 1;
-      renderSectorAt(x, y, size, roofs);
+      const w = parseInt(document.getElementById('isoSectorW')?.value || '60', 10);
+      const h = parseInt(document.getElementById('isoSectorH')?.value || '60', 10);
+      const roofs = currentMode === 'inside' ? 0 : (currentSector?.roofs ?? 1);
+      const startX = Math.max(0, x - Math.round(w / 2));
+      const startY = Math.max(0, y - Math.round(h / 2));
+      renderSectorBox(startX, startY, w, h, roofs);
     });
 
     // Touch support (pinch-to-zoom and pan)
@@ -385,31 +646,48 @@
     });
 
     // Zoom buttons
-    document.getElementById('isoZoomIn')?.addEventListener('click', () => {
-      zoomBy(1.25);
+    document.getElementById('isoZoomIn')?.addEventListener('click', () => zoomBy(1.25));
+    document.getElementById('isoZoomOut')?.addEventListener('click', () => zoomBy(1 / 1.25));
+    document.getElementById('isoZoomFit')?.addEventListener('click', () => fitToScreen());
+    document.getElementById('isoZoom100')?.addEventListener('click', () => zoomTo(1.0));
+
+    // Draw box selection button toggle
+    drawBoxBtn?.addEventListener('click', () => toggleDrawMode());
+
+    // Popover actions
+    document.getElementById('isoPopoverClose')?.addEventListener('click', () => clearBoxSelection());
+    document.getElementById('isoPopoverRoofs')?.addEventListener('click', () => {
+      if (!currentSelection) return;
+      renderSectorBox(currentSelection.x, currentSelection.y, currentSelection.w, currentSelection.h, 1);
     });
-    document.getElementById('isoZoomOut')?.addEventListener('click', () => {
-      zoomBy(1 / 1.25);
+    document.getElementById('isoPopoverInteriors')?.addEventListener('click', () => {
+      if (!currentSelection) return;
+      renderSectorBox(currentSelection.x, currentSelection.y, currentSelection.w, currentSelection.h, 0);
     });
-    document.getElementById('isoZoomFit')?.addEventListener('click', () => {
-      fitToScreen();
+
+    // Sector HD toggle buttons: Roofs vs Interiors
+    document.getElementById('isoSectorRoofsBtn')?.addEventListener('click', () => {
+      if (!currentSector) return;
+      renderSectorBox(currentSector.x, currentSector.y, currentSector.w, currentSector.h, 1);
     });
-    document.getElementById('isoZoom100')?.addEventListener('click', () => {
-      zoomTo(1.0);
+    document.getElementById('isoSectorInteriorsBtn')?.addEventListener('click', () => {
+      if (!currentSector) return;
+      renderSectorBox(currentSector.x, currentSector.y, currentSector.w, currentSector.h, 0);
     });
 
     // Load HD Here button
     loadHdHereBtn?.addEventListener('click', () => {
       const { x, y } = getViewportCenterTile();
-      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
-      const roofs = currentMode === 'inside' ? 0 : (document.getElementById('isoSectorRoofs')?.checked ? 1 : 0);
-      renderSectorAt(x, y, size, roofs);
+      const w = parseInt(document.getElementById('isoSectorW')?.value || '60', 10);
+      const h = parseInt(document.getElementById('isoSectorH')?.value || '60', 10);
+      const roofs = currentMode === 'inside' ? 0 : (currentSector?.roofs ?? 1);
+      const startX = Math.max(0, x - Math.round(w / 2));
+      const startY = Math.max(0, y - Math.round(h / 2));
+      renderSectorBox(startX, startY, w, h, roofs);
     });
 
     // Back to full town overview button
-    backOverviewBtn?.addEventListener('click', () => {
-      setMode('town');
-    });
+    backOverviewBtn?.addEventListener('click', () => setMode('town'));
 
     // Jump to cell selection
     cellSelect?.addEventListener('change', e => {
@@ -417,22 +695,22 @@
       if (!val) return;
       const parts = val.split('_').map(Number);
       if (parts.length === 2 && mapInfo?.cells?.length) {
-        // Calculate cell center tile in map coordinates
         const minCx = Math.min(...mapInfo.cells.map(c => c[0]));
         const minCy = Math.min(...mapInfo.cells.map(c => c[1]));
         const targetX = (parts[0] - minCx) * 300 + 150;
         const targetY = (parts[1] - minCy) * 300 + 150;
 
-        const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
-        const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
-        renderSectorAt(targetX, targetY, size, roofs);
+        const w = parseInt(document.getElementById('isoSectorW')?.value || '60', 10);
+        const h = parseInt(document.getElementById('isoSectorH')?.value || '60', 10);
+        const startX = Math.max(0, targetX - Math.round(w / 2));
+        const startY = Math.max(0, targetY - Math.round(h / 2));
+        const roofs = currentSector?.roofs ?? 1;
+        renderSectorBox(startX, startY, w, h, roofs);
       }
     });
 
     // Cancel loading button
-    cancelBtn?.addEventListener('click', () => {
-      cancelProgress();
-    });
+    cancelBtn?.addEventListener('click', () => cancelProgress());
 
     // Save image
     document.getElementById('isoDownload')?.addEventListener('click', () => {
@@ -445,18 +723,17 @@
 
     // Mode buttons
     el.querySelectorAll('[data-iso-mode]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        setMode(btn.dataset.isoMode);
-      });
+      btn.addEventListener('click', () => setMode(btn.dataset.isoMode));
     });
 
     // Sector HD Render button
     document.getElementById('isoRenderBtn')?.addEventListener('click', () => {
       const x = parseInt(document.getElementById('isoSectorX')?.value || '1200', 10);
       const y = parseInt(document.getElementById('isoSectorY')?.value || '1050', 10);
-      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
-      const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
-      renderSectorAt(x, y, size, roofs);
+      const w = parseInt(document.getElementById('isoSectorW')?.value || '60', 10);
+      const h = parseInt(document.getElementById('isoSectorH')?.value || '60', 10);
+      const roofs = currentSector ? currentSector.roofs : 1;
+      renderSectorBox(x, y, w, h, roofs);
     });
 
     // Go to Compile button
@@ -467,8 +744,19 @@
       if (chip) chip.click();
     });
 
-    // Keyboard navigation
-    viewport.addEventListener('keydown', e => {
+    // Keyboard navigation & shortcuts
+    window.addEventListener('keydown', e => {
+      if (e.target.closest('input, textarea, select')) return;
+      if (e.key === 'Shift') {
+        viewport.classList.add('is-drawing-tool');
+      }
+      if (e.key === 'Escape') {
+        clearBoxSelection();
+        if (isDrawModeActive) toggleDrawMode(false);
+      }
+      if (e.key === 'b' || e.key === 'B' || e.key === 'd' || e.key === 'D') {
+        toggleDrawMode();
+      }
       if (e.key === '+' || e.key === '=') { zoomBy(1.2); e.preventDefault(); }
       else if (e.key === '-') { zoomBy(1 / 1.2); e.preventDefault(); }
       else if (e.key === '0') { fitToScreen(); e.preventDefault(); }
@@ -478,6 +766,12 @@
       else if (e.key === 'ArrowRight') { panX -= 50; applyTransform(); e.preventDefault(); }
       else if (e.key === 'ArrowUp') { panY += 50; applyTransform(); e.preventDefault(); }
       else if (e.key === 'ArrowDown') { panY -= 50; applyTransform(); e.preventDefault(); }
+    });
+
+    window.addEventListener('keyup', e => {
+      if (e.key === 'Shift' && !isDrawModeActive) {
+        viewport.classList.remove('is-drawing-tool');
+      }
     });
   }
 
@@ -551,7 +845,6 @@
 
     loader.src = src;
 
-    // In case image is already in browser cache
     if (loader.complete && loader.naturalWidth > 0) {
       img.src = src;
       activeImageLoader = null;
@@ -562,6 +855,8 @@
 
   function setMode(mode) {
     currentMode = mode;
+    clearBoxSelection();
+
     el.querySelectorAll('[data-iso-mode]').forEach(b => {
       b.classList.toggle('is-on', b.dataset.isoMode === mode);
     });
@@ -579,9 +874,10 @@
     if (mode === 'sector') {
       const x = parseInt(document.getElementById('isoSectorX')?.value || '1200', 10);
       const y = parseInt(document.getElementById('isoSectorY')?.value || '1050', 10);
-      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
-      const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
-      renderSectorAt(x, y, size, roofs);
+      const w = parseInt(document.getElementById('isoSectorW')?.value || '60', 10);
+      const h = parseInt(document.getElementById('isoSectorH')?.value || '60', 10);
+      const roofs = currentSector ? currentSector.roofs : 1;
+      renderSectorBox(x, y, w, h, roofs);
       return;
     }
 
@@ -604,18 +900,15 @@
     }
   }
 
-  function renderSectorAt(x, y, size, roofs) {
+  function renderSectorBox(x, y, w, h, roofs = 1) {
     if (!activeMap) return;
 
-    // Update inputs
-    const inX = document.getElementById('isoSectorX');
-    const inY = document.getElementById('isoSectorY');
-    const inRoofs = document.getElementById('isoSectorRoofs');
-    if (inX) inX.value = x;
-    if (inY) inY.value = y;
-    if (inRoofs) inRoofs.checked = !!roofs;
+    clearBoxSelection();
+    currentSector = { x, y, w, h, roofs: roofs ? 1 : 0 };
 
-    // Switch mode to sector
+    updateSectorInputs(x, y, w, h);
+    updateSectorToggle(roofs ? 1 : 0);
+
     currentMode = 'sector';
     el.querySelectorAll('[data-iso-mode]').forEach(b => {
       b.classList.toggle('is-on', b.dataset.isoMode === 'sector');
@@ -629,10 +922,11 @@
       loadHdHereBtn.style.display = 'none';
     }
 
-    const url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${size},${size}&scale=1.0&roofs=${roofs}&t=${Date.now()}`;
+    const url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${w},${h}&scale=1.0&roofs=${roofs ? 1 : 0}&t=${Date.now()}`;
     const roofText = roofs ? 'with roofs' : 'furnished interiors';
-    loadImage(url, `Rendering HD sector ${x},${y} (${size}×${size} tiles, ${roofText})…`,
-              'Compositing full 1:1 crystal-clear in-game sprites', 4);
+    loadImage(url, `Rendering HD sector ${x},${y} (${w}×${h} tiles, ${roofText})…`,
+              roofs ? 'Compositing full 1:1 crystal-clear in-game sprites' : 'Compositing furnished rooms, walls and partitions',
+              4);
   }
 
   async function showIsoView(name) {
@@ -698,10 +992,7 @@
     // Update sector default coordinates to middle
     const midX = Math.round((mapInfo.width_tiles || 1000) / 2);
     const midY = Math.round((mapInfo.height_tiles || 1000) / 2);
-    const inX = document.getElementById('isoSectorX');
-    const inY = document.getElementById('isoSectorY');
-    if (inX) inX.value = midX;
-    if (inY) inY.value = midY;
+    updateSectorInputs(midX, midY, 60, 60);
 
     // Pick initial mode: 'town' if available, otherwise 'close', 'inside', or 'sector'
     let initialMode = 'town';
@@ -717,6 +1008,9 @@
   function closeIsoView() {
     activeMap = null;
     mapInfo = null;
+    currentSector = null;
+    clearBoxSelection();
+    if (isDrawModeActive) toggleDrawMode(false);
     finishProgress(true);
   }
 
