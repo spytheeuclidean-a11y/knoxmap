@@ -80,7 +80,9 @@ unclaimed tiles:
 | 40 Cropland | Fields (section 3). |
 | 90 Herbaceous wetland, 95 Mangroves | `DENSE_BUSHES_GRASS` (ground forced to `DARK_GRASS`, which that rule needs), occasional `SPARSE_TREES`, and pools (section 4). |
 | 50 Built-up | Nothing new; `_paint_gardens` handles yards. |
-| 60 Bare, 70 Snow, 100 Moss | Nothing. |
+| 100 Moss and lichen | Rock field (section 5): dirt with patches of dark grass, walkable rocks in clumps over about 30% of tiles, blocking boulders on about 3%, the odd low bush. No trees. |
+| 60 Bare / sparse | The same rock field, lighter: dirt, walkable rocks on about 10% of tiles, boulders on about 1%. |
+| 70 Snow | Nothing. |
 | 80 Water | Nothing (ground is already `WATER`). |
 
 Tree density scales the shrub, grass and wetland chances. The random
@@ -141,19 +143,43 @@ Inside WorldCover wetland and mangroves, and OSM wetland polygons tagged
 Water in Project Zomboid is impassable on foot. The share is a cap, and pools
 come out separate, so a marsh is land broken by water, not a lake.
 
-### 5. Dependency
+### 5. Rock fields
+
+Moss and lichen is tundra or bare upland: low ground cover broken by stone.
+It uses the stock WorldEd boulder rules, which are current (not `obsolete`)
+and whose `boulders` sheet ships in the Build 42 texture packs:
+
+| Rule | Vegetation colour | Tiles |
+|---|---|---|
+| Boulders (walkable) | `100,120,100` | `boulders2`: low rocks you can walk over |
+| Boulders | `140,160,140` | `boulders1`: large and medium boulders that block movement |
+
+New colours `ROCKS_WALKABLE` and `BOULDERS` in `generator/pz_colors.py`. The
+pebbly rock ground tiles (`floors_exterior_natural_01_8`–`10`) have rules
+marked `obsolete`, so they are not used. Asphalt is not used either: every
+asphalt colour is read as road and would get kerbs, cracks and street lamps.
+
+- A smooth noise field (like the pools) clumps the rocks into rock fields
+  and gaps. The rock share is reached by thresholding it.
+- The ground is `DIRT`. For moss and lichen, noise patches of `DARK_GRASS`
+  (about 30%) stand in for the moss.
+- Blocking boulders stay `ROCK_CLEAR_TILES` = 2 tiles clear of roads, paths
+  and buildings, so they never close a route.
+- Tree density does not scale rocks.
+
+### 6. Dependency
 
 `rasterio` is pinned in `requirements.txt` at the newest release at least two
 weeks old (1.5.x). Setup on all platforms installs `requirements.txt`, so
 nothing else changes. The `available()` gate stays, for installs made before
 this change.
 
-### 6. Data flow in `render()`
+### 7. Data flow in `render()`
 
 1. Ground starts `DARK_GRASS`. If `landcover_for` is given, the class grid is
    computed once, painted with `_paint_landcover` as now, and **kept**.
 2. OSM ground paint draws into `landscape` and into `claimed`.
-3. Fields (OSM farmland and WorldCover cropland) and wetland pools paint the
+3. Fields (OSM farmland and WorldCover cropland), wetland pools and rock fields paint the
    ground.
 4. Vegetation: `_paint_vegetation` (woodland mask OR WorldCover tree cover),
    parks, gardens, `plant_landcover`, then wild growth and groves with
@@ -180,6 +206,8 @@ Unit tests (`tests/test_landcover_veg.py`, `tests/test_fields.py`):
 - Corn, bare and fallow shares are roughly right over many plots (seeded).
 - Pools cover about 10%, no pool sits within 2 tiles of a road, and
   `wet_meadow` gets none.
+- Moss and lichen gets about 30% walkable rocks and bare ground about 10%,
+  and no blocking boulder sits within 2 tiles of a road.
 - The same seed gives an identical output.
 
 **Comparison.** Two areas, each rendered with `landcover = "off"` and
@@ -195,10 +223,10 @@ Saved under `docs/images/worldcover/` and shown in the PR description.
 | File | Change |
 |---|---|
 | `generator/rendering/landcover_veg.py` | new: class planting |
-| `generator/rendering/fields.py` | new: plots, furrows, crops, hedgerows, wetland pools |
+| `generator/rendering/fields.py` | new: plots, furrows, crops, hedgerows, wetland pools, rock fields |
 | `generator/renderer.py` | keep grid, claimed mask, call order |
 | `generator/rendering/vegetation.py` | `exclude` for wild growth and groves; woodland mask accepts extra mask |
-| `generator/pz_colors.py` | 4 colours and their sets |
+| `generator/pz_colors.py` | 6 colours and their sets |
 | `requirements.txt` | rasterio pin |
 | `docs/DATASETS.md`, `CHANGELOG.md` | describe the new behaviour |
 | `tests/test_landcover_veg.py`, `tests/test_fields.py` | new |
