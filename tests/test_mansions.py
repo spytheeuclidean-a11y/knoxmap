@@ -70,32 +70,6 @@ class MansionHouses(unittest.TestCase):
                     if f[0] == "chandelier"]
             self.assertFalse(hung, size)
 
-    def test_a_mansion_opens_the_stair_hall(self):
-        # Two squares of the upper floor left out over the hall below, railed:
-        # a landing over a hall two storeys high. Carved before furnishing, so
-        # nothing is standing on a square that is about to become a hole.
-        built = L.build_building(16, 17, levels=2, seed=7)
-        self.assertTrue(built.grand)
-        upper = built.storeys[1]
-        self.assertTrue(upper.void, "the upstairs hall is open to the floor below")
-        self.assertTrue(upper.railing, "and it has a rail round it")
-        hall = next(r for r in built.storeys[0].rooms
-                    if r.kind == "hall" and not r.is_core and r.area > 6)
-        for x, y in upper.void:
-            with self.subTest(tile=(x, y)):
-                self.assertEqual(upper.grid[y][x], 0, "belongs to no room")
-                self.assertTrue(hall.x0 <= x <= hall.x1 and hall.y0 <= y <= hall.y1,
-                                "the hole is over the hall below")
-                stood = [f for f in upper.furniture
-                         if (x, y) in L._cells_for(f[0], f[1], f[2], f[3])]
-                self.assertFalse(stood, stood)
-
-    def test_a_house_is_not_open_to_below(self):
-        built = L.build_building(10, 9, levels=2, seed=3)
-        self.assertFalse(built.grand)
-        for storey in built.storeys:
-            self.assertFalse(storey.void)
-
     def test_a_mansion_hangs_a_gallery(self):
         # A house hangs one print a room, if that. A mansion hangs several: the
         # cap is what stops a big room's floor area turning into wallpaper, so a

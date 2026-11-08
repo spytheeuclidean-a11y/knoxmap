@@ -1459,7 +1459,6 @@ WALL_VENT = 0.14
 HAMPER = 0.2
 LAUNDRY_HAMPER = 0.5
 CLOSET_BOXES = 0.4
-COAT_RACK = 0.5
 HALL_PHONE = 0.4
 DOOR_MAT = 0.7
 SALE_SIGN = 0.5
@@ -1626,8 +1625,6 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
             continue
         if rng.random() < DOOR_MAT:
             _door_mat(plan, idx, ix, iy, d)
-        if room.kind in ("hall", "livingroom", "openplan") and rng.random() < COAT_RACK:
-            floor_spot("coat_rack", near=[(ix, iy)])
 
 
 def _door_mat(plan, idx: int, x: int, y: int, d: str) -> None:

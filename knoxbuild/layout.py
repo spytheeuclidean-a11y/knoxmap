@@ -131,6 +131,9 @@ class Plan:
     open_units: set = field(default_factory=set)
     # Wall edges carrying a switch, painting or mirror; windows keep off them.
     wall_pieces: set = field(default_factory=set)
+    # The sleeve of floor round each room's way in that no optional piece may
+    # take: one tile either side of the walkway and of every door.
+    sleeve: set = field(default_factory=set)
     # Ground-floor windows that are a shop front, glazed with big panels.
     shop_front: set = field(default_factory=set)
     # What the building is (build_plan's kind), for rooms furnished by it: an
@@ -5856,9 +5859,19 @@ def _furnish(plan: Plan, rng: random.Random,
         # the plants.
         walk = _room_walkway(plan, idx, door_tiles, stairs)
         keep_clear = door_tiles | stair_tiles | walk
-        no_go = door_tiles | walk
         room_cells = {(x, y) for y in range(r.y0, r.y1 + 1)
                       for x in range(r.x0, r.x1 + 1) if plan.grid[y][x] == idx}
+        # A walkway one tile wide is a squeeze: a wardrobe on one side and a
+        # sofa on the other and the way through is a needle's eye, which is
+        # what "furniture blocks the doorway" looks like in the game. Keep a
+        # sleeve of floor either side of the way in, and either side of the
+        # door itself, so the way through is never narrowed below two tiles.
+        sleeve = {(x + dx, y + dy) for x, y in walk
+                  for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+        sleeve |= {(x + dx, y + dy) for x, y in door_tiles
+                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))}
+        sleeve = (sleeve - walk - door_tiles) & room_cells
+        no_go = door_tiles | walk
 
         floor = FR.OpenFloor(room_cells, walk, POCKET_TILES)
         counted = [start]
@@ -6189,6 +6202,12 @@ def _furnish(plan: Plan, rng: random.Random,
                 cells = _cells_for(role, ax, ay, orient)
                 if any(c in occupied or c in no_go or c in toilet_fronts for c in cells):
                     continue
+                # A bed or a stove may stand in the sleeve round the way
+                # through; a dresser or a plant may not, or the way through
+                # is a needle's eye between two tall pieces.
+                if (sleeve and FR.priority(role, r.kind) != FR.ESSENTIAL
+                        and any(c in sleeve for c in cells)):
+                    continue
                 if any(_room_at(plan, cx, cy) != idx for cx, cy in cells):
                     continue
                 front = set()
@@ -6282,6 +6301,7 @@ def _furnish(plan: Plan, rng: random.Random,
                           keeps_open=keeps_open)
         _pair_up(plan, idx, occupied, no_go, keeps_open)
         _stand_on_something(plan, idx, r, pal)
+        plan.sleeve |= sleeve
         if not r.is_core:
             interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
                                  door_edges, no_go, keeps_open, walk)
@@ -7585,7 +7605,7 @@ def build_building(width: int, height: int, levels: int = 1,
     # as a mansion put a piano and a gallery in half the town.
     mansion = kind in (None, "house") and foot >= MANSION_FLOOR_TILES
 
-    def _storey(lvl: int, below_hall=None):
+    def _storey(lvl: int):
         return build_plan(width, height, commercial=commercial or (shops and lvl == 0),
                           seed=_plan_seed(lvl),
                           kind="retail" if shops and lvl == 0 else kind,
@@ -7600,19 +7620,11 @@ def build_building(width: int, height: int, levels: int = 1,
                           entrances=entrances if lvl == 0 else None,
                           profile=profile, mapped=mapped,
                           garage_door=garage_door and lvl == 0,
-                          party={e for e, up in (party or {}).items() if lvl < up},
-                          below_hall=below_hall)
+                          party={e for e, up in (party or {}).items() if lvl < up})
 
     # The ground floor first: a mansion's floors above it are opened over its
     # hall, and that has to be known before they are laid out.
-    storeys = [_storey(0)]
-    below = None
-    if mansion and levels > 1:
-        hall = next((r for r in storeys[0].rooms if r.kind == "hall" and not r.is_core),
-                    None)
-        if hall is not None:
-            below = (hall.x0, hall.y0, hall.x1, hall.y1)
-    storeys.extend(_storey(lvl, below) for lvl in range(1, levels))
+    storeys = [_storey(lvl) for lvl in range(levels)]
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
                         grand=bool(storeys) and storeys[0].grand)
     if stairs is not None:
@@ -7631,6 +7643,8 @@ def build_building(width: int, height: int, levels: int = 1,
     from . import interiors
     interiors.one_wood(building, random.Random(f"{seed}:wood"))
     return building
+
+
 
 
 # Towers step back: from this many storeys the top part is set in from the
@@ -7816,73 +7830,6 @@ def _room_cap(kind: str | None) -> int:
     return KIND_MAX_ROOM.get(kind or "", MAX_ROOM_AREA)
 
 
-def _open_the_stair_hall(plan: Plan, below_hall: tuple[int, int, int, int],
-                         stairs, core) -> None:
-    """Leave the upper floor open over the hall below: a two-storey foyer.
-
-    A mansion is the one house a visitor looks up in. Left solid, the hall
-    upstairs is a corridor with a ceiling; left open over the hall below, with
-    a rail round it, it is a landing over a hall two storeys high - the thing
-    that says the house has money, and it costs no furniture and no tiles: the
-    floor downstairs simply keeps its ceiling.
-
-    Run before the storey is furnished, so nothing is placed on a square that
-    is about to become a hole. The opening is two squares at most, one square
-    clear of every wall so the landing stays a ring you can walk round, and
-    never over the stair: the flight has to land on floor.
-    """
-    x0, y0, x1, y1 = below_hall
-
-    def overlap(room):
-        return (max(0.0, min(room.x1, x1) - max(room.x0, x0) + 1)
-                * max(0.0, min(room.y1, y1) - max(room.y0, y0) + 1))
-
-    # The landing has to be a way through, not somebody's bedroom.
-    landing = [r for r in plan.rooms
-               if r.kind in ("hall", "landing", "corridor", "storage", "office",
-                             "livingroom", "dining")
-               and not r.is_core and not r.is_shaft and overlap(r)]
-    if not landing:
-        return
-    room = max(landing, key=overlap)
-    keep = set()
-    if stairs is not None:
-        sx, sy, sd = stairs
-        dx, dy = (0, 1) if sd == "N" else (1, 0)
-        keep = {(sx + dx * i, sy + dy * i) for i in range(STAIR_RUN + 1)}
-    if keep:
-        # The flight plus a square all round it: the well may open over the
-        # shaft, but the stair has to arrive on floor you can step off.
-        keep = {(x + dx, y + dy) for x, y in keep
-                for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
-    if core is not None and not keep:
-        keep = {(x, y) for x in range(core[0], core[2] + 1)
-                for y in range(core[1], core[3] + 1)}
-
-    ix0, iy0 = max(room.x0, x0) + 1, max(room.y0, y0) + 1
-    ix1, iy1 = min(room.x1, x1) - 1, min(room.y1, y1) - 1
-    free = [(x, y) for y in range(iy0, iy1 + 1) for x in range(ix0, ix1 + 1)
-            if (x, y) not in keep]
-    if not free:
-        return
-    # Two squares across, at the middle of what is left, both in this room.
-    fx0 = min(x for x, _y in free)
-    fx1 = max(x for x, _y in free)
-    fy0 = min(y for _x, y in free)
-    fy1 = max(y for _x, y in free)
-    wide, deep = min(2, fx1 - fx0 + 1), min(2, fy1 - fy0 + 1)
-    ax = fx0 + (fx1 - fx0 + 1 - wide) // 2
-    ay = fy0 + (fy1 - fy0 + 1 - deep) // 2
-    hole = [(ax + dx, ay + dy) for dx in range(wide) for dy in range(deep)]
-    idx = plan.grid[ay][ax]
-    if not idx or any(plan.grid[hy][hx] != idx or (hx, hy) in keep for hx, hy in hole):
-        return
-    for hx, hy in hole:
-        plan.grid[hy][hx] = 0          # belongs to no room: no floor there
-        plan.void.add((hx, hy))
-    _atrium_railings(plan)
-
-
 def build_plan(width: int, height: int, commercial: bool = False,
                seed: int = 0, kind: str | None = None,
                mask: list[list[bool]] | None = None,
@@ -7904,8 +7851,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
                mapped: list | None = None,
                tower: "TowerCore | None" = None,
                plant: bool = False,
-               garage_door: bool = False,
-               below_hall: tuple[int, int, int, int] | None = None) -> Plan:
+               garage_door: bool = False) -> Plan:
     """Lay out and furnish one storey of the given tile size.
 
     `uses` are what OpenStreetMap says a commercial ground floor holds
@@ -8098,8 +8044,6 @@ def build_plan(width: int, height: int, commercial: bool = False,
         _open_shopfronts(plan)
     if ground and garage_door:
         _widen_vehicle_entry(plan, street)
-    if below_hall is not None:
-        _open_the_stair_hall(plan, below_hall, stairs, core)
     _furnish(plan, rng, stairs, street)
     if mix_kind == "mall":
         _clear_concourse(plan)

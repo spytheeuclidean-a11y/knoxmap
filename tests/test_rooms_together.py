@@ -110,7 +110,7 @@ class SmallThings(unittest.TestCase):
                                         (seed, role, x, y))
                     seen.add(role)
         self.assertLessEqual({"coffee_maker", "toaster", "radio", "bin", "clock",
-                              "mirror_small", "phone", "coat_rack", "door_mat",
+                              "mirror_small", "phone", "door_mat",
                               "wall_vent", "hamper", "box"}, seen)
 
 
