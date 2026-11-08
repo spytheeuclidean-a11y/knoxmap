@@ -100,6 +100,9 @@ POSTERS = [(f"walls_decoration_05_{n:03d}", f"walls_decoration_05_{n + 8:03d}") 
 def tiledefs_path() -> str:
     try:
         import knoxpaths
+        media = knoxpaths.pz_media_dir()
+        if media and os.path.isfile(os.path.join(str(media), "newtiledefinitions.tiles.txt")):
+            return os.path.join(str(media), "newtiledefinitions.tiles.txt")
         game = knoxpaths.pz_install_dir()
     except Exception:            # noqa: BLE001 - no game found: the default Steam folder
         game = None

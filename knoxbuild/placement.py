@@ -310,11 +310,11 @@ def _map_folders():
     except Exception:                       # noqa: BLE001 - no paths, no world
         return
     try:
-        game = knoxpaths.pz_install_dir()
+        media = knoxpaths.pz_media_dir()
     except Exception:                       # noqa: BLE001
-        game = None
-    if game:
-        maps = os.path.join(str(game), "media", "maps")
+        media = None
+    if media:
+        maps = os.path.join(str(media), "maps")
         if os.path.isdir(maps):
             for entry in sorted(os.listdir(maps)):
                 yield os.path.join(maps, entry), "vanilla", entry

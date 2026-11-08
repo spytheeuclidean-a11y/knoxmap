@@ -158,12 +158,15 @@ input[readonly] { background: var(--bg); color: var(--muted); }
 .version-dot[hidden] { display: none; }
 .version-dot.ready { background: #ffc857; box-shadow: 0 0 0 2px rgba(255, 200, 87, 0.22); }
 
-.btn-stop {
+.btn-stop, .btn-danger {
   border-color: #8a3b3b;
   color: #ffb4b4;
   background: #2a1414;
 }
-.btn-stop:hover:not(:disabled) { background: #3a1a1a; }
+.btn-stop:hover:not(:disabled), .btn-danger:hover:not(:disabled) {
+  background: #3a1a1a;
+  color: #ffd4d4;
+}
 #gen-overlay .btn-stop { margin-top: 10px; }
 
 #gen-overlay {
@@ -423,7 +426,8 @@ body.rotate-dragging * {
 /* ---- results ------------------------------------------------------------------ */
 #results { padding: 16px; border-top: 1px solid var(--line); background: var(--bg); }
 #results h2 { font-size: 17px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-#results .results-close { margin-left: auto; font-weight: normal; }
+#results .results-delete { margin-left: auto; font-weight: normal; }
+#results .results-close { font-weight: normal; }
 #results h3 { font-size: 15px; margin: 16px 0 8px; }
 #results-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(240px, 1fr); gap: 16px; }
 @media (max-width: 820px) { #results-grid { grid-template-columns: 1fr; } }
@@ -533,9 +537,19 @@ button.version:hover, button.version[aria-expanded="true"] { color: var(--accent
 .map-list .size { color: var(--muted); font-size: 12px; }
 .map-list .old { font-size: 11px; color: var(--warn, #e0b341); border: 1px solid currentColor;
   border-radius: 3px; padding: 0 5px; white-space: nowrap; }
-.map-list button { margin-left: auto; font: inherit; font-size: 12px; font-weight: 600;
+.map-list button { font: inherit; font-size: 12px; font-weight: 600;
   cursor: pointer; color: var(--accent-ink); background: var(--accent); border: 0;
   border-radius: 4px; padding: 3px 10px; }
+.map-list button:first-of-type { margin-left: auto; }
+.map-list button.btn-danger {
+  color: #ffb4b4;
+  background: #2a1414;
+  border: 1px solid #8a3b3b;
+}
+.map-list button.btn-danger:hover:not(:disabled) {
+  background: #4a1f1f;
+  color: #ffd4d4;
+}
 .map-list button:disabled { opacity: .5; cursor: default; }
 /* An Update in progress, under the row of the map being copied. */
 .map-list > li.map-progress { display: block; border-top: 0; padding: 0 0 6px; }

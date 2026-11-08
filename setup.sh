@@ -55,7 +55,7 @@ fi
 
 if [ ! -x ".venv/bin/python" ]; then
   echo "Creating the Python environment..."
-  "$PY" -m venv .venv
+  "$PY" -m venv --system-site-packages .venv
 fi
 echo "Installing Python packages..."
 .venv/bin/python -m pip install --disable-pip-version-check -q -r requirements.txt
@@ -77,7 +77,7 @@ if [ "$(uname -s)-$(uname -m)" != "Linux-x86_64" ] &&
 fi
 
 if [ "$(uname -s)" != "Darwin" ] &&
-   ! .venv/bin/python -c 'from webview import guilib; guilib.initialize()' >/dev/null 2>&1; then
+   ! .venv/bin/python -c 'from webview.guilib import initialize; initialize()' >/dev/null 2>&1; then
   echo
   echo "Note: no desktop toolkit for a native window, so KnoxMap will open in"
   echo "your browser instead. That is the whole app - nothing is missing. For"
