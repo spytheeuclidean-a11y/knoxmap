@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import os
 from pathlib import Path
 
 import knoxfiles
@@ -30,13 +29,8 @@ def _load_settings(map_dir: Path) -> Settings:
 
 
 def _save_settings(map_dir: Path, settings: Settings) -> None:
-    try:
-        # Written beside itself and moved into place: half a settings.json is
-        # read as no settings at all, so the next build of that map quietly
-        # used the defaults instead of what the mapper had set.
-        knoxfiles.write(str(_settings_path(map_dir)), settings.to_dict(), indent=2)
-    except OSError:
-        pass          # a map whose settings cannot be saved still builds
+    # Do not start a build with settings that cannot be saved for its next step.
+    knoxfiles.write(str(_settings_path(map_dir)), settings.to_dict(), indent=2)
 
 
 # ---- editing what a map was built from ------------------------------------------
@@ -74,15 +68,8 @@ def _load_edits(map_dir: Path) -> dict:
 
 
 def _save_edits(map_dir: Path, changes: dict) -> None:
-    path = _edits_path(map_dir)
-    try:
-        map_dir.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.part")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(mapedits.clean(changes), f)
-        os.replace(tmp, path)
-    except OSError:
-        pass          # a map whose edits cannot be saved still renders
+    map_dir.mkdir(parents=True, exist_ok=True)
+    knoxfiles.write(str(_edits_path(map_dir)), mapedits.clean(changes))
 
 
 # ---- the drawn map --------------------------------------------------------------
@@ -110,15 +97,8 @@ def _save_sketch(map_dir: Path, drawn: dict | None) -> None:
     leave a half-written drawing where the drawing was."""
     if not isinstance(drawn, dict):
         return
-    path = _sketch_path(map_dir)
-    try:
-        map_dir.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".geojson.part")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(drawn, f)
-        os.replace(tmp, path)
-    except OSError:
-        pass          # a map whose drawing cannot be saved still renders
+    map_dir.mkdir(parents=True, exist_ok=True)
+    knoxfiles.write(str(_sketch_path(map_dir)), drawn)
 
 
 def _design_path(map_dir: Path) -> Path:
@@ -135,15 +115,8 @@ def _load_design(map_dir: Path) -> dict | None:
 
 
 def _save_design(map_dir: Path, design: dict) -> None:
-    path = _design_path(map_dir)
-    try:
-        map_dir.mkdir(parents=True, exist_ok=True)
-        tmp = path.with_suffix(".json.part")
-        with open(tmp, "w", encoding="utf-8") as f:
-            json.dump(design, f)
-        os.replace(tmp, path)
-    except OSError:
-        pass          # a map whose sheet cannot be saved still renders
+    map_dir.mkdir(parents=True, exist_ok=True)
+    knoxfiles.write(str(_design_path(map_dir)), design)
 
 
 def _map_summary(map_dir: Path) -> dict:

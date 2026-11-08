@@ -1,5 +1,18 @@
 ## 1.8.5.3
 
+- **TVs face seating in small living rooms.** A sofa and TV can now fit
+  without a coffee table, including in finished basements. If no aligned
+  pair fits, the TV is left out rather than placed opposite other furniture.
+- **Large houses are mansions inside.** A house whose storeys add up to
+  `HOUSE_BIG_FLOOR` tiles or more of floor now lays dark wood and red carpet in
+  its living rooms, halls and bedrooms and white tile in its kitchens and
+  bathrooms, and dresses its rooms past the usual wishlist: a chandelier
+  (`lighting_indoor_03`) over the hall, dining room and living room, rugs under
+  them, and a parlour grand (`recreational_01`) in the dining room
+  (`knoxbuild/layout.py`: `MANSION_EXTRA`, `MANSION_FLOORS`, `Plan.grand`;
+  `knoxbuild/tbx.py`: `floor_options`). The pieces are ceiling and floor
+  coverings, so a mansion keeps the free floor in one piece and its windows in
+  columns; a small house is untouched.
 - **Houses keep their roofs.** A hip roof (`Peak30Quad`) was chosen for
   rectangles whose longer side is even, and the world painter has no branch for
   those - it drew nothing, so the house kept its walls, showed the ceiling tile

@@ -148,6 +148,20 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
     return out
 
 
+def floor_options(kind: str, of_kind: dict, mansion: bool = False) -> list[str]:
+    """The finishes a room of `kind` may be laid in: a mansion's own where it
+    has them for that room, the building kind's or the room kind's otherwise.
+    Only names the catalogue has a tile entry for."""
+    from .layout import FLOOR_CHOICES, MANSION_FLOORS
+
+    if mansion:
+        own = [o for o in MANSION_FLOORS.get(kind, ()) if o in C.EXTRA_FLOORS]
+        if own:
+            return own
+    return [o for o in of_kind.get(kind, FLOOR_CHOICES.get(kind, ()))
+            if o in C.EXTRA_FLOORS]
+
+
 # Flat roofs carry plant: bare tar from edge to edge read as unfinished. One
 # air-conditioning unit per ROOF_AC_EVERY tiles of roof, a vent per
 # ROOF_VENT_EVERY, and a hatch, kept off the edges and off each other.
@@ -273,7 +287,8 @@ def render_tbx(plan: Plan | Building, name: str,
     their new indices.
     """
     building = plan if isinstance(plan, Building) else Building(
-        width=plan.width, height=plan.height, storeys=[plan], profile=plan.profile)
+        width=plan.width, height=plan.height, storeys=[plan], profile=plan.profile,
+        grand=plan.grand)
     storeys = building.storeys
 
     entries = list(C.TILE_ENTRIES)
@@ -435,8 +450,7 @@ def render_tbx(plan: Plan | Building, name: str,
         _stable_seed(name, len(building.rooms), building.width,
                      building.height))
     for kind in sorted({r.kind for r in building.rooms}):
-        options = [o for o in of_kind.get(kind, FLOOR_CHOICES.get(kind, ()))
-                   if o in C.EXTRA_FLOORS]
+        options = floor_options(kind, of_kind, getattr(building, "grand", False))
         if not options:
             continue
         if building.profile:

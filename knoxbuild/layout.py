@@ -146,6 +146,9 @@ class Plan:
     # no window, shop front or door goes in them.
     party: set = field(default_factory=set)
     profile: object | None = None
+    # A large house (build_plan): its rooms take a mansion's finishes and
+    # dressing instead of a small house's.
+    grand: bool = False
 
 
 # kind -> (floor tile entry index, display name, furniture wishlist)
@@ -1362,6 +1365,34 @@ HOUSE_MAX_SPARE = 40
 # A floor this many tiles or more is a large house and takes more rooms of the
 # kinds that fill a floor.
 HOUSE_BIG_FLOOR = 260
+# A house whose storeys add up to that much floor is a mansion: it takes the
+# finishes and the dressing of an old, rich house rather than a bigger version
+# of a small one. The same line, measured over the whole house, so two storeys
+# of 130 count where one floor of 130 does not.
+MANSION_FLOOR_TILES = HOUSE_BIG_FLOOR
+# Rooms a mansion dresses past its wishlist: the pictures, rugs, bookcases and
+# lamps a house with money has in every room. Roles, mapped by the palette and
+# the game's own art like any other.
+MANSION_EXTRA = {
+    "livingroom": ["chandelier", "shag_rug"],
+    "hall": ["chandelier"],
+    "dining": ["piano", "chandelier", "rug_wide"],
+    "bedroom": ["rug_small"],
+    "bathroom": ["rug_small"],
+}
+# And the floors it lays: dark wood and red carpet underfoot, white tile in the
+# wet rooms. A kind it does not list keeps the house's own floor. These are
+# EXTRA_FLOORS names (tbx.floor_options).
+MANSION_FLOORS = {
+    "livingroom": ["wood_dark", "carpet_red", "carpet_blue"],
+    "dining": ["wood_dark", "carpet_red"],
+    "hall": ["wood_dark", "tile_white"],
+    "office": ["wood_dark", "carpet_red"],
+    "bedroom": ["carpet_red", "carpet_blue", "wood_dark"],
+    "kidsbedroom": ["carpet_blue", "carpet_red"],
+    "kitchen": ["tile_white", "tile_cream"],
+    "bathroom": ["tile_white", "tile_cream"],
+}
 # On a floor that size the bedrooms still stay bedrooms, not suites: the wings
 # give the other rooms the space.
 BIG_FLOOR_BEDROOM_OVERSIZE = 1.2
@@ -5158,9 +5189,6 @@ _SIDE_OF_VECTOR = {(1, 0): "E", (-1, 0): "W", (0, 1): "S", (0, -1): "N"}
 _OPPOSITE_SIDE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 
 
-LIVING_GROUP_MIN_TILES = 16
-
-
 def _furnish_living(plan: Plan, idx: int, room: Room,
                     occupied: set[tuple[int, int]],
                     keep_clear: set[tuple[int, int]],
@@ -5168,11 +5196,11 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
     """The television against a wall, the sofa straight across from it facing
     it, the coffee table between, an armchair at the side and a rug under the
     table: how people arrange a living room. Tries each wall and each spot
-    along it, the most open first, and takes the first that fits whole. False
-    if none does, and the room is laid out the old way."""
+    along it, the most open first, and takes the first that fits. In a tight
+    room it can omit the table. Returns false if no aligned pair fits."""
     cells = {(x, y) for y in range(room.y0, room.y1 + 1)
              for x in range(room.x0, room.x1 + 1) if _room_at(plan, x, y) == idx}
-    if len(cells) < LIVING_GROUP_MIN_TILES:
+    if len(cells) < 9:
         return False
     sofa = palette.get("sofa", "sofa")
     armchair = palette.get("armchair", "armchair")
@@ -5194,7 +5222,7 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
         origin = (bounds[ox_name], bounds[oy_name])
         length = (room.x1 - room.x0 + 1) if along[0] else (room.y1 - room.y0 + 1)
         depth = (room.y1 - room.y0 + 1) if along[0] else (room.x1 - room.x0 + 1)
-        if depth < 4 or length < 3:
+        if depth < 3 or length < 3:
             continue
 
         def tile(a, d, origin=origin, along=along, into=into):
@@ -5210,11 +5238,10 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
         options.append((blocked, outside, -min(depth, 8), side, tile, length, depth, along))
     options.sort(key=lambda o: o[:4])
 
+    fallback = None
     for _blocked, _outside, _d, side, tile, length, depth, along in options:
-        # Four deep is the television, a step, the table and the sofa back
-        # to the far wall: two in five living rooms are that narrow or under
-        # twenty tiles, and got the sofa and the table wherever they fell.
-        sofa_d = 4 if depth >= 6 else 3
+        # Leave out the table when the room only fits the television and sofa.
+        sofa_d = 4 if depth >= 6 else min(3, depth - 1)
         centre = length // 2
         spots = sorted(range(1, length - 1), key=lambda a: (abs(a - centre), a))
         table_orient = "N" if side in "NS" else "W"
@@ -5224,9 +5251,9 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
             sf_orient = _facing(sofa, _OPPOSITE_SIDE[side])
             sf_at, sf_cells = footprint(sofa, sf_orient, tile(a, sofa_d))
             tv_orient = _facing("tv", side)
-            parts = [("tv", tv_orient, tv_at, tv_cells),
-                     ("coffee_table", table_orient, tb_at, tb_cells),
-                     (sofa, sf_orient, sf_at, sf_cells)]
+            pair = [("tv", tv_orient, tv_at, tv_cells),
+                    (sofa, sf_orient, sf_at, sf_cells)]
+            parts = pair + [("coffee_table", table_orient, tb_at, tb_cells)]
             # The armchair at the end of the table, turned to face it.
             for lateral in (1, -1):
                 back = _SIDE_OF_VECTOR[(along[0] * lateral, along[1] * lateral)]
@@ -5238,16 +5265,26 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
                     break
             else:
                 if not _living_fits(plan, idx, parts, cells, taken, tile(a, 1), keeps_open):
+                    if fallback is None and _living_fits(
+                            plan, idx, pair, cells, taken, tile(a, 1), keeps_open):
+                        fallback = (pair, tile(a, 1))
                     continue
             rug = "rug_wide" if side in "NS" else "rug"
             rug_at, rug_cells = footprint(rug, "W", tile(a, 2))
-            if rug in C.FURNITURE and all(c in cells for c in rug_cells):
+            if len(parts) > 2 and rug in C.FURNITURE and all(c in cells for c in rug_cells):
                 plan.furniture.append((rug, rug_at[0], rug_at[1], "W"))
             for role, orient, at, cs in parts:
                 plan.furniture.append((role, at[0], at[1], orient))
                 occupied.update(cs)
             occupied.add(tile(a, 1))
             return True
+    if fallback is not None:
+        parts, gap = fallback
+        for role, orient, at, cs in parts:
+            plan.furniture.append((role, at[0], at[1], orient))
+            occupied.update(cs)
+        occupied.add(gap)
+        return True
     return False
 
 
@@ -5279,6 +5316,8 @@ def _furnish_middle(plan: Plan, idx: int, room: Room,
     if room.kind == "livingroom" and _furnish_living(
             plan, idx, room, occupied, keep_clear, palette, keeps_open):
         return 1
+    if room.kind == "livingroom":
+        return 0
 
     def own(group):
         return [(palette.get(role, role), dx, dy, o) for role, dx, dy, o in group]
@@ -5934,6 +5973,11 @@ def _furnish(plan: Plan, rng: random.Random,
                 for role in base]
         if plan.kind in HOME_KINDS:
             base = [HOME_STORE.get(role, role) for role in base]
+        # A mansion dresses every room past its wishlist: the pictures, rugs and
+        # bookcases a house with money has. Before the art is drawn from the
+        # game's own tiles, so a mansion hangs a different print in each room.
+        if plan.grand and r.kind in MANSION_EXTRA:
+            base = base + MANSION_EXTRA[r.kind]
         if _erika_ready():
             # With Erika's Tiles installed, pictures and plants come from its
             # far larger range, so no two living rooms hang the same print.
@@ -6046,6 +6090,9 @@ def _furnish(plan: Plan, rng: random.Random,
             before = len(plan.furniture)
             if not office and not eatery and not trade_fitted:
                 _furnish_middle(plan, idx, r, occupied, keep_clear, pal, keeps_open)
+            if r.kind == "livingroom" and not any(
+                    role == "tv" for role, *_ in plan.furniture[before:]):
+                wishlist[:] = [role for role in wishlist if role != "tv"]
             # The center group already supplied its focal pieces; do not add
             # them again from the room wishlist.
             for role, *_ in plan.furniture[before:]:
@@ -6061,6 +6108,20 @@ def _furnish(plan: Plan, rng: random.Random,
                     wishlist.remove(role)
 
         def place(role):
+            if role == "chandelier":
+                candidates = sorted(((x, y) for y in range(r.y0 + 1, r.y1)
+                                     for x in range(r.x0 + 1, r.x1)),
+                                    key=lambda p: abs(2 * p[0] - r.x0 - r.x1)
+                                    + abs(2 * p[1] - r.y0 - r.y1))
+                for x, y in candidates:
+                    cells = _cells_for(role, x, y, "W")
+                    if all(_room_at(plan, cx, cy) == idx and (cx, cy) not in no_go
+                           and all(_room_at(plan, cx + dx, cy + dy) == idx
+                                   for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+                           for cx, cy in cells):
+                        plan.furniture.append((role, x, y, "W"))
+                        return
+                return
             if role == "bath_mat":
                 # A mat is walked over, so it may lie on the walkway.
                 mat = _bath_mat_spot(plan, idx, r, occupied, door_tiles | stair_tiles)
@@ -6481,6 +6542,8 @@ class Building:
     # .tbx, because a square of one carries two tiles.
     escalators: list[tuple[int, int]] = field(default_factory=list)
     profile: object | None = None
+    # A large house (Plan.grand): its rooms take a mansion's finishes.
+    grand: bool = False
 
     @property
     def rooms(self) -> list[Room]:
@@ -7503,7 +7566,8 @@ def build_building(width: int, height: int, levels: int = 1,
                    party={e for e, up in (party or {}).items() if lvl < up})
         for lvl in range(levels)
     ]
-    building = Building(width=width, height=height, storeys=storeys, profile=profile)
+    building = Building(width=width, height=height, storeys=storeys, profile=profile,
+                        grand=bool(storeys) and storeys[0].grand)
     if stairs is not None:
         for lvl in range(levels - 1):
             building.stairs.append(stairs)
@@ -7747,6 +7811,12 @@ def build_plan(width: int, height: int, commercial: bool = False,
     plan = Plan(width=width, height=height, mask=mask, core=core,
                 corridor=corridor, kind=kind, party=set(party or ()),
                 profile=profile)
+    # A large house, by the floor its storeys hold: the whole house's floor
+    # against HOUSE_BIG_FLOOR, so two storeys of 130 count where one floor of
+    # 130 does not. It gets the finishes and the dressing of an old, rich
+    # house (_furnish, tbx.floor_options) rather than more of the same.
+    plan.grand = (kind in (None, "house")
+                  and _footprint(plan) * max(1, levels) >= MANSION_FLOOR_TILES)
     shop_floor = kind in ("shop", "retail", "restaurant") and ground and tower is None
     mix_kind = "offices" if kind in ("shop", "restaurant") and not ground else kind
     # Rooms in a flat are smaller than rooms in a house, and there have to be
