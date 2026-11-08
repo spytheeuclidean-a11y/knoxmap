@@ -5238,6 +5238,7 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
         options.append((blocked, outside, -min(depth, 8), side, tile, length, depth, along))
     options.sort(key=lambda o: o[:4])
 
+    fallback = None
     for _blocked, _outside, _d, side, tile, length, depth, along in options:
         # Leave out the table when the room only fits the television and sofa.
         sofa_d = 4 if depth >= 6 else min(3, depth - 1)
@@ -5264,9 +5265,10 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
                     break
             else:
                 if not _living_fits(plan, idx, parts, cells, taken, tile(a, 1), keeps_open):
-                    parts = pair
-                    if not _living_fits(plan, idx, parts, cells, taken, tile(a, 1), keeps_open):
-                        continue
+                    if fallback is None and _living_fits(
+                            plan, idx, pair, cells, taken, tile(a, 1), keeps_open):
+                        fallback = (pair, tile(a, 1))
+                    continue
             rug = "rug_wide" if side in "NS" else "rug"
             rug_at, rug_cells = footprint(rug, "W", tile(a, 2))
             if len(parts) > 2 and rug in C.FURNITURE and all(c in cells for c in rug_cells):
@@ -5276,6 +5278,13 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
                 occupied.update(cs)
             occupied.add(tile(a, 1))
             return True
+    if fallback is not None:
+        parts, gap = fallback
+        for role, orient, at, cs in parts:
+            plan.furniture.append((role, at[0], at[1], orient))
+            occupied.update(cs)
+        occupied.add(gap)
+        return True
     return False
 
 

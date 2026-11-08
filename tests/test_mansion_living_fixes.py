@@ -1,5 +1,6 @@
 import random
 import unittest
+from unittest import mock
 
 from knoxbuild import catalog, layout
 
@@ -38,6 +39,26 @@ class MansionLivingFixes(unittest.TestCase):
                 self.assertTrue(any((sx - tv[1]) * -dy == (sy - tv[2]) * -dx
                                     and (sx - tv[1]) * dx + (sy - tv[2]) * dy < 0
                                     for sx, sy in layout._cells_for(*sofa)))
+
+    def test_full_arrangement_is_tried_before_pair_only_fallback(self):
+        room = layout.Room(0, 0, 6, 6, kind='livingroom')
+        plan = layout.Plan(7, 7, rooms=[room], grid=[[1] * 7 for _ in range(7)],
+                           kind='house')
+        real_fits = layout._living_fits
+        pair_seen = False
+
+        def blocked_first_table(plan, idx, parts, cells, taken, gap, keeps_open):
+            nonlocal pair_seen
+            if len(parts) == 2:
+                pair_seen = True
+            elif not pair_seen:
+                return False
+            return real_fits(plan, idx, parts, cells, taken, gap, keeps_open)
+
+        with mock.patch.object(layout, '_living_fits', side_effect=blocked_first_table):
+            self.assertTrue(layout._furnish_living(plan, 1, room, set(), set(), {}))
+        self.assertTrue(pair_seen)
+        self.assertIn('coffee_table', [role for role, *_ in plan.furniture])
 
     def test_generated_houses_and_basements_keep_tv_facing_seating(self):
         checked = 0
