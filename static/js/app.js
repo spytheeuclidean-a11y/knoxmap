@@ -1825,6 +1825,13 @@ async function loadMaps() {
       update.addEventListener('click', () => updateMap(m.mapName, update));
       li.append(update, remove);
     }
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'btn-danger';
+    del.textContent = 'Delete';
+    del.title = 'Delete this map and all its files';
+    del.addEventListener('click', () => deleteMap(m.mapName));
+    li.append(del);
     list.append(li);
   }
 }
@@ -1908,6 +1915,31 @@ async function uninstallMap(mapName) {
     fx.toast('bad', 'Could not remove that map', err.message, 8000);
   }
 }
+
+async function deleteMap(mapName) {
+  if (!mapName) return;
+  const prompt = `Delete ${mapName} and all its files? This cannot be undone.`;
+  if (!window.confirm(prompt)) return;
+  try {
+    const res = await fetch(`/api/maps/${encodeURIComponent(mapName)}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+    fx.toast('ok', 'Map deleted', mapName, 6000);
+    if (typeof closeTab === 'function') {
+      closeTab(mapName);
+    } else {
+      const results = document.getElementById('results');
+      if (results) results.hidden = true;
+    }
+    loadMaps();
+    if (typeof refreshMyMaps === 'function') refreshMyMaps();
+  } catch (err) {
+    fx.toast('bad', 'Could not delete that map', err.message, 8000);
+  }
+}
+window.deleteMap = deleteMap;
 
 async function openMap(mapName) {
   let data;
@@ -2342,6 +2374,23 @@ function wireDownload(link, name, label) {
 document.getElementById('resultsClose').addEventListener('click', () => {
   document.getElementById('results').hidden = true;
   document.getElementById('map').scrollIntoView({ block: 'start' });
+});
+
+function getActiveMapName() {
+  const badge = document.querySelector('.map-badge');
+  const name = badge ? badge.textContent.trim() : '';
+  if (name && name !== '—') return name;
+  return typeof currentMap !== 'undefined' && currentMap ? currentMap : '';
+}
+
+document.getElementById('resultsDelete')?.addEventListener('click', () => {
+  const name = getActiveMapName();
+  if (name) deleteMap(name);
+});
+
+document.getElementById('deleteMapSideBtn')?.addEventListener('click', () => {
+  const name = getActiveMapName();
+  if (name) deleteMap(name);
 });
 
 function renderResults(data) {

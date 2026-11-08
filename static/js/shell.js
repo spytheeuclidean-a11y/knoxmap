@@ -245,6 +245,7 @@
             item(m.mapName, () => openTab(m.mapName), { on: m.mapName === currentMap, radio: true })).join('')
           : '<div class="label" style="text-transform:none">No maps yet</div>')
         + item('Close this map', () => closeTab(currentMap), { key: 'Ctrl+W', off: !open })
+        + item('Delete this map', () => (typeof deleteMap === 'function' ? deleteMap(currentMap) : null), { off: !open })
         + '<hr>' + label('Saved areas')
         + item('Save this area…', () => { goHome(); $('presetName').focus(); }, { off: !currentRect })
         + item('Export to a file…', () => click('presetExport'), { off: !currentRect })

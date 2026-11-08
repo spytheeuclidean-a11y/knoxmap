@@ -29,12 +29,44 @@ def api_maps():
     return jsonify({"maps": maps, "current": knoxlog.version()})
 
 
-@bp.route("/api/maps/<map_name>")
+@bp.route("/api/maps/<map_name>", methods=["GET", "DELETE"])
 def api_map(map_name: str):
-    """One map, in the shape the page shows a freshly generated one in."""
+    """One map: GET shows its summary; DELETE removes its folder in output/
+    and any installed mod in ~/Zomboid/mods."""
     map_dir = _map_dir(map_name)
     if map_dir is None:
         return jsonify({"error": "Unknown map."}), 404
+
+    if request.method == "DELETE":
+        from web.jobs import _COMPILE, _PROGRESS_LOCK
+        with _PROGRESS_LOCK:
+            compiling = _COMPILE.get(map_dir.name, {}).get("state") in ("running", "stopping")
+        if compiling:
+            return jsonify({"error": "The map is busy. Stop it first."}), 409
+
+        # If installed, also clean up the installed mod in ~/Zomboid/mods
+        try:
+            from knoxbuild import mapstate
+            from tools import make_map_mod
+            rec = mapstate.installed(str(map_dir))
+            if rec and "modRoot" in rec:
+                mod_root = Path(rec["modRoot"]).resolve()
+                if mod_root.is_dir() and mod_root.parent.name == "mods":
+                    info_file = mod_root / "mod.info"
+                    if info_file.is_file() and "generated from real-world map data with KnoxMap" in info_file.read_text(encoding="utf-8", errors="replace"):
+                        make_map_mod._clear_folder(str(mod_root))
+        except Exception as exc:
+            log.warning("Could not remove mod during map delete %s: %s", map_dir.name, exc)
+
+        import shutil
+        try:
+            shutil.rmtree(map_dir)
+            log.info("deleted map project: %s", map_dir.name)
+        except OSError as exc:
+            return failed(f"Could not delete map folder: {exc}", 500, exc)
+
+        return jsonify({"deleted": map_dir.name})
+
     summary = _map_summary(map_dir)
     summary["settings"] = _load_settings(map_dir).to_dict()
     summary["population"] = _population(map_dir)

@@ -166,6 +166,12 @@ class WhatTheMapRemembers(unittest.TestCase):
         self.assertEqual(M.needs(self.dir), [])
         self.assertIsNone(M.made_with(self.dir))
 
+    def test_delete_map_endpoint_returns_404_for_unknown_map(self):
+        client = A.app.test_client()
+        answer = client.delete("/api/maps/nonexistent_dummy_map_xyz")
+        self.assertEqual(answer.status_code, 404)
+        self.assertIn("error", answer.get_json() or {})
+
 
 if __name__ == "__main__":
     unittest.main()
