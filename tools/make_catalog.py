@@ -653,6 +653,24 @@ def main(argv: list[str]) -> int:
     furniture["nightstand"] = {o: {"0,0": f"furniture_storage_01_{n:03d}"}
                                for o, n in (("N", 48), ("W", 49), ("E", 50), ("S", 51))}
     furniture_layers["nightstand"] = "Furniture"
+    # A parlour grand and a chandelier, for a big house's living room. The
+    # piano's four facings are not a four-tile block (recreational_01 8-9 face
+    # south, 12-13 east, 28-29 north, 30-31 west), so they are keyed by the wall
+    # each backs onto. The chandelier is lighting_indoor_03_0-1, two halves of
+    # one IsHigh piece, symmetric enough to hang by a north wall too.
+    furniture["piano"] = {
+        "N": {"0,0": "recreational_01_008", "1,0": "recreational_01_009"},
+        "S": {"0,0": "recreational_01_028", "1,0": "recreational_01_029"},
+        "W": {"0,0": "recreational_01_013", "0,1": "recreational_01_012"},
+        "E": {"0,0": "recreational_01_031", "0,1": "recreational_01_030"}}
+    furniture_layers["piano"] = "Furniture"
+    furniture["chandelier"] = {
+        o: {"0,0": "lighting_indoor_03_000", "1,0": "lighting_indoor_03_001"}
+        for o in ("W", "N")}
+    # A ceiling piece, so it does not stand on the floor: FloorFurniture keeps
+    # it out of the walkways and off the window wall's clear stretch, and the
+    # tile's own IsHigh draws it at the ceiling.
+    furniture_layers["chandelier"] = "FloorFurniture"
     erika = erika_roles(furniture, furniture_layers)
 
     # Wall and floor palettes. Every building used to share one exterior wall

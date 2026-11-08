@@ -146,6 +146,9 @@ class Plan:
     # no window, shop front or door goes in them.
     party: set = field(default_factory=set)
     profile: object | None = None
+    # A large house (build_plan): its rooms take a mansion's finishes and
+    # dressing instead of a small house's.
+    grand: bool = False
 
 
 # kind -> (floor tile entry index, display name, furniture wishlist)
@@ -1362,6 +1365,34 @@ HOUSE_MAX_SPARE = 40
 # A floor this many tiles or more is a large house and takes more rooms of the
 # kinds that fill a floor.
 HOUSE_BIG_FLOOR = 260
+# A house whose storeys add up to that much floor is a mansion: it takes the
+# finishes and the dressing of an old, rich house rather than a bigger version
+# of a small one. The same line, measured over the whole house, so two storeys
+# of 130 count where one floor of 130 does not.
+MANSION_FLOOR_TILES = HOUSE_BIG_FLOOR
+# Rooms a mansion dresses past its wishlist: the pictures, rugs, bookcases and
+# lamps a house with money has in every room. Roles, mapped by the palette and
+# the game's own art like any other.
+MANSION_EXTRA = {
+    "livingroom": ["chandelier", "shag_rug"],
+    "hall": ["chandelier"],
+    "dining": ["piano", "chandelier", "rug_wide"],
+    "bedroom": ["rug_small"],
+    "bathroom": ["rug_small"],
+}
+# And the floors it lays: dark wood and red carpet underfoot, white tile in the
+# wet rooms. A kind it does not list keeps the house's own floor. These are
+# EXTRA_FLOORS names (tbx.floor_options).
+MANSION_FLOORS = {
+    "livingroom": ["wood_dark", "carpet_red", "carpet_blue"],
+    "dining": ["wood_dark", "carpet_red"],
+    "hall": ["wood_dark", "tile_white"],
+    "office": ["wood_dark", "carpet_red"],
+    "bedroom": ["carpet_red", "carpet_blue", "wood_dark"],
+    "kidsbedroom": ["carpet_blue", "carpet_red"],
+    "kitchen": ["tile_white", "tile_cream"],
+    "bathroom": ["tile_white", "tile_cream"],
+}
 # On a floor that size the bedrooms still stay bedrooms, not suites: the wings
 # give the other rooms the space.
 BIG_FLOOR_BEDROOM_OVERSIZE = 1.2
@@ -5934,6 +5965,11 @@ def _furnish(plan: Plan, rng: random.Random,
                 for role in base]
         if plan.kind in HOME_KINDS:
             base = [HOME_STORE.get(role, role) for role in base]
+        # A mansion dresses every room past its wishlist: the pictures, rugs and
+        # bookcases a house with money has. Before the art is drawn from the
+        # game's own tiles, so a mansion hangs a different print in each room.
+        if plan.grand and r.kind in MANSION_EXTRA:
+            base = base + MANSION_EXTRA[r.kind]
         if _erika_ready():
             # With Erika's Tiles installed, pictures and plants come from its
             # far larger range, so no two living rooms hang the same print.
@@ -6481,6 +6517,8 @@ class Building:
     # .tbx, because a square of one carries two tiles.
     escalators: list[tuple[int, int]] = field(default_factory=list)
     profile: object | None = None
+    # A large house (Plan.grand): its rooms take a mansion's finishes.
+    grand: bool = False
 
     @property
     def rooms(self) -> list[Room]:
@@ -7503,7 +7541,8 @@ def build_building(width: int, height: int, levels: int = 1,
                    party={e for e, up in (party or {}).items() if lvl < up})
         for lvl in range(levels)
     ]
-    building = Building(width=width, height=height, storeys=storeys, profile=profile)
+    building = Building(width=width, height=height, storeys=storeys, profile=profile,
+                        grand=bool(storeys) and storeys[0].grand)
     if stairs is not None:
         for lvl in range(levels - 1):
             building.stairs.append(stairs)
@@ -7747,6 +7786,12 @@ def build_plan(width: int, height: int, commercial: bool = False,
     plan = Plan(width=width, height=height, mask=mask, core=core,
                 corridor=corridor, kind=kind, party=set(party or ()),
                 profile=profile)
+    # A large house, by the floor its storeys hold: the whole house's floor
+    # against HOUSE_BIG_FLOOR, so two storeys of 130 count where one floor of
+    # 130 does not. It gets the finishes and the dressing of an old, rich
+    # house (_furnish, tbx.floor_options) rather than more of the same.
+    plan.grand = (kind in (None, "house")
+                  and _footprint(plan) * max(1, levels) >= MANSION_FLOOR_TILES)
     shop_floor = kind in ("shop", "retail", "restaurant") and ground and tower is None
     mix_kind = "offices" if kind in ("shop", "restaurant") and not ground else kind
     # Rooms in a flat are smaller than rooms in a house, and there have to be
