@@ -1,8 +1,24 @@
 ## 1.8.5.4
 
-- **Mansions and living rooms.** Large houses get richer interiors, a piano
-  and chandeliers. Chandeliers are placed away from doorways, and smaller
-  living rooms and finished basements try to put the sofa facing the TV.
+- **Mansions and living rooms.** A big house gets a gallery of pictures and a
+  study lined with books, and is judged by the ground floor it covers - two
+  storeys of 132 tiles was being dressed as a mansion, which put a piano in
+  half the town, half-filled the bedrooms with furniture and knocked the
+  upstairs windows out of their columns. Chandeliers are gone. Smaller living
+  rooms and finished basements put the sofa facing the TV.
+- **A doorway keeps a sleeve of floor.** One tile either side of a room's
+  walkway, and of every door in it, is off limits to anything but a bed or a
+  stove: a dresser on one side and a sofa on the other left a single tile to
+  walk through, which is what furniture blocking a doorway looks like in the
+  game. Free tiles pinched to one tile between two pieces fell from 666 to 375
+  across thirty houses; the coat rack that stood beside every outside door
+  went with it.
+- **A picture takes the wall before the bookshelf does.** Wall art hangs
+  before the room's furniture, on bare wall first and on the north wall before
+  the west one, so a dresser cannot end up drawn over the print.
+- **No two-storey foyer.** A .tbx cannot say a floor is open to the one below:
+  a level with no floor tile over a room reads as outdoors, so a carved and
+  railed opening still rendered as two holes with no wall.
 - **Roofs stay on houses.** Roofs that could come out missing now use a
   supported shape, and flat roofs no longer get floating vents and hatches.
 - **Safer map saves.** KnoxMap reports when settings, drawings or edits cannot
