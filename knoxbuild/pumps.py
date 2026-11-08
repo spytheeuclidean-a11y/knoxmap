@@ -26,12 +26,30 @@ from generator import pz_colors as C
 from .bitmaps import read_rgb, same_colour
 from .structures import CELL, render_tiles_tbx
 
-# One tile each, holding 20000 units of fuel. The pump facing south stands in
-# a row that runs west to east, the one facing east in a row north to south.
+# A pump is two tiles: the half to the west (or north) first, then the pump
+# with the nozzle on it. Read back from the game's own Fossoil station
+# (Muldraugh cell 41,38): 15 at x118 and 14 at x119, on both islands, and 13/12
+# are the same pair turned for a row running north to south. Each tile holds
+# 20000 units of fuel. Placed alone, one half of the pump is what you see.
 PUMPS = {
-    "fossoil": {"x": "location_shop_fossoil_01_14", "y": "location_shop_fossoil_01_12"},
-    "gas2go": {"x": "location_shop_gas2go_01_14", "y": "location_shop_gas2go_01_12"},
+    "fossoil": {"x": ("location_shop_fossoil_01_15", "location_shop_fossoil_01_14"),
+                "y": ("location_shop_fossoil_01_13", "location_shop_fossoil_01_12")},
+    "gas2go": {"x": ("location_shop_gas2go_01_15", "location_shop_gas2go_01_14"),
+               "y": ("location_shop_gas2go_01_13", "location_shop_gas2go_01_12")},
 }
+
+
+def pump_tiles(brand: str, along_x: bool, x: int, y: int, limit) -> list[tuple]:
+    """The two tiles one pump is drawn with, as (x, y, level, layer, tile).
+
+    `limit(x, y)` says whether a tile may be drawn on. A pump whose other half
+    falls outside the forecourt is left out rather than drawn cut at its edge.
+    """
+    half, body = PUMPS[brand]["x" if along_x else "y"]
+    hx, hy = (x - 1, y) if along_x else (x, y - 1)
+    if not (limit(x, y) and limit(hx, hy)):
+        return []
+    return [(hx, hy, 0, "Furniture", half), (x, y, 0, "Furniture", body)]
 FORECOURT_DEPTH = 8         # tiles out from the shop front
 FORECOURT_MIN_DEPTH = 6
 FORECOURT_MIN_LENGTH = 9
@@ -237,7 +255,7 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                 y, h = (y, h + 1) if dy > 0 else (y - 1, h + 1)
         return None
 
-    def lay(x, y, w, h, brand, pumps_at=None, side=None):
+    def lay(x, y, w, h, brand, pumps_at=None, side=None, canopy=True):
         nonlocal pumps
         if forecourts is not None:
             forecourts.append((x, y, w, h))
@@ -279,15 +297,21 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                     tarmac_or_concrete(*at(t, d), C.PALE_CONCRETE)
             for k in range(count):
                 px, py = at(start + k * PUMP_SPACING, d)
-                tiles.append((px, py, 0, "Furniture", PUMPS[brand]["x" if along_x else "y"]))
-                pumps += 1
+                pair = pump_tiles(brand, along_x, px, py,
+                                  lambda x, y: px0 <= x < px0 + pw and py0 <= y < py0 + ph)
+                if pair:
+                    tiles.extend(pair)
+                    pumps += 1
             if side in SIDES:
                 t0, t1 = start - ISLAND_OVERHANG, start + (count - 1) * PUMP_SPACING + ISLAND_OVERHANG
                 (ax, ay), (bx, by) = at(max(0, t0), d), at(min(length - 1, t1), d)
                 islands.append((min(ax, bx), min(ay, by), max(ax, bx), max(ay, by)))
-        if islands:
+        if islands and canopy:
             tiles.extend(canopy_tiles(islands, brand,
                                       lambda x, y: 0 <= x < W and 0 <= y < H))
+        # A forecourt is one station however it was mapped: a point that lands
+        # on this one later in the pass must not get a second pad of its own.
+        done_near.append((x + w / 2, y + h / 2))
 
     def brand_for(x, y):
         return "fossoil" if (x * 7 + y * 13) % 2 else "gas2go"
@@ -338,9 +362,13 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                 t = int(step * (k + 0.5))
                 xx, yy = (t, r) if along_x else (r, t)
                 if under[yy, xx]:
-                    tiles.append((x0 + xx, y0 + yy, 0, "Furniture", PUMPS[brand]["x" if along_x else "y"]))
-                    placed += 1
-                    row.append(t)
+                    pair = pump_tiles(brand, along_x, x0 + xx, y0 + yy,
+                                      lambda x, y: 0 <= y - y0 < ch and 0 <= x - x0 < cw
+                                      and under[y - y0, x - x0])
+                    if pair:
+                        tiles.extend(pair)
+                        placed += 1
+                        row.append(t)
             if not row:
                 continue
             # The island's concrete under the pumps, and the canopy over it:
@@ -385,14 +413,18 @@ def place_pumps(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
 
     for px, py in points:
         px, py = int(px), int(py)
-        if near_canopy(px, py):
+        # A station mapped as a node as well as a building would otherwise get
+        # a second little forecourt of its own beside the real one.
+        if near_canopy(px, py, reach=60):
             continue
         for fw, fh in ((12, FORECOURT_DEPTH), (FORECOURT_DEPTH, 12),
                        (FORECOURT_MIN_LENGTH, FORECOURT_MIN_DEPTH),
                        (FORECOURT_MIN_DEPTH, FORECOURT_MIN_LENGTH)):
             rect = (px - fw // 2, py - fh // 2, fw, fh)
             if clear(*rect):
-                lay(*rect, brand_for(px, py))
+                # Pumps on a pad, not a station: no canopy over a point that
+                # has no shop, so the map is not littered with little ones.
+                lay(*rect, brand_for(px, py), canopy=False)
                 break
 
     if not tiles:

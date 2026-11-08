@@ -212,6 +212,16 @@ def api_overpass():
                 knoxpaths.update_config({"osm_source": src})
                 log.info("osm source set to %s", src)
 
+        if "pbf_file" in body:
+            import os as _os
+            picked = str(body.get("pbf_file") or "").strip()
+            if picked:
+                picked = _os.path.abspath(_os.path.expanduser(picked))
+                if not _os.path.isfile(picked):
+                    return jsonify({"error": f"There is no file at {picked}."}), 400
+            knoxpaths.update_config({"pbf_file": picked})
+            log.info("osm extract picked: %s", picked or "none (by area)")
+
         if "endpoints" in body:
             raw = body.get("endpoints")
             if raw is None or raw == "":
@@ -239,7 +249,8 @@ def api_overpass():
     return jsonify({"endpoints": [str(u) for u in configured] if isinstance(configured, list) else [],
                     "using": list(osm.OVERPASS_ENDPOINTS),
                     "public": list(osm._DEFAULT_ENDPOINTS),
-                    "osm_source": current_source if current_source in ("auto", "overpass", "extract") else "auto"})
+                    "osm_source": current_source if current_source in ("auto", "overpass", "extract") else "auto",
+                    "pbf_file": str(cfg.get("pbf_file") or "")})
 
 
 @bp.route("/api/overpass/status")
@@ -358,3 +369,61 @@ def api_local_overpass():
         return jsonify({"error": (r.stderr or r.stdout or "docker failed").strip()[-400:]}), 502
     log.info("local overpass: %s", action)
     return jsonify(_local_state())
+
+
+# ---- the extract a developer picked, and the check on it -----------------------
+
+# A file dialog has to run where a window can be made, so it runs in its own
+# interpreter and prints the path back: tkinter in the server's thread is not a
+# thing to rely on, and a cancelled dialog is an empty line.
+_PICK_SCRIPT = """
+import tkinter as tk
+from tkinter import filedialog
+root = tk.Tk()
+root.withdraw()
+root.attributes("-topmost", True)
+print(filedialog.askopenfilename(
+    title="Choose an OpenStreetMap extract",
+    filetypes=[("OpenStreetMap extract", "*.pbf"), ("All files", "*.*")]) or "")
+"""
+
+
+@bp.route("/api/tools/pbf/browse")
+def api_pbf_browse():
+    """Ask Windows for the extract file. Empty answer = the dialog was closed."""
+    import subprocess as sp
+    import sys
+
+    try:
+        done = sp.run([sys.executable, "-c", _PICK_SCRIPT], capture_output=True,
+                      text=True, timeout=300)
+    except (OSError, sp.SubprocessError) as exc:
+        return jsonify({"error": f"The file dialog could not open: {exc}"}), 502
+    if done.returncode != 0:
+        detail = (done.stderr or "").strip().splitlines()[-1:] or ["no window"]
+        return jsonify({"error": f"The file dialog could not open: {detail[0]}"}), 502
+    return jsonify({"path": (done.stdout or "").strip()})
+
+
+@bp.route("/api/tools/pbf/check", methods=["POST"])
+def api_pbf_check():
+    """Check an extract: is it whole, is it the right place, is there anything
+    in it to draw. `path` defaults to the one saved in the settings."""
+    from generator import pbfcheck
+
+    body = _json_body()
+    path = str(body.get("path") or "").strip()
+    if not path:
+        from generator import extract
+        path = extract.local_path()      # the one picked, env or settings
+    bbox = body.get("bbox")
+    if isinstance(bbox, list) and len(bbox) == 4:
+        bbox = tuple(float(v) for v in bbox)
+    else:
+        bbox = None
+    limit = body.get("limit")
+    kwargs = {"limit": int(limit)} if isinstance(limit, int) and limit > 0 else {}
+    result = pbfcheck.check(path, bbox=bbox, **kwargs)
+    result["report"] = pbfcheck.report_text(result)
+    log.info("pbf check %s: %s", path or "(none)", "usable" if result["ok"] else "not usable")
+    return jsonify(result)

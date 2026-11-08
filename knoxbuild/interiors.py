@@ -853,7 +853,7 @@ def _in_tone(role: str, x: int, y: int, orient: str, tone: dict) -> tuple | None
     sides = [orient] + ([o for o in C.FURNITURE[new] if o != orient]
                         if kind in _TONE_ANY_SIDE else [])
     for side in sides:
-        if side in C.FURNITURE[new] and set(cells(new, x, y, side)) <= under:
+        if side in C.FURNITURE[new] and set(cells(new, x, y, side)) == under:
             return new, side
     return None
 
@@ -1483,7 +1483,7 @@ def extras(base: list[str], room, rng: random.Random) -> list[str]:
 
 
 def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
-               no_go: set, keeps_open) -> None:
+               no_go: set, keeps_open, walk: set) -> None:
     """Small things on what the room already has: a coffee maker and a
     toaster on the worktop and a clock on the wall above it, a mirror over
     the basin, a radio or a telephone in place of a spare lamp, a lamp on
@@ -1607,7 +1607,7 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
         if rng.random() < WALL_VENT:
             hang("wall_vent", on_walls(("N", "W")))
     elif room.kind in ("bedroom", "kidsbedroom"):
-        _bedside_lamps(plan, idx, mine, topped)
+        _bedside_lamps(plan, idx, mine, topped, walk)
         if rng.random() < WALL_VENT:
             hang("wall_vent", on_walls(("N", "W")))
     elif room.kind in ("closet", "storage"):
@@ -1646,7 +1646,7 @@ def _door_mat(plan, idx: int, x: int, y: int, d: str) -> None:
             return
 
 
-def _bedside_lamps(plan, idx: int, mine: list, topped: set) -> None:
+def _bedside_lamps(plan, idx: int, mine: list, topped: set, walk: set) -> None:
     """A lamp on every bedside chest. A lamp of this room standing on a chest
     of its own away from the beds moves to the bedside instead, and the chest
     it stood on (put there only to hold it) goes, so the room is no fuller."""
@@ -1670,6 +1670,15 @@ def _bedside_lamps(plan, idx: int, mine: list, topped: set) -> None:
         held = [m for m, f in enumerate(plan.furniture)
                 if (f[1], f[2]) == (lx, ly) and f[0].startswith(L.NIGHTSTANDS)]
         drop = {away[0]} | set(held[:1])
+        if held:
+            from .furnish_rules import keeps_floor_open
+            cells = {(x, y) for y, row in enumerate(plan.grid)
+                     for x, value in enumerate(row) if value == idx}
+            blocked = {cell for n, (role, x, y, orient) in enumerate(plan.furniture)
+                       if n not in drop and L._blocks(role)
+                       for cell in L._cells_for(role, x, y, orient)}
+            if not keeps_floor_open(cells, blocked & cells, walk, set(), L.POCKET_TILES):
+                drop.remove(held[0])
         plan.furniture[:] = [f for m, f in enumerate(plan.furniture) if m not in drop]
         plan.furniture.append(("lamp", x, y, L._facing("lamp", o)))
         topped.add((x, y))

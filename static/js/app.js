@@ -1556,11 +1556,95 @@ document.querySelectorAll('.osm-source-card').forEach(card => {
   try {
     const d = await (await fetch('/api/overpass')).json();
     document.getElementById('overpassList').value = (d.endpoints || []).join('\n');
+    document.getElementById('pbfFile').value = d.pbf_file || '';
     setOsmSourceUI(d.osm_source || 'overpass', false);
   } catch (_) {
     setOsmSourceUI('overpass', false);
   }
 })();
+
+
+// ---- the extract a map developer picked -----------------------------------------
+
+async function savePbfFile(path) {
+  const res = await fetch('/api/overpass', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pbf_file: path }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw apiError(data, res);
+  return data;
+}
+
+const pbfBrowseBtn = document.getElementById('pbfBrowse');
+if (pbfBrowseBtn) {
+  pbfBrowseBtn.addEventListener('click', async () => {
+    pbfBrowseBtn.disabled = true;
+    try {
+      const res = await fetch('/api/tools/pbf/browse');
+      const data = await res.json();
+      if (!res.ok) throw apiError(data, res);
+      if (data.path) {
+        document.getElementById('pbfFile').value = data.path;
+        note('pbfNote', 'Picked it - "Use this file" saves it for the next map.', '');
+      }
+    } catch (err) {
+      note('pbfNote', err.message, 'bad');
+    } finally {
+      pbfBrowseBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('pbfUse').addEventListener('click', async () => {
+    const path = document.getElementById('pbfFile').value.trim();
+    if (!path) {
+      note('pbfNote', 'Give a path first, or use Browse.', 'bad');
+      return;
+    }
+    try {
+      await savePbfFile(path);
+      note('pbfNote', 'Every map now reads that file.', 'ok');
+    } catch (err) {
+      note('pbfNote', err.message, 'bad');
+    }
+  });
+
+  document.getElementById('pbfClear').addEventListener('click', async () => {
+    try {
+      await savePbfFile('');
+      document.getElementById('pbfFile').value = '';
+      note('pbfNote', 'KnoxMap goes back to choosing an extract by area.', 'ok');
+    } catch (err) {
+      note('pbfNote', err.message, 'bad');
+    }
+  });
+
+  document.getElementById('pbfCheck').addEventListener('click', async () => {
+    const btn = document.getElementById('pbfCheck');
+    const out = document.getElementById('pbfReport');
+    const path = document.getElementById('pbfFile').value.trim();
+    btn.disabled = true;
+    note('pbfCheckNote', 'Reading the file... a large region takes a while.', '');
+    out.hidden = true;
+    try {
+      const res = await fetch('/api/tools/pbf/check', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw apiError(data, res);
+      out.textContent = data.report || '';
+      out.hidden = false;
+      out.classList.toggle('is-bad', !data.ok);
+      note('pbfCheckNote', data.ok ? 'Usable.' : 'Not usable - see the report.',
+           data.ok ? 'ok' : 'bad');
+    } catch (err) {
+      note('pbfCheckNote', err.message, 'bad');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
 
 document.getElementById('overpassSave').addEventListener('click', async () => {
   const btn = document.getElementById('overpassSave');

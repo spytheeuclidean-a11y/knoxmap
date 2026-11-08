@@ -196,7 +196,7 @@
   // =========================== menus ===========================
   // Each item presses the control it stands for, and is greyed out when that
   // control is: the menu cannot drift from what the window can do.
-  const MENUS = ['File', 'Edit', 'View', 'Map', 'Build', 'Help'];
+  const MENUS = ['File', 'Edit', 'View', 'Map', 'Build', 'Tools', 'Help'];
   for (const name of MENUS) {
     const m = make('div', 'ws-menu');
     m.innerHTML = `<button type="button">${name}</button><div class="ws-drop" data-menu="${name}"></div>`;
@@ -302,6 +302,18 @@
           + item('Install', () => click('installBtn'), { off: !open || off('installBtn') })
           + item('Check before publishing', () => click('publishCheckBtn'), { off: $('publishCard').hidden });
       },
+      Tools: () => item('Check an OpenStreetMap extract…', () => dialog('Tools', [$('toolsBody')]))
+        + item('Pick an extract file…', () => {
+          dialog('Tools', [$('toolsBody')]);
+          setTimeout(() => { const b = $('pbfBrowse'); if (b) b.click(); }, 0);
+        })
+        + item('Choose the extract by area again', () => click('pbfClear'))
+        + '<hr>' + label('What the tool does')
+        + '<div class="hint" style="padding:4px 8px;max-width:32em">A picked .osm.pbf is'
+        + ' read by every map in place of the regional file KnoxMap would download.'
+        + ' Check reports whether it is whole, what it covers, and whether there are'
+        + ' roads and buildings in it. The same check runs as tools/verify_pbf.py.</div>'
+        + '<hr>' + item('Map data server…', () => dialog('Map data server', [$('overpassCard')])),
       Help: () => item('Check my setup…', () => { dialog('Check my setup', [$('healthCard')]); click('healthBtn'); })
         + item('Discord', () => { const a = top.querySelector('.byline a[href*="discord"]'); if (a) a.click(); })
         + item('Report a problem', () => click('reportLink'))

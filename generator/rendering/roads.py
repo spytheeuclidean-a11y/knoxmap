@@ -9,7 +9,7 @@ from PIL import Image, ImageDraw
 from .. import pz_colors as C
 from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, road_hierarchy
 from .geometry import _draw_line, _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
-from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES
+from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES, MAX_PAVED_BLOCK
 from .projection import Projector
 from .widths import (ROAD_WIDTHS_M, _road_markings, _sidewalk_width_m,
                      _way_width_m)
@@ -102,7 +102,20 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             bump[1:-1, :] |= pave[:-2, :] & pave[2:, :]
             bump[:, 1:-1] |= pave[:, :-2] & pave[:, 2:]
             bump &= road
-            if not notch.any() and not bump.any():
+            # A pavement tile with no pavement beside it orthogonally is one
+            # step of a diagonal edge, and on its own it draws as a lip that
+            # reads as a spike standing in the grass. It becomes the ground it
+            # stands in, so a street that crosses the tile grid at an angle ends
+            # with tarmac to grass, the way a road out of town does, instead of
+            # a dotted line of slabs.
+            lonep = pave.copy()
+            near = np.zeros_like(pave)
+            near[:, 1:] |= pave[:, :-1]
+            near[:, :-1] |= pave[:, 1:]
+            near[1:, :] |= pave[:-1, :]
+            near[:-1, :] |= pave[1:, :]
+            lonep &= ~near
+            if not notch.any() and not bump.any() and not lonep.any():
                 break
             # A filled notch takes the tarmac of the road beside it.
             ys, xs = np.nonzero(notch)
@@ -116,6 +129,18 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
                 else:
                     ground[y, x] = ground[y, x + 1]
             ground[bump] = C.PALE_CONCRETE
+            if lonep.any():
+                paved = {C.PALE_CONCRETE} | set(asphalt)
+                lys, lxs = np.nonzero(lonep)
+                for y, x in zip(lys, lxs):
+                    ground[y, x] = C.MEDIUM_GRASS
+                    for dy, dx in ((0, -1), (-1, 0), (0, 1), (1, 0)):
+                        yy, xx = y + dy, x + dx
+                        if 0 <= yy < ground.shape[0] and 0 <= xx < ground.shape[1]:
+                            beside = tuple(ground[yy, xx])
+                            if beside not in paved:
+                                ground[y, x] = beside
+                                break
         rows = slice(y0 - top, y0 - top + (y1 - y0))
         landscape.paste(Image.fromarray(ground[rows]), (0, y0))
 
@@ -309,7 +334,7 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
     for block in blocks:
         covered = sum(footprints[i].intersection(block).area
                       for i in tree.query(block))
-        if covered / block.area < DENSE_COVERAGE:
+        if block.area > MAX_PAVED_BLOCK or covered / block.area < DENSE_COVERAGE:
             continue
         for part in getattr(block, "geoms", None) or [block]:
             if hasattr(part, "exterior"):

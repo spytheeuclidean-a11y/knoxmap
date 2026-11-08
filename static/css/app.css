@@ -807,3 +807,14 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .place-where { color: var(--muted); font-size: 13px; }
 #placeCanvas { touch-action: none; }
 #placeCanvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* The extract check: a report as text, because it is read line by line. */
+.pbf-report { margin-top: 8px; padding: 8px 10px; border-radius: 4px;
+  background: var(--field); font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px; line-height: 1.45; white-space: pre-wrap; overflow-x: auto; }
+.pbf-report.is-bad { background: var(--bad-soft); }
+
+/* The Tools menu's panel: only ever seen inside the dialog it opens. */
+#toolsBody { display: none; }
+.ws-dialog #toolsBody { display: block; }
+.ws-dialog #toolsBody h4:first-child { margin-top: 0; }

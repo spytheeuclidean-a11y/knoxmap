@@ -110,6 +110,57 @@ class Forecourt(unittest.TestCase):
                          {(129, y) for y in range(30, 42)})
         self.assertEqual(at[(129, 42, 1)], {f + "42"})
 
+    def test_a_loose_point_gets_pumps_and_no_canopy(self):
+        # A station mapped only as a point has no shop, so it gets pumps on a
+        # pad. Give it a canopy too and the map fills with little stations.
+        d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(d, "buildings"))
+        ground = np.zeros((90, 120, 3), np.uint8)
+        ground[:] = C.MEDIUM_GRASS
+        Image.fromarray(ground).save(os.path.join(d, "m.bmp"), format="BMP")
+        _p, count = pumps.place_pumps(d, "m", os.path.join(d, "buildings"),
+                                      np.zeros((90, 120), bool), [], [(60, 40)],
+                                      metres_per_tile=1.0)
+        self.assertGreaterEqual(count, 1)
+        text = "".join(open(os.path.join(d, "buildings", f), encoding="utf-8").read()
+                       for f in os.listdir(os.path.join(d, "buildings")))
+        self.assertIn("location_shop_", text)          # the pump itself
+        self.assertEqual(text.count("<floor>"), 1, "no roof over a pad with no shop")
+
+    def test_a_point_beside_a_station_is_not_a_second_one(self):
+        d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(d, "buildings"))
+        ground = np.zeros((90, 120, 3), np.uint8)
+        ground[:] = C.MEDIUM_GRASS
+        Image.fromarray(ground).save(os.path.join(d, "m.bmp"), format="BMP")
+        occupied = np.zeros((90, 120), bool)
+        occupied[20:28, 50:68] = True
+        served = []
+        pumps.place_pumps(d, "m", os.path.join(d, "buildings"), occupied,
+                          [(50, 20, 18, 8, "S")], [], forecourts=served,
+                          metres_per_tile=1.0)
+        self.assertEqual(len(served), 1)
+        both = []
+        pumps.place_pumps(d, "m", os.path.join(d, "buildings"), occupied,
+                          [(50, 20, 18, 8, "S")], [(60, 70)], forecourts=both,
+                          metres_per_tile=1.0)
+        self.assertEqual(len(both), 1, "the point was the same station")
+
+    def test_a_pump_is_two_tiles_side_by_side(self):
+        # Muldraugh's station lays 15 at x118 and 14 at x119: one pump, two
+        # tiles, the half to the west. One tile alone is half a pump.
+        pair = pumps.pump_tiles("fossoil", True, 119, 32, lambda x, y: True)
+        self.assertEqual([(x, y, t) for x, y, _z, _l, t in pair],
+                         [(118, 32, "location_shop_fossoil_01_15"),
+                          (119, 32, "location_shop_fossoil_01_14")])
+        pair = pumps.pump_tiles("gas2go", False, 40, 50, lambda x, y: True)
+        self.assertEqual([(x, y, t) for x, y, _z, _l, t in pair],
+                         [(40, 49, "location_shop_gas2go_01_13"),
+                          (40, 50, "location_shop_gas2go_01_12")])
+        # A pump whose other half will not fit is left out, not drawn cut.
+        self.assertEqual(pumps.pump_tiles("fossoil", True, 0, 32,
+                                          lambda x, y: x >= 0), [])
+
     def test_deep_forecourt_gets_two_islands(self):
         for mpt in (1.0, 2.0):
             rows = pumps.island_rows(pumps.full_depth(mpt), mpt)

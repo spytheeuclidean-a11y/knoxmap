@@ -68,6 +68,40 @@ def _native_path(path: str) -> str:
                              "use Overpass or move KnoxMap to a folder with an ASCII path")
 
 
+def local_path() -> str:
+    """The extract a map developer picked, or "". `pbf_file` in
+    knoxmap_config.json, or KNOXMAP_PBF_FILE in the environment.
+
+    A regional extract is chosen for the map by asking Geofabrik which file
+    covers the box; that is a guess about what the developer meant. Naming a
+    file here takes the guess out: that file is read, and if it cannot be read
+    the map stops rather than quietly asking the public servers instead.
+    """
+    value = os.environ.get("KNOXMAP_PBF_FILE", "").strip()
+    if not value:
+        try:
+            value = str(knoxpaths.load_config().get("pbf_file") or "").strip()
+        except Exception:  # noqa: BLE001
+            value = ""
+    if not value:
+        return ""
+    return os.path.abspath(os.path.expanduser(value))
+
+
+def local_region() -> dict | None:
+    """The picked extract as a region, or None when none is picked."""
+    path = local_path()
+    if not path:
+        return None
+    return {"id": "local", "name": os.path.basename(path), "path": path,
+            "local": True}
+
+
+def forced() -> bool:
+    """True when a file was picked, so Overpass is not a fallback."""
+    return bool(local_path())
+
+
 def available() -> bool:
     try:
         import osmium  # noqa: F401
@@ -223,7 +257,15 @@ def _cover_with(regions: list, target) -> list[dict]:
 
 def _download(region: dict, say, should_stop) -> str:
     """The extract on disk, downloaded if there is none or it is two weeks old.
-    A stale copy is used when Geofabrik cannot be reached."""
+    A stale copy is used when Geofabrik cannot be reached. A region with a
+    "path" is the file the developer picked: it is never downloaded."""
+    if region.get("path"):
+        picked = os.path.abspath(region["path"])
+        if not os.path.isfile(picked):
+            raise ExtractUnavailable(f"the extract you picked is not there: {picked}")
+        if os.path.getsize(picked) == 0:
+            raise ExtractUnavailable(f"the extract you picked is empty: {picked}")
+        return picked
     os.makedirs(cache_dir(), exist_ok=True)
     safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", region["id"] or region["name"])
     path = os.path.join(cache_dir(), f"{safe}.osm.pbf")
@@ -465,8 +507,12 @@ def elements(south: float, west: float, north: float, east: float, filters=None,
                  100 if pct is not None else 0, note)
 
     if regions is None:
-        say(None, "finding the OpenStreetMap extract that covers this place")
-        regions = regions_for(south, west, north, east, _index())
+        picked = local_region()
+        if picked is not None:
+            regions = [picked]      # the developer named the file: use it
+        else:
+            say(None, "finding the OpenStreetMap extract that covers this place")
+            regions = regions_for(south, west, north, east, _index())
     if not regions:
         raise ExtractUnavailable("no Geofabrik extract covers this place")
     out: dict[tuple[str, int], dict] = {}

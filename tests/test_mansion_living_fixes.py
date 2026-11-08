@@ -6,25 +6,6 @@ from knoxbuild import catalog, layout
 
 
 class MansionLivingFixes(unittest.TestCase):
-    def test_chandelier_halves_join_across_the_screen(self):
-        tiles = catalog.FURNITURE['chandelier']['W']
-        self.assertEqual(tiles, {'0,1': 'lighting_indoor_03_000',
-                                 '1,0': 'lighting_indoor_03_001'})
-        self.assertFalse(layout._blocks('chandelier'))
-
-    def test_chandelier_is_inside_the_room_not_at_a_door(self):
-        room = layout.Room(0, 0, 7, 7, kind='hall')
-        plan = layout.Plan(8, 8, rooms=[room], grid=[[1] * 8 for _ in range(8)],
-                           doors=[(0, 3, 'W')], kind='house', grand=True)
-        layout._furnish(plan, random.Random(7))
-        lights = [(x, y, o) for role, x, y, o in plan.furniture if role == 'chandelier']
-        self.assertEqual(len(lights), 1)
-        x, y, orient = lights[0]
-        for cx, cy in layout._cells_for('chandelier', x, y, orient):
-            self.assertNotIn((cx, cy), layout._door_tiles(plan))
-            self.assertTrue(all(layout._room_at(plan, cx + dx, cy + dy) == 1
-                                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))))
-
     def test_small_living_rooms_pair_tv_with_sofa(self):
         for width, height in ((3, 3), (3, 4), (4, 4), (5, 4), (6, 5)):
             with self.subTest(size=(width, height)):
