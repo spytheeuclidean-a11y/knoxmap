@@ -36,7 +36,7 @@ from .bitmaps import read_gray, read_rgb, same_colour
 from .fences import build_fences
 from . import footprint
 from .footprint import place
-from .layout import build_building
+from .layout import build_building, thin_building
 from .uses import USE_KEYS, is_hotel, uses_of
 from .context import Context, style_fits
 from .population import build_spawn_map, official_population, save_footprints
@@ -1278,12 +1278,14 @@ def _party_walls(owner: np.ndarray, me: int, x0: int, y0: int, mask: np.ndarray,
 JOB_FIELDS = 21
 
 
-def _make_one(job: tuple) -> tuple:
+def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
     """Lay out one building and write its .tbx. Returns (storeys, rooms,
     furniture, error, escalators, basement): a building that cannot be laid out
     is left out with the reason, instead of stopping the other two thousand.
     `basement` is what basements.plan_basement made of the job's last element
-    (a BasementSpec), written beside the building as <name>_bsmt.tbx, or None."""
+    (a BasementSpec), written beside the building as <name>_bsmt.tbx, or None.
+    `room_limit`, when given, is how many rooms this building may have: the
+    map needed thinning to fit the game's save buffer (layout.thin_building)."""
     (w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street, retail,
         uses, hotel, entrances, profile, mapped, garage_door, preset_file,
         party, *rest) = job
@@ -1321,6 +1323,12 @@ def _make_one(job: tuple) -> tuple:
                                   retail=retail, uses=uses, hotel=hotel, party=party,
                                   entrances=entrances, profile=profile,
                                   mapped=mapped, garage_door=garage_door)
+        if room_limit:
+            # Fewer, larger rooms: the map would otherwise be past the buffer
+            # the game saves room state through, and none of it would be kept.
+            # Before the basement is planned, so its stair opens into a room
+            # that is still there.
+            thin_building(plan, room_limit)
         below = None
         if basement is not None:
             from . import basements
@@ -1394,6 +1402,26 @@ def _job_key(job: tuple) -> str:
     return hashlib.sha1(pickle.dumps(job[:10] + job[11:], protocol=4)).hexdigest()
 
 
+def _rooms_that_fit(buildings: int, info: dict, out_dir: str) -> int:
+    """How many rooms this map may have and still be saved by the game.
+
+    map_meta.bin is written through one 10 MB buffer and holds the whole
+    world: this map's cells, every room and every building in it - Knox
+    County's own rooms as well, unless this map stands alone
+    (tools/make_map_mod.py). What is left of the buffer is what this map's
+    rooms may take, in the 10 bytes a room costs.
+    """
+    from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
+                                    META_CELL, META_ROOM)
+    from . import placement
+
+    left = META_BUDGET - META_BUILDING * buildings
+    left -= META_CELL * int(info["cells_x"]) * int(info["cells_y"])
+    if not placement.standalone(out_dir):
+        left -= KNOX_COUNTY_META
+    return max(0, left // META_ROOM)
+
+
 def _read_cache(out_dir: str, code: str) -> dict:
     try:
         with open(os.path.join(out_dir, CACHE_FILE), encoding="utf-8") as f:
@@ -1425,8 +1453,15 @@ def _make_batch(jobs: list[tuple]) -> list[tuple]:
     return [_make_one(job) for job in jobs]
 
 
+def _make_thin_batch(pairs: list[tuple]) -> list[tuple]:
+    """Buildings that have to lose rooms to fit the game's save buffer:
+    each is (job, how many rooms it may have)."""
+    return [_make_one(job, limit) for job, limit in pairs]
+
+
 def _make_all(jobs: list[tuple], tick=None, should_stop=None,
-              on_result=None, make_batch=_make_batch) -> list[tuple[int, int, int]]:
+              on_result=None, make_batch=_make_batch,
+              prepare_solver: bool = True) -> list[tuple[int, int, int]]:
     """Every building, in order, across processes when there are enough.
 
     KNOXBUILD_WORKERS=1 forces one process. If worker processes cannot start
@@ -1435,7 +1470,9 @@ def _make_all(jobs: list[tuple], tick=None, should_stop=None,
     `on_result(i, result)` with each building's result as soon as it is made.
     A stop asked for while it runs (`should_stop`) drops the work not yet
     started and raises knoxstop.Stopped. `make_batch` makes a list of jobs;
-    the tests hand it something quicker than laying out buildings.
+    the tests hand it something quicker than laying out buildings, and a
+    second run over buildings that must lose rooms hands `_make_thin_batch`
+    (`prepare_solver` is off then: they were solved on the first run).
     """
     out: list = [None] * len(jobs)
     done = 0
@@ -1459,8 +1496,9 @@ def _make_all(jobs: list[tuple], tick=None, should_stop=None,
 
     # the room solver's houses solved before the pool starts, so each worker
     # only reads its cache (nothing when the room_solver setting is off)
-    from . import room_solver
-    room_solver.prepare([job[:JOB_FIELDS] for job in jobs])
+    if prepare_solver:
+        from . import room_solver
+        room_solver.prepare([job[:JOB_FIELDS] for job in jobs])
     workers = int(os.environ.get("KNOXBUILD_WORKERS") or
                   max(1, min(12, (os.cpu_count() or 2) - 2)))
     if workers <= 1 or len(jobs) < PARALLEL_FROM:
@@ -2073,6 +2111,53 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     finally:
         _write_cache(out_dir, code, kept)
 
+    # The game writes every room's and building's state through one 10 MB
+    # buffer, and past it no save keeps any of them (tools/make_map_mod.py).
+    # Rather than refuse a map that is too big to save, its interiors are
+    # thinned until they fit: the finest subdivisions are merged away and the
+    # buildings, walls, doors and furniture stay (layout.thin_building).
+    laid = [j for j, r_ in enumerate(results) if r_ and not r_[3]]
+    # A basement is a lot of its own with rooms of its own, and the game saves
+    # those out of the same buffer: its lot and its rooms are paid for first,
+    # and the buildings get what is left.
+    cellars = [r_[5] for r_ in results if r_ and not r_[3] and r_[5]]
+    allowed = _rooms_that_fit(len(decided) + len(cellars), info, out_dir)
+    allowed -= sum(b["rooms"] for b in cellars)
+    before = sum(results[j][1] for j in laid)
+    if before > max(0, allowed):
+        share = max(0, allowed) / before
+        thin = {j: max(1, int(results[j][1] * share)) for j in laid
+                if int(results[j][1] * share) < results[j][1]}
+    else:
+        thin = {}
+
+    if thin:
+        order = sorted(thin)
+        lost = 0
+
+        def remade(i: int, result: tuple) -> None:
+            nonlocal lost
+            j = order[i]
+            sliced = results[j][1] - result[1]
+            results[j] = result
+            if not result[3]:
+                lost += sliced
+                # The key carries the limit: a later build that fits the
+                # buffer lays this building out as it always would, rather
+                # than reusing the thinned one under a key it never had.
+                keys[j] = _job_key(jobs[j] + (thin[j],))
+                kept[decided[j][0]] = entry(j, result)
+
+        say("Thinning interiors to fit the game's save buffer", 0.62)
+        try:
+            _make_all([(jobs[j], thin[j]) for j in order], laid_out, should_stop,
+                      remade, make_batch=_make_thin_batch, prepare_solver=False)
+            after = before - lost
+            print(f"  interiors           : {len(order):,} buildings thinned to fit "
+                  f"the game's save buffer, {before:,} rooms -> {after:,}")
+        finally:
+            _write_cache(out_dir, code, kept)
+
     basement_counts = {"house": 0, "large": 0, "installation": 0}
     for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
          style, mask, real_name), (storeys, rooms, furniture, error,
@@ -2289,11 +2374,15 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # buffer (tools/make_map_mod.py, META_BUDGET); said here as well as at
     # install, before an hour of compiling a map whose saves will fail.
     from tools.make_map_mod import META_BUDGET, META_BUILDING, META_ROOM
-    meta = META_ROOM * total_rooms + META_BUILDING * len(rows)
+    # A basement is saved as a lot of its own, with rooms of its own.
+    cellars = [r_[5] for r_ in results if r_ and not r_[3] and r_[5]]
+    meta = (META_ROOM * (total_rooms + sum(b["rooms"] for b in cellars))
+            + META_BUILDING * (len(rows) + len(cellars)))
     if meta > META_BUDGET:
         print(f"  WARNING             : {meta / 1e6:.1f} MB of rooms and buildings for the "
               f"game to save, past the {META_BUDGET / 1e6:.0f} MB it can; every save will "
-              f"fail to store them. Generate a smaller area, or at a larger scale.")
+              f"fail to store them, even with the interiors thinned as far as they go. "
+              f"Generate a smaller area, or at a larger scale.")
     if gun_cache:
         print(f"guaranteed rifle      : {gun_cache['kind']} - "
               f"{gun_cache['name'] or gun_cache['building']}")
