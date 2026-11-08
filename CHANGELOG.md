@@ -1,3 +1,24 @@
+## 1.8.5.4
+
+- **Mansions and living rooms.** Large houses get richer interiors, a piano
+  and chandeliers. Chandeliers are placed away from doorways, and smaller
+  living rooms and finished basements try to put the sofa facing the TV.
+- **Roofs stay on houses.** Roofs that could come out missing now use a
+  supported shape, and flat roofs no longer get floating vents and hatches.
+- **Safer map saves.** KnoxMap reports when settings, drawings or edits cannot
+  be saved. A failed or stopped OSM download keeps a new map's saved drawing.
+- **Large maps fit the game's room budget.** When needed, interiors are
+  simplified to reduce room metadata and help large maps save in the game.
+- **Smaller downloads across state borders.** Extracts covering both sides of
+  a border can use the relevant regions instead of downloading a whole country.
+- **Spanish and map management.** The interface has additional Spanish
+  translations, and maps can be deleted from within KnoxMap.
+- **Linux and macOS setup.** Setup and detection fixes help locate the map
+  tools, vanilla world map and tile definitions.
+
+Rebuild the buildings, compile and reinstall an existing map to see the
+interior and roof changes.
+
 ## 1.8.5.3
 
 - **TVs face seating in small living rooms.** A sofa and TV can now fit
