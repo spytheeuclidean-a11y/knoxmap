@@ -215,7 +215,14 @@ body.ws-loading > * { visibility: hidden; }
 .iso-viewport { flex: 1; position: relative; overflow: hidden; cursor: grab; background: #14180f; outline: none; touch-action: none; }
 .iso-viewport.is-dragging { cursor: grabbing; }
 .iso-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; transition: transform 0.04s ease-out; }
-.iso-img { display: block; max-width: none; user-select: none; pointer-events: none; -webkit-user-drag: none; image-rendering: auto; }
+.iso-img { display: block; max-width: none; user-select: none; pointer-events: none; -webkit-user-drag: none;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: -webkit-crisp-edges;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges; }
+.btn-hd { background: var(--accent); color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+.btn-hd:hover { filter: brightness(1.1); }
+.iso-bar-sector select.iso-cell-select { max-width: 110px; font-weight: 500; }
 .iso-hud { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 5; }
 .iso-tip { background: rgba(18, 20, 22, 0.85); backdrop-filter: blur(4px); border: 1px solid var(--line);
   border-radius: 20px; padding: 4px 14px; font-size: 11px; color: var(--faint); letter-spacing: 0.2px; user-select: none; }

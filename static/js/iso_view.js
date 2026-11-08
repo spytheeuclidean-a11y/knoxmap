@@ -22,6 +22,9 @@
   let emptyBox = null;
   let titleEl = null;
   let sectorBar = null;
+  let loadHdHereBtn = null;
+  let backOverviewBtn = null;
+  let cellSelect = null;
 
   // Progress overlay elements and state
   let overlay = null;
@@ -54,20 +57,33 @@
               <button type="button" class="btn btn-small" data-iso-mode="close"
                       title="Close-up view of the town center with roofs">Town center</button>
               <button type="button" class="btn btn-small" data-iso-mode="inside"
-                      title="Furnished building interiors with roofs removed">Interiors</button>
+                      title="Full town view with all furnished building interiors and roofs removed">Interiors (All)</button>
               <button type="button" class="btn btn-small" data-iso-mode="sector"
                       title="Render a specific sector at 100% native in-game resolution">HD Sector 1:1</button>
             </div>
           </div>
 
+          <!-- Quick Load HD of current view -->
+          <button type="button" class="btn btn-small btn-hd" id="isoLoadHdHere"
+                  title="Render this current view at 100% crystal-clear in-game resolution">🔍 Load HD here</button>
+
+          <!-- Sector HD toolbar controls -->
           <div class="iso-bar-sector" id="isoSectorBar" hidden style="display: none;">
-            <label>X: <input type="number" id="isoSectorX" min="0" step="50" value="1000"></label>
-            <label>Y: <input type="number" id="isoSectorY" min="0" step="50" value="1000"></label>
+            <button type="button" class="btn btn-small" id="isoBackOverview"
+                    title="Back to full town overview">◀ Full town</button>
+            <label>Cell:
+              <select id="isoCellSelect" class="iso-cell-select" title="Jump directly to any compiled cell">
+                <option value="">(Select cell)</option>
+              </select>
+            </label>
+            <label>X: <input type="number" id="isoSectorX" min="0" step="50" value="1200"></label>
+            <label>Y: <input type="number" id="isoSectorY" min="0" step="50" value="1050"></label>
             <label>Size:
               <select id="isoSectorSize">
-                <option value="30">30 × 30</option>
-                <option value="50" selected>50 × 50</option>
+                <option value="40">40 × 40</option>
+                <option value="60" selected>60 × 60</option>
                 <option value="80">80 × 80</option>
+                <option value="120">120 × 120</option>
               </select>
             </label>
             <label class="iso-check">
@@ -111,7 +127,7 @@
           </div>
 
           <div class="iso-hud">
-            <span class="iso-tip">Drag to pan · Scroll to zoom · Double-click to zoom in</span>
+            <span class="iso-tip">Drag to pan · Scroll to zoom · Double-click anywhere to view in HD 1:1</span>
           </div>
 
           <div class="iso-empty" id="isoEmpty" hidden style="display: none;">
@@ -132,6 +148,9 @@
     emptyBox = document.getElementById('isoEmpty');
     titleEl = document.getElementById('isoTitle');
     sectorBar = document.getElementById('isoSectorBar');
+    loadHdHereBtn = document.getElementById('isoLoadHdHere');
+    backOverviewBtn = document.getElementById('isoBackOverview');
+    cellSelect = document.getElementById('isoCellSelect');
 
     overlay = document.getElementById('isoOverlay');
     progressKicker = document.getElementById('isoProgressKicker');
@@ -236,6 +255,49 @@
     }
   }
 
+  // Convert current screen coordinates to map tile coordinates (X, Y)
+  function screenPointToTile(clientX, clientY) {
+    const viewport = document.getElementById('isoViewport');
+    if (!viewport || !img || !img.naturalWidth || !mapInfo) {
+      return { x: 1000, y: 1000 };
+    }
+
+    const rect = viewport.getBoundingClientRect();
+    const vcx = clientX - rect.left;
+    const vcy = clientY - rect.top;
+
+    const imgX = (vcx - panX) / scale;
+    const imgY = (vcy - panY) / scale;
+
+    const W = mapInfo.width_tiles || 2400;
+    const H = mapInfo.height_tiles || 2100;
+    const iw = img.naturalWidth;
+    const ih = img.naturalHeight;
+
+    const cx = iw / 2;
+    const cy = ih / 2;
+    const half = iw / (W + H);
+    const quarter = half / 2;
+
+    const dx = imgX - cx;
+    const dy = imgY - cy;
+
+    const t_dx = (dx / half + dy / quarter) / 2;
+    const t_dy = (dy / quarter - dx / half) / 2;
+
+    const tileX = Math.max(0, Math.min(W, Math.round(W / 2 + t_dx)));
+    const tileY = Math.max(0, Math.min(H, Math.round(H / 2 + t_dy)));
+
+    return { x: tileX, y: tileY };
+  }
+
+  function getViewportCenterTile() {
+    const viewport = document.getElementById('isoViewport');
+    if (!viewport) return { x: 1000, y: 1000 };
+    const rect = viewport.getBoundingClientRect();
+    return screenPointToTile(rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+
   function bindEvents() {
     const viewport = document.getElementById('isoViewport');
 
@@ -269,7 +331,7 @@
       const cy = e.clientY - rect.top;
 
       const factor = e.deltaY < 0 ? 1.15 : (1 / 1.15);
-      const newScale = Math.max(0.08, Math.min(6.0, scale * factor));
+      const newScale = Math.max(0.08, Math.min(8.0, scale * factor));
       if (newScale === scale) return;
 
       panX = cx - (cx - panX) * (newScale / scale);
@@ -278,17 +340,13 @@
       applyTransform();
     }, { passive: false });
 
-    // Double-click zoom in
+    // Double-click on any building/street renders that sector in HD 1:1
     viewport.addEventListener('dblclick', e => {
       if (e.target.closest('button, input, select, label, .iso-overlay')) return;
-      const rect = viewport.getBoundingClientRect();
-      const cx = e.clientX - rect.left;
-      const cy = e.clientY - rect.top;
-      const newScale = Math.min(6.0, scale * 1.5);
-      panX = cx - (cx - panX) * (newScale / scale);
-      panY = cy - (cy - panY) * (newScale / scale);
-      scale = newScale;
-      applyTransform();
+      const { x, y } = screenPointToTile(e.clientX, e.clientY);
+      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
+      const roofs = currentMode === 'inside' ? 0 : 1;
+      renderSectorAt(x, y, size, roofs);
     });
 
     // Touch support (pinch-to-zoom and pan)
@@ -316,7 +374,7 @@
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.hypot(dx, dy);
         const factor = dist / touchStartDist;
-        scale = Math.max(0.08, Math.min(6.0, touchStartScale * factor));
+        scale = Math.max(0.08, Math.min(8.0, touchStartScale * factor));
         applyTransform();
       }
     }, { passive: true });
@@ -338,6 +396,37 @@
     });
     document.getElementById('isoZoom100')?.addEventListener('click', () => {
       zoomTo(1.0);
+    });
+
+    // Load HD Here button
+    loadHdHereBtn?.addEventListener('click', () => {
+      const { x, y } = getViewportCenterTile();
+      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
+      const roofs = currentMode === 'inside' ? 0 : (document.getElementById('isoSectorRoofs')?.checked ? 1 : 0);
+      renderSectorAt(x, y, size, roofs);
+    });
+
+    // Back to full town overview button
+    backOverviewBtn?.addEventListener('click', () => {
+      setMode('town');
+    });
+
+    // Jump to cell selection
+    cellSelect?.addEventListener('change', e => {
+      const val = e.target.value;
+      if (!val) return;
+      const parts = val.split('_').map(Number);
+      if (parts.length === 2 && mapInfo?.cells?.length) {
+        // Calculate cell center tile in map coordinates
+        const minCx = Math.min(...mapInfo.cells.map(c => c[0]));
+        const minCy = Math.min(...mapInfo.cells.map(c => c[1]));
+        const targetX = (parts[0] - minCx) * 300 + 150;
+        const targetY = (parts[1] - minCy) * 300 + 150;
+
+        const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
+        const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
+        renderSectorAt(targetX, targetY, size, roofs);
+      }
     });
 
     // Cancel loading button
@@ -363,7 +452,11 @@
 
     // Sector HD Render button
     document.getElementById('isoRenderBtn')?.addEventListener('click', () => {
-      renderSector();
+      const x = parseInt(document.getElementById('isoSectorX')?.value || '1200', 10);
+      const y = parseInt(document.getElementById('isoSectorY')?.value || '1050', 10);
+      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
+      const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
+      renderSectorAt(x, y, size, roofs);
     });
 
     // Go to Compile button
@@ -380,6 +473,7 @@
       else if (e.key === '-') { zoomBy(1 / 1.2); e.preventDefault(); }
       else if (e.key === '0') { fitToScreen(); e.preventDefault(); }
       else if (e.key === '1') { zoomTo(1.0); e.preventDefault(); }
+      else if (e.key === 'h' || e.key === 'H') { loadHdHereBtn?.click(); e.preventDefault(); }
       else if (e.key === 'ArrowLeft') { panX += 50; applyTransform(); e.preventDefault(); }
       else if (e.key === 'ArrowRight') { panX -= 50; applyTransform(); e.preventDefault(); }
       else if (e.key === 'ArrowUp') { panY += 50; applyTransform(); e.preventDefault(); }
@@ -398,7 +492,7 @@
     if (!viewport) return;
     const cx = viewport.clientWidth / 2;
     const cy = viewport.clientHeight / 2;
-    const newScale = Math.max(0.08, Math.min(6.0, scale * factor));
+    const newScale = Math.max(0.08, Math.min(8.0, scale * factor));
     panX = cx - (cx - panX) * (newScale / scale);
     panY = cy - (cy - panY) * (newScale / scale);
     scale = newScale;
@@ -410,7 +504,7 @@
     if (!viewport) return;
     const cx = viewport.clientWidth / 2;
     const cy = viewport.clientHeight / 2;
-    const newScale = Math.max(0.08, Math.min(6.0, targetScale));
+    const newScale = Math.max(0.08, Math.min(8.0, targetScale));
     panX = cx - (cx - panX) * (newScale / scale);
     panY = cy - (cy - panY) * (newScale / scale);
     scale = newScale;
@@ -472,14 +566,22 @@
       b.classList.toggle('is-on', b.dataset.isoMode === mode);
     });
 
+    const isSector = mode === 'sector';
     if (sectorBar) {
-      const showSector = mode === 'sector';
-      sectorBar.hidden = !showSector;
-      sectorBar.style.display = showSector ? 'flex' : 'none';
+      sectorBar.hidden = !isSector;
+      sectorBar.style.display = isSector ? 'flex' : 'none';
+    }
+    if (loadHdHereBtn) {
+      loadHdHereBtn.hidden = isSector;
+      loadHdHereBtn.style.display = isSector ? 'none' : 'inline-flex';
     }
 
     if (mode === 'sector') {
-      renderSector();
+      const x = parseInt(document.getElementById('isoSectorX')?.value || '1200', 10);
+      const y = parseInt(document.getElementById('isoSectorY')?.value || '1050', 10);
+      const size = parseInt(document.getElementById('isoSectorSize')?.value || '60', 10);
+      const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
+      renderSectorAt(x, y, size, roofs);
       return;
     }
 
@@ -489,7 +591,7 @@
     const modeLabels = {
       town: 'Town overview',
       close: 'Town center',
-      inside: 'Furnished interiors',
+      inside: 'Interiors (All)',
     };
     const title = `Loading ${modeLabels[mode] || mode}…`;
 
@@ -502,15 +604,35 @@
     }
   }
 
-  function renderSector() {
+  function renderSectorAt(x, y, size, roofs) {
     if (!activeMap) return;
-    const x = parseInt(document.getElementById('isoSectorX')?.value || '1000', 10);
-    const y = parseInt(document.getElementById('isoSectorY')?.value || '1000', 10);
-    const size = parseInt(document.getElementById('isoSectorSize')?.value || '50', 10);
-    const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
+
+    // Update inputs
+    const inX = document.getElementById('isoSectorX');
+    const inY = document.getElementById('isoSectorY');
+    const inRoofs = document.getElementById('isoSectorRoofs');
+    if (inX) inX.value = x;
+    if (inY) inY.value = y;
+    if (inRoofs) inRoofs.checked = !!roofs;
+
+    // Switch mode to sector
+    currentMode = 'sector';
+    el.querySelectorAll('[data-iso-mode]').forEach(b => {
+      b.classList.toggle('is-on', b.dataset.isoMode === 'sector');
+    });
+    if (sectorBar) {
+      sectorBar.hidden = false;
+      sectorBar.style.display = 'flex';
+    }
+    if (loadHdHereBtn) {
+      loadHdHereBtn.hidden = true;
+      loadHdHereBtn.style.display = 'none';
+    }
 
     const url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${size},${size}&scale=1.0&roofs=${roofs}&t=${Date.now()}`;
-    loadImage(url, `Rendering sector ${x},${y} (${size}×${size})…`, 'Compositing full 1:1 in-game sprites', 5);
+    const roofText = roofs ? 'with roofs' : 'furnished interiors';
+    loadImage(url, `Rendering HD sector ${x},${y} (${size}×${size} tiles, ${roofText})…`,
+              'Compositing full 1:1 crystal-clear in-game sprites', 4);
   }
 
   async function showIsoView(name) {
@@ -567,6 +689,12 @@
       : '';
     if (titleEl) titleEl.textContent = `${name}${dims}${bldCount}`;
 
+    // Populate cell dropdown if available
+    if (cellSelect && Array.isArray(mapInfo.cells)) {
+      cellSelect.innerHTML = '<option value="">(Select cell)</option>' +
+        mapInfo.cells.map(([cx, cy]) => `<option value="${cx}_${cy}">Cell ${cx}, ${cy}</option>`).join('');
+    }
+
     // Update sector default coordinates to middle
     const midX = Math.round((mapInfo.width_tiles || 1000) / 2);
     const midY = Math.round((mapInfo.height_tiles || 1000) / 2);
@@ -578,8 +706,8 @@
     // Pick initial mode: 'town' if available, otherwise 'close', 'inside', or 'sector'
     let initialMode = 'town';
     if (!mapInfo.pictures?.town) {
-      if (mapInfo.pictures?.close) initialMode = 'close';
-      else if (mapInfo.pictures?.inside) initialMode = 'inside';
+      if (mapInfo.pictures?.inside) initialMode = 'inside';
+      else if (mapInfo.pictures?.close) initialMode = 'close';
       else initialMode = 'sector';
     }
 

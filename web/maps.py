@@ -208,10 +208,20 @@ def api_iso_info(name: str):
     pics_dir = map_dir / "pictures"
     pictures = {}
     if pics_dir.is_dir():
-        for p in ("town.png", "close.png", "inside.png"):
+        for p in ("town.png", "close.png", "inside_town.png", "inside.png"):
             target = pics_dir / p
             if target.is_file():
                 pictures[p.replace(".png", "")] = f"/output/{map_dir.name}/pictures/{p}?t={int(target.stat().st_mtime)}"
+        # If inside_town.png exists, use it for "inside" so the full town has all interiors visible
+        if (pics_dir / "inside_town.png").is_file():
+            pictures["inside"] = f"/output/{map_dir.name}/pictures/inside_town.png?t={int((pics_dir / 'inside_town.png').stat().st_mtime)}"
+
+    cells_list = []
+    if lots.is_dir():
+        for lh in sorted(lots.glob("*.lotheader")):
+            parts = lh.stem.split("_")
+            if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
+                cells_list.append([int(parts[0]), int(parts[1])])
 
     return jsonify({
         "name": map_dir.name,
@@ -222,6 +232,7 @@ def api_iso_info(name: str):
         "cells_y": int(info.get("cells_y") or 0),
         "building_count": int(info.get("building_count") or 0),
         "pictures": pictures,
+        "cells": cells_list,
     })
 
 
@@ -267,6 +278,8 @@ def api_iso_render(name: str):
     else:
         # Default: if full map requested without box, check existing pictures first
         pics_dir = map_dir / "pictures"
+        if not roofs and (pics_dir / "inside_town.png").is_file():
+            return send_file(pics_dir / "inside_town.png", mimetype="image/png")
         target_name = "town.png" if roofs else "inside.png"
         target_path = pics_dir / target_name
         if target_path.is_file():
