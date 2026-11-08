@@ -3309,6 +3309,84 @@ def _refit(plan: Plan) -> None:
             room.x0, room.y0, room.x1, room.y1 = bounds[idx]
 
 
+# A building laid out this thin keeps at least this many rooms: a shed, a
+# corner shop or a two-room flat is already as coarse as it can be, and a map
+# that needs fewer than that per building is asking for no interiors at all.
+THIN_MIN_ROOMS = 4
+
+
+def thin_plan(plan: Plan, limit: int) -> int:
+    """Merge rooms until the storey has `limit` of them; how many went.
+
+    The cheapest pair joins first: the two rooms that together cover the least
+    ground, so a box room or a second bathroom is folded into the hall beside
+    it rather than a house losing its kitchen. Only rooms in the same dwelling
+    are joined, and nothing structural is touched - a stair shaft or a stair
+    core - or a plan somebody drew by hand.
+
+    Walls, doors and furniture stay exactly where they are: the tiles of the
+    room that goes simply belong to the room that stays, so the two read as
+    one room with a doorway in it. `knoxbuild/build.py` thins a map that would
+    otherwise be past the game's 10 MB save buffer (tools/make_map_mod.py).
+    """
+    if plan.drawn or limit < 1 or len(plan.rooms) <= limit:
+        return 0
+    merged = 0
+    while len(plan.rooms) > limit:
+        adj = _neighbours(plan)
+        best = None
+        for a, near in adj.items():
+            ra = plan.rooms[a - 1]
+            if ra.is_core or ra.is_shaft:
+                continue
+            for b, wall in near.items():
+                rb = plan.rooms[b - 1]
+                if rb.is_core or rb.is_shaft or rb.unit != ra.unit:
+                    continue
+                # the least ground given up, and on the least unlikely wall
+                key = (ra.w * ra.h + rb.w * rb.h, -wall)
+                if best is None or key < best[0]:
+                    best = (key, a, b)
+        if best is None:
+            break                      # nothing left that may be joined
+        keep, gone = (best[1], best[2]) if best[1] < best[2] else (best[2], best[1])
+        for y in range(plan.height):
+            row = plan.grid[y]
+            for x in range(plan.width):
+                if row[x] == gone:
+                    row[x] = keep
+        plan.rooms[gone - 1].kind = None
+        _renumber(plan)
+        merged += 1
+    return merged
+
+
+def thin_building(building: "Building", limit: int) -> int:
+    """Merge a building's rooms down to `limit`; how many went.
+
+    Each storey gives up rooms in proportion to what it has, so the ground
+    floor keeps its shop partitions while the flats above lose theirs - and
+    never below `THIN_MIN_ROOMS` a storey, which is worth more than the last
+    few bytes: a building laid out that coarse is not a building any more.
+    """
+    total = len(building.rooms)
+    if not limit or total <= limit or limit < THIN_MIN_ROOMS:
+        return 0
+    merged = 0
+    for storey in building.storeys:
+        share = max(THIN_MIN_ROOMS, round(len(storey.rooms) * limit / total))
+        merged += thin_plan(storey, min(share, len(storey.rooms)))
+    while len(building.rooms) > limit:
+        biggest = max(building.storeys, key=lambda s: len(s.rooms))
+        if len(biggest.rooms) <= THIN_MIN_ROOMS:
+            break
+        went = thin_plan(biggest, len(biggest.rooms) - 1)
+        if not went:
+            break
+        merged += went
+    return merged
+
+
 def _paint(plan: Plan) -> None:
     plan.grid = [[0] * plan.width for _ in range(plan.height)]
     for idx, r in enumerate(plan.rooms, start=1):
