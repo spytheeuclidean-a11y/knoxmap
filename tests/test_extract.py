@@ -122,6 +122,22 @@ class WhichExtract(unittest.TestCase):
         got = extract.regions_for(1, 4, 2, 6, halves)
         self.assertEqual({r["id"] for r in got}, {"east", "west"})
 
+    def test_a_box_across_two_states_takes_the_states_not_the_country(self):
+        # Geofabrik's United States polygon is 3,516 against Indiana's 10 and
+        # Kentucky's 11: a box over the Ohio River is held by no single state
+        # and by the country, and the two states are the cheaper read. The
+        # country used to win this one, which is a 12 GB download.
+        index = {"features": [
+            {"properties": {"id": "country", "name": "Country", "urls": {"pbf": "https://x/country.pbf"}},
+             "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]]]}},
+            {"properties": {"id": "a", "name": "A", "parent": "country", "urls": {"pbf": "https://x/a.pbf"}},
+             "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [5, 0], [5, 10], [0, 10], [0, 0]]]}},
+            {"properties": {"id": "b", "name": "B", "parent": "country", "urls": {"pbf": "https://x/b.pbf"}},
+             "geometry": {"type": "Polygon", "coordinates": [[[5, 0], [10, 0], [10, 10], [5, 10], [5, 0]]]}},
+        ]}
+        got = extract.regions_for(1, 4, 2, 6, index)
+        self.assertEqual([r["id"] for r in got], ["a", "b"])
+
     def test_a_box_in_the_sea_takes_the_widest_that_holds_it(self):
         got = extract.regions_for(-50, 100, -49, 101, self.INDEX)
         self.assertEqual([r["id"] for r in got], ["world"])

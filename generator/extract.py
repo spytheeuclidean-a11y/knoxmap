@@ -152,9 +152,9 @@ def _index(refresh_ok: bool = True) -> dict:
 
 def regions_for(south: float, west: float, north: float, east: float,
                 index: dict) -> list[dict]:
-    """The smallest extract that holds the whole box, as {id, name, url}; or,
-    where no one does (a box across a border no extract spans), the smallest
-    ones that between them touch it."""
+    """The cheapest extract(s) that hold the whole box, as [{id, name, url}]:
+    the smallest one that does, or - where a handful of smaller ones between
+    them do it for less - those instead."""
     from shapely.geometry import box, shape
 
     target = box(west, south, east, north)
@@ -166,24 +166,57 @@ def regions_for(south: float, west: float, north: float, east: float,
         if not url or not geom:
             continue
         try:
-            poly = shape(geom)
+            poly = shape(geom).buffer(0)
         except (ValueError, TypeError):
             continue
         if poly.intersects(target):
             found.append({"id": props.get("id", ""), "name": props.get("name", ""),
                           "parent": props.get("parent"), "url": url,
-                          "area": poly.area, "covers": poly.buffer(0).covers(target)})
+                          "area": poly.area, "geom": poly, "covers": poly.covers(target)})
     if not found:
         return []
+    # A box over a border is held by no single state, and the extract that does
+    # hold it is the whole country: 12 GB of the United States for two counties
+    # either side of the Ohio River, when Indiana and Kentucky (145 MB and
+    # 148 MB) between them do it. So the children are weighed against the
+    # parent: area stands in for bytes, which is close enough for the choice -
+    # see the note below.
+    parents = {r["parent"] for r in found}
+    leaves = [r for r in found if r["id"] not in parents] or found
+    leaves.sort(key=lambda r: r["area"])
+    together = _cover_with(leaves, target)
     covering = [r for r in found if r["covers"]]
     if covering:
-        return [min(covering, key=lambda r: r["area"])]
-    ids = {r["id"] for r in found}
-    parents = {r["parent"] for r in found}
-    leaves = [r for r in found if r["id"] not in parents]
-    pick = leaves or found
-    pick.sort(key=lambda r: r["area"])
-    return pick[:MAX_REGIONS] if len(pick) <= MAX_REGIONS else []
+        whole = min(covering, key=lambda r: r["area"])
+        if together and sum(r["area"] for r in together) < whole["area"]:
+            return together
+        return [whole]
+    if together:
+        return together
+    # Nothing holds it all: the smallest few that touch it, as before.
+    return leaves[:MAX_REGIONS] if len(leaves) <= MAX_REGIONS else []
+
+
+def _cover_with(regions: list, target) -> list[dict]:
+    """The few of `regions` - given smallest first - that between them hold the
+    whole box, or [] if they cannot or it would take more than MAX_REGIONS.
+
+    Greedy: take the smallest that adds anything, until nothing is left. It is
+    not the optimal set, only a cheap one, and the areas are a stand-in for the
+    files' sizes (the US polygon's runs far wider than its states' between
+    them, which is the case this exists for)."""
+    if not regions:
+        return []
+    left = target
+    chosen = []
+    for region in regions:
+        if not region["geom"].intersects(left):
+            continue
+        chosen.append(region)
+        left = left.difference(region["geom"])
+        if left.is_empty:
+            return chosen if len(chosen) <= MAX_REGIONS else []
+    return []
 
 
 # ---- the download -------------------------------------------------------------------
