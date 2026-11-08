@@ -73,6 +73,8 @@ hand-authored data every time.
   `generator/rendering/fields.py`, the planting in
   `generator/rendering/landcover_veg.py`. All tiles come from rules already in
   stock WorldEd `Rules.txt`.
+  Before/after previews (layer off, then on) of farm country, a marsh, a
+  town edge and tundra: `docs/images/worldcover/`.
 - **Setting:** `landcover=worldcover|osm|off` (default `worldcover`).
 - **Refresh cache:** delete `cache/datasets/worldcover/`.
 
