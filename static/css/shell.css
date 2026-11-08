@@ -185,7 +185,12 @@ body.ws-loading > * { visibility: hidden; }
 
 /* ---- 2.5D Isometric in-game viewer ---- */
 .ws-iso { position: absolute; inset: 0; background: #14180f; z-index: 1045; overflow: hidden; display: flex; flex-direction: column; }
-.ws-iso[hidden] { display: none !important; }
+.ws-iso[hidden],
+.iso-overlay[hidden],
+.iso-bar-sector[hidden],
+.iso-empty[hidden],
+.iso-spinner[hidden] { display: none !important; }
+
 .iso-container { display: flex; flex-direction: column; width: 100%; height: 100%; position: relative; overflow: hidden; }
 .iso-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 12px;
   background: rgba(24, 26, 28, 0.94); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); z-index: 10; flex-wrap: wrap; }
@@ -214,10 +219,21 @@ body.ws-loading > * { visibility: hidden; }
 .iso-hud { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 5; }
 .iso-tip { background: rgba(18, 20, 22, 0.85); backdrop-filter: blur(4px); border: 1px solid var(--line);
   border-radius: 20px; padding: 4px 14px; font-size: 11px; color: var(--faint); letter-spacing: 0.2px; user-select: none; }
-.iso-spinner { position: absolute; inset: 0; background: rgba(16, 18, 14, 0.7); backdrop-filter: blur(3px);
+
+/* Progress & Loading overlay */
+.iso-overlay { position: absolute; inset: 0; background: rgba(10, 12, 9, 0.78); backdrop-filter: blur(4px);
   display: flex; align-items: center; justify-content: center; z-index: 20; }
-.iso-spinner-box { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px 24px;
-  display: flex; align-items: center; gap: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); font-size: 13px; font-weight: 500; color: var(--text); }
+.iso-progress-box { background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; padding: 18px 22px;
+  width: 360px; max-width: 90vw; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; gap: 8px; }
+.iso-progress-kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); font-weight: 600; }
+.iso-progress-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.iso-progress-sub { font-size: 12px; color: var(--faint); min-height: 18px; }
+.iso-progress-box .bar { height: 8px; background: var(--field); border-radius: 4px; overflow: hidden; margin: 4px 0 2px; }
+.iso-progress-box .bar-fill { height: 100%; width: 0%; background: var(--accent); transition: width 0.2s ease-out; }
+.iso-progress-footer { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--muted); margin-top: 4px; }
+.iso-progress-percent { font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.iso-progress-clock { font-variant-numeric: tabular-nums; }
+
 .iso-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 15; background: #14180f; }
 .iso-empty-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 28px 36px;
   max-width: 440px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 12px; box-shadow: 0 12px 32px rgba(0,0,0,0.5); }

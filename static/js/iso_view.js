@@ -19,11 +19,24 @@
   let stage = null;
   let img = null;
   let badge = null;
-  let spinner = null;
-  let spinnerText = null;
   let emptyBox = null;
   let titleEl = null;
   let sectorBar = null;
+
+  // Progress overlay elements and state
+  let overlay = null;
+  let progressKicker = null;
+  let progressTitle = null;
+  let progressSub = null;
+  let progressBar = null;
+  let progressPercent = null;
+  let progressClock = null;
+  let cancelBtn = null;
+
+  let progressTimer = null;
+  let progressStartTime = 0;
+  let activeImageLoader = null;
+  let isCancelled = false;
 
   function ensureElements() {
     const root = document.getElementById('wsIso');
@@ -47,7 +60,7 @@
             </div>
           </div>
 
-          <div class="iso-bar-sector" id="isoSectorBar" hidden>
+          <div class="iso-bar-sector" id="isoSectorBar" hidden style="display: none;">
             <label>X: <input type="number" id="isoSectorX" min="0" step="50" value="1000"></label>
             <label>Y: <input type="number" id="isoSectorY" min="0" step="50" value="1000"></label>
             <label>Size:
@@ -79,16 +92,29 @@
           <div class="iso-stage" id="isoStage">
             <img id="isoImg" class="iso-img" alt="Isometric game view" draggable="false" />
           </div>
-          <div class="iso-spinner" id="isoSpinner" hidden>
-            <div class="iso-spinner-box">
-              <div class="spinner"></div>
-              <span id="isoSpinnerText">Loading isometric view…</span>
+
+          <!-- Progress overlay with progress bar, clock & cancel button -->
+          <div class="iso-overlay" id="isoOverlay" hidden style="display: none;">
+            <div class="iso-progress-box">
+              <div class="iso-progress-kicker" id="isoProgressKicker">Project Zomboid 2.5D View</div>
+              <div class="iso-progress-title" id="isoProgressTitle">Preparing isometric view…</div>
+              <div class="iso-progress-sub" id="isoProgressSub">Processing tiles & building lots</div>
+              <div class="bar">
+                <div class="bar-fill" id="isoProgressBar" style="width: 0%;"></div>
+              </div>
+              <div class="iso-progress-footer">
+                <span class="iso-progress-percent" id="isoProgressPercent">0%</span>
+                <span class="iso-progress-clock" id="isoProgressClock">⏱️ 0:00</span>
+                <button type="button" class="btn btn-small" id="isoCancelBtn">Cancel</button>
+              </div>
             </div>
           </div>
+
           <div class="iso-hud">
             <span class="iso-tip">Drag to pan · Scroll to zoom · Double-click to zoom in</span>
           </div>
-          <div class="iso-empty" id="isoEmpty" hidden>
+
+          <div class="iso-empty" id="isoEmpty" hidden style="display: none;">
             <div class="iso-empty-card">
               <h3>Map has not been compiled yet</h3>
               <p>To view the 2.5D isometric in-game representation of your buildings and town, compile your map first in the top pipeline.</p>
@@ -103,13 +129,111 @@
     stage = document.getElementById('isoStage');
     img = document.getElementById('isoImg');
     badge = document.getElementById('isoZoomBadge');
-    spinner = document.getElementById('isoSpinner');
-    spinnerText = document.getElementById('isoSpinnerText');
     emptyBox = document.getElementById('isoEmpty');
     titleEl = document.getElementById('isoTitle');
     sectorBar = document.getElementById('isoSectorBar');
 
+    overlay = document.getElementById('isoOverlay');
+    progressKicker = document.getElementById('isoProgressKicker');
+    progressTitle = document.getElementById('isoProgressTitle');
+    progressSub = document.getElementById('isoProgressSub');
+    progressBar = document.getElementById('isoProgressBar');
+    progressPercent = document.getElementById('isoProgressPercent');
+    progressClock = document.getElementById('isoProgressClock');
+    cancelBtn = document.getElementById('isoCancelBtn');
+
     bindEvents();
+  }
+
+  function startProgress(title, sub, estimatedSecs = 4) {
+    ensureElements();
+    isCancelled = false;
+    if (progressTimer) clearInterval(progressTimer);
+
+    if (progressTitle) progressTitle.textContent = title || 'Loading isometric view…';
+    if (progressSub) progressSub.textContent = sub || 'Reading map data…';
+    if (progressBar) progressBar.style.width = '0%';
+    if (progressPercent) progressPercent.textContent = '0%';
+    if (progressClock) progressClock.textContent = '⏱️ 0:00';
+
+    if (overlay) {
+      overlay.hidden = false;
+      overlay.style.display = 'flex';
+    }
+
+    progressStartTime = Date.now();
+
+    progressTimer = setInterval(() => {
+      const elapsed = (Date.now() - progressStartTime) / 1000;
+      const mins = Math.floor(elapsed / 60);
+      const secs = Math.floor(elapsed % 60);
+      if (progressClock) {
+        progressClock.textContent = `⏱️ ${mins}:${String(secs).padStart(2, '0')}`;
+      }
+
+      // Smooth simulated progress curve approaching 92% at estimatedSecs
+      let p = 0;
+      if (elapsed <= estimatedSecs) {
+        p = Math.round((elapsed / estimatedSecs) * 85);
+      } else {
+        const extra = elapsed - estimatedSecs;
+        p = Math.min(96, Math.round(85 + (extra / (extra + 5)) * 11));
+      }
+
+      if (progressBar) progressBar.style.width = `${p}%`;
+      if (progressPercent) progressPercent.textContent = `${p}%`;
+
+      // Update descriptive subtitles as time progresses
+      if (progressSub) {
+        if (p < 25) {
+          progressSub.textContent = 'Loading building data…';
+        } else if (p < 60) {
+          progressSub.textContent = 'Rendering tiles and isometric projection…';
+        } else if (p < 85) {
+          progressSub.textContent = 'Compositing furniture, walls and layers…';
+        } else {
+          progressSub.textContent = 'Finalizing image…';
+        }
+      }
+    }, 120);
+  }
+
+  function finishProgress(isError = false) {
+    if (progressTimer) {
+      clearInterval(progressTimer);
+      progressTimer = null;
+    }
+
+    if (isError) {
+      if (overlay) {
+        overlay.hidden = true;
+        overlay.style.display = 'none';
+      }
+      return;
+    }
+
+    if (progressBar) progressBar.style.width = '100%';
+    if (progressPercent) progressPercent.textContent = '100%';
+    if (progressSub) progressSub.textContent = 'Done!';
+
+    setTimeout(() => {
+      if (overlay) {
+        overlay.hidden = true;
+        overlay.style.display = 'none';
+      }
+    }, 180);
+  }
+
+  function cancelProgress() {
+    isCancelled = true;
+    if (activeImageLoader) {
+      activeImageLoader.src = '';
+      activeImageLoader = null;
+    }
+    finishProgress(true);
+    if (window.fx?.toast) {
+      window.fx.toast('bad', 'Cancelled', 'Loading cancelled.', 3000);
+    }
   }
 
   function bindEvents() {
@@ -117,7 +241,7 @@
 
     // Pan with mouse
     viewport.addEventListener('mousedown', e => {
-      if (e.target.closest('button, input, select, label, .iso-empty')) return;
+      if (e.target.closest('button, input, select, label, .iso-empty, .iso-overlay')) return;
       isDragging = true;
       startX = e.clientX - panX;
       startY = e.clientY - panY;
@@ -156,7 +280,7 @@
 
     // Double-click zoom in
     viewport.addEventListener('dblclick', e => {
-      if (e.target.closest('button, input, select, label')) return;
+      if (e.target.closest('button, input, select, label, .iso-overlay')) return;
       const rect = viewport.getBoundingClientRect();
       const cx = e.clientX - rect.left;
       const cy = e.clientY - rect.top;
@@ -216,6 +340,11 @@
       zoomTo(1.0);
     });
 
+    // Cancel loading button
+    cancelBtn?.addEventListener('click', () => {
+      cancelProgress();
+    });
+
     // Save image
     document.getElementById('isoDownload')?.addEventListener('click', () => {
       if (!img.src) return;
@@ -255,14 +384,6 @@
       else if (e.key === 'ArrowRight') { panX -= 50; applyTransform(); e.preventDefault(); }
       else if (e.key === 'ArrowUp') { panY += 50; applyTransform(); e.preventDefault(); }
       else if (e.key === 'ArrowDown') { panY -= 50; applyTransform(); e.preventDefault(); }
-    });
-
-    img.addEventListener('load', () => {
-      hideLoading();
-    });
-
-    img.addEventListener('error', () => {
-      hideLoading();
     });
   }
 
@@ -311,13 +432,38 @@
     applyTransform();
   }
 
-  function showLoading(msg) {
-    if (spinnerText) spinnerText.textContent = msg || 'Loading…';
-    if (spinner) spinner.hidden = false;
-  }
+  function loadImage(src, title, sub, estimatedSecs = 3) {
+    startProgress(title, sub, estimatedSecs);
 
-  function hideLoading() {
-    if (spinner) spinner.hidden = true;
+    const loader = new Image();
+    activeImageLoader = loader;
+
+    loader.onload = () => {
+      if (isCancelled || activeImageLoader !== loader) return;
+      img.src = src;
+      activeImageLoader = null;
+      finishProgress();
+      fitToScreen();
+    };
+
+    loader.onerror = () => {
+      if (isCancelled || activeImageLoader !== loader) return;
+      activeImageLoader = null;
+      finishProgress(true);
+      if (window.fx?.toast) {
+        window.fx.toast('bad', 'Error', 'Could not load isometric view.', 5000);
+      }
+    };
+
+    loader.src = src;
+
+    // In case image is already in browser cache
+    if (loader.complete && loader.naturalWidth > 0) {
+      img.src = src;
+      activeImageLoader = null;
+      finishProgress();
+      fitToScreen();
+    }
   }
 
   function setMode(mode) {
@@ -327,7 +473,9 @@
     });
 
     if (sectorBar) {
-      sectorBar.hidden = mode !== 'sector';
+      const showSector = mode === 'sector';
+      sectorBar.hidden = !showSector;
+      sectorBar.style.display = showSector ? 'flex' : 'none';
     }
 
     if (mode === 'sector') {
@@ -338,22 +486,19 @@
     if (!mapInfo || !mapInfo.pictures) return;
 
     let src = mapInfo.pictures[mode];
+    const modeLabels = {
+      town: 'Town overview',
+      close: 'Town center',
+      inside: 'Furnished interiors',
+    };
+    const title = `Loading ${modeLabels[mode] || mode}…`;
+
     if (src) {
-      showLoading(`Loading ${mode === 'inside' ? 'interiors' : mode}…`);
-      img.src = src;
-      img.onload = () => {
-        hideLoading();
-        fitToScreen();
-      };
+      loadImage(src, title, 'Reading generated town picture', 2);
     } else {
-      // Fallback: request from api_iso_render
       const roofs = mode !== 'inside';
-      showLoading('Generating preview…');
-      img.src = `/api/iso-render/${encodeURIComponent(activeMap)}?roofs=${roofs ? 1 : 0}&scale=0.5`;
-      img.onload = () => {
-        hideLoading();
-        fitToScreen();
-      };
+      const fallbackUrl = `/api/iso-render/${encodeURIComponent(activeMap)}?roofs=${roofs ? 1 : 0}&scale=0.5`;
+      loadImage(fallbackUrl, title, 'Rendering preview on demand…', 5);
     }
   }
 
@@ -364,22 +509,8 @@
     const size = parseInt(document.getElementById('isoSectorSize')?.value || '50', 10);
     const roofs = document.getElementById('isoSectorRoofs')?.checked ? 1 : 0;
 
-    showLoading(`Rendering PZ sector ${x},${y} (${size}×${size}) at native 1:1 scale…`);
     const url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${size},${size}&scale=1.0&roofs=${roofs}&t=${Date.now()}`;
-
-    const testImg = new Image();
-    testImg.onload = () => {
-      img.src = url;
-      hideLoading();
-      fitToScreen();
-    };
-    testImg.onerror = () => {
-      hideLoading();
-      if (window.fx?.toast) {
-        window.fx.toast('bad', 'Render error', 'Could not render this sector. Ensure it is inside the map bounds.', 5000);
-      }
-    };
-    testImg.src = url;
+    loadImage(url, `Rendering sector ${x},${y} (${size}×${size})…`, 'Compositing full 1:1 in-game sprites', 5);
   }
 
   async function showIsoView(name) {
@@ -392,14 +523,14 @@
     }
 
     activeMap = name;
-    showLoading('Loading map data…');
+    startProgress('Loading map data…', 'Fetching compiled isometric details', 2);
 
     try {
       const res = await fetch(`/api/iso-info/${encodeURIComponent(name)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       mapInfo = await res.json();
     } catch (err) {
-      hideLoading();
+      finishProgress(true);
       if (window.fx?.toast) {
         window.fx.toast('bad', 'Error', `Could not load isometric info: ${err.message}`, 5000);
       }
@@ -407,15 +538,27 @@
     }
 
     if (!mapInfo.compiled) {
-      hideLoading();
-      if (emptyBox) emptyBox.hidden = false;
-      if (stage) stage.hidden = true;
+      finishProgress(true);
+      if (emptyBox) {
+        emptyBox.hidden = false;
+        emptyBox.style.display = 'flex';
+      }
+      if (stage) {
+        stage.hidden = true;
+        stage.style.display = 'none';
+      }
       if (titleEl) titleEl.textContent = `${name} · Uncompiled`;
       return;
     }
 
-    if (emptyBox) emptyBox.hidden = true;
-    if (stage) stage.hidden = false;
+    if (emptyBox) {
+      emptyBox.hidden = true;
+      emptyBox.style.display = 'none';
+    }
+    if (stage) {
+      stage.hidden = false;
+      stage.style.display = 'block';
+    }
 
     // Set map title details
     const bldCount = mapInfo.building_count ? ` · ${mapInfo.building_count} buildings` : '';
@@ -446,7 +589,7 @@
   function closeIsoView() {
     activeMap = null;
     mapInfo = null;
-    hideLoading();
+    finishProgress(true);
   }
 
   window.showIsoView = showIsoView;
