@@ -123,6 +123,24 @@ class MansionHouses(unittest.TestCase):
         self.assertFalse(small.grand)
         self.assertLessEqual(len(art(small)), 4, "a small house is not a gallery")
 
+    def test_a_picture_hangs_on_bare_wall_and_not_over_a_bookshelf(self):
+        # Art is hung before the room's furniture, and on the north wall before
+        # the west one. Both are draw order: a floor piece stands off a wall
+        # that already carries something, and the north wall is the one the
+        # game draws first - a picture anywhere else is drawn over the piece in
+        # front of it instead of on the wall behind it.
+        seen = {"N": 0, "W": 0}
+        for seed in range(6):
+            plan = L.build_plan(16, 17, seed=seed, kind='house', level=0, levels=1)
+            for role, x, y, orient in plan.furniture:
+                if not (role.startswith("erika_art") or role in ("painting", "mirror")):
+                    continue
+                self.assertIn(orient, ("N", "W"), "a picture hangs on a wall, not a ceiling")
+                seen[orient] += 1
+        self.assertGreater(seen["N"] + seen["W"], 10, "nothing hung")
+        self.assertGreaterEqual(seen["N"], 2 * seen["W"],
+                                f"pictures prefer the north wall: {seen}")
+
     def test_the_study_is_book_lined(self):
         shelves = [r for r in L.MANSION_EXTRA["office"]
                    if r.startswith(("erika_shelves", "bookshelf"))]

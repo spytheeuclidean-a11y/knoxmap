@@ -6160,7 +6160,17 @@ def _furnish(plan: Plan, rng: random.Random,
                                                    mirror_orient))
                         return
             if _is_wall_piece(role):
-                for x, y, facing in sorted(floor_slots, key=on_facade):
+                # A picture goes on bare wall before it goes behind a dresser,
+                # and on the north wall before the west one. Both are the same
+                # drawing question: the game draws a floor piece after the
+                # thing on the wall of its own tile, so a picture hung where a
+                # wardrobe or a piano stands is drawn over the piece instead of
+                # behind it - a framed print floating across a bookshelf. Bare
+                # wall first; then the north wall, which is drawn first.
+                for x, y, facing in sorted(
+                        floor_slots,
+                        key=lambda s: ((s[0], s[1]) in occupied,
+                                       0 if s[2] == "N" else 1, on_facade(s))):
                     if hang(role, x, y, facing):
                         break
                 return
@@ -6246,10 +6256,19 @@ def _furnish(plan: Plan, rng: random.Random,
                          pal.get("counter", "counter"), side_rank, keeps_open)
         for role in [x for x in wishlist if FR.priority(x, r.kind) == FR.ESSENTIAL]:
             place(role)
+        # Pictures take the wall before the furniture does. A dresser, a
+        # bookshelf or a piano keeps off a wall that already carries something
+        # (keep_off), so art hung last - which is where decoration sorts -
+        # ended up sharing its tile with the piece in front of it, and the
+        # game draws that piece over the picture. Hung first, the picture has
+        # bare wall behind it and the room stands off it.
+        for role in [x for x in wishlist if _is_wall_piece(x) and x != SWITCH]:
+            place(role)
         if not centre_first:
             centre()
         for role in FR.in_priority_order(
-                [x for x in wishlist if FR.priority(x, r.kind) != FR.ESSENTIAL], r.kind):
+                [x for x in wishlist if FR.priority(x, r.kind) != FR.ESSENTIAL
+                 and not (_is_wall_piece(x) and x != SWITCH)], r.kind):
             place(role)
 
         if commercial_kitchen:
