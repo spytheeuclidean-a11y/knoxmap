@@ -30,6 +30,39 @@ class RoofLayouts(unittest.TestCase):
                 for _other, other_x, other_y, _other_orientation in placement[index + 1:]:
                     self.assertTrue(abs(x - other_x) > 1 or abs(y - other_y) > 1)
 
+    def test_every_roof_piece_is_one_the_world_painter_can_draw(self):
+        # buildroofs.roof_squares has no branch for a Peak30Quad whose longer
+        # side is even, so such a piece paints nothing: the house keeps its
+        # walls and loses its entire roof (108 houses in one town).
+        from knoxbuild.buildroofs import roof_squares
+
+        for w in range(3, 14):
+            for h in range(3, 14):
+                grid = [[1] * w for _ in range(h)]
+                for kind, depth, _caps, (x, y, pw, ph) in tbx._roof_pieces(
+                        layout.roof_rects(grid), True, True):
+                    if kind == "FlatTop":
+                        continue
+                    with self.subTest(kind=kind, w=w, h=h):
+                        self.assertTrue(roof_squares(
+                            lambda n: {}, {},
+                            dict(RoofType=kind, Depth=depth, x=x, y=y,
+                                 width=pw, height=ph)))
+
+    def test_flat_roof_plant_stands_on_the_roof(self):
+        # The game hangs an attachedCeiling tile from the ceiling of its level:
+        # on the roof floor that is a storey above the roof, which is how the
+        # vents and the hatch came to float over the buildings. Only the
+        # air-conditioning unit stands on the floor, so it is all a roof gets.
+        from knoxbuild import catalog as C
+
+        grid = [[1] * 12 for _ in range(12)]
+        roles = {role for role, *_rest in tbx._rooftop(grid, 12, 12, "house-a")}
+        self.assertEqual(roles, {"roof_ac"})
+        tiles = {tile for orients in C.FURNITURE["roof_ac"].values()
+                 for tile in orients.values()}
+        self.assertEqual(tiles, {"rooftop_furniture_000", "rooftop_furniture_001"})
+
     def test_a_wide_block_among_many_wings_is_not_given_the_steep_roof(self):
         # An 11-wide block with two narrow wings: three pieces, so the block takes the
         # 45-degree roof (three levels at most), not a 30-degree one six levels high.

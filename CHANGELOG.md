@@ -1,5 +1,27 @@
 ## 1.8.5.3
 
+- **Large houses are mansions inside.** A house whose storeys add up to
+  `HOUSE_BIG_FLOOR` tiles or more of floor now lays dark wood and red carpet in
+  its living rooms, halls and bedrooms and white tile in its kitchens and
+  bathrooms, and dresses its rooms past the usual wishlist: a chandelier
+  (`lighting_indoor_03`) over the hall, dining room and living room, rugs under
+  them, and a parlour grand (`recreational_01`) in the dining room
+  (`knoxbuild/layout.py`: `MANSION_EXTRA`, `MANSION_FLOORS`, `Plan.grand`;
+  `knoxbuild/tbx.py`: `floor_options`). The pieces are ceiling and floor
+  coverings, so a mansion keeps the free floor in one piece and its windows in
+  columns; a small house is untouched.
+- **Houses keep their roofs.** A hip roof (`Peak30Quad`) was chosen for
+  rectangles whose longer side is even, and the world painter has no branch for
+  those - it drew nothing, so the house kept its walls, showed the ceiling tile
+  where the roof should be and lost the roof entire. The longer side must be
+  odd for a hip now; 108 houses in one town were roofless this way
+  (`knoxbuild/tbx.py`, `tests/test_roofs.py`).
+- **Roof plant stands on the roof.** The vent and the hatch were
+  `attachedCeiling` tiles, and the game hangs one of those from the ceiling of
+  its level - on a roof floor that is a storey above the roof, which is why
+  flat-roofed buildings had vents and hatches floating over them. Only the
+  air-conditioning unit, which stands on the floor, goes up there now
+  (`knoxbuild/tbx.py`).
 - **Proposed roads are optional.** Enable Proposed roads in More settings to
   include roads marked as proposed in OpenStreetMap. Existing OSM caches are
   refreshed to retrieve the additional tags.

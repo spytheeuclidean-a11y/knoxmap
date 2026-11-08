@@ -124,8 +124,12 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
             # Stock shallow gables stop at eleven; surplus stays behind the far eave.
             odd = min(odd, PEAK30_MAX_ACROSS)
         # Hips only on small houses: across a wide one the four slopes meet
-        # in a tall point that looks like a hat.
-        hip = not gable_only and single and odd <= HIP_MAX_ACROSS and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0
+        # in a tall point that looks like a hat. A quad is cut from the square
+        # of the longer side of its rectangle, so that side has to be odd or
+        # buildroofs paints nothing at all and the house loses its whole roof.
+        hip = (not gable_only and single and odd <= HIP_MAX_ACROSS
+               and max(rw, odd) % 2 == 1
+               and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0)
         cap = dict(_NO_CAPS)
         if along_x:
             box = (rx, ry + (rh - odd), rw, odd)
@@ -142,6 +146,20 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
                 cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
             out.append(("Peak30Quad" if hip else "Peak30NS", "Zero", cap, box))
     return out
+
+
+def floor_options(kind: str, of_kind: dict, mansion: bool = False) -> list[str]:
+    """The finishes a room of `kind` may be laid in: a mansion's own where it
+    has them for that room, the building kind's or the room kind's otherwise.
+    Only names the catalogue has a tile entry for."""
+    from .layout import FLOOR_CHOICES, MANSION_FLOORS
+
+    if mansion:
+        own = [o for o in MANSION_FLOORS.get(kind, ()) if o in C.EXTRA_FLOORS]
+        if own:
+            return own
+    return [o for o in of_kind.get(kind, FLOOR_CHOICES.get(kind, ()))
+            if o in C.EXTRA_FLOORS]
 
 
 # Flat roofs carry plant: bare tar from edge to edge read as unfinished. One
@@ -162,8 +180,14 @@ def _rooftop(grid: list[list[int]], width: int, height: int,
     if area < ROOF_MIN_TILES or not tiles:
         return []
     rng = random.Random(f"{seed}:{width}:{height}:{area}")
-    wanted = (["roof_hatch"] + ["roof_ac"] * max(1, area // ROOF_AC_EVERY)
-              + ["roof_vent"] * (area // ROOF_VENT_EVERY))
+    # Only the air-conditioning unit stands on a roof. Every other tile in
+    # rooftop_furniture (the vents at 014/015, the hatch at 016/022/023) is
+    # attachedCeiling or a wall-mounted Conditioner, and the game hangs a
+    # ceiling tile from the ceiling of the level it sits on - on the roof floor
+    # that is a storey above the roof, so they floated over the building. The
+    # count is kept, so a roof still carries as many pieces as it did.
+    wanted = ["roof_ac"] * (1 + max(1, area // ROOF_AC_EVERY)
+                            + area // ROOF_VENT_EVERY)
     taken: set[tuple[int, int]] = set()
     out = []
     rng.shuffle(tiles)
@@ -263,7 +287,8 @@ def render_tbx(plan: Plan | Building, name: str,
     their new indices.
     """
     building = plan if isinstance(plan, Building) else Building(
-        width=plan.width, height=plan.height, storeys=[plan], profile=plan.profile)
+        width=plan.width, height=plan.height, storeys=[plan], profile=plan.profile,
+        grand=plan.grand)
     storeys = building.storeys
 
     entries = list(C.TILE_ENTRIES)
@@ -425,8 +450,7 @@ def render_tbx(plan: Plan | Building, name: str,
         _stable_seed(name, len(building.rooms), building.width,
                      building.height))
     for kind in sorted({r.kind for r in building.rooms}):
-        options = [o for o in of_kind.get(kind, FLOOR_CHOICES.get(kind, ()))
-                   if o in C.EXTRA_FLOORS]
+        options = floor_options(kind, of_kind, getattr(building, "grand", False))
         if not options:
             continue
         if building.profile:
