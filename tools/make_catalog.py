@@ -501,10 +501,11 @@ def main(argv: list[str]) -> int:
         "washer": "appliances_laundry_01_001",
         "wall_cabinet": "fixtures_counters_01_027",     # above a counter
         "microwave": "appliances_cooking_01_068",
-        # On flat roofs (tbx.ROOFTOP): an air-conditioning unit, a vent, a hatch.
+        # On flat roofs (tbx.ROOFTOP): an air-conditioning unit. It is the only
+        # piece of rooftop_furniture that stands on the floor; the vents and the
+        # hatch are attachedCeiling, and the game hangs those from the ceiling of
+        # their level, which on a roof is a storey above it.
         "roof_ac": "rooftop_furniture_001",
-        "roof_vent": "rooftop_furniture_015",
-        "roof_hatch": "rooftop_furniture_022",
         # Pieces for the middle of a room (layout.CENTRE_GROUPS): a room
         # furnished only along its walls was an empty floor with a ring of
         # furniture round it.

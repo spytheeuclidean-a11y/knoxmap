@@ -4974,7 +4974,7 @@ SWITCHES_APART = 7
 # front, so the north sprite on a south wall is not wrong, it is just a table.
 _EITHER_WAY = {"table", "coffee_table", "dining_table", "diner_table", "crib", "door_mat",
                "picnic_table", "pizza_table", "bath_mat", "rug", "rug_small",
-               "rug_wide", "shag_rug", "roof_ac", "roof_vent", "roof_hatch",
+               "rug_wide", "shag_rug", "roof_ac",
                "elevator_door"}
 # Anything with no south or east sprite, worked out from the catalogue rather
 # than listed by hand. The fallback draws such a piece with its north or west

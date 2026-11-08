@@ -1,5 +1,17 @@
 ## 1.8.5.3
 
+- **Houses keep their roofs.** A hip roof (`Peak30Quad`) was chosen for
+  rectangles whose longer side is even, and the world painter has no branch for
+  those - it drew nothing, so the house kept its walls, showed the ceiling tile
+  where the roof should be and lost the roof entire. The longer side must be
+  odd for a hip now; 108 houses in one town were roofless this way
+  (`knoxbuild/tbx.py`, `tests/test_roofs.py`).
+- **Roof plant stands on the roof.** The vent and the hatch were
+  `attachedCeiling` tiles, and the game hangs one of those from the ceiling of
+  its level - on a roof floor that is a storey above the roof, which is why
+  flat-roofed buildings had vents and hatches floating over them. Only the
+  air-conditioning unit, which stands on the floor, goes up there now
+  (`knoxbuild/tbx.py`).
 - **Proposed roads are optional.** Enable Proposed roads in More settings to
   include roads marked as proposed in OpenStreetMap. Existing OSM caches are
   refreshed to retrieve the additional tags.
