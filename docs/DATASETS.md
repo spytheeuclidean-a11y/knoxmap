@@ -49,6 +49,30 @@ hand-authored data every time.
   majority class per tile + 3×3 filter; class→behaviour table in
   `knoxdata/data/worldcover_classes.json`; class fractions feed the
   Rural/Town/Suburb/City preset suggestion.
+- **What grows, per class** (only on ground OSM left blank; OSM wins, and
+  OSM forest/scrub polygons count as claimed though they paint no ground):
+
+  | Class | On the map |
+  |---|---|
+  | 10 Tree cover | a wood, through the same pass as mapped forest (edge, big trees, Forest density) |
+  | 20 Shrubland | clumped bushes and young trees, no grown trees |
+  | 30 Grassland | grass tufts and the odd bush |
+  | 40 Cropland | fields: 60–150 m plots of furrows, about half in corn, some fallow, some hedged |
+  | 50 Built-up | nothing new; gardens are planted as anywhere |
+  | 60 Bare / sparse | dirt with low rocks in clumps (~10%) and a few boulders |
+  | 70 Snow and ice | sand-coloured ground (no snow tile) |
+  | 80 Water | water |
+  | 90 Wetland, 95 Mangroves | dense marsh, the odd stunted tree, open-water pools on ~10% |
+  | 100 Moss and lichen | dirt and moss patches, low rocks in clumps (~30%), boulders (~3%), no trees |
+
+  Where WorldCover has a class, the random wild growth and woods KnoxMap
+  scatters on unmapped grass stay off it. Mapped OSM `landuse=farmland` gets
+  the same fields, and OSM marsh/swamp/bog/reedbed wetland the same pools.
+  The renderer paints this ground in marker colours until OSM has painted
+  (`generator/rendering/landcover.py`); fields, pools and rocks are in
+  `generator/rendering/fields.py`, the planting in
+  `generator/rendering/landcover_veg.py`. All tiles come from rules already in
+  stock WorldEd `Rules.txt`.
 - **Setting:** `landcover=worldcover|osm|off` (default `worldcover`).
 - **Refresh cache:** delete `cache/datasets/worldcover/`.
 

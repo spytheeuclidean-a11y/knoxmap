@@ -230,3 +230,19 @@ Saved under `docs/images/worldcover/` and shown in the PR description.
 | `requirements.txt` | rasterio pin |
 | `docs/DATASETS.md`, `CHANGELOG.md` | describe the new behaviour |
 | `tests/test_landcover_veg.py`, `tests/test_fields.py` | new |
+
+## As built — deviations from this design
+
+- **OSM mask:** WorldCover ground is painted in per-class marker colours
+  (`landcover.MARKER`) while OSM paints; tiles still in a marker colour are
+  WorldCover's. This replaced drawing a second mask at every OSM paint call.
+  OSM forest and scrub polygons paint no ground, so they are claimed
+  explicitly.
+- **Seeds:** fixed seed constants per pass, as every existing pass uses. The
+  renderer has no map seed. Rebuilds are still identical.
+- **Pool size cap:** `POOL_MAX_TILES` was dropped. Pools come from a
+  small-scale noise field (cell 10 m) cut at the top 10%, which gives separate
+  blobs without a connected-component pass (no scipy).
+- **Relief:** with WorldCover on, 3DEP relief shades only WorldCover-owned
+  ground, after OSM, which is what it shaded before.
+- **CHANGELOG:** left for the release commit, as upstream does.
