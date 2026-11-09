@@ -17,6 +17,7 @@ bp = Blueprint("datasets", __name__)
 # One refresh at a time; the fetch is minutes on a first run and the button
 # may be pressed twice.
 _REFRESH = {"state": "idle", "report": {}}
+_REFRESH_LOCK = threading.Lock()
 
 
 def _bbox(values) -> tuple[float, float, float, float] | None:
@@ -39,7 +40,8 @@ def api_datasets_status():
     args = request.args
     bbox = _bbox(args) if {"south", "west", "north", "east"} <= set(args) else None
     return jsonify({"layers": knoxdata.status(Settings(), bbox),
-                    "refresh": _REFRESH["state"]})
+                    "refresh": _REFRESH["state"],
+                    "report": _REFRESH["report"]})
 
 
 @bp.route("/api/datasets/refresh", methods=["POST"])
@@ -49,15 +51,16 @@ def api_datasets_refresh():
     bbox = _bbox(body)
     if bbox is None:
         return failed("Refresh needs south, west, north and east.", 400)
-    if _REFRESH["state"] == "running":
-        return jsonify({"state": "running"}), 202
+    with _REFRESH_LOCK:
+        if _REFRESH["state"] == "running":
+            return jsonify({"state": "running"}), 202
+        _REFRESH["state"] = "running"
 
     from knoxbuild.settings import Settings
 
     settings = Settings.from_dict(body.get("settings") or {})
 
     def worker():
-        _REFRESH["state"] = "running"
         try:
             import knoxdata
             _REFRESH["report"] = knoxdata.refresh(settings, bbox)
@@ -65,7 +68,8 @@ def api_datasets_refresh():
             log.warning("datasets refresh failed - %s", exc)
             _REFRESH["report"] = {"error": str(exc)}
         finally:
-            _REFRESH["state"] = "idle"
+            with _REFRESH_LOCK:
+                _REFRESH["state"] = "idle"
 
     threading.Thread(target=worker, daemon=True, name="knoxdata-refresh").start()
     return jsonify({"state": "running"}), 202

@@ -178,7 +178,7 @@ class RailGarageFixes(unittest.TestCase):
         plan = layout.build_plan(8, 8, kind="garage", commercial=True, seed=8)
         wall = [(0, 0, "N"), (1, 0, "N")]
         plan.doors = [wall[0]]
-        with mock.patch.object(layout, "_outside_runs", return_value=[("N", wall)]):
+        with mock.patch.object(layout.openings, "_outside_runs", return_value=[("N", wall)]):
             layout._widen_vehicle_entry(plan, "N")
         self.assertEqual(plan.doors, [wall[0]])
         self.assertFalse(getattr(plan, "garage_door_tiles", ()))

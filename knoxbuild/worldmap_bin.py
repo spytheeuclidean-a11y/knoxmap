@@ -287,7 +287,8 @@ def write_bin(xml_path: str, bin_path: str) -> int:
 def read_bin(bin_path: str) -> dict:
     """The file read back the way the game reads it, for the self-test:
     {(cell x, cell y): [(rings, {key: value})]}."""
-    data = open(bin_path, "rb").read()
+    with open(bin_path, "rb") as f:
+        data = f.read()
     pos = 0
 
     def take(fmt):

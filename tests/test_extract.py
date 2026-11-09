@@ -165,19 +165,22 @@ class Download(unittest.TestCase):
 
     def test_a_fresh_copy_is_used_without_asking(self):
         path = os.path.join(self.dir, "land.osm.pbf")
-        open(path, "wb").write(b"x")
+        with open(path, "wb") as f:
+            f.write(b"x")
         with mock.patch.object(extract.requests, "get", side_effect=AssertionError("asked")):
             self.assertEqual(extract._download(self.REGION, lambda *a: None, None), path)
 
     def test_a_missing_one_is_downloaded_and_kept(self):
         with mock.patch.object(extract.requests, "get", lambda *a, **k: self.response()):
             path = extract._download(self.REGION, lambda *a: None, None)
-        self.assertEqual(open(path, "rb").read(), b"data")
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), b"data")
         self.assertFalse(os.path.exists(path + ".part"))
 
     def test_an_old_one_is_asked_about_and_kept_on_304(self):
         path = os.path.join(self.dir, "land.osm.pbf")
-        open(path, "wb").write(b"old")
+        with open(path, "wb") as f:
+            f.write(b"old")
         old = time.time() - 40 * 86400
         os.utime(path, (old, old))
         seen = {}
@@ -189,12 +192,14 @@ class Download(unittest.TestCase):
         with mock.patch.object(extract.requests, "get", get):
             extract._download(self.REGION, lambda *a: None, None)
         self.assertIn("If-Modified-Since", seen)
-        self.assertEqual(open(path, "rb").read(), b"old")
+        with open(path, "rb") as f:
+            self.assertEqual(f.read(), b"old")
         self.assertLess(time.time() - os.path.getmtime(path), 100)
 
     def test_an_old_one_is_used_when_the_server_cannot_be_reached(self):
         path = os.path.join(self.dir, "land.osm.pbf")
-        open(path, "wb").write(b"old")
+        with open(path, "wb") as f:
+            f.write(b"old")
         old = time.time() - 40 * 86400
         os.utime(path, (old, old))
         with mock.patch.object(extract.requests, "get",

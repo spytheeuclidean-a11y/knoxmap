@@ -142,35 +142,41 @@ def fetch(south: float, west: float, north: float, east: float,
     import duckdb
 
     con = duckdb.connect()
-    con.execute("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial;")
-    con.execute(f"SET s3_region='{REGION}';")
+    try:
+        con.execute("INSTALL httpfs; LOAD httpfs; INSTALL spatial; LOAD spatial;")
+        con.execute(f"SET s3_region='{REGION}';")
 
-    out: dict = {}
+        out: dict = {}
 
-    def run() -> None:
+        def run() -> None:
+            try:
+                out["rows"] = con.execute(_query(south, west, north, east)).fetchall()
+            except Exception as exc:  # noqa: BLE001 - reported on the main thread
+                out["error"] = exc
+
+        worker = threading.Thread(target=run, daemon=True)
+        worker.start()
+        waited = 0.0
+        while worker.is_alive():
+            worker.join(0.5)
+            waited += 0.5
+            if waited > TIMEOUT_S:
+                con.interrupt()
+                worker.join(30)
+                raise TimeoutError(
+                    f"Overture did not answer within {TIMEOUT_S // 60} minutes.")
+            if should_stop is not None and should_stop():
+                con.interrupt()
+                worker.join(30)
+                import knoxstop
+                raise knoxstop.Stopped("the Overture download")
+        if "error" in out:
+            raise RuntimeError(f"Overture query failed: {out['error']}")
+    finally:
         try:
-            out["rows"] = con.execute(_query(south, west, north, east)).fetchall()
-        except Exception as exc:  # noqa: BLE001 - reported on the main thread
-            out["error"] = exc
-
-    worker = threading.Thread(target=run, daemon=True)
-    worker.start()
-    waited = 0.0
-    while worker.is_alive():
-        worker.join(0.5)
-        waited += 0.5
-        if waited > TIMEOUT_S:
-            con.interrupt()
-            worker.join(30)
-            raise TimeoutError(
-                f"Overture did not answer within {TIMEOUT_S // 60} minutes.")
-        if should_stop is not None and should_stop():
-            con.interrupt()
-            worker.join(30)
-            import knoxstop
-            raise knoxstop.Stopped("the Overture download")
-    if "error" in out:
-        raise RuntimeError(f"Overture query failed: {out['error']}")
+            con.close()
+        except Exception:  # noqa: BLE001
+            pass
 
     rows = []
     for ident, height, floors, cls, gj in out.get("rows", []):
@@ -284,14 +290,15 @@ def only_missing(candidates: list[OSMFeature],
     for cand in candidates:
         try:
             here = Polygon([(lon, lat) for lat, lon in cand.geometry])
-            if not here.is_valid:
-                here = here.buffer(0)
             middle = here.centroid
+            if middle.is_empty:
+                here = here.buffer(0)
+                middle = here.centroid
         except Exception:  # noqa: BLE001
             continue
         if middle.is_empty:
             continue
-        if any(existing[int(i)].contains(middle) for i in tree.query(middle)):
+        if len(tree.query(middle, predicate="within")) > 0:
             continue
         kept.append(cand)
     return kept

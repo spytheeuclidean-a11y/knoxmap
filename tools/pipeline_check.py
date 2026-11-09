@@ -1,9 +1,14 @@
 """Knoxify smoke test: render a tiny area end-to-end."""
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
+
+# `python tools/pipeline_check.py` from the top of the repository: generator/
+# sits one folder above this one.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generator import osm, renderer
 

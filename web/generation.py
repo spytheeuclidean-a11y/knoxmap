@@ -650,7 +650,12 @@ def api_worlded():
     pzw = map_dir / f"{map_dir.name}.pzw"
     if not pzw.exists():
         return jsonify({"error": "No .pzw yet — generate the buildings first."}), 400
-    subprocess.Popen(knoxpaths.command_for(exe) + [str(pzw)])
+    try:
+        subprocess.Popen(knoxpaths.command_for(exe) + [str(pzw)])
+    except OSError as exc:
+        # Wine missing, or the tool moved since it was found: a request that
+        # cannot start a program is the caller's problem to read, not a 500.
+        return failed(f"Could not start PZWorldEd: {exc}.", 400, exc)
     return jsonify({"launched": str(pzw)})
 
 

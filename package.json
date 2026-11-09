@@ -1,0 +1,12 @@
+{
+  "name": "knoxmap-frontend-checks",
+  "private": true,
+  "description": "Lint and unit checks for static/js. KnoxMap itself is Python; this exists only so CI can catch a name the page never defines.",
+  "scripts": {
+    "lint:js": "eslint static/js",
+    "test:js": "node --test tests/js/*.test.js"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.1"
+  }
+}

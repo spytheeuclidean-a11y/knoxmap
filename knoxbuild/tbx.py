@@ -534,6 +534,8 @@ def render_tbx(plan: Plan | Building, name: str,
         out.append(" </furniture>")
 
     names = sorted({t for tiles in user_tiles.values() for t in tiles.values()})
+    name_idx = {t: str(i + 1) for i, t in enumerate(names)}
+    role_idx = {r: i for i, r in enumerate(roles)}
     if names:
         out.append(" <user_tiles>")
         out.extend(f"  <tile tile={quoteattr(t)}/>" for t in names)
@@ -546,10 +548,10 @@ def render_tbx(plan: Plan | Building, name: str,
         cols, rows = building.width + 1, building.height + 1
         text = ["\n"]
         for y in range(rows):
-            row = [str(names.index(tiles[(x, y)]) + 1) if (x, y) in tiles else "0"
+            row = [name_idx[tiles[(x, y)]] if (x, y) in tiles else "0"
                    for x in range(cols)]
             text.append(",".join(row) + ("," if y < rows - 1 else "") + "\n")
-        return '  <tiles layer="WallFurniture">' + escape("".join(text)) + "</tiles>"
+        return '  <tiles layer="WallFurniture">' + "".join(text) + "</tiles>"
 
     used = " ".join(str(i) for i in range(1, len(entries) + 1))
     out.append(f" <used_tiles>{used}</used_tiles>")
@@ -675,7 +677,7 @@ def render_tbx(plan: Plan | Building, name: str,
 
         for role, x, y, orient in storey.furniture:
             attrs = [("type", "furniture"),
-                     ("FurnitureTiles", roles.index(role)),
+                     ("FurnitureTiles", role_idx[role]),
                      ("orient", orient), ("x", x), ("y", y)]
             out.append(f"  <object{_attrs(attrs)}/>")
 
@@ -743,16 +745,8 @@ def render_tbx(plan: Plan | Building, name: str,
         # Match BuildingWriter byte for byte: a comma follows every value
         # except the very last one, and each row ends with a newline.
         grid = building.grid_for(level)
-        text = ["\n"]
-        count, total = 0, building.width * building.height
-        for y in range(building.height):
-            for x in range(building.width):
-                text.append(str(grid[y][x]))
-                count += 1
-                if count < total:
-                    text.append(",")
-            text.append("\n")
-        out.append("  <rooms>" + escape("".join(text)) + "</rooms>")
+        rooms_csv = ",\n".join(",".join(map(str, row)) for row in grid)
+        out.append(f"  <rooms>\n{rooms_csv}\n</rooms>")
         if (layer := user_tile_layer(level)):
             out.append(layer)
 
@@ -763,22 +757,15 @@ def render_tbx(plan: Plan | Building, name: str,
         return "\n".join(out) + "\n"
     # The roof floor: no rooms. It holds the pitched roofs, and the flat roof
     # tops BuildingEd places here from the depth-three roofs below.
-    empty = ["\n"]
-    count, total = 0, building.width * building.height
-    for _y in range(building.height):
-        for _x in range(building.width):
-            empty.append("0")
-            count += 1
-            if count < total:
-                empty.append(",")
-        empty.append("\n")
+    zero_row = ",".join(["0"] * building.width)
+    empty_csv = ",\n".join([zero_row] * building.height)
     out.append(" <floor>")
     out.extend(attic)
     for role, x, y, orient in rooftop:
-        attrs = [("type", "furniture"), ("FurnitureTiles", roles.index(role)),
+        attrs = [("type", "furniture"), ("FurnitureTiles", role_idx[role]),
                  ("orient", orient), ("x", x), ("y", y)]
         out.append(f"  <object{_attrs(attrs)}/>")
-    out.append("  <rooms>" + escape("".join(empty)) + "</rooms>")
+    out.append(f"  <rooms>\n{empty_csv}\n</rooms>")
     if (layer := user_tile_layer(len(storeys))):
         out.append(layer)
     out.append(" </floor>")
@@ -786,7 +773,7 @@ def render_tbx(plan: Plan | Building, name: str,
         # A pitched roof's top rises a full storey above the roof floor, and
         # BuildingEd lays what is up there on the floor above that.
         out.append(" <floor>")
-        out.append("  <rooms>" + escape("".join(empty)) + "</rooms>")
+        out.append(f"  <rooms>\n{empty_csv}\n</rooms>")
         out.append(" </floor>")
     out.append("</building>")
     return "\n".join(out) + "\n"

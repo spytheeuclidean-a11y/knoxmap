@@ -828,7 +828,8 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
     rng = random.Random(rng_seed)
     zones: list[Zone] = []
 
-    img = Image.open(landscape_path).convert("RGB")
+    with Image.open(landscape_path) as source:
+        img = source.convert("RGB")
     w, h = img.size
     px = img.load()
     if road_hierarchy is not None:
@@ -1257,6 +1258,9 @@ def _party_walls(owner: np.ndarray, me: int, x0: int, y0: int, mask: np.ndarray,
     out: dict = {}
     h, w = mask.shape
     mh, mw = owner.shape
+    sub = owner[max(0, y0 - 1):min(mh, y0 + h + 1), max(0, x0 - 1):min(mw, x0 + w + 1)]
+    if not ((sub >= 0) & (sub != me)).any():
+        return out
     for ly in range(h):
         for lx in range(w):
             if not mask[ly, lx]:
@@ -1967,6 +1971,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         if len(units) > 1:
             rows_split += 1
             units_made += len(units)
+        # A real hospital's size shapes the people its spawn map holds.
+        hifld = hospitals.profile(tags)
+        has_zone_presets = zoning.any_presets()
         for n, unit in enumerate(units):
             ux0, uy0 = unit.x0, unit.y0
             uw, uh = unit.width, unit.height
@@ -1977,8 +1984,6 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             unit_uses = [uses[n % len(uses)]] if uses and len(units) > 1 else uses
             fname = f"{map_name}_{i:04d}.tbx" if len(units) == 1 else \
                 f"{map_name}_{i:04d}_{n:02d}.tbx"
-            # A real hospital's size shapes the people its spawn map holds.
-            hifld = hospitals.profile(tags)
             if hifld:
                 hifld_by_fname[fname] = hifld
             label = (f"{name} {n + 1}" if name and len(units) > 1 else
@@ -1994,7 +1999,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             preset_file = None
             if preset_library:
                 pick = None
-                wanted = set(zoning.presets_at(ux0 + uw / 2, uy0 + uh / 2))
+                wanted = (set(zoning.presets_at(ux0 + uw / 2, uy0 + uh / 2))
+                          if has_zone_presets else set())
                 if wanted:
                     pick = P.choose([p for p in preset_library
                                      if p["name"] in wanted],

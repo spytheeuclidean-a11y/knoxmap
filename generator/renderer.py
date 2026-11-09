@@ -178,6 +178,64 @@ def _paint_relief(landscape: Image.Image, metres, span=None,
                     (0, 0))
 
 
+def _paint_climate_ground(landscape: Image.Image, climate: dict,
+                          winter_look: str = "auto") -> None:
+    """Shift grass palette colours for climate while keeping exact Rules.txt RGBs."""
+    import numpy as np
+
+    climate = climate or {}
+    klass = str(climate.get("class") or "").strip().lower()
+    cold = klass == "cold continental" or float(climate.get("jan_c") or 0) < -3
+    winter = winter_look == "on" or (winter_look == "auto" and cold)
+    if klass not in ("arid", "humid") and not winter:
+        return
+    arr = np.array(landscape, dtype="uint8", copy=True)
+    dark = ((arr[:, :, 0] == C.DARK_GRASS[0])
+            & (arr[:, :, 1] == C.DARK_GRASS[1])
+            & (arr[:, :, 2] == C.DARK_GRASS[2]))
+    med = ((arr[:, :, 0] == C.MEDIUM_GRASS[0])
+           & (arr[:, :, 1] == C.MEDIUM_GRASS[1])
+           & (arr[:, :, 2] == C.MEDIUM_GRASS[2]))
+    light = ((arr[:, :, 0] == C.LIGHT_GRASS[0])
+             & (arr[:, :, 1] == C.LIGHT_GRASS[1])
+             & (arr[:, :, 2] == C.LIGHT_GRASS[2]))
+    if klass == "arid":
+        arr[dark] = C.MEDIUM_GRASS
+        arr[med] = C.LIGHT_GRASS
+        arr[light] = C.DIRT_GRASS
+    elif klass == "humid":
+        arr[light] = C.MEDIUM_GRASS
+    if winter:
+        arr[dark & ~med] = C.MEDIUM_GRASS
+    landscape.paste(Image.fromarray(arr, "RGB"), (0, 0))
+
+
+def _paint_relief_ground(landscape: Image.Image, metres, span=None) -> None:
+    """Map relief bands to valid Rules.txt ground colours under OSM."""
+    import numpy as np
+
+    m = np.asarray(metres, dtype="float32")
+    if m.ndim != 2 or m.size == 0:
+        return
+    if (m.shape[1], m.shape[0]) != landscape.size:
+        m = np.asarray(Image.fromarray(m).resize(landscape.size, Image.BILINEAR))
+    if not np.isfinite(m).any():
+        return
+    lo, hi = span if span else (float(np.nanmin(m)), float(np.nanmax(m)))
+    relief = float(hi) - float(lo)
+    if relief < MIN_RELIEF_M:
+        return
+    m = np.nan_to_num(m, nan=float(np.nanmin(m)))
+    arr = np.array(landscape, dtype="uint8", copy=True)
+    upper = m >= np.percentile(m, 65)
+    rock = m >= np.percentile(m, 88)
+    arr[upper] = C.MEDIUM_GRASS
+    arr[rock] = C.GRAVEL_DIRT
+    if relief >= SNOW_RELIEF_M:
+        arr[m >= np.percentile(m, 95)] = C.LIGHT_GRASS
+    landscape.paste(Image.fromarray(arr, "RGB"), (0, 0))
+
+
 def _paint_landcover(landscape: Image.Image, grid) -> None:
     """Paint the WorldCover base, one class per tile, under the OSM features.
 
@@ -254,7 +312,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         # Optional 3DEP relief (knoxdata): compressed into the ground under
         # OSM, since Project Zomboid's outdoor ground is flat by format.
         try:
-            _paint_relief(landscape, elevation, elevation_span)
+            _paint_relief_ground(landscape, elevation, elevation_span)
         except Exception:               # noqa: BLE001 - optional, never fatal
             pass
     vegetation = Image.new("RGB", (proj.width, proj.height), C.VEG_NOTHING)
@@ -450,7 +508,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         # Optional NOAA climate tint (knoxdata): after the ground is drawn, so
         # it leans everything, and only when the layer actually ran.
         try:
-            _paint_climate(landscape, climate, winter_look)
+            _paint_climate_ground(landscape, climate, winter_look)
         except Exception:               # noqa: BLE001 - optional, never fatal
             pass
 
@@ -461,6 +519,16 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
 
     # --- preview (landscape + vegetation blended) ---
     preview = _build_preview(landscape, vegetation)
+    if elevation is not None:
+        try:
+            _paint_relief(preview, elevation, elevation_span)
+        except Exception:               # noqa: BLE001 - optional, never fatal
+            pass
+    if climate:
+        try:
+            _paint_climate(preview, climate, winter_look)
+        except Exception:               # noqa: BLE001 - optional, never fatal
+            pass
 
     # --- output files ---
     os.makedirs(output_dir, exist_ok=True)

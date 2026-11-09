@@ -27,12 +27,14 @@ def _add_lot(project: str, name: str, tx: int, ty: int, w: int, h: int, level: i
     """Put a lot into the project's .pzw by hand, in the source cell of its corner."""
     stem = os.path.basename(os.path.normpath(project))
     pzw = os.path.join(project, f"{stem}.pzw")
-    text = open(pzw, encoding="utf-8").read()
+    with open(pzw, encoding="utf-8") as f:
+        text = f.read()
     cx, cy = tx // SOURCE_CELL, ty // SOURCE_CELL
     line = (f'  <lot x="{tx % SOURCE_CELL}" y="{ty % SOURCE_CELL}" level="{level}"'
             f' width="{w}" height="{h}" map="buildings/{name}"/>\n')
     m = re.search(rf'<cell x="{cx}" y="{cy}"[^>]*>\n', text)
-    open(pzw, "w", encoding="utf-8").write(text[:m.end()] + line + text[m.end():])
+    with open(pzw, "w", encoding="utf-8") as f:
+        f.write(text[:m.end()] + line + text[m.end():])
 
 
 def _levels(project: str) -> dict[str, tuple[int, int]]:
@@ -48,7 +50,8 @@ class SignedLevels(unittest.TestCase):
             text = render_pzw(1, 1, "t.bmp", [Placement("buildings/a.tbx", 5, 6, 3, 3,
                                                         base_level=-2)], "t", project)
             self.assertIn('level="-2"', text)
-            open(os.path.join(project, "t.pzw"), "w", encoding="utf-8").write(text)
+            with open(os.path.join(project, "t.pzw"), "w", encoding="utf-8") as f:
+                f.write(text)
             self.assertEqual(read_lots(project), [("a", 5, 6, -2, 3, 3)])
 
     def test_cell_source_below_ground_is_version_2_and_signed(self):
@@ -111,8 +114,9 @@ class BasementLotsCompile(unittest.TestCase):
         _name, _tx, ty, *_ = read_lots(project)[0]
         tx = (ox // SIDE + 1) * SIDE - ox - 20          # 20 tiles west of a cell edge
         plan = build_plan(40, 10, kind="military", ground=False, seed=2)
-        open(os.path.join(project, "buildings", "wide_bsmt.tbx"), "w",
-             encoding="utf-8").write(render_tbx(plan, "wide"))
+        with open(os.path.join(project, "buildings", "wide_bsmt.tbx"), "w",
+                  encoding="utf-8") as f:
+            f.write(render_tbx(plan, "wide"))
         _add_lot(project, "wide_bsmt.tbx", tx, ty, 40, 10, -2)
         compile_rust(project)
         cy = (oy + ty) // SIDE

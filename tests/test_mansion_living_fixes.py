@@ -36,7 +36,7 @@ class MansionLivingFixes(unittest.TestCase):
                 return False
             return real_fits(plan, idx, parts, cells, taken, gap, keeps_open)
 
-        with mock.patch.object(layout, '_living_fits', side_effect=blocked_first_table):
+        with mock.patch.object(layout.furnishing, '_living_fits', side_effect=blocked_first_table):
             self.assertTrue(layout._furnish_living(plan, 1, room, set(), set(), {}))
         self.assertTrue(pair_seen)
         self.assertIn('coffee_table', [role for role, *_ in plan.furniture])

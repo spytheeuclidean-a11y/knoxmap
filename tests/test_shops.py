@@ -93,7 +93,7 @@ class CoolersAreBanks(unittest.TestCase):
 class Salons(unittest.TestCase):
     def rooms(self, erika=False):
         from unittest import mock
-        with mock.patch.object(layout, "_erika_ready", lambda: erika):
+        with mock.patch.object(layout.furnishing, "_erika_ready", lambda: erika):
             for seed in range(8):
                 yield sales_floor("aesthetic", seed, 26, 16)
 

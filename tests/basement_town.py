@@ -46,10 +46,15 @@ def build_town(out: str, settings, extra=(), compile_lots: bool = True) -> str:
     return out
 
 
+def _sha1(path: str) -> str:
+    with open(path, "rb") as f:
+        return hashlib.sha1(f.read()).hexdigest()
+
+
 def digest(out: str) -> dict[str, str]:
     """SHA-1 of every .tbx and every lot file, by name."""
     files = sorted(glob.glob(os.path.join(out, "buildings", "*.tbx"))
                    + glob.glob(os.path.join(out, "lots", "*.lot*"))
                    + glob.glob(os.path.join(out, "lots", "chunkdata_*.bin")))
     return {os.path.relpath(f, out).replace("\\", "/"):
-            hashlib.sha1(open(f, "rb").read()).hexdigest() for f in files}
+            _sha1(f) for f in files}

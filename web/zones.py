@@ -6,7 +6,7 @@ from flask import Blueprint, jsonify, request
 from generator import edits as mapedits
 from generator import osm, sketch
 
-from web.common import _json_body, _map_dir, failed
+from web.common import CACHE_DIR, _json_body, _map_dir, failed
 from web.mapfiles import (_load_design, _load_edits, _load_settings,
                           _load_sketch, _map_summary, _osm_cache_for,
                           _save_design, _save_edits, _save_sketch)
@@ -82,9 +82,10 @@ def api_sketch_palette():
     The page builds its palette from this rather than holding a second copy of
     the tags: a tag that is wrong here draws a shape that is missing from the
     finished map, and one list cannot disagree with itself."""
-    return jsonify({"palette": sketch.palette(),
+    pal = sketch.palette()
+    return jsonify({"palette": pal,
                     "categories": {e["id"]: sketch.category_of(e["id"])
-                                   for e in sketch.palette()}})
+                                   for e in pal}})
 
 
 @bp.route("/api/design/<name>", methods=["GET", "POST"])
@@ -196,7 +197,7 @@ def api_board_place_beside():
         return jsonify({"error": str(exc)}), 400
     except OSError as exc:
         return failed(f"The map could not be placed: {exc}", 500, exc)
-    out = P.layout(str(mine), mine.name)
+    out = P.layout(str(mine), mine.name, str(CACHE_DIR))
     out["moved"] = done
     out["beside"] = theirs.name
     return jsonify(out)

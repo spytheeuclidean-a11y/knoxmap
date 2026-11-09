@@ -246,7 +246,7 @@ class BuildBuildingTower(unittest.TestCase):
         self.assertIsNone(tower.pick_core(20, 20, mask, random.Random(1 ^ 0x70E2)))
         # The ordinary path: no storey is cut as a tower, and one lift. (The
         # ordinary civic mix has lobbies of its own, so the kind proves nothing.)
-        with mock.patch.object(layout, "_tower_rooms",
+        with mock.patch.object(layout.assemble, "_tower_rooms",
                                side_effect=AssertionError("tower path ran")):
             b = layout.build_building(20, 20, levels=14, kind="civic", seed=1,
                                       mask=mask)

@@ -21,13 +21,16 @@ branding/window.png export-ignore
 rust/knoxlots/fixtures export-ignore
 rust/knoxlots/experiments export-ignore
 # The tests are for this repository, not for players: 107 of the files in a
-# download, and the installed app runs none of them. test_pipeline.py is the
-# harness those tests are driven from, so it goes with them. CI checks out the
+# download, and the installed app runs none of them. CI checks out the
 # repository rather than the zip and is unaffected.
 tests export-ignore
-test_pipeline.py export-ignore
 # The tooling for whoever works on KnoxMap - a linter and its settings. A
 # player's download has no use for either, and keeping them out of the zip is
 # also what keeps tools/check_manifest.py's comparison exact.
 pyproject.toml export-ignore
 requirements-dev.txt export-ignore
+# The frontend checks' own tooling: ESLint, its settings and the lockfile the
+# CI job installs from. A player's download runs no JavaScript build.
+package.json export-ignore
+package-lock.json export-ignore
+eslint.config.js export-ignore

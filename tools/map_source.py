@@ -21,6 +21,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import knoxlog  # noqa: E402
 import knoxstop  # noqa: E402
 from knoxbuild import bitmaps  # noqa: E402
 from knoxbuild.blends import blend_layers, load_blends  # noqa: E402
@@ -32,11 +33,17 @@ from knoxbuild.terrain import Palette, ground_layers, stack_order  # noqa: E402
 from tools.terrain_source import ORIGIN_X, project_origin, rules_path  # noqa: E402
 
 
+def _read_text(path: str) -> str:
+    """A text file's contents, with the file closed (see tools/building_stats._read)."""
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
 def read_lots(project: str):
     """[(name, tx, ty, base level, width, height)] in project order, with world tile positions."""
     name = os.path.basename(os.path.normpath(project))
     lots, cell = [], None
-    for line in open(os.path.join(project, f"{name}.pzw"), encoding="utf-8"):
+    for line in _read_text(os.path.join(project, f"{name}.pzw")).splitlines():
         m = re.match(r'\s*<cell x="(\d+)" y="(\d+)"', line)
         if m:
             cell = (int(m[1]), int(m[2]))
@@ -79,7 +86,7 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
     rules_file = rules_path()
     rules = load_rules(rules_file)
     blends = load_blends(os.path.join(os.path.dirname(rules_file), "Blends.txt"))
-    parsed = [(parse_tbx(open(os.path.join(project, "buildings", f"{t}.tbx"), encoding="utf-8").read()),
+    parsed = [(parse_tbx(_read_text(os.path.join(project, "buildings", f"{t}.tbx"))),
                tx, ty, lv) for t, tx, ty, lv in band]
     world = compose_lots(parsed)
     room_squares = set()
@@ -198,6 +205,7 @@ def read_buildings(project: str, names: list[str], workers: int | None = None, s
     processes once there are enough of them, since reading is where a big map
     spent minutes before a single cell was built."""
     from concurrent import futures
+    from concurrent.futures.process import BrokenProcessPool
     workers = workers or os.cpu_count() or 1
     if len(names) < PARALLEL_READ_FROM or workers < 2:
         return _read_rooms(project, names)
@@ -206,7 +214,17 @@ def read_buildings(project: str, names: list[str], workers: int | None = None, s
     pool = futures.ProcessPoolExecutor(max_workers=workers)
     pending = {pool.submit(_read_rooms, project, names[s:s + size]): s
                for s in range(0, len(names), size)}
-    _gather(pool, pending, should_stop, lambda fut, s: parts.__setitem__(s, fut.result()))
+    try:
+        _gather(pool, pending, should_stop,
+                lambda fut, s: parts.__setitem__(s, fut.result()))
+    except BrokenProcessPool as exc:
+        # Same as the rows: a worker that dies in native code must not decide
+        # whether the map is compiled at all.
+        knoxlog.log.warning("map source: a reader crashed, reading serially: %s",
+                            exc, exc_info=True)
+        pool.shutdown(wait=False, cancel_futures=True)
+        parts.clear()
+        return _read_rooms(project, names)
     # in order: the result is the lots' order
     return [b for s in sorted(parts) for b in parts[s]]
 
@@ -225,6 +243,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
     is all of them, the buildings are not even read. The caller decides whether
     what is in `out` is still from the same map (compile_map.compile_rust)."""
     from concurrent import futures
+    from concurrent.futures.process import BrokenProcessPool
     name = os.path.basename(os.path.normpath(project))
     head = bitmaps._bmp_header(os.path.join(project, f"{name}.bmp"))
     w, h = head[0], head[1]
@@ -280,7 +299,23 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                 written += fut.result()
                 finished(cy, len(todo) - len(jobs))
 
-            _gather(pool, jobs, should_stop, take)
+            try:
+                _gather(pool, jobs, should_stop, take)
+            except BrokenProcessPool as exc:
+                # A worker died in native code - an access violation is
+                # 0xC0000005 on Windows - and took the pool with it. The rows it
+                # had not returned are made again one at a time, which is slower
+                # and still finishes; dying here lost the whole compile.
+                knoxlog.log.warning(
+                    "map source: a worker crashed, finishing the rest serially: %s",
+                    exc, exc_info=True)
+                pool.shutdown(wait=False, cancel_futures=True)
+                for n, cy in enumerate(
+                        [c for c in todo if not os.path.exists(_row_done(out, c))], 1):
+                    if should_stop and should_stop():
+                        raise knoxstop.Stopped("the compile")
+                    written += _row(project, out, cy, bands[cy], placed, seed, seams, (w, h))
+                    finished(cy, n)
     name = os.path.basename(os.path.normpath(project))
     spawn = f"{name}_ZombieSpawnMap.bmp"
     lines = ["format = knoxlots-source 1", f"origin_x = {origin[0]}",

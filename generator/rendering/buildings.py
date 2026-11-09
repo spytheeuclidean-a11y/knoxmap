@@ -49,15 +49,18 @@ ADDRESS_AVOIDS_ROADS = {"road_major", "road_medium", "road_minor", "road_service
 
 
 def _off_the_road(x: float, y: float, need: float, roads, road_half,
-                  road_tree, push_limit: float):
+                  road_tree, push_limit: float, max_road_half: float | None = None):
     """Move a point away from the road nearest it until the house round it
     clears the carriageway. None when it cannot be cleared."""
     from shapely.geometry import Point
 
+    if max_road_half is None:
+        max_road_half = max(road_half, default=0.0)
+    reach = need + max_road_half
     for _ in range(6):
         here = Point(x, y)
         worst, gap = None, 0.0
-        for i in road_tree.query(here.buffer(need + max(road_half, default=0.0))):
+        for i in road_tree.query(here, predicate="dwithin", distance=reach):
             i = int(i)
             short = need + road_half[i] - roads[i].distance(here)
             if short > gap:
@@ -120,6 +123,7 @@ def _houses_from_addresses(feats: list["OSMFeature"], buildings: list["OSMFeatur
                 roads.append(LineString(ring))
                 road_half.append(_way_width_m(f, cat) / proj.meters_per_tile / 2)
     road_tree = STRtree(roads) if roads else None
+    max_road_half = max(road_half, default=0.0)
     setback = ADDRESS_SETBACK_M / proj.meters_per_tile
     push_limit = ADDRESS_PUSH_M / proj.meters_per_tile
     clear = ADDRESS_CLEAR_M / proj.meters_per_tile
@@ -137,17 +141,19 @@ def _houses_from_addresses(feats: list["OSMFeature"], buildings: list["OSMFeatur
         if not (-half_w <= x < proj.width + half_w and -half_h <= y < proj.height + half_h):
             continue
         here = Point(x, y)
-        if tree is not None:
-            near = tree.query(here.buffer(clear))
-            if any(shapes[int(i)].distance(here) <= clear for i in near):
-                continue
+        if tree is not None and len(tree.query(here, predicate="dwithin", distance=clear)) > 0:
+            continue
         if road_tree is not None:
             spot = _off_the_road(x, y, max(half_w, half_h) + setback,
-                                 roads, road_half, road_tree, push_limit)
+                                 roads, road_half, road_tree, push_limit,
+                                 max_road_half=max_road_half)
             if spot is None:
                 continue                 # nowhere off the road to put it
-            x, y = spot
-            here = Point(x, y)
+            if (x, y) != spot:
+                x, y = spot
+                here = Point(x, y)
+                if tree is not None and len(tree.query(here, predicate="dwithin", distance=clear)) > 0:
+                    continue
         key = (int(x // cell), int(y // cell))
         crowd = [p for dx in (-1, 0, 1) for dy in (-1, 0, 1)
                  for p in taken.get((key[0] + dx, key[1] + dy), ())]

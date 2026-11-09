@@ -4,6 +4,9 @@
 // area is chosen, a step starts or finishes, and this shows it. If this file
 // failed to load, the app would still work.
 
+/* exported fx */
+// Called from app.js and the windows. A linter checking one script cannot see
+// that anybody uses it, so the line above says so.
 const fx = (() => {
   const $ = (sel, root = document) => root.querySelector(sel);
 

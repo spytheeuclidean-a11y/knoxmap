@@ -40,8 +40,12 @@ def in_coverage(bbox) -> bool:
 
 
 def _cell(lat: float, lon: float) -> str:
-    ns = "n" + str(int((51 - lat) // 1)).zfill(2)
-    ew = "w" + str(int((lon + 180) // 1)).zfill(3)
+    import math
+
+    lat_nw = int(math.ceil(lat))
+    lon_nw = int(math.floor(lon))
+    ns = ("n" if lat_nw >= 0 else "s") + str(abs(lat_nw)).zfill(2)
+    ew = ("w" if lon_nw < 0 else "e") + str(abs(lon_nw)).zfill(3)
     return ns + ew
 
 

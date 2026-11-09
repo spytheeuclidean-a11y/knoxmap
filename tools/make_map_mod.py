@@ -87,9 +87,10 @@ def _world_origin_tiles(project_dir: str) -> tuple[int, int]:
     for entry in os.listdir(project_dir):
         if not entry.endswith(".pzw"):
             continue
-        text = open(os.path.join(project_dir, entry),
-                    encoding="utf-8", errors="replace").read()
-        m = re.search(r'<worldOrigin origin="(\d+),(\d+)"', text)
+        with open(os.path.join(project_dir, entry),
+                  encoding="utf-8", errors="replace") as f:
+            text = f.read()
+        m = re.search(r'<worldOrigin origin="(-?\d+),(-?\d+)"', text)
         if m:
             return int(m.group(1)) * 300, int(m.group(2)) * 300
     return 0, 0
@@ -432,7 +433,8 @@ def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
     annotations = os.path.join(project_dir, "worldmap-annotations.lua")
     pois, town = [], name
     if os.path.exists(annotations):
-        text = open(annotations, encoding="utf-8").read()
+        with open(annotations, encoding="utf-8", errors="replace") as f:
+            text = f.read()
         found = _re.findall(r'addUntranslatedText\("((?:[^"\\]|\\.)*)", "([a-z-]+)", '
                             r'(-?[\d.]+), (-?[\d.]+)\)', text)
         for label, style, x, y in found:
@@ -929,9 +931,10 @@ def package(project_dir: str, name: str, mod_id: str,
     # players see it. See write_attribution for the rest.
     desc = f"{desc} Map data (c) OpenStreetMap contributors (ODbL)."
     # Optional mods this map makes use of, so players know what they add.
+    from pathlib import Path as _Path
     buildings = os.path.join(project_dir, "buildings")
     has_lifts = os.path.isdir(buildings) and any(
-        "fixtures_escalators_01_4" in open(os.path.join(buildings, f), encoding="utf-8").read()
+        "fixtures_escalators_01_4" in _Path(buildings, f).read_text(encoding="utf-8", errors="replace")
         for f in os.listdir(buildings) if f.endswith(".tbx"))
     works_with = (["Elevators (working lifts)"] if has_lifts else []) + \
         ["Spawn Selector (choose where to start)"]
@@ -976,7 +979,7 @@ def package(project_dir: str, name: str, mod_id: str,
     # which matches no mod at all, so the game let the map load with the
     # tiles missing. A missing tile draws as nothing, which is why players
     # saw shop fronts and walls they could see straight through.
-    uses_erika = any(f.endswith(".lotheader") and b"_erika_" in open(f, "rb").read()
+    uses_erika = any(f.endswith(".lotheader") and b"_erika_" in _Path(f).read_bytes()
                      for f in cells)
     if uses_erika:
         info += f"require={knoxpaths_module().ERIKAS_TILES_MOD_ID}\n"

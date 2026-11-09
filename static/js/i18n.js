@@ -11,6 +11,9 @@
 // settings it builds from the server - through a MutationObserver. Matching is
 // on the whole string, which is what the translator sees in the file.
 
+/* exported i18n */
+// Read by app.js and shell.js. A linter checking one script cannot see that
+// anybody uses it, so the line above says so.
 const i18n = (() => {
   let strings = {};            // English -> translated
   let templates = [];          // compiled once when a language is loaded

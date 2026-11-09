@@ -94,15 +94,43 @@ class ClimateNormals(DatasetSource):
         def coord(row, *keys):
             for key in keys:
                 if row.get(key) is not None:
-                    return float(row[key])
+                    try:
+                        return float(row[key])
+                    except (TypeError, ValueError):
+                        continue
             return None
-        ranked = []
+
+        by_station: dict[tuple[float, float], dict] = {}
         for row in rows:
             la = coord(row, "LATITUDE", "latitude", "lat")
             lo = coord(row, "LONGITUDE", "longitude", "lon")
             if la is None or lo is None:
                 continue
-            ranked.append((_haversine_m(lat, lon, la, lo), row))
+            key = (round(la, 5), round(lo, 5))
+            st = by_station.get(key)
+            if st is None:
+                st = dict(row)
+                st["_precip_sum"] = 0.0
+                st["_has_months"] = False
+                by_station[key] = st
+            month = coord(row, "month", "MONTH")
+            if month is not None:
+                st["_has_months"] = True
+                m = int(round(month))
+                tavg = coord(row, "MLY-TAVG-NORMAL", "tavg", "TAVG")
+                if m == 1 and tavg is not None and st.get("JAN_MEAN_TMP") is None:
+                    st["JAN_MEAN_TMP"] = tavg
+                elif m == 7 and tavg is not None and st.get("JUL_MEAN_TMP") is None:
+                    st["JUL_MEAN_TMP"] = tavg
+                prcp = coord(row, "MLY-PRCP-NORMAL", "precip", "PRCP")
+                if prcp is not None:
+                    st["_precip_sum"] += prcp
+
+        ranked = []
+        for (la, lo), st in by_station.items():
+            if st.get("_has_months") and st["_precip_sum"] > 0:
+                st["MLY-PRCP-NORMAL"] = st["_precip_sum"]
+            ranked.append((_haversine_m(lat, lon, la, lo), st))
         ranked.sort(key=lambda t: t[0])
         nearest = ranked[:3]
         if not nearest:

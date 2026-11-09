@@ -376,7 +376,8 @@ def build_picture(folder: str, into: str) -> dict | None:
             canvas = Image.new("RGB", (width, height), (16, 18, 15))
             for tx, ty in levels[level]:
                 with zf.open(f"{level}/tile{tx}x{ty}.png") as f:
-                    tile = Image.open(io.BytesIO(f.read())).convert("RGB")
+                    with Image.open(io.BytesIO(f.read())) as page:
+                        tile = page.convert("RGB")
                 canvas.paste(tile, (tx * 256, ty * 256))
     except (OSError, KeyError, ValueError, zipfile.BadZipFile):
         return None
