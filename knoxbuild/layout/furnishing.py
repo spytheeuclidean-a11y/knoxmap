@@ -2224,16 +2224,7 @@ def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
     # that is how the 3.9 was counted. Spending it on counters first and then
     # hanging cupboards on top of it is what left ours at 6.6.
     budget = max(3, round(area * COUNTER_PER_M2)) if area else 99
-    # A commercial kitchen asks for no cupboards and for the worktop to run
-    # wall to wall (area=0). Taking the cupboard share out of that budget all
-    # the same left it at 99 - 99 = 0, so no run was ever drawn: a restaurant
-    # kitchen had the one counter off its wishlist and bare wall beside it.
-    if not cabinets:
-        room_cabinets = 0
-    elif area:
-        room_cabinets = max(1, round(budget * CABINET_SHARE))
-    else:
-        room_cabinets = 99
+    room_cabinets = max(1, round(budget * CABINET_SHARE)) if area else 99
     already = sum(1 for role, x, y, _o in plan.furniture
                   if role.startswith("counter") and _room_at(plan, x, y) == idx)
     left = max(0, budget - room_cabinets - already)
@@ -3166,23 +3157,6 @@ def _seat_the_desks(building: "Building") -> int:
     return moved
 
 
-def _off_the_doorways(storey: Plan) -> int:
-    """Nothing standing on the tiles a door keeps clear.
-
-    Furnishing keeps off them, but a door can be moved or added afterwards -
-    when the flight is in the way of the door first chosen - and it can land
-    on a bed already in place: a bedroom whose only way in was a bed's foot.
-    """
-    clear = _door_tiles(storey)
-    gone = {i for i, f in enumerate(storey.furniture)
-            if _blocks(f[0])
-            and set(_cells_for(f[0], f[1], f[2], f[3])).intersection(clear)}
-    if gone:
-        storey.furniture = [f for i, f in enumerate(storey.furniture)
-                            if i not in gone]
-    return len(gone)
-
-
 def _clear_the_way(building: "Building") -> int:
     """Take out whatever stands between a doorway and the rooms behind it.
 
@@ -3191,7 +3165,7 @@ def _clear_the_way(building: "Building") -> int:
     connected - every audit of it passed - but the furnished building was not.
     """
     _doors_off_stairs(building)
-    removed = sum(_off_the_doorways(storey) for storey in building.storeys)
+    removed = 0
     stairs = building.stairs[0] if building.stairs else None
     for level, storey in enumerate(building.storeys):
         _make_way_for_windows(storey, stairs)
