@@ -135,3 +135,33 @@ class IsoRenderCache(unittest.TestCase):
         os.utime(lot, ns=(lot.stat().st_atime_ns, lot.stat().st_mtime_ns + 10 ** 9))
         self.assertEqual(self._ask().status_code, 200)
         self.assertEqual(self.render.call_count, 2, "a recompile must not reuse the old render")
+
+
+class IsoLargeSelection(unittest.TestCase):
+    """A box bigger than 200 tiles is drawn whole at a smaller scale."""
+
+    def setUp(self):
+        self.name = "_test_iso_big"
+        self.map_dir = OUTPUT_DIR / self.name
+        (self.map_dir / "lots").mkdir(parents=True, exist_ok=True)
+        (self.map_dir / "lots" / "10_10.lotheader").write_bytes(b"lotheader")
+        self.client = app.test_client()
+        self.patch = patch("tools.render_lots.render",
+                           return_value=Image.new("RGBA", (40, 40), (10, 20, 30, 255)))
+        self.render = self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        shutil.rmtree(self.map_dir, ignore_errors=True)
+
+    def test_a_wide_box_keeps_its_width_and_gives_up_sharpness(self):
+        r = self.client.get(f"/api/iso-render/{self.name}?box=0,0,400,400&scale=1.0")
+        self.assertEqual(r.status_code, 200)
+        x, y, w, h = self.render.call_args.args[1:5]
+        self.assertEqual((w, h), (400, 400), "the box was cropped instead of drawn whole")
+        scale = self.render.call_args.kwargs["scale"]
+        self.assertAlmostEqual(scale, 412 / 800, places=2)
+
+    def test_a_box_at_the_ceiling_keeps_full_scale(self):
+        self.client.get(f"/api/iso-render/{self.name}?box=0,0,200,200&scale=1.0")
+        self.assertEqual(self.render.call_args.kwargs["scale"], 1.0)

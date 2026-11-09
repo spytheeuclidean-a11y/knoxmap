@@ -107,8 +107,8 @@
             </label>
             <label>X: <input type="number" id="isoSectorX" min="0" step="10" value="1200"></label>
             <label>Y: <input type="number" id="isoSectorY" min="0" step="10" value="1050"></label>
-            <label>W: <input type="number" id="isoSectorW" min="10" max="200" step="10" value="60"></label>
-            <label>H: <input type="number" id="isoSectorH" min="10" max="200" step="10" value="60"></label>
+            <label>W: <input type="number" id="isoSectorW" min="10" max="1000" step="10" value="60"></label>
+            <label>H: <input type="number" id="isoSectorH" min="10" max="1000" step="10" value="60"></label>
             <button type="button" class="btn btn-small btn-primary" id="isoRenderBtn">Render HD</button>
           </div>
 
@@ -435,8 +435,10 @@
     const minTy = Math.max(0, Math.min(p1.y, p2.y, p3.y, p4.y));
     const maxTy = Math.min(mapH, Math.max(p1.y, p2.y, p3.y, p4.y));
 
-    const selW = Math.max(10, Math.min(200, maxTx - minTx));
-    const selH = Math.max(10, Math.min(200, maxTy - minTy));
+    // Boxes bigger than 200 tiles are allowed: the renderer draws the whole
+    // rectangle at a smaller scale rather than cropping it (see web/maps.py).
+    const selW = Math.max(10, Math.min(1000, maxTx - minTx));
+    const selH = Math.max(10, Math.min(1000, maxTy - minTy));
 
     currentSelection = { x: minTx, y: minTy, w: selW, h: selH };
 
@@ -935,11 +937,18 @@
       loadHdHereBtn.style.display = 'none';
     }
 
-    const url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${w},${h}&scale=1.0&roofs=${roofs ? 1 : 0}&t=${Date.now()}`;
+    // 1:1 is 128x256 px a tile, so the picture grows with the square of the
+    // box. 412 tiles corner to corner is where 200x200 at 1:1 sits (~85 Mpx);
+    // past that the same area is drawn whole at a smaller scale, which is the
+    // server's rule too.
+    const scale = Math.min(1, 412 / Math.max(10, w + h));
+    const url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${w},${h}`
+              + `&scale=${scale.toFixed(2)}&roofs=${roofs ? 1 : 0}&t=${Date.now()}`;
     const roofText = roofs ? 'with roofs' : 'furnished interiors';
-    loadImage(url, `Rendering HD sector ${x},${y} (${w}×${h} tiles, ${roofText})…`,
-              roofs ? 'Compositing full 1:1 crystal-clear in-game sprites' : 'Compositing furnished rooms, walls and partitions',
-              4);
+    const at = scale < 0.99 ? ` at ${Math.round(scale * 100)}% to fit` : '';
+    loadImage(url, `Rendering HD sector ${x},${y} (${w}×${h} tiles, ${roofText}${at})…`,
+              roofs ? 'Compositing in-game sprites' : 'Compositing furnished rooms, walls and partitions',
+              scale < 0.99 ? 12 : 4);
   }
 
   async function showIsoView(name) {
