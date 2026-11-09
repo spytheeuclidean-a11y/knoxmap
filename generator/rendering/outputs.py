@@ -164,23 +164,30 @@ def _build_spawn_map(landscape: Image.Image, w: int, h: int,
 
 def _build_preview(landscape: Image.Image, vegetation: Image.Image) -> Image.Image:
     """Human-friendly PNG: landscape with trees painted dark green."""
-    preview = landscape.copy()
-    lp = preview.load()
-    vp = vegetation.load()
-    w, h = preview.size
-    tree_colors = {C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
-                   C.BUSHES_TREES_DARK_GRASS, C.TREE_SMALL}
+    import numpy as np
+
+    arr = np.array(landscape, dtype=np.uint8, copy=True)
+    veg = np.asarray(vegetation, dtype=np.uint8)
+    h, w = arr.shape[:2]
+    key = ((veg[:, :, 0].astype(np.uint32) << 16)
+           | (veg[:, :, 1].astype(np.uint32) << 8)
+           | veg[:, :, 2])
+
+    def code(c):
+        return (c[0] << 16) | (c[1] << 8) | c[2]
+
+    other_trees = [code(c) for c in (C.TREES_DARK_GRASS, C.SPARSE_TREES,
+                                     C.BUSHES_TREES_DARK_GRASS, C.TREE_SMALL)]
+    arr[np.isin(key, other_trees)] = (65, 95, 45)
+    arr[key == code(C.TREES)] = (40, 75, 35)
     # A big tree covers more ground than its one tile, so the preview gives it
     # the square it keeps clear - otherwise a wood of them reads as a clearing.
-    for y in range(h):
-        for x in range(w):
-            v = vp[x, y]
-            if v in tree_colors:
-                lp[x, y] = (40, 75, 35) if v == C.TREES else (65, 95, 45)
-            elif v in C.BIG_TREE_ROOM:
-                side = C.BIG_TREE_ROOM[v]
-                reach = side // 2 if side % 2 else 0
-                for fy in range(max(0, y - reach), min(h, y - reach + side)):
-                    for fx in range(max(0, x - reach), min(w, x - reach + side)):
-                        lp[fx, fy] = (25, 60, 25)
-    return preview
+    for c, side in C.BIG_TREE_ROOM.items():
+        ys, xs = np.nonzero(key == code(c))
+        if len(xs) == 0:
+            continue
+        reach = side // 2 if side % 2 else 0
+        for y, x in zip(ys.tolist(), xs.tolist()):
+            arr[max(0, y - reach):min(h, y - reach + side),
+                max(0, x - reach):min(w, x - reach + side)] = (25, 60, 25)
+    return Image.fromarray(arr, "RGB")

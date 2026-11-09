@@ -314,7 +314,10 @@ def _write_worldmap(path: str, features: list[tuple[Polygon, str, str]],
         for cy in range(max(0, int(miny // CELL)), min(height // CELL, int(maxy // CELL) + 1)):
             for cx in range(max(0, int(minx // CELL)), min(width // CELL, int(maxx // CELL) + 1)):
                 x0, y0 = cx * CELL, cy * CELL
-                clipped = poly.intersection(box(x0, y0, x0 + CELL, y0 + CELL))
+                if minx >= x0 and maxx <= x0 + CELL and miny >= y0 and maxy <= y0 + CELL:
+                    clipped = poly
+                else:
+                    clipped = poly.intersection(box(x0, y0, x0 + CELL, y0 + CELL))
                 for part in _parts(clipped):
                     if part.area < 1:
                         continue

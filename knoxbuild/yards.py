@@ -95,8 +95,17 @@ PORCH_LIGHT_LAYER = "WallFurniture"
 _SIDE = {(0, -1): "N", (0, 1): "S", (-1, 0): "W", (1, 0): "E"}
 
 
+_OUTSIDE_DOORS_CACHE: dict[tuple[str, int], list[tuple[int, int, int, int]]] = {}
+
+
 def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
     """(outside x, y, inside x, y) of each ground-floor outside door, front first."""
+    try:
+        key = (tbx_path, os.stat(tbx_path).st_mtime_ns)
+    except OSError:
+        key = None
+    if key is not None and key in _OUTSIDE_DOORS_CACHE:
+        return _OUTSIDE_DOORS_CACHE[key]
     with open(tbx_path, encoding="utf-8") as f:
         text = f.read()
     first = text.split("<floor>", 2)
@@ -120,6 +129,8 @@ def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
         if inside(*a) != inside(*b):
             out, into = (a, b) if inside(*b) else (b, a)
             found.append((out[0], out[1], into[0], into[1]))
+    if key is not None:
+        _OUTSIDE_DOORS_CACHE[key] = found
     return found
 
 
@@ -628,7 +639,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
              & ~np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w))
     where = credit_ground.paint(ground, veg, clear, rows)
     print(f"credit lettering     : " + (f"at tile {where[0]},{where[1]}" if where else "no clear patch"))
-    Image.fromarray(ground).save(bmp, format="BMP")
+    import knoxfiles
+    knoxfiles.save(Image.fromarray(ground), bmp, format="BMP")
     if veg is not None:
-        Image.fromarray(veg).save(veg_path, format="BMP")
+        knoxfiles.save(Image.fromarray(veg), veg_path, format="BMP")
     return dressed, fences

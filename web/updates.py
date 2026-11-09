@@ -41,7 +41,7 @@ def api_versions_install():
     """Download the version chosen in the menu, to go in on restart."""
     import updater
     version = str(_json_body().get("version", "")).strip()
-    if not re.fullmatch(r"\d+(\.\d+){0,3}", version):
+    if not re.fullmatch(r"\d+(?:\.\d+){0,3}(?:-[a-z]+\d*)?", version):
         return failed("Choose a version from the list.", 400)
     if not updater.managed():
         return failed("This copy of KnoxMap is a git checkout: switch versions with git.", 400)

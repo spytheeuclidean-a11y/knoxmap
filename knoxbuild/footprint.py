@@ -360,10 +360,12 @@ def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
         for r in range(NUDGE_TILES + 1, WIDE_NUDGE_TILES + 1):
             for ox2 in range(-r, r + 1):
                 for oy2 in range(-r, r + 1):
-                    if max(abs(ox2), abs(oy2)) != r or cost(ox2, oy2) is None:
+                    if max(abs(ox2), abs(oy2)) != r:
+                        continue
+                    c = cost(ox2, oy2)
+                    if c is None:
                         continue
                     if _road_share(mask, x0 + ox2, y0 + oy2, avoid) <= ROAD_SHARE_MAX:
-                        c = cost(ox2, oy2)
                         if found is None or c[1] < found[0]:
                             found = (c[1], ox2, oy2)
             if found:
