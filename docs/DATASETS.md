@@ -66,7 +66,13 @@ hand-authored data every time.
   | 100 Moss and lichen | dirt and moss patches, low rocks in clumps (~30%), boulders (~3%), no trees |
 
   Where WorldCover has a class, the random wild growth and woods KnoxMap
-  scatters on unmapped grass stay off it. Mapped OSM `landuse=farmland` gets
+  scatters on unmapped grass stay off it. No building stands in a field or a
+  lake: WorldCover cropland and water within 6 m of one becomes lawn, and OSM
+  farmland is kept off it the same way. A building in woods - OSM's or
+  WorldCover's - gets a clearing 10-30 m out from its walls with a wobbly,
+  thinning edge, and a house (not a shed) a gently bent tarmac drive to the
+  nearest road up to 400 m away, never through water or another building
+  (`generator/rendering/homesteads.py`). Mapped OSM `landuse=farmland` gets
   the same fields, and OSM marsh/swamp/bog/reedbed wetland the same pools.
   The renderer paints this ground in marker colours until OSM has painted
   (`generator/rendering/landcover.py`); fields, pools and rocks are in

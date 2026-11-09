@@ -83,7 +83,7 @@ def _paint_plots(land, veg, field, pid, furrow_h, tile_ids, salt: int):
     return set(np.unique(pid[field]).tolist())
 
 
-def _polygon_field(landscape, veg, proj, ring, index: int) -> int:
+def _polygon_field(landscape, veg, proj, ring, index: int, blocked=None) -> int:
     from shapely.geometry import Polygon
 
     poly = Polygon(ring)
@@ -103,6 +103,8 @@ def _polygon_field(landscape, veg, proj, ring, index: int) -> int:
     land = np.array(landscape.crop(box))
     vegp = np.array(veg.crop(box))
     field = (np.asarray(mask) > 0) & np.all(land == C.LIGHT_GRASS, axis=2)
+    if blocked is not None:
+        field &= ~blocked[y0:y1, x0:x1]
     if not field.any():
         return 0
 
@@ -180,14 +182,17 @@ def _cropland(landscape, veg, proj, cropland) -> int:
     return len(painted)
 
 
-def paint_fields(landscape, veg, proj, polygons, cropland) -> int:
+def paint_fields(landscape, veg, proj, polygons, cropland, blocked=None) -> int:
     """Plots on each OSM farmland polygon (pixel rings) and on the `cropland`
     mask (WorldCover, bool, or None). Only light-grass ground is ploughed, so
-    a road or a track OSM drew across a field stays. Returns plots painted."""
+    a road or a track OSM drew across a field stays, and nothing `blocked`
+    (bool: buildings and their yards) is. Returns plots painted."""
     plots = 0
     for index, ring in enumerate(polygons):
         if len(ring) >= 3:
-            plots += _polygon_field(landscape, veg, proj, ring, index)
+            plots += _polygon_field(landscape, veg, proj, ring, index, blocked)
+    if cropland is not None and blocked is not None:
+        cropland = cropland & ~blocked
     if cropland is not None and cropland.any():
         plots += _cropland(landscape, veg, proj, cropland)
     return plots

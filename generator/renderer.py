@@ -57,6 +57,7 @@ from .rendering.landcover import (AREA_CATEGORIES, DENSE_COVERAGE,
                                   refine_owned, resized_grid,
                                   settle_markers)  # noqa: F401
 from .rendering.fields import paint_fields, paint_pools, paint_rocks
+from .rendering.homesteads import clear_homesteads, keep_yards_clear
 from .rendering.landcover_veg import plant_landcover
 from .rendering.outputs import (AREA_TAGS, LINE_TAGS, OPENING_PATHS,
                                 _areas_geojson, _build_preview,
@@ -251,6 +252,13 @@ POOL_WETLANDS = {None, "marsh", "swamp", "bog", "reedbed"}
 # WorldCover classes relief may band: tree cover, shrubland, grassland,
 # built-up - grass ground that stays grass.
 RELIEF_CLASSES = (10, 20, 30, 50)
+
+
+def _either(a, b):
+    """The union of two optional bool masks."""
+    if a is None:
+        return b
+    return a if b is None else a | b
 
 
 def _polygon_mask(feats, proj):
@@ -533,6 +541,16 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         owned &= ~_polygon_mask(
             [f for f in vegetation_feats
              if classify(f.tags, _is_polygon(f)) in {"forest", "scrub"}], proj)
+    # No field or lake under a building or in its yard: WorldCover's 10 m grid
+    # does not know the farmyard is there (generator/rendering/homesteads.py).
+    footprints = [ring for f in building_feats if _is_polygon(f)
+                  for ring in _feature_coords_px(f, proj) if len(ring) >= 3]
+    yards = None
+    try:
+        yards = keep_yards_clear(landscape, landcover_grid, owned, footprints,
+                                 proj.meters_per_tile)
+    except Exception as exc:            # noqa: BLE001 - never lose a map to it
+        _log.warning("building yards skipped: %s: %s", type(exc).__name__, exc)
     _pave_dense_ground(landscape, building_feats, buckets, proj)
     for paved in lifted.paving:
         l_draw.polygon(list(paved.exterior.coords), fill=C.PAVING)
@@ -563,7 +581,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                       if f.tags.get("landuse") == "farmland" and _is_polygon(f)
                       for ring in _feature_coords_px(f, proj) if len(ring) >= 3]
         cropland = owned & (landcover_grid == 40) if owned is not None else None
-        paint_fields(landscape, vegetation, proj, farm_rings, cropland)
+        paint_fields(landscape, vegetation, proj, farm_rings, cropland, blocked=yards)
         if owned is not None:
             paint_rocks(landscape, vegetation, proj, landcover_grid, owned)
     except Exception as exc:            # noqa: BLE001 - never lose a map to it
@@ -583,6 +601,17 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
                       density=tree_density * forest_density, should_stop=should_stop,
                       extra_forest=forest)
+    # A building in the woods gets a clearing and a drive to the road.
+    homes = None
+    try:
+        drive_roads = [line for road in ("road_service", "road_minor", "road_medium",
+                                         "road_major")
+                       for f in buckets.get(road, []) if not _is_polygon(f)
+                       for line in _feature_coords_px(f, proj) if len(line) >= 2]
+        homes, _home_counts = clear_homesteads(vegetation, landscape, footprints,
+                                               drive_roads, proj.meters_per_tile)
+    except Exception as exc:            # noqa: BLE001 - never lose a map to it
+        _log.warning("clearings skipped: %s: %s", type(exc).__name__, exc)
     # Pools in the marsh, after its reeds (generator/rendering/fields.py).
     try:
         wet = _polygon_mask([f for f in buckets.get("wetland", [])
@@ -598,12 +627,13 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                  density=tree_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     # Where WorldCover has a class, it says what grows; elsewhere, a guess.
-    _paint_wild_growth(vegetation, landscape, proj, density=tree_density, exclude=owned)
+    _paint_wild_growth(vegetation, landscape, proj, density=tree_density,
+                       exclude=_either(owned, homes))
     # Made-up woods only stand in for land cover data: with WorldCover the
     # woods are the real ones, and a random one would only add woods where
     # the data says there are none. They still grow where it has no data.
     _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density,
-                  exclude=None if owned is None else landcover_grid > 0)
+                  exclude=_either(None if owned is None else landcover_grid > 0, homes))
     # Last of the planting: some of the trees now down become the big ones,
     # which need a square of their own and so can only be chosen once it is
     # settled what stands where.
