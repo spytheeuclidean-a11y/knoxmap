@@ -45,9 +45,11 @@ class Settings:
     # How the roads are laid: as mapped (0); in straight runs along the tiles
     # and on 45-degree diagonals, like Knox County's (1); routed in vanilla
     # B42's sixteen directions with its own street shapes and curves (2); or
-    # that, with built-up streets kept on the grid and off the buildings (3).
+    # that, with built-up streets kept on the grid and off the buildings (3);
+    # or Knox County straight with the short kinks between runs squared off and
+    # a street kept to one grid line or one diagonal (4, the default).
     # 2 and 3 take minutes on a town (generator/roadgraph).
-    straight_roads: int = 1
+    straight_roads: int = 4
     include_proposed_roads: int = 0
 
     # --- terrain ---------------------------------------------------------
@@ -259,7 +261,7 @@ LIMITS = {
     "align_streets": (0, 1),
     # Past 45 either way it is the same grid again, a quarter turn round.
     "rotate_degrees": (-45.0, 45.0),
-    "straight_roads": (0, 3),
+    "straight_roads": (0, 4),
     "include_proposed_roads": (0, 1),
     "max_size": (8, 250),
     "apartment_footprint": (16, 4000),
