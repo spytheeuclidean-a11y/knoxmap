@@ -54,7 +54,7 @@ from .rendering.landcover import (AREA_CATEGORIES, DENSE_COVERAGE,
                                   GREEN_CATEGORIES, LANDSCAPE_FILL,
                                   LANDSCAPE_ORDER, VEG_CATEGORIES,
                                   WATERWAY_WIDTH_M, paint_markers,
-                                  refine_owned, resized_grid,
+                                  grid_for_map, refine_owned, resized_grid,
                                   settle_markers)  # noqa: F401
 from .rendering.fields import paint_fields, paint_pools, paint_rocks
 from .rendering.homesteads import clear_homesteads, keep_yards_clear
@@ -346,14 +346,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         # in marker colours until OSM has painted, so what OSM left blank can
         # be told apart (generator/rendering/landcover.py).
         try:
-            # The image covers more than the bbox (whole cells); ask for
-            # exactly what it covers. A turned map has no axis-aligned
-            # extent, so it keeps the bbox.
-            if proj.rotation:
-                landcover_grid = landcover_for(proj.width, proj.height)
-            else:
-                landcover_grid = landcover_for(proj.width, proj.height,
-                                               bounds=proj.latlon_bbox())
+            # What the image covers, turned with the map if it is turned.
+            landcover_grid = grid_for_map(landcover_for, proj)
             if landcover_grid is not None:
                 landcover_grid = resized_grid(landcover_grid, landscape.size)
                 paint_markers(landscape, landcover_grid)

@@ -32,6 +32,43 @@ assert not set(MARKER.values()) & C.LANDSCAPE_COLORS
 _STRIP = 1024
 
 
+def grid_for_map(landcover_for, proj):
+    """WorldCover's class for every tile of the map, `(height, width)`.
+
+    The map's image covers more than the bbox (it is padded to whole cells),
+    so the grid is read for what the image covers. A turned map's tiles do
+    not run along lines of latitude: the grid is read for the box round the
+    whole turned map, and each tile takes the class at its own position."""
+    import math
+
+    import numpy as np
+
+    bounds = proj.latlon_bbox()
+    if not proj.rotation:
+        return landcover_for(proj.width, proj.height, bounds=bounds)
+    a = math.radians(proj.rotation)
+    c, s_ = abs(math.cos(a)), abs(math.sin(a))
+    gw = max(1, int(math.ceil(proj.width * c + proj.height * s_)))
+    gh = max(1, int(math.ceil(proj.width * s_ + proj.height * c)))
+    source = landcover_for(gw, gh, bounds=bounds)
+    if source is None:
+        return None
+    source = np.asarray(source)
+    gh, gw = source.shape
+    south, west, north, east = bounds
+    out = np.zeros((proj.height, proj.width), dtype=source.dtype)
+    xs = np.arange(proj.width, dtype=np.float64) + 0.5
+    for top in range(0, proj.height, _STRIP):
+        bottom = min(proj.height, top + _STRIP)
+        ys = np.arange(top, bottom, dtype=np.float64) + 0.5
+        px, py = np.meshgrid(xs, ys)
+        lat, lon = proj.to_latlon_many(px, py)
+        col = np.clip(((lon - west) / (east - west) * gw).astype(np.int64), 0, gw - 1)
+        row = np.clip(((north - lat) / (north - south) * gh).astype(np.int64), 0, gh - 1)
+        out[top:bottom] = source[row, col]
+    return out
+
+
 def resized_grid(grid, size):
     """The class grid at the image's size (width, height), nearest class."""
     import numpy as np
