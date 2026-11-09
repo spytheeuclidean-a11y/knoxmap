@@ -2224,7 +2224,16 @@ def _counter_runs(plan: Plan, idx: int, slots, occupied: set,
     # that is how the 3.9 was counted. Spending it on counters first and then
     # hanging cupboards on top of it is what left ours at 6.6.
     budget = max(3, round(area * COUNTER_PER_M2)) if area else 99
-    room_cabinets = max(1, round(budget * CABINET_SHARE)) if area else 99
+    # A commercial kitchen asks for no cupboards and for the worktop to run
+    # wall to wall (area=0). Taking the cupboard share out of that budget all
+    # the same left it at 99 - 99 = 0, so no run was ever drawn: a restaurant
+    # kitchen had the one counter off its wishlist and bare wall beside it.
+    if not cabinets:
+        room_cabinets = 0
+    elif area:
+        room_cabinets = max(1, round(budget * CABINET_SHARE))
+    else:
+        room_cabinets = 99
     already = sum(1 for role, x, y, _o in plan.furniture
                   if role.startswith("counter") and _room_at(plan, x, y) == idx)
     left = max(0, budget - room_cabinets - already)
