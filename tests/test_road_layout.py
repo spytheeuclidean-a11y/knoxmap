@@ -225,9 +225,10 @@ class WithoutScipy(unittest.TestCase):
 
 class Setting(unittest.TestCase):
     def test_four_road_layouts(self):
-        self.assertEqual(Settings().straight_roads, 1)
+        self.assertEqual(Settings().straight_roads, 4)
         self.assertEqual(Settings.from_dict({"straight_roads": 3}).straight_roads, 3)
-        self.assertEqual(Settings.from_dict({"straight_roads": 9}).straight_roads, 3)
+        self.assertEqual(Settings.from_dict({"straight_roads": 4}).straight_roads, 4)
+        self.assertEqual(Settings.from_dict({"straight_roads": 9}).straight_roads, 4)
         self.assertEqual(set(renderer.ROAD_LAYOUTS.values()), set(modes.PRESETS))
 
     def test_build_reads_the_saved_roads_back(self):

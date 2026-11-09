@@ -201,19 +201,32 @@ def _blur(a: np.ndarray, radius: int) -> np.ndarray:
     return a
 
 
-def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray, original: np.ndarray, pinned: np.ndarray) -> list:
+def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray, original: np.ndarray, pinned: np.ndarray, clean: bool = False) -> list:
     """Whole tiles for the points, the same row for every point along one
     east-west run, the same column along a north-south one and the same
     diagonal along a diagonal one - rounded one at a time, the ends of a long
     straight road can land either side of a tile edge, and it jogs."""
     n = len(moved)
-    reach = MAX_MOVE_TILES / math.sqrt(2)
+    cap = MAX_MOVE_TILES * (1.35 if clean else 1.0)
+    reach = cap / math.sqrt(2)
     lower = np.ceil(original - reach).astype(int)
     upper = np.floor(original + reach).astype(int)
+    orig_down = original[:, 0] - original[:, 1]
+    orig_up = original[:, 0] + original[:, 1]
+    down_lo = np.ceil(orig_down - cap).astype(int)
+    down_hi = np.floor(orig_down + cap).astype(int)
+    up_lo = np.ceil(orig_up - cap).astype(int)
+    up_hi = np.floor(orig_up + cap).astype(int)
     if pinned is not None:
         lower[pinned] = upper[pinned] = np.rint(original[pinned]).astype(int)
-    bounds = {kind: [list(lower[:, axis]), list(upper[:, axis])]
-              for kind, axis in (("row", 1), ("col", 0))}
+        down_lo[pinned] = down_hi[pinned] = (lower[pinned, 0] - lower[pinned, 1])
+        up_lo[pinned] = up_hi[pinned] = (lower[pinned, 0] + lower[pinned, 1])
+    bounds = {
+        "row": [list(lower[:, 1]), list(upper[:, 1])],
+        "col": [list(lower[:, 0]), list(upper[:, 0])],
+        "down": [list(down_lo), list(down_hi)],
+        "up": [list(up_lo), list(up_hi)],
+    }
     parent = {kind: list(range(n)) for kind in ("row", "col", "down", "up")}
 
     def find(kind, a):
@@ -249,8 +262,7 @@ def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray, or
         for k in range(n):
             groups.setdefault(find(kind, k), []).append(values[k])
         mean = {g: round(sum(v) / len(v)) for g, v in groups.items()}
-        # Axis runs share a tile only within their original movement bounds.
-        # Diagonals keep the fit's smaller rounding tolerance.
+        # Axis and diagonal runs share a tile offset within their movement bounds.
         if kind in bounds:
             lo, hi = bounds[kind]
             mean = {g: min(hi[g], max(lo[g], m)) for g, m in mean.items()}
@@ -269,9 +281,26 @@ def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray, or
         y = row[k] if in_row[k] else round(ys[k])
         if in_col[k]:
             x = col[k]
+            if not in_row[k]:
+                if in_down[k]:
+                    y = x - down[k]
+                elif in_up[k]:
+                    y = up[k] - x
         elif in_down[k]:
+            if not in_row[k] and not in_up[k]:
+                y = round((xs[k] + ys[k] - down[k]) / 2)
+                lo_y = max(lower[k, 1], lower[k, 0] - down[k])
+                hi_y = min(upper[k, 1], upper[k, 0] - down[k])
+                if lo_y <= hi_y:
+                    y = min(hi_y, max(lo_y, y))
             x = down[k] + y
         elif in_up[k]:
+            if not in_row[k]:
+                y = round((ys[k] - xs[k] + up[k]) / 2)
+                lo_y = max(lower[k, 1], up[k] - upper[k, 0])
+                hi_y = min(upper[k, 1], up[k] - lower[k, 0])
+                if lo_y <= hi_y:
+                    y = min(hi_y, max(lo_y, y))
             x = up[k] - y
         else:
             x = round(xs[k])
@@ -285,28 +314,98 @@ def _round_together(moved: np.ndarray, segs: np.ndarray, normals: np.ndarray, or
     return out
 
 
-def _square_short_bends(p0, segs, normals, pinned):
+def _square_short_bends(p0, segs, normals, pinned, clean: bool = False):
     """Square small kinks between long grid runs, keeping major diagonals."""
     lengths = np.linalg.norm(p0[segs[:, 1]] - p0[segs[:, 0]], axis=1)
     axial = np.min(np.abs(normals), axis=1) < 1e-9
     incident = {}
+    all_incident = {}
     for i, (a, b) in enumerate(segs):
+        all_incident.setdefault(a, []).append(i)
+        all_incident.setdefault(b, []).append(i)
         if axial[i]:
             incident.setdefault(a, []).append(i)
             incident.setdefault(b, []).append(i)
     out = normals.copy()
+    max_kink = MAX_MOVE_TILES * (2.0 if clean else 1.0)
+    ratio = 1.5 if clean else 2.0
     for i, (a, b) in enumerate(segs):
-        if axial[i] or lengths[i] > MAX_MOVE_TILES or pinned[a] or pinned[b]:
+        if lengths[i] > max_kink or pinned[a] or pinned[b]:
             continue
-        before = [j for j in incident.get(a, ()) if lengths[j] >= 2 * lengths[i]]
-        after = [j for j in incident.get(b, ()) if lengths[j] >= 2 * lengths[i]]
-        if before and after:
-            j = max(before + after, key=lambda j: lengths[j])
-            out[i] = normals[j]
+        if not axial[i]:
+            before = [j for j in incident.get(a, ()) if j != i and lengths[j] >= ratio * lengths[i]]
+            after = [j for j in incident.get(b, ()) if j != i and lengths[j] >= ratio * lengths[i]]
+            if before and after:
+                j = max(before + after, key=lambda j: lengths[j])
+                out[i] = normals[j]
+                continue
+        # Also straighten a short kink (axial or diagonal) sandwiched between
+        # two longer runs that share the same direction.
+        for j in all_incident.get(a, ()):
+            if j == i or lengths[j] < ratio * lengths[i]:
+                continue
+            for k in all_incident.get(b, ()):
+                if k == i or lengths[k] < ratio * lengths[i]:
+                    continue
+                if abs(float(np.dot(normals[j], normals[k]))) > 1.0 - 1e-6:
+                    out[i] = normals[j]
+                    break
     return out
 
 
-def straighten_roads(features: list, proj, classify, is_polygon) -> int:
+def _align_snapped_segments(snapped: list[tuple[int, int]], road_vertices: list[list[int]],
+                            rigid: list[bool], p0: np.ndarray, pinned: np.ndarray,
+                            clean: bool = False) -> None:
+    """Eliminate 1-3 tile residual cross-axis shifts along straight and diagonal
+    road segments when an unpinned internal vertex can sit on the exact line."""
+    v_uses: dict[int, int] = {}
+    for held, verts in zip(rigid, road_vertices):
+        if held:
+            continue
+        for idx, v in enumerate(verts):
+            v_uses[v] = v_uses.get(v, 0) + (2 if idx in (0, len(verts) - 1) else 1)
+
+    max_err = 4 if clean else 2
+    cap = MAX_MOVE_TILES
+    for held, verts in zip(rigid, road_vertices):
+        if held or len(verts) < 2:
+            continue
+        for u, v in zip(verts, verts[1:]):
+            if u == v:
+                continue
+            ax, ay = snapped[u]
+            bx, by = snapped[v]
+            dx, dy = bx - ax, by - ay
+            adx, ady = abs(dx), abs(dy)
+            if adx == 0 or ady == 0 or adx == ady:
+                continue
+            axial_err = min(adx, ady)
+            diag_err = abs(adx - ady)
+            if axial_err <= max_err and max(adx, ady) >= 3 * axial_err:
+                for target, ref in ((v, (ax, ay)), (u, (bx, by))):
+                    if pinned[target] or (not clean and v_uses.get(target, 0) > 1):
+                        continue
+                    nx = ref[0] if adx < ady else snapped[target][0]
+                    ny = ref[1] if ady < adx else snapped[target][1]
+                    if math.hypot(nx - p0[target, 0], ny - p0[target, 1]) <= cap:
+                        snapped[target] = (int(nx), int(ny))
+                        break
+            elif diag_err <= max_err and min(adx, ady) >= 2 * diag_err:
+                sx = 1 if dx > 0 else -1
+                sy = 1 if dy > 0 else -1
+                for target, origin, sign in ((v, (ax, ay), 1), (u, (bx, by), -1)):
+                    if pinned[target] or (not clean and v_uses.get(target, 0) > 1):
+                        continue
+                    tx, ty = snapped[target]
+                    step = round((abs(tx - origin[0]) + abs(ty - origin[1])) / 2)
+                    nx = origin[0] + sign * sx * step
+                    ny = origin[1] + sign * sy * step
+                    if math.hypot(nx - p0[target, 0], ny - p0[target, 1]) <= cap:
+                        snapped[target] = (int(nx), int(ny))
+                        break
+
+
+def straighten_roads(features: list, proj, classify, is_polygon, clean: bool = False) -> int:
     """Redraw the roads in `features` and move the rest of the town with them,
     in place. Returns how many roads were redrawn."""
     roads = [f for f in features
@@ -334,6 +433,7 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
             junction[key] = len(points) - 1
         return len(points) - 1
 
+    simplify_tol = SIMPLIFY_TILES * (1.5 if clean else 1.0)
     rigid: list[bool] = []            # roads left exactly as they were drawn
     for f in roads:
         px = [proj.to_px(lat, lon) for lat, lon in f.geometry]
@@ -343,7 +443,7 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
         cuts = [n for n, k in enumerate(keys) if n in (0, len(keys) - 1) or uses[k] >= 2]
         verts = [vertex(px[0], keys[0])]
         for a, b in zip(cuts, cuts[1:]):
-            kept = _simplify_idx(px[a:b + 1], SIMPLIFY_TILES)
+            kept = _simplify_idx(px[a:b + 1], simplify_tol)
             for n in kept[1:-1]:
                 verts.append(vertex(px[a + n]))
             verts.append(vertex(px[b], keys[b]))
@@ -375,7 +475,7 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
     if not segs:
         return 0
     segs, normals, weights = np.array(segs), np.array(normals), np.array(weights)
-    normals = _square_short_bends(p0, segs, normals, pinned)
+    normals = _square_short_bends(p0, segs, normals, pinned, clean=clean)
     moved = _fit(p0, segs, normals, weights, pinned)
     # Nothing may be dragged a block from where the survey put it. Whatever
     # wanted to be is pinned and the fit run again - the roads around it take
@@ -388,7 +488,8 @@ def straighten_roads(features: list, proj, classify, is_polygon) -> int:
         moved = _fit(p0, segs, normals, weights, pinned)
 
     # --- the roads, from the moved points ---------------------------------
-    snapped = _round_together(moved, segs, normals, p0, pinned)
+    snapped = _round_together(moved, segs, normals, p0, pinned, clean=clean)
+    _align_snapped_segments(snapped, road_vertices, rigid, p0, pinned, clean=clean)
     drawn: list = []                  # each road as it now stands, in tiles
     for f, held, verts in zip(roads, rigid, road_vertices):
         if held:
@@ -526,9 +627,9 @@ def replay(features: list, proj, classify, is_polygon, info: dict, map_dir: str,
     every time), or the map's saved road graph read back (2 and 3: routing again would
     take minutes). Returns how many roads were redrawn."""
     mode = int(info.get("straight_roads") or 0)
-    if mode == 1:
-        return straighten_roads(features, proj, classify, is_polygon)
-    if mode >= 2:
+    if mode in (1, 4):
+        return straighten_roads(features, proj, classify, is_polygon, clean=(mode == 4))
+    if mode in (2, 3):
         path = graph_path(map_dir, map_name)
         if not os.path.exists(path):
             raise RuntimeError(f"{os.path.basename(path)} is missing: generate the map again")

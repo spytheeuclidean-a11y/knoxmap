@@ -266,7 +266,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            osm_cache: str | None = None,
            osm_bbox: tuple[float, float, float, float] | None = None,
            shape: dict | None = None,
-           straight_roads: int = 1,
+           straight_roads: int = 4,
            include_proposed_roads: int = 0,
            fill_frontage: int = 0,
            landcover_for=None,
@@ -280,11 +280,11 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # address points - so never leave this as a generator.
     features = list(features)
     road_layout = int(straight_roads or 0)
-    if road_layout == 1:
+    if road_layout in (1, 4):
         # Every road in straight runs at 45-degree steps (octilinear.py).
         from .octilinear import straighten_roads
-        straighten_roads(features, proj, classify, _is_polygon)
-    elif road_layout >= 2:
+        straighten_roads(features, proj, classify, _is_polygon, clean=(road_layout == 4))
+    elif road_layout in ROAD_LAYOUTS:
         # Routed on vanilla's lattice (roadgraph/route.py), and saved: Build and
         # the paper map read the roads back rather than routing them again.
         from .octilinear import apply_road_graph, graph_path
@@ -426,15 +426,31 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             # use: painted first, a park or a lawn mapped up to the kerb erased
             # the pavement and the tarmac met the grass. One pass so a side
             # street's pavement cannot cut across the high street it joins.
-            for fill, margin_for in ((C.PALE_CONCRETE, _sidewalk_width_m),
-                                     (C.DARK_GRASS, _verge_width_m)):
+            for fill, is_sidewalk in ((C.PALE_CONCRETE, True),
+                                      (C.DARK_GRASS, False)):
                 strokes = []
                 for road in ("road_service", "road_minor", "road_medium", "road_major"):
                     for feat in buckets.get(road, []):
                         if _is_polygon(feat):
                             continue
-                        width = _way_width_m(feat, road) + 2 * margin_for(feat, road)
-                        strokes.append((_pixel_width(width, meters_per_tile), ground_rings(feat)))
+                        w_road = _pixel_width(_way_width_m(feat, road), meters_per_tile)
+                        v_m = _verge_width_m(feat, road)
+                        verge_side = max(1, int(v_m / meters_per_tile + 0.49)) if v_m > 0 else 0
+                        if not is_sidewalk:
+                            if verge_side <= 0:
+                                continue
+                            w_stroke = w_road + 2 * verge_side
+                        else:
+                            s_m = _sidewalk_width_m(feat, road)
+                            if s_m <= v_m:
+                                continue
+                            pave_side = max(1, round((s_m - v_m) / meters_per_tile))
+                            r_v = (w_road + 2 * verge_side - 1) / 2.0
+                            r_s = r_v + pave_side
+                            if int(r_s * 1.41421356) - int((r_v * 1.41421356) + 0.999999) + 1 < 2:
+                                pave_side += 1
+                            w_stroke = w_road + 2 * (verge_side + pave_side)
+                        strokes.append((w_stroke, ground_rings(feat)))
                 _draw_roads(landscape, strokes, fill)
         fill = LANDSCAPE_FILL.get(cat)
         if fill is None:
@@ -491,7 +507,15 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)
     road_hierarchy = _road_hierarchy_image(buckets, proj)
-    _paint_street_furniture(vegetation, landscape, road_hierarchy)
+    # Where the buildings are, so a hydrant, a bin or a mailbox only stands
+    # where it has something to serve.
+    building_mask = Image.new("L", (proj.width, proj.height), 0)
+    mask_draw = ImageDraw.Draw(building_mask)
+    for feat in building_feats:
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 3:
+                mask_draw.polygon(ring, fill=255)
+    _paint_street_furniture(vegetation, landscape, road_hierarchy, building_mask)
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:

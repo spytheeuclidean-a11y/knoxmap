@@ -67,3 +67,46 @@ class BigRestaurants(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SmallKitchensAreFitted(unittest.TestCase):
+    """A restaurant kitchen is worktop wall to wall, however small it is.
+
+    The commercial run asked for no cupboards and for full coverage, and the
+    cupboard share came out of the same budget anyway - 99 - 99 = 0 - so no run
+    was drawn at all. Every restaurant kitchen had the one counter off its
+    wishlist and bare wall either side of it, which is most obvious in the
+    small ones.
+    """
+
+    def kitchens(self, seeds=range(30)):
+        for seed in seeds:
+            for w, h in ((11, 13), (13, 11), (12, 12), (14, 12), (10, 12), (12, 10)):
+                plan = layout.build_building(
+                    width=w, height=h, kind="restaurant", seed=seed, levels=1,
+                    street="S", uses=[("restaurantdining", "dinerkitchen")]).storeys[0]
+                for idx, room in enumerate(plan.rooms, 1):
+                    if room.kind.endswith("kitchen") and room.area <= 20:
+                        pieces = [f for f in plan.furniture
+                                  if plan.grid[f[2]][f[1]] == idx]
+                        floor = {(x, y) for y in range(room.y0, room.y1 + 1)
+                                 for x in range(room.x0, room.x1 + 1)
+                                 if plan.grid[y][x] == idx}
+                        yield seed, room, pieces, floor
+
+    def test_a_small_kitchen_is_worktop_and_not_bare_wall(self):
+        seen = fitted = 0
+        for seed, room, pieces, floor in self.kitchens():
+            seen += 1
+            counters = [p for p in pieces if p[0].startswith("counter")]
+            if len(counters) >= 3 and len({p[3] for p in counters}) >= 2:
+                fitted += 1
+        self.assertGreater(seen, 20)
+        self.assertGreater(fitted / seen, 0.9,
+                           f"only {fitted} of {seen} small kitchens got a worktop run")
+
+    def test_a_small_kitchen_keeps_a_way_through(self):
+        for seed, room, pieces, floor in self.kitchens():
+            taken = {(p[1], p[2]) for p in pieces}
+            self.assertGreaterEqual(len(floor - taken), 2,
+                                    f"seed {seed}: a kitchen of {room.area} m2 is walled in")

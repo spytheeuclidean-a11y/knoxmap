@@ -109,3 +109,52 @@ class Households(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class GymIsLaidOutInRows(unittest.TestCase):
+    """A gym floor is rows: treadmills shoulder to shoulder facing the mirrors,
+    the weights behind them on evenly spaced lines. They used to be scattered -
+    a treadmill every other tile, and three weight machines at odd angles in a
+    whole room - which reads as machinery stood about at random."""
+
+    def gym(self, w=18, h=12, seed=0):
+        room = L.Room(0, 0, w, h, kind="gym")
+        room.x0, room.x1, room.y0, room.y1 = 0, w - 1, 0, h - 1
+        plan = L.Plan(w, h, rooms=[room], grid=[[1] * w for _ in range(h)],
+                      doors=[(0, h // 2, "W")], kind="gym")
+        got = I.furnish_gym(plan, 1, room, random.Random(seed), set(), set(), None)
+        self.assertIsNotNone(got)
+        pieces = [(r, x, y, o) for r, x, y, o in plan.furniture
+                  if r in ("treadmill", "weight_machine", "weight_machine_alt")]
+        return pieces
+
+    def test_treadmills_stand_shoulder_to_shoulder_in_one_row(self):
+        for seed in range(4):
+            pieces = self.gym(seed=seed)
+            treads = [(x, y) for r, x, y, _ in pieces if r == "treadmill"]
+            self.assertGreaterEqual(len(treads), 6, f"seed {seed}: {treads}")
+            depths = {y for _, y in treads}
+            self.assertEqual(len(depths), 1, f"seed {seed}: treadmills at {treads}")
+            along = sorted(x for x, _ in treads)
+            self.assertEqual(along[-1] - along[0] + 1, len(along),
+                             f"seed {seed}: gaps in the treadmill row {along}")
+
+    def test_weight_machines_line_up_in_even_rows(self):
+        for seed in range(4):
+            pieces = self.gym(seed=seed)
+            weights = [(x, y, o) for r, x, y, o in pieces if r.startswith("weight")]
+            self.assertGreaterEqual(len(weights), 6, f"seed {seed}: {weights}")
+            rows = {}
+            for x, y, o in weights:
+                rows.setdefault(y, []).append((x, o))
+            self.assertGreaterEqual(len(rows), 2, f"seed {seed}: one row only {weights}")
+            lines = []
+            for y, members in rows.items():
+                self.assertEqual(len({o for _, o in members}), 1,
+                                 f"seed {seed}: a row faces two ways {members}")
+                xs = sorted(x for x, _ in members)
+                gaps = {b - a for a, b in zip(xs, xs[1:])}
+                self.assertEqual(len(gaps), 1, f"seed {seed}: uneven row {xs}")
+                lines.append(xs)
+            self.assertEqual(len({tuple(l) for l in lines}), 1,
+                             f"seed {seed}: rows out of line with each other {lines}")

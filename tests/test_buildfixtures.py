@@ -2,6 +2,7 @@
 import os
 import importlib.util
 from pathlib import Path
+import re
 import sys
 import unittest
 import xml.etree.ElementTree as ET
@@ -10,6 +11,13 @@ from knoxbuild.buildtiles import compose_lots, level_tiles, parse_tbx
 
 FIXTURES = Path(os.environ.get("KNOXLOTS_FIXTURES", Path(__file__).resolve().parents[1] / "rust/knoxlots/fixtures"))
 TERRAIN = ("blends_", "vegetation_foliage", "e_", "d_", "lighting_outdoor")
+WINDOW_FIXTURE = re.compile(r"fixtures_windows_(?:white|wood|metal|church|01)_")
+
+
+def entry_tiles(b, attr):
+    """The tiles one of the building's own tables (trim, grime) can put on a wall."""
+    n = int(b.attrs.get(attr, 0))
+    return set(b.entries[n - 1].values()) if 1 <= n <= len(b.entries) else set()
 
 
 @unittest.skipUnless(FIXTURES.is_dir(), "local WorldEd fixtures are not installed")
@@ -23,6 +31,8 @@ class WorldEdTests(unittest.TestCase):
 
     def check_building(self, folder, name, tx, ty, region=None):
         b = parse_tbx((folder / "buildings" / (name + ".tbx")).read_text(encoding="utf-8"))
+        trim_tiles = entry_tiles(b, "ExteriorWallTrim")
+        grime_tiles = entry_tiles(b, "GrimeWall")
         cache = {}
         for z in range(len(b.floors)):
             pred = level_tiles(b, z)
@@ -35,7 +45,23 @@ class WorldEdTests(unittest.TestCase):
                         cache[cx, cy] = self.load(str(folder / "lots"), cx, cy)[0]
                     actual = cache[cx, cy].get(((21000 + tx + x) % 256, (ty + y) % 256, z), [])
                     actual = [t for t in actual if not t.startswith(TERRAIN)]
-                    self.assertEqual(pred.get((x, y), []), actual, f"{name}: level {z}, ({x},{y})")
+                    want = pred.get((x, y), [])
+                    if any(WINDOW_FIXTURE.match(t) for t in want):
+                        # WorldEd leaves the trim and grime off a window square;
+                        # KnoxMap keeps them so the band and the weathering run
+                        # under the window (buildtiles.level_layers). Those
+                        # deliberate differences are the only ones allowed here.
+                        drop = trim_tiles | grime_tiles
+                    elif z > 0:
+                        # Grime on every storey is ours too; WorldEd keeps it at
+                        # the ground level.
+                        drop = grime_tiles
+                    else:
+                        drop = set()
+                    if drop:
+                        want = [t for t in want if t not in drop]
+                        actual = [t for t in actual if t not in drop]
+                    self.assertEqual(want, actual, f"{name}: level {z}, ({x},{y})")
 
     def test_all_handmade_cases(self):
         for folder in sorted((FIXTURES / "bx").iterdir()):
