@@ -21,30 +21,25 @@ EDGE_LINE_MIN_WIDTH = 5
 CRACK_SHARE = 0.012
 LITTER_SHARE = 0.002
 LAMP_EVERY = 18
+# A hydrant, a bin or a mailbox only stands where there is something for it to
+# serve: within this many tiles of a building. Out on open road they were
+# street furniture for nobody.
+NEAR_BUILDING_TILES = 12
 # A speed limit sign every so many tiles along a main street's kerb (Erika's
 # Tiles only), with the limit going by how wide the carriageway is.
 SPEED_SIGN_EVERY = 80
 SPEED_BY_WIDTH = ((12, 45), (8, 35), (0, 25))
-BENCH_EVERY = 32
 BIN_EVERY = 28
 MAILBOX_EVERY = 34
 ROAD_FURNITURE_INTERVALS = {
-    "motorway": {"lamp": 55, "hydrant": 1 << 30, "speed": 55, "drain": 40,
-                 "bench": 1 << 30, "bin": 1 << 30, "mailbox": 1 << 30},
-    "trunk": {"lamp": 36, "hydrant": 80, "speed": 65, "drain": 32,
-              "bench": 1 << 30, "bin": 1 << 30, "mailbox": 1 << 30},
-    "primary": {"lamp": 20, "hydrant": 42, "speed": 75, "drain": 24,
-                "bench": 28, "bin": 24, "mailbox": 42},
-    "secondary": {"lamp": 18, "hydrant": 38, "speed": 85, "drain": 24,
-                  "bench": 30, "bin": 26, "mailbox": 38},
-    "tertiary": {"lamp": 16, "hydrant": 35, "speed": 100, "drain": 24,
-                 "bench": 32, "bin": 28, "mailbox": 34},
-    "residential": {"lamp": 14, "hydrant": 32, "speed": 120, "drain": 24,
-                    "bench": 34, "bin": 28, "mailbox": 30},
-    "service": {"lamp": 30, "hydrant": 75, "speed": 1 << 30, "drain": 34,
-                "bench": 1 << 30, "bin": 36, "mailbox": 1 << 30},
-    "footway": {"lamp": 22, "hydrant": 1 << 30, "speed": 1 << 30, "drain": 1 << 30,
-                "bench": 26, "bin": 28, "mailbox": 1 << 30},
+    "motorway": {"lamp": 55, "hydrant": 1 << 30, "speed": 55, "drain": 40, "bin": 1 << 30, "mailbox": 1 << 30},
+    "trunk": {"lamp": 36, "hydrant": 80, "speed": 65, "drain": 32, "bin": 1 << 30, "mailbox": 1 << 30},
+    "primary": {"lamp": 20, "hydrant": 42, "speed": 75, "drain": 24, "bin": 24, "mailbox": 42},
+    "secondary": {"lamp": 18, "hydrant": 38, "speed": 85, "drain": 24, "bin": 26, "mailbox": 38},
+    "tertiary": {"lamp": 16, "hydrant": 35, "speed": 100, "drain": 24, "bin": 28, "mailbox": 34},
+    "residential": {"lamp": 14, "hydrant": 32, "speed": 120, "drain": 24, "bin": 28, "mailbox": 30},
+    "service": {"lamp": 30, "hydrant": 75, "speed": 1 << 30, "drain": 34, "bin": 36, "mailbox": 1 << 30},
+    "footway": {"lamp": 22, "hydrant": 1 << 30, "speed": 1 << 30, "drain": 1 << 30, "bin": 28, "mailbox": 1 << 30},
 }
 
 
@@ -68,7 +63,8 @@ DRAIN_EVERY = 24
 
 
 def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
-                            road_hierarchy: Image.Image | None = None) -> dict:
+                            road_hierarchy: Image.Image | None = None,
+                            buildings: Image.Image | None = None) -> dict:
     """Lamps, hydrants and drains along the kerbs; grime, cracks and litter.
 
     A generated street was clean tarmac, kerb and pavement and nothing else;
@@ -99,6 +95,17 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     pavement = is_colour(ground, (C.PALE_CONCRETE,))
     roadside = pavement | is_colour(
         ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.PAVING))
+    # Hydrants, bins and mailboxes stand on the grass or paving beside the
+    # sidewalk, never on the sidewalk itself, and only where there is a
+    # building to serve: down an open stretch of road they were furniture for
+    # nobody.
+    verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS,
+                               C.PAVING))
+    near_buildings = None
+    if buildings is not None:
+        mask = buildings if buildings.mode == "L" else buildings.convert("L")
+        reach = ImageFilter.MaxFilter(2 * NEAR_BUILDING_TILES + 1)
+        near_buildings = np.asarray(mask.filter(reach)) > 0
     counts = {}
 
     # Edge lines: tarmac with the road's edge on exactly one side and enough
@@ -153,7 +160,7 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                 (C.EDGE_LINE_N, (0, -1), C.LAMP_S), (C.EDGE_LINE_S, (0, 1), C.LAMP_N)]
     taken: dict[str, set] = {
         "lamp": set(), "hydrant": set(), "drain": set(), "speed": set(),
-        "bench": set(), "bin": set(), "mailbox": set(),
+        "bin": set(), "mailbox": set(),
     }
     out = vp.copy()
     # Speed signs stand where drivers keeping right see their faces: on the
@@ -179,6 +186,20 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                 return ROAD_HIERARCHY_BY_CODE.get(int(road_classes[y, x]))
         return None
 
+    def beside_the_pavement(gx, gy, sx, sy):
+        """The first free grass or paving tile that touches the sidewalk."""
+        for n in range(2, 6):
+            x, y = gx + n * sx, gy + n * sy
+            if not (0 <= x < w and 0 <= y < h):
+                return None
+            if not (empty[y, x] and not driveable[y, x] and verge[y, x]):
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < w and 0 <= ny < h and pavement[ny, nx]:
+                    return x, y
+        return None
+
     for edge, (sx, sy), lamp in straight:
         kerb_mask = np.all(vp == edge, axis=2) | diag_kerbs[edge]
         ys, xs = np.nonzero(kerb_mask)
@@ -196,19 +217,23 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                 across = carriageway(gx, gy, sx, sy)
                 limit = next(v for width, v in SPEED_BY_WIDTH if across >= width)
                 speed = C.SPEED_SIGNS[(limit, facing)]
-            bench_pair = ((C.TABLE_Y0, C.TABLE_Y1, (bx, by + 1))
-                          if sx else (C.TABLE_X0, C.TABLE_X1, (bx + 1, by)))
             for what, every, colour, at, partner in (
                     ("speed", spacing.get("speed", SPEED_SIGN_EVERY), speed, (bx, by), None),
                     ("lamp", spacing.get("lamp", LAMP_EVERY), lamp, (bx, by), None),
                     ("hydrant", spacing.get("hydrant", HYDRANT_EVERY), C.HYDRANT, (bx, by), None),
-                    ("bench", spacing.get("bench", BENCH_EVERY), bench_pair[0], (bx, by), (bench_pair[1], bench_pair[2])),
                     ("bin", spacing.get("bin", BIN_EVERY), C.BIN, (bx, by), None),
                     ("mailbox", spacing.get("mailbox", MAILBOX_EVERY), C.MAILBOX, (bx, by), None),
                     ("drain", spacing.get("drain", DRAIN_EVERY), C.STORM_DRAIN, (gx, gy), None)):
                 if every >= (1 << 29):
                     continue
                 px, py = at
+                if what in ("hydrant", "bin", "mailbox"):
+                    spot = beside_the_pavement(gx, gy, sx, sy)
+                    if spot is None:
+                        continue
+                    px, py = spot
+                    if near_buildings is not None and not near_buildings[py, px]:
+                        continue
                 if colour is None or not (0 <= px < w and 0 <= py < h):
                     continue
                 # Speed signs keep a spacing per facing: the north-south roads,

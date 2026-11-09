@@ -507,7 +507,15 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)
     road_hierarchy = _road_hierarchy_image(buckets, proj)
-    _paint_street_furniture(vegetation, landscape, road_hierarchy)
+    # Where the buildings are, so a hydrant, a bin or a mailbox only stands
+    # where it has something to serve.
+    building_mask = Image.new("L", (proj.width, proj.height), 0)
+    mask_draw = ImageDraw.Draw(building_mask)
+    for feat in building_feats:
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 3:
+                mask_draw.polygon(ring, fill=255)
+    _paint_street_furniture(vegetation, landscape, road_hierarchy, building_mask)
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:
