@@ -1,5 +1,6 @@
 """Tests for the 2.5D isometric game view endpoints."""
 import json
+import os
 import shutil
 import unittest
 from unittest.mock import patch
@@ -103,3 +104,34 @@ class IsoViewEndpointTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class IsoRenderCache(unittest.TestCase):
+    """A recompiled map must not be served from the old render's cache."""
+
+    def setUp(self):
+        self.name = "_test_iso_cache"
+        self.map_dir = OUTPUT_DIR / self.name
+        (self.map_dir / "lots").mkdir(parents=True, exist_ok=True)
+        (self.map_dir / "lots" / "10_10.lotheader").write_bytes(b"lotheader")
+        self.client = app.test_client()
+        self.patch = patch("tools.render_lots.render",
+                           return_value=Image.new("RGBA", (40, 40), (10, 20, 30, 255)))
+        self.render = self.patch.start()
+
+    def tearDown(self):
+        self.patch.stop()
+        shutil.rmtree(self.map_dir, ignore_errors=True)
+
+    def _ask(self):
+        return self.client.get(f"/api/iso-render/{self.name}?box=0,0,20,20")
+
+    def test_a_newer_lot_file_draws_a_new_picture(self):
+        self.assertEqual(self._ask().status_code, 200)
+        self.assertEqual(self.render.call_count, 1)
+        self.assertEqual(self._ask().status_code, 200)
+        self.assertEqual(self.render.call_count, 1, "the second request came from cache")
+        lot = self.map_dir / "lots" / "10_10.lotheader"
+        os.utime(lot, ns=(lot.stat().st_atime_ns, lot.stat().st_mtime_ns + 10 ** 9))
+        self.assertEqual(self._ask().status_code, 200)
+        self.assertEqual(self.render.call_count, 2, "a recompile must not reuse the old render")

@@ -265,6 +265,8 @@ def api_iso_render(name: str):
             max_level = None if roofs else 0
     else:
         max_level = None if roofs else 0
+    if max_level is not None:
+        max_level = max(0, min(int(max_level), 64))
 
     box_arg = request.args.get("box")
     if box_arg:
@@ -294,10 +296,14 @@ def api_iso_render(name: str):
             return failed(f"Could not draw picture: {exc}", 500, exc)
         return jsonify({"error": "Could not render picture."}), 500
 
-    # Cache key for box renders
+    # Cache key for box renders. The lot files are what the picture is drawn
+    # from, so the newest of them belongs in the key: without it a map that was
+    # compiled again kept showing the town it used to be.
     cache_dir = map_dir / "pictures" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / f"iso_{x}_{y}_{w}_{h}_s{scale:.2f}_r{1 if roofs else 0}_m{max_level}.png"
+    newest = max((p.stat().st_mtime_ns for p in lots.glob("*.lot*")), default=0)
+    cache_file = (cache_dir / f"iso_{x}_{y}_{w}_{h}_s{scale:.2f}"
+                                f"_r{1 if roofs else 0}_m{max_level}_t{newest}.png")
 
     if cache_file.is_file():
         return send_file(cache_file, mimetype="image/png")
