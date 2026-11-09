@@ -32,6 +32,9 @@ from .bitmaps import read_rgb, same_colour
 # houses were a median 61 tiles from the pavement with no straight drive.
 PATH_MAX_TILES = 120
 GARAGE_DRIVE_MAX_TILES = 40
+# A house the terrain already gave a drive to (generator/rendering/homesteads.py:
+# a house in the woods) gets no second one beside it: tarmac this near its walls.
+DRIVE_THERE_TILES = 3
 # Who gets a front path, a stoop and a porch light. Only houses get the drive
 # and the yard: flats and public buildings have lots of their own. On Piqua
 # 91% of the flats had no way to the street before this.
@@ -213,6 +216,22 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     occupied_at = np.asarray(occupied, dtype=bool).ravel().tolist()
     road_at = road.ravel().tolist()
     walkable_at = ((crossable | paved | road) & ~occupied).ravel().tolist()
+    # Drives the terrain laid already, read before any are painted here.
+    laid = same_colour(ground, C.DARK_ASPHALT)
+
+    def drive_there(bx0, by0, bw, bh):
+        """Tiles of a drive already reaching this house, nearest first, or []."""
+        r = DRIVE_THERE_TILES
+        x0, y0 = max(0, bx0 - r), max(0, by0 - r)
+        x1, y1 = min(w, bx0 + bw + r), min(h, by0 + bh + r)
+        ys, xs = np.nonzero(laid[y0:y1, x0:x1])
+        if not len(xs):
+            return []
+        xs, ys = xs + x0, ys + y0
+        dx = np.maximum(0, np.maximum(bx0 - xs, xs - (bx0 + bw - 1)))
+        dy = np.maximum(0, np.maximum(by0 - ys, ys - (by0 + bh - 1)))
+        order = np.argsort(dx + dy, kind="stable")
+        return [(int(xs[i]), int(ys[i])) for i in order]
 
     def free(x, y):
         return (0 <= x < w and 0 <= y < h and crossable_at[y * w + x]
@@ -280,8 +299,18 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         # The drive: beside the house, from the street past the front wall.
         # Ahead of the path, so that a house far back from the street can walk
         # to its own drive.
+        there = drive_there(bx0, by0, bw, bh) if home else []
         if not home:
             lanes = []
+        elif there:
+            # The terrain's drive reaches it already: the car parks at its
+            # top, and the path below walks to it.
+            lanes = []
+            if drives is not None:
+                top = there[:DRIVE_WIDTH * 5]
+                xs, ys = [p[0] for p in top], [p[1] for p in top]
+                drives.append((min(xs), min(ys), max(xs) - min(xs) + 1,
+                               max(ys) - min(ys) + 1))
         elif dx:   # street to the east or west; the front runs north-south
             front = bx0 + (bw if dx > 0 else -1)
             lanes = [(by0 + bh + 1, 1), (by0 - DRIVE_WIDTH - 1, 1)]

@@ -34,6 +34,7 @@ DRIVE_MAX_M = 400.0
 DRIVE_MIN_TILES = 3            # a road this close is the drive already
 DRIVE_WIDTH = 3
 DRIVE_BEND = 0.2               # the bend, as a share of the drive's length
+DRIVE_SHARE_M = 10.0           # a drive this near a building serves it too
 HOME_SEED = 5381
 
 # What a clearing takes away: the woods, not a garden's flowers or a field.
@@ -114,6 +115,8 @@ def _wobbly(poly, radius: float, seed: int, extra: float = 0.0):
 
 
 def _rasterise(shape, x0, y0, w, h) -> np.ndarray:
+    if w <= 0 or h <= 0:
+        return np.zeros((max(0, h), max(0, w)), dtype=bool)
     mask = Image.new("L", (w, h), 0)
     draw = ImageDraw.Draw(mask)
     polys = [shape] if shape.geom_type == "Polygon" else list(getattr(shape, "geoms", []))
@@ -173,14 +176,22 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile) -> tupl
         drive_ground |= np.all(land == colour, axis=2)
     reach_max = CLEAR_M[1] * (1 + WOBBLE) / mpt + EDGE_M / mpt + 2
 
+    polys = []
     for ring in footprints:
         if len(ring) < 3:
             continue
         poly = Polygon(ring)
         if not poly.is_valid:
             poly = poly.buffer(0)
-        if poly.is_empty or poly.geom_type != "Polygon":
-            continue
+        if not poly.is_empty and poly.geom_type == "Polygon":
+            polys.append(poly)
+    # The biggest first: the house gets the drive, and the garage or shed
+    # beside it shares it rather than getting one of its own.
+    polys.sort(key=lambda p: (-p.area, p.centroid.x, p.centroid.y))
+    tarmac = np.zeros((h, w), dtype=bool)        # the drives laid so far
+    share = max(1, int(round(DRIVE_SHARE_M / mpt)))
+
+    for poly in polys:
         minx, miny, maxx, maxy = poly.bounds
         x0, y0 = max(0, int(minx - reach_max)), max(0, int(miny - reach_max))
         x1, y1 = min(w, int(maxx + reach_max) + 1), min(h, int(maxy + reach_max) + 1)
@@ -223,6 +234,12 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile) -> tupl
         # The drive, to the nearest road, if it is a house and not a shed.
         if tree is None or poly.area * mpt * mpt < DRIVE_MIN_M2:
             continue
+        nx0, ny0 = max(0, int(minx) - share), max(0, int(miny) - share)
+        nx1, ny1 = min(w, int(maxx) + share + 1), min(h, int(maxy) + share + 1)
+        if nx1 > nx0 and ny1 > ny0 and tarmac[ny0:ny1, nx0:nx1].any():
+            near = _rasterise(poly.buffer(share), nx0, ny0, nx1 - nx0, ny1 - ny0)
+            if (near & tarmac[ny0:ny1, nx0:nx1]).any():
+                continue
         line = lines[int(tree.nearest(poly))]
         gap = poly.distance(line)
         if gap <= DRIVE_MIN_TILES or gap * mpt > DRIVE_MAX_M:
@@ -248,6 +265,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile) -> tupl
                 continue
             lay = drive & ~own_d & drive_ground[dy0:dy1, dx0:dx1]
             land[dy0:dy1, dx0:dx1][lay] = C.DARK_ASPHALT
+            tarmac[dy0:dy1, dx0:dx1] |= lay
             # Nothing grows on it, and the trees stand back a tile either side.
             from .vegetation import _box_any
             verge = _box_any(drive, 1) & ~own_d

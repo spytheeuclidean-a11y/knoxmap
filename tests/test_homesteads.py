@@ -144,6 +144,35 @@ class WhoGetsOneTest(unittest.TestCase):
         _, counts = H.clear_homesteads(veg, land, [HOUSE], [road], 1.0)
         self.assertEqual(counts["drives"], 1)
 
+    def test_house_and_garage_share_one_drive(self):
+        land, veg = woods()
+        garage = [(156, 140), (163, 140), (163, 147), (156, 147)]   # 49 m2, 4 m off
+        _, counts = H.clear_homesteads(veg, land, [garage, HOUSE], [ROAD], 1.0)
+        self.assertEqual(counts["drives"], 1)
+        # And it is the house's: it starts at the house, not the garage.
+        g = np.asarray(land)
+        self.assertTrue(is_(g[150:154, 139:154], C.DARK_ASPHALT).any())
+
+    def test_houses_far_apart_get_one_each(self):
+        land, veg = woods()
+        other = [(40, 140), (52, 140), (52, 150), (40, 150)]
+        _, counts = H.clear_homesteads(veg, land, [HOUSE, other], [ROAD], 1.0)
+        self.assertEqual(counts["drives"], 2)
+
+    def test_buildings_at_and_past_the_edge(self):
+        land, veg = woods()
+        edge_houses = [[(x, y) for x, y in ((290, 60), (305, 60), (305, 72), (290, 72))],
+                       [(x, y) for x, y in ((310, 60), (322, 60), (322, 72), (310, 72))],
+                       [(x, y) for x, y in ((-20, 60), (-8, 60), (-8, 72), (-20, 72))],
+                       # Over ten tiles past the edge, and smaller than HOUSE so
+                       # it comes after a drive is laid: its window's far end
+                       # was a negative index, read from the other end.
+                       [(x, y) for x, y in ((-40, 60), (-32, 60), (-32, 66), (-40, 66))],
+                       [(x, y) for x, y in ((140, -18), (148, -18), (148, -12), (140, -12))],
+                       [(x, y) for x, y in ((100, -15), (112, -15), (112, -5), (100, -5))]]
+        _, counts = H.clear_homesteads(veg, land, [HOUSE] + edge_houses, [ROAD], 1.0)
+        self.assertGreaterEqual(counts["drives"], 2)
+
     def test_road_close_by_needs_no_drive(self):
         land, veg = woods()
         _, counts = H.clear_homesteads(veg, land, [HOUSE], [[(0, 152), (299, 152)]], 1.0)
