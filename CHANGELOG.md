@@ -1,3 +1,14 @@
+## 1.8.5.6
+
+- **Windows keep their siding and grime.** A wall with a window asked the trim
+  and grime tables for the numbered cut-out key the wall tile uses, and those
+  tables only carry `WestWindow`/`NorthWindow` - so every window square came out
+  with no foundation band and no weathering, a clean patch under the glass
+  (`knoxbuild/buildtiles.py`). Overlays look their own window tile up now.
+- **Weathering on every storey.** Grime was laid on the ground floor only, so a
+  tall facade was clean above it; every storey is weathered now. The foundation
+  band stays where it belongs, at the base.
+
 ## 1.8.5.5
 
 - **A mansion is a big house, not a tall one.** Large houses were judged by

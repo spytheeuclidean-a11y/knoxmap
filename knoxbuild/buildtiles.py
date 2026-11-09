@@ -166,14 +166,16 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
     - Walls stand on the north and west edge of a square, and exist where the room
       number on the other side of the edge differs. A square with a room uses that
       room's interior wall tile (and its trim, if the room has one), an empty square the building's exterior wall tile, with
-      its trim and grime tiles on top (on the ground level only).
+      its grime on top on every storey and its trim band on the ground level only.
     - A square with both a north and a west wall has the NorthWest tile instead of the two.
     - An exterior post (SouthEast) stands on an empty square with no wall of its own
       where a wall ends on the square to its north and another on the square to its west.
     - A door on an edge makes the wall its Door variant and adds the door frame and door.
-    - A window makes the wall the Window variant cut for its sprite (see _window_variant; an
-      exterior wall has no trim or grime then) and adds the window. Curtains stand on the inside square; shutters
-      only on exterior walls, two on the window's square and one on each side of it.
+    - A window makes the wall the Window variant cut for its sprite (see _window_variant) and
+      adds the window. The trim and grime keep their own window tile - they name one, not one per
+      cut-out - so a windowed square is still banded and weathered like the wall around it.
+      Curtains stand on the inside square; shutters only on exterior walls, two on the window's
+      square and one on each side of it.
     """
     floor = b.floors[z]
     w, h = b.width, b.height
@@ -204,6 +206,11 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
     def north(x, y):
         return (x, y, "North") in custom_walls or room(x, y - 1) != room(x, y)
 
+    def outside_tiles(wall: str, trim_tile: str, grime_tile: str) -> list[str]:
+        """A wall on an empty square: its trim band on the ground level, its grime on
+        every storey - a weathered facade is weathered all the way up."""
+        return [wall] + ([trim_tile] if ground else []) + [grime_tile]
+
     floors: dict[tuple[int, int], list[str]] = {}
     walls: dict[tuple[int, int], list[str]] = {}
     extra: dict[tuple[int, int], list[str]] = {}
@@ -220,7 +227,7 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
             if not e:
                 return []
             t = _entry(b, custom.get("InteriorTrim" if r else "ExteriorTrim", 0))
-            return [e.get(kind) or e.get(fallback, ""), t.get(kind if e.get(kind) else fallback, "")] + ([grime.get(kind, "")] if not r and ground else [])
+            return [e.get(kind) or e.get(fallback, ""), t.get(kind if e.get(kind) else fallback, "")] + ([grime.get(kind, "")] if not r else [])
         if r > 0:
             room_def = b.rooms[r - 1]
             e = _entry(b, room_def["InteriorWall"])
@@ -228,7 +235,7 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
             if int(room_def.get("InteriorWallTrim", 0)):
                 tiles.append(_entry(b, room_def["InteriorWallTrim"]).get(kind if e.get(kind) else fallback, ""))
             return tiles
-        return [ext.get(kind, "")] + ([trim.get(kind, ""), grime.get(kind, "")] if ground else [])
+        return outside_tiles(ext.get(kind, ""), trim.get(kind, ""), grime.get(kind, ""))
 
     # Stairs: three stair tiles on this level, and a hole (no floor tile) over them on the
     # level above. A west-facing flight runs east from its square, a north-facing one south.
@@ -303,6 +310,17 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
     opening_dir = {(int(o["x"]), int(o["y"]), "North" if o.get("dir", "N") == "N" else "West"): o
                    for o in openings.values()}
 
+    def overlay_tile(entry: dict, dname: str, variant: str) -> str:
+        """An overlay's (trim, grime) tile for a wall with a window.
+
+        The trim and grime tables name one window tile - WestWindow, NorthWindow -
+        however many cut-out walls a style carries, so a numbered wall variant
+        (NorthWindow12) is not a key there. Asking only for the variant dropped the
+        trim band and the grime from every window square, which left a clean, bare
+        patch under the windows of a weathered wall.
+        """
+        return entry.get(variant) or entry.get(dname + "Window") or entry.get(dname, "")
+
     def opening_wall(x, y, dname):
         """The wall tiles of edge dname of square (x, y), with its door or window variant."""
         o = opening_dir.get((x, y, dname))
@@ -315,7 +333,8 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
         if room(x, y) > 0:
             return wall_tiles(x, y, variant, fallback=dname + "Window")
         k = variant if ext.get(variant) else dname + "Window"
-        return [ext.get(k, "")] + ([trim.get(k, ""), grime.get(k, "")] if ground else [])
+        return outside_tiles(ext.get(k, ""), overlay_tile(trim, dname, variant),
+                             overlay_tile(grime, dname, variant))
 
     for o in openings.values():
         kind = o["type"]
@@ -347,7 +366,9 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
             walls[(x, y)] = preserve_corner(wall_tiles(x, y, variant, fallback=dname + "Window"))
         else:
             kind = variant if ext.get(variant) else dname + "Window"
-            walls[(x, y)] = preserve_corner([ext.get(kind, "")] + ([trim.get(kind, ""), grime.get(kind, "")] if ground else []))
+            walls[(x, y)] = preserve_corner(outside_tiles(ext.get(kind, ""),
+                                                         overlay_tile(trim, dname, variant),
+                                                         overlay_tile(grime, dname, variant)))
         if r == 0:
             sh = _entry(b, o.get("ShuttersTile", 0))
             if sh:
