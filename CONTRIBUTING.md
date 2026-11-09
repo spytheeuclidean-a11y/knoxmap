@@ -11,6 +11,25 @@ Run these from the KnoxMap folder (they are what GitHub Actions runs):
 .venv\Scripts\python tools\audit_layouts.py 200
 ```
 
+The unit suite is `python -m unittest discover tests`. The tests that build and
+compile a town make it slow, so the quick half leaves those out:
+
+```bat
+set KNOXMAP_FAST=1 && .venv\Scripts\python -m unittest discover tests
+```
+
+(`KNOXMAP_FAST=1 python -m unittest discover tests` on Linux/macOS.) CI runs
+both halves in separate jobs; `tests/slow.py` says how to mark another class.
+
+To see where the tests do not reach yet:
+
+```bat
+.venv\Scripts\python -m coverage run -m unittest discover tests
+.venv\Scripts\python -m coverage report
+```
+
+Coverage is report-only in CI: the number is the point, not a threshold.
+
 `selftest.py` needs no internet, game or map tools. If you changed how
 buildings or roads look, also generate a small real area and look at it with
 `tools\render_ground.py`, or better, in the game, and include a screenshot.

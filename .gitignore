@@ -75,3 +75,9 @@ preset_exports/
 rust/*/target/
 /knoxroute.exe
 /knoxroute
+
+# ESLint and node:test for static/js; installed by CI, never shipped.
+node_modules/
+
+# A snapshot of the tree taken before 0.87: kept locally, not source.
+.pre87_backup/

@@ -32,11 +32,17 @@ from knoxbuild.terrain import Palette, ground_layers, stack_order  # noqa: E402
 from tools.terrain_source import ORIGIN_X, project_origin, rules_path  # noqa: E402
 
 
+def _read_text(path: str) -> str:
+    """A text file's contents, with the file closed (see tools/building_stats._read)."""
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
 def read_lots(project: str):
     """[(name, tx, ty, base level, width, height)] in project order, with world tile positions."""
     name = os.path.basename(os.path.normpath(project))
     lots, cell = [], None
-    for line in open(os.path.join(project, f"{name}.pzw"), encoding="utf-8"):
+    for line in _read_text(os.path.join(project, f"{name}.pzw")).splitlines():
         m = re.match(r'\s*<cell x="(\d+)" y="(\d+)"', line)
         if m:
             cell = (int(m[1]), int(m[2]))
@@ -79,7 +85,7 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
     rules_file = rules_path()
     rules = load_rules(rules_file)
     blends = load_blends(os.path.join(os.path.dirname(rules_file), "Blends.txt"))
-    parsed = [(parse_tbx(open(os.path.join(project, "buildings", f"{t}.tbx"), encoding="utf-8").read()),
+    parsed = [(parse_tbx(_read_text(os.path.join(project, "buildings", f"{t}.tbx"))),
                tx, ty, lv) for t, tx, ty, lv in band]
     world = compose_lots(parsed)
     room_squares = set()

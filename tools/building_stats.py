@@ -47,8 +47,16 @@ def _string(data: bytes, pos: int) -> tuple[str, int]:
     return data[pos:end].decode("latin-1"), end + 1
 
 
+def _read(path: str) -> bytes:
+    """A file's bytes, with the file closed. A cell is hundreds of megabytes,
+    and on Windows an unclosed handle keeps the lot undeletable until the
+    process ends - which is what the updater then trips over."""
+    with open(path, "rb") as f:
+        return f.read()
+
+
 def read_header(path: str):
-    data = open(path, "rb").read()
+    data = _read(path)
     pos = 8 if data[:4] == b"LOTH" else 4
     (count,) = struct.unpack_from("<i", data, pos); pos += 4
     names = []
@@ -78,7 +86,7 @@ def read_header(path: str):
 
 def read_squares(path: str, names: list[str], lo: int, hi: int) -> dict:
     """{(x, y, z): [tile names]} for the whole cell."""
-    data = open(path, "rb").read()
+    data = _read(path)
     pos = 8 if data[:4] == b"LOTP" else 4
     (n,) = struct.unpack_from("<i", data, pos); pos += 4
     offsets = struct.unpack_from(f"<{n}q", data, pos)

@@ -122,7 +122,9 @@ def read_tilesets_txt(path: str) -> tuple[dict[str, tuple[int, int]],
     sizes: dict[str, tuple[int, int]] = {}
     packs: dict[str, str] = {}
     name = None
-    for raw in open(path, encoding="utf-8", errors="replace"):
+    with open(path, encoding="utf-8", errors="replace") as stream:
+        lines = stream.readlines()
+    for raw in lines:
         s = raw.strip()
         if s.startswith("file = "):
             ref = s[7:]
@@ -187,7 +189,8 @@ def extract_pack(pack_path: str, catalog: dict, wanted: set,
         if not relevant:
             continue
         pages_decoded += 1
-        page_img = Image.open(io.BytesIO(png)).convert("RGBA")
+        with Image.open(io.BytesIO(png)) as page:
+            page_img = page.convert("RGBA")
 
         for tname, idx, x, y, w, h, ox, oy, fx, fy in relevant:
             cols, rows = catalog[tname]
@@ -221,6 +224,7 @@ def extract_pack(pack_path: str, catalog: dict, wanted: set,
         flush(tname)
     print(f"decoded {pages_decoded} pages, placed {placed} tiles, "
           f"wrote {written} sheets to {out_dir}")
+    reader.f.close()
     return set(last_page)
 
 

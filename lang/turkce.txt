@@ -11,10 +11,7 @@
 #
 # Turkce - Turkish.
 
-0.5 m per tile (small areas) = karo başına 0,5 m (küçük alanlar)
-On adds the buildings OpenStreetMap has not got, from Overture Maps - OSM plus machine-detected roofprints, same licence. Worth it where your town is half missing from OSM; elsewhere it adds sheds. Needs DuckDB. = 1, OpenStreetMap'te olmayan binaları Overture Maps'ten ekler - OSM artı makineyle bulunmuş çatı izleri, aynı lisans. Kasabanın yarısı OSM'de yoksa değer; değilse sadece baraka ekler. DuckDB gerekir.
 On builds every address as mapped. Off keeps the real roads, rivers, woods and terrain, but leaves out half the houses and grows the rest into proper homes with yards. Named places are always built, at the game’s size. = 1, haritadaki her adresi olduğu gibi kurar. 0 ise gerçek yolları, nehirleri, ormanları ve araziyi korur ama evlerin yarısını dışarıda bırakıp kalanları bahçeli, düzgün evlere dönüştürür. İsimli yerler her zaman, oyundaki boyutlarıyla kurulur.
-On lays every road in straight runs along the tiles and on 45-degree diagonals. Off draws roads as they are. = 1, her yolu karolar boyunca ve 45 derecelik çaprazlarda düz olarak döşer ve her binayı yanlarına dik oturtur, oyunun kendi haritası gibi. 0 ise yolları olduğu gibi çizer.
 On leaves one military rifle on the map: in an army building if there is one, else the police station, else a gun shop, else a house on the edge of town. A real town has no checkpoints for one to spawn in. = 1, haritaya bir askeri tüfek bırakır: varsa bir askeri binaya, yoksa karakola, yoksa silah dükkânına, yoksa kasabanın kenarındaki bir eve. Gerçek bir kasabada tüfeğin çıkabileceği kontrol noktası yoktur.
 1 m per tile (recommended) = karo başına 1 m (önerilen)
 On turns the map so the main street grid runs along the tiles - no staircase roads. Off keeps north up. = 1, ana cadde ızgarası karolar boyunca gidecek şekilde haritayı döndürür - merdiven gibi yollar olmaz. 0 kuzeyi yukarıda bırakır.
@@ -131,7 +128,6 @@ Preview = Önizleme
 Preview PNG = Önizleme PNG
 Project Zomboid was not found in these. = Project Zomboid bunlarda bulunamadı.
 Querying OpenStreetMap… = OpenStreetMap sorgulanıyor…
-raise metres per tile or shrink the area. = karo başına metreyi artır ya da alanı küçült.
 Ready to install. = Kurulmaya hazır.
 Ready — compile again to bake in the new zombie counts. = Hazır — yeni zombi sayılarının işlenmesi için yeniden derle.
 Ready — runs BMP to TMX and Generate Lots for you. = Hazır — BMP to TMX ve Generate Lots işlemlerini senin için çalıştırır.
@@ -152,7 +148,6 @@ Same seed and area gives the same town again. = Aynı tohum ve alan aynı kasaba
 Save and look again = Kaydet ve tekrar bak
 Save everything as a .zip = Her şeyi .zip olarak kaydet
 Scale = Ölçek
-Scales tree cover. Trees are cover to hide in. = Ağaç örtüsünü ölçekler. Ağaçlar saklanacak siperdir.
 Search for a place and press Enter = Bir yer ara ve Enter'a bas
 Search for a place, or draw an area with the tools on the left. A search result's = Bir yer ara ya da soldaki araçlarla bir alan çiz. Bir arama sonucunun
 Select its real boundary instead of a box = Kutu yerine gerçek sınırını seç
@@ -162,7 +157,6 @@ Single files = Tek dosyalar
 Smallest building = En küçük bina
 Something went wrong = Bir şeyler ters gitti
 Spawn Selector = Spawn Selector
-Square up buildings = Binaları dikleştir
 Steam libraries = Steam kütüphaneleri
 Stop = Durdur
 Stopped. The area is still drawn - press Generate map to start again. = Durduruldu. Alan hâlâ çizili - yeniden başlamak için Harita oluştur'a bas.
@@ -187,7 +181,6 @@ True map generation = Gerçek harita üretimi
 Try again = Tekrar dene
 Turn the map = Haritayı döndür
 Turns every OSM footprint into a furnished building. = Her OSM taban alanını döşenmiş bir binaya çevirir.
-Turns the map into the game's files with WorldEd. Takes a few minutes. = Haritayı WorldEd ile oyunun dosyalarına çevirir. Birkaç dakika sürer.
 Vegetation BMP = Bitki örtüsü BMP
 Vehicles only ever spawn in a parking stall. = Araçlar yalnızca park yerlerinde oluşur.
 What's in it = İçinde ne var

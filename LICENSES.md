@@ -12,7 +12,7 @@ it. These files come from it (most have since been modified here):
 `README.md` · `app.py` · `generator/__init__.py` · `generator/osm.py` ·
 `generator/pz_colors.py` · `generator/renderer.py` · `requirements.txt` ·
 `static/css/app.css` · `static/js/app.js` ·
-`templates/index.html` · `test_pipeline.py` · `.gitignore`
+`templates/index.html` · `tools/pipeline_check.py` · `.gitignore`
 
 The KnoxMap logo and cover (`branding/*`, `static/logo.png`) are new to this
 fork and replace Knoxify's own artwork; they are under the MIT licence below.

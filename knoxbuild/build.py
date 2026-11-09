@@ -828,7 +828,8 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
     rng = random.Random(rng_seed)
     zones: list[Zone] = []
 
-    img = Image.open(landscape_path).convert("RGB")
+    with Image.open(landscape_path) as source:
+        img = source.convert("RGB")
     w, h = img.size
     px = img.load()
     if road_hierarchy is not None:

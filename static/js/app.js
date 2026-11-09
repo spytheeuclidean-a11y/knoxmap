@@ -591,7 +591,6 @@ function simplifyLatLngs(latlngs, tolerancePx) {
 // The selection as GeoJSON for the server, or null for a plain rectangle.
 function selectionShape() {
   if (!currentRect || currentRect instanceof L.Rectangle) return null;
-  let rings;
   if (currentRect instanceof L.Circle) {
     const c = currentRect.getLatLng();
     const r = currentRect.getRadius();
@@ -2234,7 +2233,6 @@ loadMaps();
 
 document.getElementById('generateBtn').addEventListener('click', async () => {
   if (!currentRect) return;
-  const b = currentRect.getBounds();
 
   // A big map ties the app up for a long while, so say how big and how long
   // before starting rather than after.
@@ -3638,7 +3636,6 @@ let boardGrid = null;
 // It is only ever something to trace, so it is not saved with the drawing -
 // what gets built is what was drawn over it.
 let boardTrace = null;
-let boardOpened = null;         // the map whose sheet this is, once it has one
 let boardFitted = false;        // whether the sheet has been framed on screen
 
 const BOARD_GRID_M = 100;
@@ -3951,7 +3948,6 @@ function boardOpen(mapName) {
   boardDrawSheet();
   boardFitted = boardMap.getSize().x > 0;
   boardFit();
-  boardOpened = mapName || null;
   if (mapName) document.getElementById('boardName').value = mapName;
   boardFillJoins(mapName);
   boardNote('Pick a tool and draw. Nothing is downloaded: this is your own map.');
@@ -4095,7 +4091,6 @@ document.getElementById('boardSave').addEventListener('click', async () => {
     });
     const out = await res.json();
     if (!res.ok) throw apiError(out, res);
-    boardOpened = name;
     boardNote(`Saved as ${name}: ${out.usable} of ${out.saved} will be built.`);
   } catch (err) {
     boardNote(err.message);

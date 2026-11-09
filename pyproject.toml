@@ -21,3 +21,28 @@ extend-exclude = ["update", "vendor", "cache", "output", "graphify-out", "graft"
 
 [tool.ruff.lint]
 select = ["E9", "F63", "F7", "F82"]
+
+# pytest is the contributor's tool (requirements-dev.txt), not CI's, but it is
+# run from this folder, and without this it also collects the updater's copies
+# under update/ and .pre87_backup/: forty of them fail to import before a single
+# test starts, which hides the tests that would have run.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["update", ".pre87_backup", "vendor", "cache", "output",
+                 "graphify-out", "graft", "rust", ".venv", "node_modules"]
+
+# Coverage is report-only (checks.yml): which modules the tests actually reach
+# is the question 1,290 tests cannot answer on their own. Branches count too,
+# because the map code grows half-wired `if`s and `except` arms faster than
+# anything else.
+[tool.coverage.run]
+branch = true
+source = ["."]
+# Everything that is not KnoxMap: the tests and dev tools themselves, the
+# updater's copies, Setup's downloaded data and the Rust build output.
+omit = ["tests/*", "tools/*", "update/*", ".pre87_backup/*", "vendor/*",
+        ".venv/*", "rust/*", "cache/*", "output/*", "graft/*",
+        "graphify-out/*", "worlded/*", "win/*"]
+
+[tool.coverage.report]
+skip_empty = true

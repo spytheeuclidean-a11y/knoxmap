@@ -12,3 +12,12 @@
 # awkward (`python -m pytest tests/test_placement.py -k leftovers`).
 ruff==0.17.4
 pytest==8.4.2
+
+# Where the tests do not reach. Report-only in checks.yml for now: the number
+# is worth having, a gate on it before anyone has read it is not.
+coverage==7.17.2
+
+# Optional at run time, required by the room solver's tests, which skip without
+# it (tests/test_room_solver.py). Pinned like requirements.txt: CI used to
+# install whatever pip found that day, so the solver under test changed weekly.
+ortools==9.15.6755

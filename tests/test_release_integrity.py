@@ -40,8 +40,10 @@ class TheShippedFileList(unittest.TestCase):
         # KnoxMap: a linter and its settings, which a player has no use for.
         # Keeping them out of the zip is also what keeps check_manifest.py's
         # comparison exact, since git archive would otherwise ship them.
+        # The frontend's ESLint and node:test setup is the same arrangement.
         text = (ROOT / ".gitattributes").read_text(encoding="utf-8")
-        for name in ("pyproject.toml", "requirements-dev.txt"):
+        for name in ("pyproject.toml", "requirements-dev.txt",
+                     "package.json", "package-lock.json", "eslint.config.js"):
             with self.subTest(name=name):
                 self.assertIn(f"{name} export-ignore", text)
                 self.assertNotIn(name, self.files)

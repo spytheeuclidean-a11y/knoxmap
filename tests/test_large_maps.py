@@ -18,6 +18,7 @@ from knoxbuild import build as B
 from knoxbuild import repair as R
 from knoxbuild.buildheader import placed_rooms, room_rects
 from knoxbuild.settings import Settings
+from tests.slow import slow
 from tools import compile_map as C
 from tools import map_source as M
 
@@ -84,6 +85,7 @@ def _town(rnd, n, arrays=False):
     return lots
 
 
+@slow
 class RoomTables(unittest.TestCase):
     def test_the_same_tables_as_one_entry_per_square(self):
         rnd = random.Random(7)
@@ -110,6 +112,7 @@ def _jobs(n):
     return [(i, 0, 0, 0, 0, 0, 0, settings) for i in range(n)]
 
 
+@slow
 class MakingBuildings(unittest.TestCase):
     def setUp(self):
         self._workers = os.environ.get("KNOXBUILD_WORKERS")
@@ -146,6 +149,7 @@ def _nap(seconds):
     return seconds
 
 
+@slow
 class StoppingACompile(unittest.TestCase):
     def _pool(self, naps):
         from concurrent.futures import ProcessPoolExecutor
@@ -168,6 +172,7 @@ class StoppingACompile(unittest.TestCase):
         self.assertLess(time.time() - t0, 10.0)
 
 
+@slow
 class CheckingTheBuildings(unittest.TestCase):
     """The check before a compile: what it drops, and not doing it twice."""
 
@@ -234,6 +239,7 @@ class CheckingTheBuildings(unittest.TestCase):
         self.assertIs(check.call_args.kwargs.get("flaws"), False)
 
 
+@slow
 class InstallingACity(unittest.TestCase):
     def test_the_copy_says_how_far_it_has_got(self):
         from tools import make_map_mod as K
@@ -252,6 +258,7 @@ class InstallingACity(unittest.TestCase):
         self.assertEqual(seen, [(25, 60), (50, 60), (60, 60)])
 
 
+@slow
 class CarryingOnACompile(unittest.TestCase):
     def _run(self, out, rows_made, fail_at=None, resume=True):
         calls = {"read": 0}
@@ -342,6 +349,7 @@ class CarryingOnACompile(unittest.TestCase):
         self.assertNotEqual(before, C._source_stamp(project))
 
 
+@slow
 class OneProcessPerMap(unittest.TestCase):
     def setUp(self):
         self._dir = tempfile.TemporaryDirectory()

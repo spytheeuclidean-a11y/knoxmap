@@ -37,7 +37,8 @@ import time
 from dataclasses import dataclass, field
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TABLES = json.load(open(os.path.join(HERE, "room_solver.json"), encoding="utf-8"))
+with open(os.path.join(HERE, "room_solver.json"), encoding="utf-8") as _tables:
+    TABLES = json.load(_tables)
 KINDS = TABLES["kinds"]
 RULES = TABLES["rules"]
 WEIGHTS = TABLES["weights"]
