@@ -3166,6 +3166,23 @@ def _seat_the_desks(building: "Building") -> int:
     return moved
 
 
+def _off_the_doorways(storey: Plan) -> int:
+    """Nothing standing on the tiles a door keeps clear.
+
+    Furnishing keeps off them, but a door can be moved or added afterwards -
+    when the flight is in the way of the door first chosen - and it can land
+    on a bed already in place: a bedroom whose only way in was a bed's foot.
+    """
+    clear = _door_tiles(storey)
+    gone = {i for i, f in enumerate(storey.furniture)
+            if _blocks(f[0])
+            and set(_cells_for(f[0], f[1], f[2], f[3])).intersection(clear)}
+    if gone:
+        storey.furniture = [f for i, f in enumerate(storey.furniture)
+                            if i not in gone]
+    return len(gone)
+
+
 def _clear_the_way(building: "Building") -> int:
     """Take out whatever stands between a doorway and the rooms behind it.
 
@@ -3174,7 +3191,7 @@ def _clear_the_way(building: "Building") -> int:
     connected - every audit of it passed - but the furnished building was not.
     """
     _doors_off_stairs(building)
-    removed = 0
+    removed = sum(_off_the_doorways(storey) for storey in building.storeys)
     stairs = building.stairs[0] if building.stairs else None
     for level, storey in enumerate(building.storeys):
         _make_way_for_windows(storey, stairs)
