@@ -736,12 +736,25 @@
       renderSectorBox(x, y, w, h, roofs);
     });
 
-    // Go to Compile button
+    // Go to Compile button. The pipeline enables Compile only once the map and
+    // its buildings are done; clicking a disabled button does nothing at all,
+    // which reads as the button being broken.
     document.getElementById('isoCompileNow')?.addEventListener('click', () => {
       const compileBtn = document.getElementById('compileBtn');
-      if (compileBtn) compileBtn.click();
       const chip = document.querySelector('[data-chip="compile"]');
+      if (compileBtn && compileBtn.disabled) {
+        if (window.fx?.toast) {
+          window.fx.toast('bad', 'Compile is not ready',
+            "Generate the map and its buildings first — Compile turns them into the game's files.", 6000);
+        }
+        if (chip) chip.click();
+        return;
+      }
+      if (compileBtn) compileBtn.click();
       if (chip) chip.click();
+      // Ask again next time this panel opens rather than trusting an answer
+      // from before the compile started.
+      mapInfo = null;
     });
 
     // Keyboard navigation & shortcuts
@@ -933,7 +946,10 @@
     ensureElements();
     if (!name) return;
 
-    if (activeMap === name && mapInfo) {
+    // Re-ask when the last answer was "not compiled": compiling happens in the
+    // pipeline behind this panel, and coming back to it must not keep saying
+    // the map has no compiled cells.
+    if (activeMap === name && mapInfo && mapInfo.compiled) {
       fitToScreen();
       return;
     }
