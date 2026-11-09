@@ -346,7 +346,11 @@ class Doors(unittest.TestCase):
 
 
 # The biggest mall kept whole, two storeys, laid out in this many seconds.
-MALL_LAYOUT_BUDGET_S = 60.0
+# It takes about 40 s on a quiet machine and 70 s on a loaded one - a full suite
+# running beside it was enough to fail the 60 s budget twice. This is a guard
+# against a layout going quadratic, not a benchmark, so it is set where a busy
+# CI box still passes and a real slowdown still trips it.
+MALL_LAYOUT_BUDGET_S = 120.0
 
 
 class Budget(unittest.TestCase):
