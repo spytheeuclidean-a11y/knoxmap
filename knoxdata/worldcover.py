@@ -128,7 +128,8 @@ class WorldCover(DatasetSource):
             with rasterio.open(path) as src:
                 data = src.read(1, window=from_bounds(w, s, e, n, src.transform),
                                 out_shape=(height, width),
-                                resampling=Resampling.nearest)
+                                resampling=Resampling.nearest,
+                                boundless=True, fill_value=0)
             grid[data > 0] = data[data > 0]   # OSM still paints over this
         return _majority3(grid)
 

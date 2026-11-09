@@ -39,7 +39,7 @@ def features(proj):
     ]
 
 
-def grid_for(width, height):
+def grid_for(width, height, bounds=None):
     grid = np.full((height, width), 30, dtype="uint8")
     grid[:, : width // 2] = 10
     grid[height // 2:, width // 2:] = 40
@@ -107,8 +107,39 @@ class RenderWorldCoverTest(unittest.TestCase):
                     C.SPARSE_TREES, C.BUSHES, C.ROCKS, C.BOULDERS)
         self.assertFalse((grown & road).any())
 
+    def test_asks_for_what_the_image_covers(self):
+        asked = {}
+
+        def spy(width, height, bounds=None):
+            asked["bounds"] = bounds
+            return grid_for(width, height)
+        proj, _, _ = render(spy)
+        s, w, n, e = asked["bounds"]
+        # Padded to whole cells: the image reaches past the bbox on every side.
+        self.assertLess(s, SOUTH)
+        self.assertLess(w, WEST)
+        self.assertGreater(n, NORTH)
+        self.assertGreater(e, EAST)
+        self.assertEqual((s, w, n, e), proj.latlon_bbox())
+
+    def test_no_made_up_woods_on_worldcover_grass(self):
+        def grass(width, height, bounds=None):
+            return np.full((height, width), 30, dtype="uint8")
+        proj, _, veg = render(grass)
+        # Below the road nothing is mapped: only WorldCover's grassland.
+        ys, xs = region(proj, 0.0, 0.55, 1.0, 1.0)
+        trees = is_(veg[ys, xs], C.TREES, C.TREES_DARK_GRASS, C.TREE_BIG,
+                    C.TREE_HUGE, C.TREE_GIANT)
+        self.assertFalse(trees.any())
+
+    def test_made_up_woods_without_worldcover(self):
+        proj, _, veg = render(None)
+        ys, xs = region(proj, 0.0, 0.55, 1.0, 1.0)
+        trees = is_(veg[ys, xs], C.TREES, C.TREES_DARK_GRASS)
+        self.assertTrue(trees.any())
+
     def test_broken_landcover_still_renders(self):
-        def broken(w, h):
+        def broken(w, h, bounds=None):
             raise RuntimeError("no data")
         _, land, _ = render(broken)
         self.assertFalse(is_(land, *L.MARKER.values()).any())

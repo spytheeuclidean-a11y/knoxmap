@@ -184,7 +184,12 @@ def landcover_for(settings, bbox):
             or not source.available(bbox) or not source.cached(bbox)):
         return None
     box = tuple(bbox)
-    return lambda width, height: source.rasterise(box, width, height)
+
+    def grid(width, height, bounds=None):
+        # `bounds` is what the map image covers, which is padded to whole
+        # cells past the bbox; without it the bbox is stretched over the image.
+        return source.rasterise(tuple(bounds) if bounds else box, width, height)
+    return grid
 
 
 def attribution_lines(names, retrieved: str | None = None) -> list[str]:

@@ -338,7 +338,14 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         # in marker colours until OSM has painted, so what OSM left blank can
         # be told apart (generator/rendering/landcover.py).
         try:
-            landcover_grid = landcover_for(proj.width, proj.height)
+            # The image covers more than the bbox (whole cells); ask for
+            # exactly what it covers. A turned map has no axis-aligned
+            # extent, so it keeps the bbox.
+            if proj.rotation:
+                landcover_grid = landcover_for(proj.width, proj.height)
+            else:
+                landcover_grid = landcover_for(proj.width, proj.height,
+                                               bounds=proj.latlon_bbox())
             if landcover_grid is not None:
                 landcover_grid = resized_grid(landcover_grid, landscape.size)
                 paint_markers(landscape, landcover_grid)
@@ -592,8 +599,11 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     # Where WorldCover has a class, it says what grows; elsewhere, a guess.
     _paint_wild_growth(vegetation, landscape, proj, density=tree_density, exclude=owned)
+    # Made-up woods only stand in for land cover data: with WorldCover the
+    # woods are the real ones, and a random one would only add woods where
+    # the data says there are none. They still grow where it has no data.
     _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density,
-                  exclude=owned)
+                  exclude=None if owned is None else landcover_grid > 0)
     # Last of the planting: some of the trees now down become the big ones,
     # which need a square of their own and so can only be chosen once it is
     # settled what stands where.

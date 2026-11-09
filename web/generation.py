@@ -48,6 +48,32 @@ def generate():
     return _generate(_json_body())
 
 
+def _fetch_landcover(knoxdata, settings, bbox, map_name) -> None:
+    """Download the WorldCover tiles this map needs, if they are not cached.
+
+    The other layers apply only what is already on disk, but without this
+    one the ground is a guess, and nothing else in the app fetches it. A
+    3-degree tile is 20-120 MB, once; after that every map on it is offline.
+    A failed download is logged and the map is built without it."""
+    source = knoxdata.sources().get("worldcover")
+    if (source is None or not source.enabled(settings)
+            or not source.available(bbox) or source.cached(bbox)):
+        return
+
+    def progress(done, total):
+        mb = f"{done / 1e6:.0f} of {total / 1e6:.0f} MB" if total else f"{done / 1e6:.0f} MB"
+        _set_progress(map_name, stage="osm", done=done, total=total or 0,
+                      note=f"Downloading land cover (ESA WorldCover, once per area) - {mb}")
+
+    progress(0, 0)
+    try:
+        source.fetch(tuple(bbox), progress_cb=progress)
+        log.info("generate %s: fetched WorldCover", map_name)
+    except Exception as exc:             # noqa: BLE001 - optional, never fatal
+        log.warning("generate %s: WorldCover download failed - %s: %s",
+                    map_name, type(exc).__name__, exc)
+
+
 def _generate(data):
     # A map drawn on the editor's own sheet brings its own size and its own
     # corner of the world; the box and the features both come out of it, so
@@ -306,6 +332,7 @@ def _generate(data):
         layers = knoxdata.MapContext(
             bbox=(south, west, north, east), settings=settings,
             map_dir=map_dir, map_name=map_name, features=features)
+        _fetch_landcover(knoxdata, settings, (south, west, north, east), map_name)
         report = knoxdata.run_layers(settings, (south, west, north, east), map_dir,
                                      map_name=map_name, features=features,
                                      ctx=layers, require_cache=True)
