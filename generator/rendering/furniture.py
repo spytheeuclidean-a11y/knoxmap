@@ -20,20 +20,31 @@ GRIME_SHARE = 0.0
 EDGE_LINE_MIN_WIDTH = 5
 CRACK_SHARE = 0.012
 LITTER_SHARE = 0.002
-LAMP_EVERY = 26
+LAMP_EVERY = 18
 # A speed limit sign every so many tiles along a main street's kerb (Erika's
 # Tiles only), with the limit going by how wide the carriageway is.
-SPEED_SIGN_EVERY = 90
+SPEED_SIGN_EVERY = 80
 SPEED_BY_WIDTH = ((12, 45), (8, 35), (0, 25))
+BENCH_EVERY = 32
+BIN_EVERY = 28
+MAILBOX_EVERY = 34
 ROAD_FURNITURE_INTERVALS = {
-    "motorway": {"lamp": 55, "hydrant": 1 << 30, "speed": 55, "drain": 40},
-    "trunk": {"lamp": 40, "hydrant": 100, "speed": 70, "drain": 36},
-    "primary": {"lamp": 32, "hydrant": 75, "speed": 85, "drain": 34},
-    "secondary": {"lamp": 26, "hydrant": 65, "speed": 105, "drain": 34},
-    "tertiary": {"lamp": 23, "hydrant": 60, "speed": 130, "drain": 34},
-    "residential": {"lamp": 20, "hydrant": 55, "speed": 170, "drain": 34},
-    "service": {"lamp": 40, "hydrant": 120, "speed": 1 << 30, "drain": 42},
-    "footway": {"lamp": 28, "hydrant": 1 << 30, "speed": 1 << 30, "drain": 1 << 30},
+    "motorway": {"lamp": 55, "hydrant": 1 << 30, "speed": 55, "drain": 40,
+                 "bench": 1 << 30, "bin": 1 << 30, "mailbox": 1 << 30},
+    "trunk": {"lamp": 36, "hydrant": 80, "speed": 65, "drain": 32,
+              "bench": 1 << 30, "bin": 1 << 30, "mailbox": 1 << 30},
+    "primary": {"lamp": 20, "hydrant": 42, "speed": 75, "drain": 24,
+                "bench": 28, "bin": 24, "mailbox": 42},
+    "secondary": {"lamp": 18, "hydrant": 38, "speed": 85, "drain": 24,
+                  "bench": 30, "bin": 26, "mailbox": 38},
+    "tertiary": {"lamp": 16, "hydrant": 35, "speed": 100, "drain": 24,
+                 "bench": 32, "bin": 28, "mailbox": 34},
+    "residential": {"lamp": 14, "hydrant": 32, "speed": 120, "drain": 24,
+                    "bench": 34, "bin": 28, "mailbox": 30},
+    "service": {"lamp": 30, "hydrant": 75, "speed": 1 << 30, "drain": 34,
+                "bench": 1 << 30, "bin": 36, "mailbox": 1 << 30},
+    "footway": {"lamp": 22, "hydrant": 1 << 30, "speed": 1 << 30, "drain": 1 << 30,
+                "bench": 26, "bin": 28, "mailbox": 1 << 30},
 }
 
 
@@ -52,8 +63,8 @@ def _mod_tiles_ready() -> bool:
         return "KnoxMap road Speed limit 25 S" in rules.read_text(encoding="utf-8", errors="replace")
     except Exception:      # noqa: BLE001 - no tools, no mod tiles
         return False
-HYDRANT_EVERY = 70
-DRAIN_EVERY = 34
+HYDRANT_EVERY = 38
+DRAIN_EVERY = 24
 
 
 def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
@@ -95,6 +106,7 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     # (Dark tarmac, 100, is car parks and yards, and is left out.)
     k = EDGE_LINE_MIN_WIDTH
     edge_lines = 0
+    diag_kerbs = {}
     for colour, (dx, dy) in ((C.EDGE_LINE_W, (-1, 0)), (C.EDGE_LINE_E, (1, 0)),
                              (C.EDGE_LINE_N, (0, -1)), (C.EDGE_LINE_S, (0, 1))):
         outside = np.zeros_like(asphalt)
@@ -127,6 +139,7 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
             side_a[:, 1:] = asphalt[:, :-1]; side_b[:, :-1] = asphalt[:, 1:]
         # Straight edges only: the road continues along the line both ways.
         pick = asphalt & outside & across & side_a & side_b & empty
+        diag_kerbs[colour] = asphalt & outside & across & (side_a | side_b) & ~pick
         vp[pick] = colour
         empty &= ~pick
         edge_lines += int(pick.sum())
@@ -138,7 +151,10 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     # (edge colour just painted, step away from the road, lamp colour)
     straight = [(C.EDGE_LINE_W, (-1, 0), C.LAMP_E), (C.EDGE_LINE_E, (1, 0), C.LAMP_W),
                 (C.EDGE_LINE_N, (0, -1), C.LAMP_S), (C.EDGE_LINE_S, (0, 1), C.LAMP_N)]
-    taken: dict[str, set] = {"lamp": set(), "hydrant": set(), "drain": set(), "speed": set()}
+    taken: dict[str, set] = {
+        "lamp": set(), "hydrant": set(), "drain": set(), "speed": set(),
+        "bench": set(), "bin": set(), "mailbox": set(),
+    }
     out = vp.copy()
     # Speed signs stand where drivers keeping right see their faces: on the
     # east kerb of a north-south road facing south, the north kerb of an
@@ -164,7 +180,8 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
         return None
 
     for edge, (sx, sy), lamp in straight:
-        ys, xs = np.nonzero(np.all(vp == edge, axis=2))
+        kerb_mask = np.all(vp == edge, axis=2) | diag_kerbs[edge]
+        ys, xs = np.nonzero(kerb_mask)
         order = rng.permutation(len(xs))
         for i in order.tolist():
             gx, gy = int(xs[i]), int(ys[i])     # the gutter square itself
@@ -179,11 +196,18 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                 across = carriageway(gx, gy, sx, sy)
                 limit = next(v for width, v in SPEED_BY_WIDTH if across >= width)
                 speed = C.SPEED_SIGNS[(limit, facing)]
-            for what, every, colour, at, need in (
+            bench_pair = ((C.TABLE_Y0, C.TABLE_Y1, (bx, by + 1))
+                          if sx else (C.TABLE_X0, C.TABLE_X1, (bx + 1, by)))
+            for what, every, colour, at, partner in (
                     ("speed", spacing.get("speed", SPEED_SIGN_EVERY), speed, (bx, by), None),
                     ("lamp", spacing.get("lamp", LAMP_EVERY), lamp, (bx, by), None),
                     ("hydrant", spacing.get("hydrant", HYDRANT_EVERY), C.HYDRANT, (bx, by), None),
+                    ("bench", spacing.get("bench", BENCH_EVERY), bench_pair[0], (bx, by), (bench_pair[1], bench_pair[2])),
+                    ("bin", spacing.get("bin", BIN_EVERY), C.BIN, (bx, by), None),
+                    ("mailbox", spacing.get("mailbox", MAILBOX_EVERY), C.MAILBOX, (bx, by), None),
                     ("drain", spacing.get("drain", DRAIN_EVERY), C.STORM_DRAIN, (gx, gy), None)):
+                if every >= (1 << 29):
+                    continue
                 px, py = at
                 if colour is None or not (0 <= px < w and 0 <= py < h):
                     continue
@@ -194,9 +218,19 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     continue
                 # A drain takes the gutter square from its edge line; other
                 # props need an empty sidewalk or verge tile, not a road or lot.
+                if what == "drain" and not np.array_equal(vp[py, px], edge):
+                    continue
                 if what != "drain" and (not empty[py, px] or driveable[py, px]
                                          or not roadside[py, px]):
                     continue
+                if partner is not None:
+                    p_colour, (px2, py2) = partner
+                    if not (0 <= px2 < w and 0 <= py2 < h) \
+                            or not empty[py2, px2] or driveable[py2, px2] \
+                            or not roadside[py2, px2]:
+                        continue
+                    out[py2, px2] = p_colour
+                    empty[py2, px2] = False
                 taken[what].add(cell)
                 out[py, px] = colour
                 empty[py, px] = False

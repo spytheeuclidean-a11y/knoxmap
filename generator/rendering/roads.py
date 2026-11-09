@@ -94,13 +94,15 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         for _ in range(2):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
+            verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
+            road_border = pave | verge
             notch = np.zeros_like(road)
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
             notch[:, 1:-1] |= road[:, :-2] & road[:, 2:]
-            notch &= pave
+            notch &= road_border
             bump = np.zeros_like(road)
-            bump[1:-1, :] |= pave[:-2, :] & pave[2:, :]
-            bump[:, 1:-1] |= pave[:, :-2] & pave[:, 2:]
+            bump[1:-1, :] |= road_border[:-2, :] & road_border[2:, :]
+            bump[:, 1:-1] |= road_border[:, :-2] & road_border[:, 2:]
             bump &= road
             # A pavement tile with no pavement beside it orthogonally is one
             # step of a diagonal edge, and on its own it draws as a lip that
@@ -108,13 +110,23 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             # stands in, so a street that crosses the tile grid at an angle ends
             # with tarmac to grass, the way a road out of town does, instead of
             # a dotted line of slabs.
-            lonep = pave.copy()
-            near = np.zeros_like(pave)
-            near[:, 1:] |= pave[:, :-1]
-            near[:, :-1] |= pave[:, 1:]
-            near[1:, :] |= pave[:-1, :]
-            near[:-1, :] |= pave[1:, :]
-            lonep &= ~near
+            ortho_count = np.zeros(pave.shape, dtype=np.uint8)
+            ortho_count[:, 1:] += pave[:, :-1]
+            ortho_count[:, :-1] += pave[:, 1:]
+            ortho_count[1:, :] += pave[:-1, :]
+            ortho_count[:-1, :] += pave[1:, :]
+            near = ortho_count > 0
+            diag_pave = np.zeros_like(pave)
+            diag_pave[1:, 1:] |= pave[:-1, :-1]
+            diag_pave[1:, :-1] |= pave[:-1, 1:]
+            diag_pave[:-1, 1:] |= pave[1:, :-1]
+            diag_pave[:-1, :-1] |= pave[1:, 1:]
+            near_road = np.zeros_like(road)
+            near_road[:, 1:] |= road[:, :-1]
+            near_road[:, :-1] |= road[:, 1:]
+            near_road[1:, :] |= road[:-1, :]
+            near_road[:-1, :] |= road[1:, :]
+            lonep = pave & (~near | ((ortho_count == 1) & diag_pave & ~near_road))
             if not notch.any() and not bump.any() and not lonep.any():
                 break
             # A filled notch takes the tarmac of the road beside it.
@@ -128,7 +140,17 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
                     ground[y, x] = ground[y + 1, x]
                 else:
                     ground[y, x] = ground[y, x + 1]
-            ground[bump] = C.PALE_CONCRETE
+            bys, bxs = np.nonzero(bump)
+            for y, x in zip(bys, bxs):
+                ground[y, x] = C.PALE_CONCRETE
+                for dy, dx in ((0, -1), (-1, 0), (0, 1), (1, 0)):
+                    yy, xx = y + dy, x + dx
+                    if 0 <= yy < ground.shape[0] and 0 <= xx < ground.shape[1]:
+                        if pave[yy, xx]:
+                            ground[y, x] = C.PALE_CONCRETE
+                            break
+                        if verge[yy, xx]:
+                            ground[y, x] = ground[yy, xx]
             if lonep.any():
                 paved = {C.PALE_CONCRETE} | set(asphalt)
                 lys, lxs = np.nonzero(lonep)
