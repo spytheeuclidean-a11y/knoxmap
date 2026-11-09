@@ -274,9 +274,16 @@ def api_iso_render(name: str):
             x, y, w, h = [int(float(v)) for v in box_arg.split(",")]
         except ValueError:
             return jsonify({"error": "box must be x,y,w,h"}), 400
-        # Clamp dimensions to prevent excessive memory usage
-        w = max(10, min(w, 200 if scale >= 0.5 else 400))
-        h = max(10, min(h, 200 if scale >= 0.5 else 400))
+        # A box is drawn whole, never cropped to the first 200 tiles of what
+        # was asked for. The picture grows with the square of the box - 200x200
+        # at 1:1 is already 12,864x6,624 - so anything larger is rendered at a
+        # smaller scale instead: 528 * (w + h)^2 * scale^2 stays under 90 Mpx
+        # while (w + h) * scale <= 412.
+        w = max(10, w)
+        h = max(10, h)
+        span = w + h
+        if span * scale > 412:
+            scale = max(0.05, 412 / span)
     else:
         # Default: if full map requested without box, check existing pictures first
         pics_dir = map_dir / "pictures"
