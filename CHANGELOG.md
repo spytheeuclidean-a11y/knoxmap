@@ -5,6 +5,31 @@
   tables only carry `WestWindow`/`NorthWindow` - so every window square came out
   with no foundation band and no weathering, a clean patch under the glass
   (`knoxbuild/buildtiles.py`). Overlays look their own window tile up now.
+- **A 2.5D view of the town, in the game.** A new tab draws the compiled map as
+  Project Zomboid draws it: pan and zoom, roofs or furnished interiors, a box
+  drawn over any stretch of street to render it 1:1, and the whole town with
+  its interiors. The render cache is keyed on the map, so compiling again shows
+  the town as it is now.
+- **Roads: Knox County straight (clean), and it is the default.** Short kinks
+  between runs are squared, a street keeps to one grid line or one diagonal, and
+  the shifts of a tile or two in the middle of a run are gone. Sidewalks take
+  their width from the road rather than from rounding, so neither side loses its
+  pavement, and the spikes along kerbs and sidewalk corners are smoothed off.
+- **Restaurant kitchens are worktop wall to wall.** The commercial counter
+  budget came out at nothing, so a kitchen had one counter and bare wall beside
+  the stove; small ones read worst. Street bins and mailboxes stand beside the
+  pavement now and only where there are buildings; the benches at the kerb are
+  gone.
+- **A gym is laid out in rows.** Treadmills shoulder to shoulder facing the
+  mirrors, the weights behind them on evenly spaced lines, instead of a machine
+  every other tile and three of them at odd angles.
+- **Nothing stands in a doorway.** A door moved off the staircase, or opened
+  when there was nowhere to move it to, could land on a bed already made up:
+  a bedroom whose only way in was the foot of its bed.
+- **Under the hood:** `layout.py` is a package of nine modules, the test suite
+  collects cleanly and runs in a fast and a slow half, CI has Windows jobs, the
+  frontend has a real lint and test step, and a compile whose worker dies in
+  native code finishes the unfinished rows instead of failing the map.
 - **Weathering on every storey.** Grime was laid on the ground floor only, so a
   tall facade was clean above it; every storey is weathered now. The foundation
   band stays where it belongs, at the base.
