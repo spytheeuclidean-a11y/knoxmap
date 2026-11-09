@@ -44,8 +44,10 @@ SAMPLE = list(_sample())
 
 def furnish_time_builds():
     """SAMPLE as furnished: no windows (doors stay put), nothing cleared."""
-    with mock.patch.object(layout, "_place_windows", lambda *a, **k: None), \
-            mock.patch.object(layout, "_clear_the_way", lambda *a, **k: 0):
+    # Patched where they are used: assemble.py holds its own bindings, so
+    # patching the package attribute reached nothing after the split.
+    with mock.patch.object(layout.assemble, "_place_windows", lambda *a, **k: None), \
+            mock.patch.object(layout.assemble, "_clear_the_way", lambda *a, **k: 0):
         return [(kind, seed, layout.build_building(**args))
                 for kind, seed, args in SAMPLE]
 
@@ -322,7 +324,7 @@ class FloorStaysInOnePiece(unittest.TestCase):
 
     def test_same_seed_same_furniture(self):
         args = next(a for k, sd, a in SAMPLE if k == "house" and sd == 3)
-        with mock.patch.object(layout, "_place_windows", lambda *a, **k: None),                 mock.patch.object(layout, "_clear_the_way", lambda *a, **k: 0):
+        with mock.patch.object(layout.assemble, "_place_windows", lambda *a, **k: None),                 mock.patch.object(layout.assemble, "_clear_the_way", lambda *a, **k: 0):
             one = layout.build_building(**args)
             two = layout.build_building(**args)
         self.assertEqual([s.furniture for s in one.storeys],
@@ -360,7 +362,7 @@ class ClearUpAfterBuild(unittest.TestCase):
                     (role, kind, bool(set(layout._tiles_under(role, x, y, o)) & win)))
             return gone
 
-        with mock.patch.object(layout, "_open_up", spy):
+        with mock.patch.object(layout.furnishing, "_open_up", spy):
             cls.builds = [layout.build_building(**args) for _k, _s, args in SAMPLE]
         cls.placed = len(cls.removed) + sum(
             len(s.furniture) for b in cls.builds for s in b.storeys)
