@@ -770,9 +770,6 @@ Zoom out (minus key) = Alejar zoom (tecla menos)
 📦 Geofabrik — Local data = 📦 Geofabrik — Datos locales
 
 # Updates and new features (v1.8.5.3, UI feedback, thinning interiors)
- Enable "Elevators" too, for working lifts in tall buildings. =  Activa también "Elevators" para que funcionen los ascensores en edificios altos.
- Tall buildings have lifts: subscribe to the Elevators mod on the Steam Workshop to make them work. =  Los edificios altos tienen ascensores: suscríbete al mod Elevators en la Steam Workshop para que funcionen.
- With "Spawn Selector" enabled you can start at any landmark of the map. =  Con "Spawn Selector" activado puedes empezar en cualquier punto destacado del mapa.
 A download is already running; try again in a moment. = Ya hay una descarga en curso; vuelve a intentarlo en un momento.
 Apply to {map} = Aplicar a {map}
 Back to drawing. = Volver a dibujar.
@@ -793,7 +790,6 @@ Compiling — {phase} ({pct}%)… = Compilando — {phase} ({pct}%)…
 Compiling… = Compilando…
 Copied = Copiado
 Copy the picked shape = Copiar la figura seleccionada
-Delete {map} and all its files? This cannot be undone. = ¿Eliminar {map} y todos sus archivos? Esta acción no se puede deshacer.
 Done = Listo
 Downloaded = Descargado
 Downloading... = Descargando...
