@@ -1301,8 +1301,9 @@ def furnish_laundromat(plan, idx: int, room, rng: random.Random, occupied: set, 
 
 def furnish_gym(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
                 keeps_open=None) -> list[str] | None:
-    """Treadmills in a row facing a mirrored wall, weight machines in rows
-    behind them with room to step round each."""
+    """Treadmills in one unbroken row facing a mirrored wall, and the weights
+    in evenly spaced rows behind them, every machine on the same line as the
+    ones in the row in front of it."""
     cells = _cells(plan, idx, room)
     if len(cells) < 30:
         return None
@@ -1316,17 +1317,25 @@ def furnish_gym(plan, idx: int, room, rng: random.Random, occupied: set, no_go: 
     run_orient = "E" if wall == "W" else "S"
     sx, sy = STEP[OPPOSITE[wall]]
     machines = 0
-    for i, (x, y) in enumerate(line[1:-1]):
-        if i % 2 == 0:
-            machines += _put(plan, idx, "treadmill", x + sx, y + sy, run_orient, occupied,
-                             no_go, keeps_open)
+    # One row with no gaps: a treadmill is a tile wide, so its neighbour stands
+    # flush beside it as they do along a real gym wall. Dropping every other
+    # one left a treadmill, a space, a treadmill - which is what reads as a
+    # gym floor with machines stood about at random.
+    for x, y in line[1:-1]:
+        machines += _put(plan, idx, "treadmill", x + sx, y + sy, run_orient, occupied,
+                         no_go, keeps_open)
+    # The weights behind them, in rows square to that line and evenly spaced,
+    # one model to a row and each machine in line with the row in front. They
+    # used to go down on a 3x3 lattice with a coin tossed for the model, which
+    # is what scattered them: three machines in a whole gym, at odd angles to
+    # each other.
     weights = [w for w in ("weight_machine", "weight_machine_alt") if w in C.FURNITURE]
     frame = Frame(cells, wall)
-    for d in range(5, frame.depth - 1, 3):
-        for a in range(1, frame.length - 1, 3):
+    for row, d in enumerate(range(4, frame.depth - 1, 3)):
+        role = weights[row % len(weights)]
+        for a in range(1, frame.length - 1, 2):
             x, y = frame.xy(a, d)
-            machines += _put(plan, idx, rng.choice(weights), x, y, wall, occupied, no_go,
-                             keeps_open)
+            machines += _put(plan, idx, role, x, y, wall, occupied, no_go, keeps_open)
     if machines < 2:
         return None
     return ["shelf", "plant", "water_cooler"]
