@@ -350,8 +350,53 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         while step is not None:
             walk.append(step)
             step = prev[step]
+        # If a straight path out of the door reaches the sidewalk or drive within
+        # a few steps of the BFS route, prefer the straight line over an L-dogleg.
+        if walk and end not in drive_tiles:
+            straight_walk = []
+            for t in range(max(len(walk) + 4, 1)):
+                if t >= PATH_MAX_TILES:
+                    break
+                tx, ty = sx + dx * t, sy + dy * t
+                if not (0 <= tx < w and 0 <= ty < h):
+                    break
+                if paved_at[ty * w + tx]:
+                    if straight_walk:
+                        end = (tx, ty)
+                        walk = list(reversed(straight_walk))
+                    break
+                if not free(tx, ty):
+                    break
+                straight_walk.append((tx, ty))
         for x, y in walk:
             paint(x, y, C.PAVING_STONE)
+        # Fill 90-degree path corners and diagonal sidewalk pockets so grass
+        # edge-blends never cut across the walk or where it meets the pavement.
+        full_walk = [end] + walk
+        for i in range(1, len(full_walk) - 1):
+            ax, ay = full_walk[i - 1]
+            cx, cy = full_walk[i]
+            bx, by = full_walk[i + 1]
+            if ax != bx and ay != by:
+                for kx, ky in ((ax, by), (bx, ay)):
+                    if free(kx, ky):
+                        paint(kx, ky, C.PAVING_STONE)
+                        break
+        if walk and end not in drive_tiles:
+            mx, my = walk[0]
+            ex, ey = end
+            tx, ty = ex - mx, ey - my
+            lx, ly = -ty, tx
+            for s in (-1, 1):
+                slx, sly = s * lx, s * ly
+                nx, ny = ex + slx, ey + sly
+                dx_step, dy_step = ex + tx + slx, ey + ty + sly
+                if free(nx, ny) and 0 <= dx_step < w and 0 <= dy_step < h \
+                        and (paved_at[dy_step * w + dx_step] or road_at[dy_step * w + dx_step]):
+                    paint(nx, ny, C.PALE_CONCRETE)
+                    paved_at[ny * w + nx] = True
+                    if free(mx + slx, my + sly):
+                        paint(mx + slx, my + sly, C.PAVING_STONE)
         # A stoop: the slab either side of the door step as well.
         for k in (-1, 1):
             if free(sx + px * k, sy + py * k):

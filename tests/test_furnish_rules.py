@@ -462,3 +462,30 @@ class ClearUpAfterBuild(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class NothingStandsInADoorway(unittest.TestCase):
+    """A door's tiles have no blocking piece on them.
+
+    Furnishing keeps off them, but the pass that moves a door off the flight
+    can put one back afterwards, and it landed on a bed already made up: a
+    bedroom whose only way in was the foot of its bed.
+    """
+
+    SHAPES = ((11, 10, 0), (13, 12, 3), (17, 12, 1), (12, 12, 0), (14, 11, 2))
+
+    def test_a_doorway_is_clear_in_every_built_house(self):
+        built = 0
+        for w, h, seed in self.SHAPES:
+            b = layout.build_building(w, h, levels=1, seed=seed, kind="house")
+            for level, s in enumerate(b.storeys):
+                clear = layout._door_tiles(s)
+                for role, x, y, o in s.furniture:
+                    if not layout._blocks(role):
+                        continue
+                    hit = set(layout._cells_for(role, x, y, o)).intersection(clear)
+                    with self.subTest(shape=(w, h, seed), level=level, role=role):
+                        self.assertFalse(
+                            hit, f"{role} at {(x, y)} stands in a doorway at {sorted(hit)}")
+                built += 1
+        self.assertGreaterEqual(built, len(self.SHAPES))

@@ -15,8 +15,10 @@ def tbx(width, height, floors, rooms=2, extra_attrs=""):
         entry("exterior_walls", West="ew_000", North="ew_001", NorthWest="ew_002", SouthEast="ew_003",
               WestDoor="ew_010", NorthDoor="ew_011", WestWindow9="ew_020", NorthWindow9="ew_021"),
         entry("exterior_wall_trim", West="tr_000", North="tr_001", NorthWest="tr_002", SouthEast="tr_003",
+              WestWindow="tr_020", NorthWindow="tr_021",
               WestDoor="tr_010", NorthDoor="tr_011"),
         entry("grime_wall", West="gr_000", North="gr_001", NorthWest="gr_002", SouthEast="gr_003",
+              WestWindow="gr_020", NorthWindow="gr_021",
               WestDoor="gr_010", NorthDoor="gr_011"),
         entry("doors", West="door_000", North="door_001"),
         entry("door_frames", West="frame_000", North="frame_001"),
@@ -73,9 +75,9 @@ class BuildTilesTests(unittest.TestCase):
         self.assertEqual(self.square(t, 4, 3), ["ew_3", "tr_3", "gr_3"])           # the post at the corner
         self.assertEqual(self.square(t, 5, 5), [])
 
-    def test_upper_levels_have_no_trim_or_grime_outside(self):
+    def test_upper_levels_wear_grime_but_no_trim_outside(self):
         t = tbx(4, 3, [(grid(4, 3), []), (grid(4, 3), [])])
-        self.assertEqual(self.square(t, 1, 3, z=1), ["ew_1"])
+        self.assertEqual(self.square(t, 1, 3, z=1), ["ew_1", "gr_1"])
         self.assertEqual(self.square(t, 1, 3, z=0), ["ew_1", "tr_1", "gr_1"])
 
     def test_a_wall_between_two_rooms_belongs_to_the_room_on_its_south_or_east(self):
@@ -94,13 +96,26 @@ class BuildTilesTests(unittest.TestCase):
     def test_a_window_with_curtains_and_shutters(self):
         obj = dict(type="window", x=2, y=3, dir="N", CurtainsTile=7, ShuttersTile=8)
         t = tbx(5, 3, [(grid(5, 3), [obj])])
-        self.assertEqual(self.square(t, 2, 3), ["ew_21", "sh_2", "sh_3", "fixtures_windows_white_17"])
+        self.assertEqual(self.square(t, 2, 3), ["ew_21", "tr_21", "gr_21",
+                                                "sh_2", "sh_3", "fixtures_windows_white_17"])
         self.assertEqual(self.square(t, 1, 3), ["ew_1", "tr_1", "gr_1", "sh_2"])
         self.assertEqual(self.square(t, 3, 3), ["ew_1", "tr_1", "gr_1", "sh_3"])
         self.assertEqual(self.square(t, 2, 2), ["floorA_0", "cur_3"])               # on the inside
         inside = dict(type="window", x=2, y=0, dir="N", CurtainsTile=7)
         t = tbx(5, 3, [(grid(5, 3), [inside])])
         self.assertEqual(self.square(t, 2, 0), ["floorA_0", "iwA_21", "fixtures_windows_white_17", "cur_2"])
+
+    def test_a_window_keeps_the_trim_and_grime_of_its_wall(self):
+        # The trim and grime tables name one window tile, not one per cut-out, so a
+        # numbered wall variant falls back to it instead of dropping the overlays.
+        obj = dict(type="window", x=2, y=3, dir="N", Tile=6)
+        t = tbx(5, 3, [(grid(5, 3), [obj])])
+        self.assertEqual(self.square(t, 2, 3), ["ew_21", "tr_21", "gr_21",
+                                                "fixtures_windows_white_17"])
+        b = parse_tbx(t)
+        b.entries[2]["NorthWindow9"] = "gr_029"      # a table that does name the variant
+        self.assertEqual(level_tiles(b, 0)[(2, 3)], ["ew_21", "tr_21", "gr_029",
+                                                     "fixtures_windows_white_17"])
 
     def test_a_floor_with_the_wrong_number_of_rooms_is_refused(self):
         with self.assertRaises(ValueError):
