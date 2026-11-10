@@ -568,3 +568,9 @@ KnoxMap could not reach the OpenStreetMap servers. Check your internet connectio
 OSM query failed: {details} = Не удалось получить данные OSM: {details}
 The map would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works. {details} = Не удалось скачать карту. Публичные серверы Overpass могут быть перегружены; обычно помогает повторная генерация через несколько минут. {details}
 {count} of {total} map tiles would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works, and a smaller area always does. {details} = Не удалось скачать {count} из {total} частей карты. Публичные серверы Overpass могут быть перегружены; попробуй повторить генерацию через несколько минут или уменьшить область. {details}
+Stand size = Размер рощ
+How big the clumps of forest and the clearings between them are, in metres. = Насколько велики рощи и поляны между ними, в метрах.
+Edge softness = Мягкость опушки
+How far in from its edge a wood thins out, in metres. 0 is a hard edge. = Насколько вглубь от опушки лес редеет, в метрах. 0 - резкая граница.
+300 m of forest with a road and a field, as these settings draw it. = 300 м леса с дорогой и полем, как их нарисуют эти настройки.
+A sample of forest with these settings = Образец леса с этими настройками

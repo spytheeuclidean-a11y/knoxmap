@@ -958,6 +958,8 @@ const SETTING_LABELS = {
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
   tree_density:        ['Woodland', 'Scales tree cover everywhere: the woods, the gardens and the scrub over open ground. Trees are cover to hide in.'],
   forest_density:      ['Forests', 'Scales every wood, on top of Woodland: the ones the mapper drew and the tree cover WorldCover finds. Thick forest round a thinly planted town, or the other way about.'],
+  forest_stand_m:      ['Stand size', 'How big the clumps of forest and the clearings between them are, in metres.'],
+  forest_edge_m:       ['Edge softness', 'How far in from its edge a wood thins out, in metres. 0 is a hard edge.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
   fill_gaps:           ['Fill gaps from Microsoft footprints', 'On adds the buildings OpenStreetMap has not got, from Microsoft’s machine-detected building footprints, same licence. Downloads about 30 MB per tile on the first run, nothing to install. Worth it where your town is half missing from OSM; elsewhere it adds sheds. Falls back to Overture (needs DuckDB) if Microsoft cannot be reached.'],
   fill_frontage:       ['Fill gaps in streets', 'On builds the buildings missing from a street that has buildings either side of the gap: the shop missing from a row of shops, the houses from a run of houses. They are made like their neighbours, same width, depth, set-back and storeys, and only where there is room: never across a road, on water, in a park or a wood. Uses nothing but the map itself, so it costs no download. Off leaves the gaps as OpenStreetMap has them.'],
@@ -1047,8 +1049,39 @@ function buildSettingsForm(values) {
       <span class="setting-hint">${hint}</span>`;
     body.appendChild(wrap);
   }
+  addForestPreview(body);
   fx.wireSettings(body);
   runListSearch('advanced-body');
+}
+
+// The forest sliders draw a sample of forest as they move, from the same code
+// the map is drawn with (/api/forest-preview), so what is seen is what is got.
+const FOREST_PREVIEW_KEYS = ['tree_density', 'forest_density', 'forest_stand_m', 'forest_edge_m'];
+
+function addForestPreview(body) {
+  const last = body.querySelector('[data-key="forest_edge_m"]');
+  if (!last) return;
+  const fig = document.createElement('figure');
+  fig.className = 'forest-preview';
+  fig.innerHTML = `<img alt="A sample of forest with these settings" width="300" height="300">
+    <figcaption>300 m of forest with a road and a field, as these settings draw it.</figcaption>`;
+  last.closest('.setting').after(fig);
+  const img = fig.querySelector('img');
+  let timer = null;
+  const refresh = () => {
+    const q = new URLSearchParams();
+    for (const key of FOREST_PREVIEW_KEYS) {
+      const el = body.querySelector(`[data-key="${key}"]`);
+      if (el && el.value !== '') q.set(key, el.value);
+    }
+    img.src = `/api/forest-preview?${q}`;
+  };
+  body.addEventListener('input', e => {
+    if (!FOREST_PREVIEW_KEYS.includes(e.target.dataset?.key)) return;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 150);
+  });
+  refresh();
 }
 
 function readSettings() {

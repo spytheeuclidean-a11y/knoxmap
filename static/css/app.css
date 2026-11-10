@@ -380,6 +380,12 @@ body.rotate-dragging * {
 .setting-val { font-family: var(--mono); color: var(--muted); }
 .setting input[type="range"] { padding: 0; border: 0; accent-color: var(--accent); }
 .setting-hint { display: block; font-size: 12px; color: var(--faint); }
+.forest-preview { margin: 4px 0 14px; }
+.forest-preview img { display: block; width: 100%; max-width: 300px; height: auto;
+  image-rendering: pixelated; border-radius: 4px; background: var(--faint); }
+.forest-preview figcaption { font-size: 12px; color: var(--faint); margin-top: 4px; }
+/* It belongs to the forest sliders: searched away with them. */
+.setting.out-of-search + .forest-preview { display: none; }
 
 /* A setting that is only ever on or off gets a switch in its heading, where
    the number used to be, instead of a slider two positions wide. */
