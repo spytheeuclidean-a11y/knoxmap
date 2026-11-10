@@ -109,7 +109,10 @@ RULES = [
     ("Yard bed_ne", (12, 37, 220), "carpentry_03_055", "0_Furniture"),
     ("Yard bed_e", (12, 37, 221), "carpentry_03_043", "0_Furniture"),
     ("Yard bed_se", (12, 37, 222), "carpentry_03_052", "0_Furniture"),
-    ("Yard bed_soil", (12, 37, 223), "floors_exterior_natural_01_018", "0_FloorOverlay6"),
+    ("Yard bed_soil", (12, 37, 223),
+     ["floors_exterior_natural_01_16", "floors_exterior_natural_01_17",
+      "floors_exterior_natural_01_18", "floors_exterior_natural_01_018"],
+     "0_FloorOverlay6"),
     # Works yards (knoxbuild/works.py): pallets, drums, barrels, crates and
     # tyres along the walls, a list picked from for each square.
     ("Works pallet", (12, 39, 200), "construction_01_5", "0_Furniture"),
@@ -202,6 +205,9 @@ def main(argv: list[str]) -> int:
     # knoxpaths.lay_rule_blocks, rather than stripped and appended - appending
     # is what made this file change on every Setup (see that function).
     text = re.sub(r"\n?rule\s*\{\s*label = Railroad (?:NE-SW|NW-SE)\s.*?\}\s*",
+                  "\n", text, flags=re.S)
+    # Strip any older stray litter rules that still named blank tiles
+    text = re.sub(r"\n?rule\s*\{\s*label = KnoxMap road Litter\s.*?trash_01_13.*?\n\}\s*",
                   "\n", text, flags=re.S)
     blocks = []
     rail_blocks = []

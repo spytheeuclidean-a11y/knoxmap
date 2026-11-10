@@ -139,7 +139,7 @@ def road_rules_ok(tools: Path | None) -> bool:
     as a question mark.
     """
     text = rules_text(tools)
-    return "KnoxMap road Yard bed_soil" in text and "trash_01_13" not in text
+    return ("KnoxMap road Yard bed_soil" in text or "KnoxMap road Kerb W" in text) and "trash_01_13" not in text
 
 
 def tree_rules_ok(tools: Path | None) -> bool:
@@ -175,8 +175,9 @@ def lay_rule_blocks(text: str, marker: str, blocks: list[str]) -> str:
     """
     import re
 
+    text = text.replace("\r\n", "\n")
     body = "\n".join(blocks)
-    pattern = re.compile(rf"rule\n\{{\n    label = {re.escape(marker)} .*?\n\}}", re.S)
+    pattern = re.compile(rf"rule\s*\{{\s*label = {re.escape(marker)} .*?\n\}}", re.S)
     found = list(pattern.finditer(text))
     if not found:
         # `body` ends in its own newline, and the file has always ended with

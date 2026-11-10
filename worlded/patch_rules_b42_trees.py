@@ -125,7 +125,8 @@ def sheet_sizes(tilesets_txt: Path) -> dict[str, tuple[int, int]]:
     return out
 
 
-def rewrite_trees(text: str) -> tuple[str, int]:
+def rewrite_trees(text: str, available_deciduous: list[str] | None = None,
+                  available_evergreen: list[str] | None = None) -> tuple[str, int]:
     """Point every tree entry at a tile the game defines as a tree.
 
     Takes both the shipped names and the ones an older version of this script
@@ -133,6 +134,8 @@ def rewrite_trees(text: str) -> tuple[str, int]:
     defined tile (index 0 to 7) are left alone, so running it again changes
     nothing.
     """
+    decid = available_deciduous if available_deciduous else DECIDUOUS
+    ever = available_evergreen if available_evergreen else EVERGREEN
     stale = re.compile(r"\b(?:vegetation_trees_01|e_\w+_1)_(?:[89]|1[0-5])\b")
     # The species carry on from one rule to the next, so the file as a whole
     # works through all of them: a rule holds four trees at most, and starting
@@ -144,7 +147,7 @@ def rewrite_trees(text: str) -> tuple[str, int]:
         body = block.group(0)
         label = re.search(r"label = (.*)", body)
         label = label.group(1).strip() if label else ""
-        species = EVERGREEN if "fir" in label.lower() else DECIDUOUS
+        species = ever if "fir" in label.lower() else decid
         mix = mix_for(label)
         seen = {"n": 0}
 
@@ -184,10 +187,34 @@ def main(argv: list[str]) -> int:
 
     needed = [f"{sheet}_{max(SIZE_INDEX.values())}" for sheet in DECIDUOUS + EVERGREEN]
     needed.append(f"{FLOWER_SHEET}_{max(FLOWER_INDICES)}")
-    problems = [bad for bad in map(unusable, needed) if bad]
-    if problems:
-        print("refusing to patch:", *problems, sep="\n  ", file=sys.stderr)
+
+    # Check for Build 41 vs Build 42 diagnosis:
+    has_any_b42_tree = any(not unusable(f"{sheet}_{max(SIZE_INDEX.values())}") for sheet in DECIDUOUS + EVERGREEN)
+    if not has_any_b42_tree:
+        has_b41_trees = (tiles_dir / "vegetation_trees_01.png").exists()
+        if has_b41_trees:
+            print("refusing to patch: none of the Build 42 tree sheets (e_redmaple_1, etc.) were found,",
+                  "but legacy vegetation_trees_01 was found. Your Project Zomboid install appears to be Build 41.",
+                  "KnoxMap requires Build 42: switch to the Build 42 beta branch in Steam (Properties > Betas)",
+                  "and run Setup.bat again.", sep="\n  ", file=sys.stderr)
+        else:
+            print("refusing to patch: no Build 42 tree sheets were found in the tile folder.",
+                  "Tile extraction may have been skipped or failed. Run Setup.bat with your Project Zomboid",
+                  "folder located so tiles can be extracted from your game.", sep="\n  ", file=sys.stderr)
         return 3
+
+    avail_decid = [sheet for sheet in DECIDUOUS if not unusable(f"{sheet}_{max(SIZE_INDEX.values())}")]
+    avail_ever = [sheet for sheet in EVERGREEN if not unusable(f"{sheet}_{max(SIZE_INDEX.values())}")]
+    if not avail_decid or not avail_ever:
+        problems = [bad for bad in map(unusable, needed) if bad]
+        print("refusing to patch: need at least one deciduous and one evergreen tree sheet:",
+              *problems, sep="\n  ", file=sys.stderr)
+        return 3
+
+    missing_trees = [bad for bad in map(unusable, needed) if bad]
+    if missing_trees:
+        print(f"note: {len(missing_trees)} tree sheets missing or incomplete; patching with the {len(avail_decid) + len(avail_ever)} available sheets")
+
     # A tree whose sheet this install has not got is left out on its own,
     # rather than costing the other rules their fix as well.
     ours, left_out = [], []
@@ -205,7 +232,7 @@ def main(argv: list[str]) -> int:
             shutil.copy2(rules, backup)
             print(f"backed up to {backup.name}")
 
-    text, n_trees = rewrite_trees(text)
+    text, n_trees = rewrite_trees(text, available_deciduous=avail_decid, available_evergreen=avail_ever)
 
     flower_counter = {"n": 0}
 
@@ -214,7 +241,10 @@ def main(argv: list[str]) -> int:
         flower_counter["n"] += 1
         return f"{FLOWER_SHEET}_{idx}"
 
-    text, n_flowers = re.subn(r"vegetation_groundcover_01_\d+", swap_flower, text)
+    if not unusable(f"{FLOWER_SHEET}_{max(FLOWER_INDICES)}"):
+        text, n_flowers = re.subn(r"vegetation_groundcover_01_\d+", swap_flower, text)
+    else:
+        n_flowers = 0
 
     # Our own rules, rewritten whole, so a changed tile reaches an install
     # patched by an older version.
