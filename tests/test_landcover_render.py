@@ -46,12 +46,13 @@ def grid_for(width, height, bounds=None):
     return grid
 
 
-def render(landcover_for):
+def render(landcover_for, feats=None, **kw):
     proj = Projector.build(SOUTH, WEST, NORTH, EAST, 1.0, 0.0)
     out = tempfile.mkdtemp()
     with contextlib.redirect_stdout(io.StringIO()):
-        renderer.render(features(proj), SOUTH, WEST, NORTH, EAST, meters_per_tile=1.0,
-                        output_dir=out, map_name="wc", landcover_for=landcover_for)
+        renderer.render(features(proj) if feats is None else feats,
+                        SOUTH, WEST, NORTH, EAST, meters_per_tile=1.0,
+                        output_dir=out, map_name="wc", landcover_for=landcover_for, **kw)
     land = np.asarray(Image.open(os.path.join(out, "wc.bmp")).convert("RGB"))
     veg = np.asarray(Image.open(os.path.join(out, "wc_veg.bmp")).convert("RGB"))
     return proj, land, veg
@@ -137,6 +138,25 @@ class RenderWorldCoverTest(unittest.TestCase):
         ys, xs = region(proj, 0.0, 0.55, 1.0, 1.0)
         trees = is_(veg[ys, xs], C.TREES, C.TREES_DARK_GRASS)
         self.assertTrue(trees.any())
+
+    def test_relief_bands_grass_but_not_water_or_cropland(self):
+        # A slope rising to the east: its upper bands are flat ground colours,
+        # which on WorldCover's lake or cropland would erase it.
+        def lake_field_grass(width, height, bounds=None):
+            grid = np.full((height, width), 30, dtype="uint8")
+            grid[: height // 3, width // 2:] = 80
+            grid[height // 3: 2 * height // 3, width // 2:] = 40
+            return grid
+        slope = np.tile(np.linspace(0, 200, 64, dtype="float32"), (64, 1))
+        proj, land, _ = render(lake_field_grass, feats=[], elevation=slope,
+                               elevation_span=(0.0, 200.0))
+        ys, xs = region(proj, 0.75, 0.05, 0.95, 0.25)
+        self.assertGreater(is_(land[ys, xs], C.WATER).mean(), 0.95)
+        ys, xs = region(proj, 0.75, 0.4, 0.95, 0.6)
+        self.assertGreater(is_(land[ys, xs], C.DIRT_ROWS_H, C.DIRT_ROWS_V).mean(), 0.3)
+        # ...while the grassland up there is banded.
+        ys, xs = region(proj, 0.75, 0.7, 0.95, 0.95)
+        self.assertLess(is_(land[ys, xs], C.MEDIUM_GRASS).mean(), 0.9)
 
     def test_broken_landcover_still_renders(self):
         def broken(w, h, bounds=None):
