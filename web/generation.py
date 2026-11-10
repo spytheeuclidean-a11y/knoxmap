@@ -32,7 +32,7 @@ from web.checks import (BASE_BYTES, BIG_AREA_KM2, BIG_TILES_PER_SIDE,
 from web.common import (SAFE_NAME, _bbox_area_km2, _cos_lat, _json_body,
                         _map_dir, _worlded_exe, failed, log)
 from web.jobs import _PROGRESS_LOCK, _hold, _set_progress, _stopped, _stopper
-from web.mapfiles import (_load_edits, _load_settings, _load_sketch,
+from web.mapfiles import (_audited, _load_edits, _load_settings, _load_sketch,
                           _map_summary, _osm_cache_for, _population,
                           _save_design, _save_settings, _save_sketch)
 
@@ -615,7 +615,7 @@ def api_buildings():
     return jsonify({"count": len(tbx), "terrain": terrain,
                     "pzw": f"{map_dir.name}.pzw",
                     "settings": settings.to_dict(),
-                    "population": _population(map_dir)})
+                    "population": _audited(map_dir, _population(map_dir))})
 
 
 @bp.route("/api/layout-preview")
@@ -664,7 +664,7 @@ def api_zombies():
         summary = recount(str(map_dir), settings)
     except FileNotFoundError as exc:
         return failed(f"Cannot recount zombies: {exc}.", 400, exc)
-    return jsonify({"population": summary})
+    return jsonify({"population": _audited(map_dir, summary)})
 
 
 @bp.route("/api/worlded", methods=["POST"])

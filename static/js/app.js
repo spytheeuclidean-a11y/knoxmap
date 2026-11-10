@@ -3061,6 +3061,7 @@ function renderCensus(pop) {
   }
   refreshLayoutPreview();
   box.hidden = false;
+  renderAudit(pop.audit);
   const tiles = document.getElementById('censusTiles');
   tiles.innerHTML = `
     ${fx.tile(pop.residents, '', 'residents')}
@@ -3075,6 +3076,34 @@ function renderCensus(pop) {
         `<b>${escapeHtml(p.name || p.place)}</b> at ${p.population.toLocaleString()} people`
       ).join(', ') + ' — official figures can cover a whole district, not just what is on the map.'
     : '';
+}
+
+// What knoxbuild/audit.py found in the buildings just laid out: a room with no
+// way in, a door onto the stairs, a flat with no front door. Said here because
+// this is the last moment it is cheap to put right - compiling takes hours, and
+// finding it after that means walking the town in game.
+function renderAudit(found) {
+  const box = document.getElementById('censusAudit');
+  if (!found || !found.buildings) {
+    box.hidden = true;
+    box.textContent = '';
+    return;
+  }
+  box.hidden = false;
+  const problems = Object.entries(found.problems || {});
+  const checked = found.buildings.toLocaleString();
+  if (!found.flagged) {
+    box.className = 'census-audit';
+    box.textContent = `Layout audit: ${checked} buildings checked, nothing wrong.`;
+    box.title = '';
+    return;
+  }
+  const list = problems.slice(0, 3).map(([what, n]) => `${what} \u00d7${n}`).join(', ');
+  const more = problems.length > 3 ? `, and ${problems.length - 3} more` : '';
+  box.className = 'census-audit bad';
+  box.textContent = `Layout audit: ${found.flagged.toLocaleString()} of ${checked} `
+    + `buildings need a look - ${list}${more}.`;
+  box.title = problems.map(([what, n]) => `${what}: ${n}`).join('\n');
 }
 
 document.getElementById('recountBtn').addEventListener('click', async () => {

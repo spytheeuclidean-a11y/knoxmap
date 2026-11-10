@@ -11,7 +11,7 @@ import knoxlog
 
 from web import common
 from web.common import CACHE_DIR, SAFE_NAME, _json_body, _map_dir, failed, log
-from web.mapfiles import _load_settings, _map_summary, _population
+from web.mapfiles import _audited, _load_settings, _map_summary, _population
 
 bp = Blueprint("maps", __name__)
 
@@ -69,7 +69,7 @@ def api_map(map_name: str):
 
     summary = _map_summary(map_dir)
     summary["settings"] = _load_settings(map_dir).to_dict()
-    summary["population"] = _population(map_dir)
+    summary["population"] = _audited(map_dir, _population(map_dir))
     return jsonify(summary)
 
 
