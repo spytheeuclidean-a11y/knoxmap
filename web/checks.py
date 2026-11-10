@@ -166,10 +166,10 @@ def _normalise_bbox(south: float, west: float, north: float,
 
 
 # Drawing a map holds several pictures of it at once - the ground, the
-# vegetation, the masks the gardens and the paving are worked out from. Measured
-# on real towns (a 2400 x 2400 Paris peaked at 0.54 GB, a 1200 x 900 Manhattan
-# at 0.12 GB), that is about this much, plus what the program itself takes.
-BYTES_PER_TILE = 80
+# vegetation, and temporary strip buffers for garden, wild growth and grove passes.
+# With chunked/strip rasterization, intermediate arrays are processed in strips
+# rather than held simultaneously for the entire canvas.
+BYTES_PER_TILE = 20
 BASE_BYTES = 150e6
 # Generate buildings reads the ground and vegetation back (3 bytes a tile each)
 # and works masks out of them. Measured on a 7200 x 4800 map: 684 MB at the
