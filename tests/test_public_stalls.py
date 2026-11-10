@@ -7,6 +7,30 @@ from knoxbuild.layout.furnishing import _blocks, _cells_for, _door_tiles, _furni
 
 
 class PublicStalls(unittest.TestCase):
+    def test_manchester_walmart_bathroom_has_enclosed_toilets(self):
+        # The reported bathroom is 6 x 5, with its entrance in the south wall.
+        room = layout.Room(0, 0, 5, 4, kind="bathroom")
+        hall = layout.Room(0, 5, 5, 5, kind="hall")
+        plan = layout.Plan(6, 6, rooms=[room, hall],
+                           grid=[[1] * 6 for _ in range(5)] + [[2] * 6],
+                           kind="mall", doors=[(4, 5, "N")])
+        _furnish(plan, random.Random(1))
+        self.assertGreaterEqual(len(plan.stalls), 2)
+        compiled = buildtiles.parse_tbx(tbx.render_tbx(plan, "mall restroom"))
+        tiles = buildtiles.level_tiles(compiled, 0)
+        for x, y, facing in plan.stalls:
+            front = (x, y + 1) if facing == "N" else (x + 1, y)
+            door_sprite = "fixtures_bathroom_01_49" if facing == "N" else "fixtures_bathroom_01_48"
+            self.assertIn(door_sprite, tiles[front])
+
+    def test_generated_mall_bathrooms_receive_stalls(self):
+        for seed in range(3):
+            plan = layout.build_building(79, 85, kind="mall", commercial=True,
+                                         seed=seed).storeys[0]
+            bathrooms = {i for i, room in enumerate(plan.rooms, 1) if room.kind == "bathroom"}
+            self.assertTrue(bathrooms, seed)
+            self.assertEqual(bathrooms, {plan.grid[y][x] for x, y, _ in plan.stalls}, seed)
+
     def test_school_bathrooms_have_reachable_stalls(self):
         for seed in range(12):
             plan = layout.build_building(40, 32, kind="school", commercial=True,
