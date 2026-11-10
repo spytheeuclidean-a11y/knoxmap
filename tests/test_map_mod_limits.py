@@ -35,6 +35,12 @@ class SpawnPicture(unittest.TestCase):
 
 
 class SaveBuffer(unittest.TestCase):
+    def test_world_grid_reserve_catches_elizabethtown_overflow(self):
+        # Its measured lot headers were below the old budget, but savePart also
+        # writes the game's 501-by-501 grid of cell counts.
+        estimate = 7_458_295 + M.KNOX_COUNTY_META + M.META_EMPTY_GRID_RESERVE
+        self.assertGreater(estimate, M.SAVE_BUFFER)
+
     def test_a_city_of_rooms_is_past_what_the_game_can_save(self):
         # Hamburg: 4087 cells, 1,577,797 rooms, 237,854 buildings.
         def header(path):
