@@ -1,3 +1,24 @@
+## 1.8.5.7
+
+- **Setup works on Build 42.22.** `floors_exterior_natural_01` ships tiles 8-11,
+  16 and 17 there - 18 is gone - so the `Yard bed_soil` rule was dropped and
+  `road_rules_ok()` failed. The rule takes 16 and 17 as tilled soil as well as
+  18, and stray `trash_01_13` rules from older runs are stripped.
+- **`Rules.txt` on Windows.** `lay_rule_blocks()` did not match a rule when the
+  file was CRLF, so a patch silently changed nothing; it matches either ending
+  now, and the road-rule check accepts `Yard bed_soil` or `Kerb W`.
+- **Curb and traffic-line sheets are registered.** `ensure_road_catalogue()`
+  puts every curb, traffic line and curb blend sheet into `Tilesets.txt`, so a
+  setup cannot finish with question-mark pavement for a missing sheet.
+- **Floor packs follow the game.** When a patch updates the game's
+  `*.floor.pack` files, `Setup.bat` re-merges their tiles into the local sheets
+  rather than leaving the previous build's floors.
+- **Trees on Build 41 say so.** `patch_rules_b42_trees.py` names the case when
+  only the legacy `vegetation_trees_01` sheet is present and points at the B42
+  beta branch, instead of failing quietly; a missing sheet no longer stops the
+  rest of the tree patch.
+- Regression tests for the road rules in `tests/test_road_rules.py`.
+
 ## 1.8.5.6
 
 - **Windows keep their siding and grime.** A wall with a window asked the trim
