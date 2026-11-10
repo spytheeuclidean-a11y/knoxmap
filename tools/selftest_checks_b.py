@@ -1323,17 +1323,20 @@ def check_overpass_setting(check, work: str) -> None:
                 "action": "start", "extract": "https://evil.example/x.osm.pbf"}).status_code == 400
                 and not any(c[0] == "run" for c in calls),
                 "only a Geofabrik extract is accepted, and nothing is run for any other")
-            for suffix in ("pbf", "bz2"):
-                calls.clear()
-                good = f"https://download.geofabrik.de/north-america/us/tennessee-latest.osm.{suffix}"
-                response = client.post("/api/local-overpass", json={"action": "start", "extract": good})
-                run = next((c for c in calls if c[0] == "run"), ())
-                check(response.status_code == 200 and f"OVERPASS_PLANET_URL={good}" in run
-                      and "127.0.0.1:12345:80" in run,
-                      f"a good {suffix} extract starts a localhost-only container")
-                hooks = [arg for arg in run if arg.startswith("OVERPASS_PLANET_PREPROCESS=")]
-                expected = [f"OVERPASS_PLANET_PREPROCESS={geo.LOCAL_PBF_PREPROCESS}"] if suffix == "pbf" else []
-                check(hooks == expected, f"the {suffix} extract gets the right preprocessing")
+            base = "https://download.geofabrik.de/north-america/us/tennessee-latest.osm"
+            legacy = client.post("/api/local-overpass", json={
+                "action": "start", "extract": f"{base}.bz2"})
+            check(legacy.status_code == 400 and ".osm.pbf" in legacy.get_json()["error"]
+                  and not any(c[0] == "run" for c in calls),
+                  "a legacy BZ2 URL is rejected with guidance to use PBF")
+            good = f"{base}.pbf"
+            response = client.post("/api/local-overpass", json={"action": "start", "extract": good})
+            run = next((c for c in calls if c[0] == "run"), ())
+            check(response.status_code == 200 and f"OVERPASS_PLANET_URL={good}" in run
+                  and "127.0.0.1:12345:80" in run,
+                  "a Geofabrik PBF starts a localhost-only container")
+            check(f"OVERPASS_PLANET_PREPROCESS={geo.LOCAL_PBF_PREPROCESS}" in run,
+                  "the PBF import gets the conversion hook")
             d = client.post("/api/local-overpass", json={"action": "use"}).get_json()
             check(osm.OVERPASS_ENDPOINTS[0] == geo.LOCAL_URL
                   and len(osm.OVERPASS_ENDPOINTS) == len(osm._DEFAULT_ENDPOINTS) + 1,
