@@ -59,6 +59,15 @@ DECIDUOUS = ["e_redmaple_1", "e_americanlinden_1", "e_yellowwood_1",
              "e_riverbirch_1", "e_dogwood_1", "e_easternredbud_1",
              "e_cockspurhawthorn_1", "e_carolinasilverbell_1"]
 EVERGREEN = ["e_virginiapine_1", "e_canadianhemlock_1", "e_americanholly_1"]
+# What an ordinary wood is made of: every species, broadleaf and evergreen,
+# taken in turn so that every few trees one is an evergreen. A wood used to be
+# the broadleaves alone, two of them flowering pink, which read as a park
+# rather than a forest anywhere they did not grow.
+MIXED = ["e_redmaple_1", "e_virginiapine_1", "e_americanlinden_1",
+         "e_yellowwood_1", "e_canadianhemlock_1", "e_riverbirch_1",
+         "e_dogwood_1", "e_americanholly_1", "e_easternredbud_1",
+         "e_cockspurhawthorn_1", "e_carolinasilverbell_1"]
+assert sorted(MIXED) == sorted(DECIDUOUS + EVERGREEN)
 
 # Sizes 1/4 to 4/4 are the sheet's first four tiles; the game's own world
 # generator plants 2 and 3 as "a tree" and 0 and 1 as a sapling.
@@ -129,14 +138,18 @@ def rewrite_trees(text: str, available_deciduous: list[str] | None = None,
                   available_evergreen: list[str] | None = None) -> tuple[str, int]:
     """Point every tree entry at a tile the game defines as a tree.
 
-    Takes both the shipped names and the ones an older version of this script
-    wrote, which is what makes it safe to run twice. Entries already on a
-    defined tile (index 0 to 7) are left alone, so running it again changes
-    nothing.
+    Takes the shipped names and every species tile a run of this script
+    wrote, of any version, and deals them out again from the top of the file:
+    so an install patched when woods were broadleaf only gets the mixture, and
+    running it again deals the same hand and changes nothing. Our own rules
+    are rewritten whole later and left alone here; the big trees' sheets
+    (e_...JUMBO...) are never matched.
     """
     decid = available_deciduous if available_deciduous else DECIDUOUS
     ever = available_evergreen if available_evergreen else EVERGREEN
-    stale = re.compile(r"\b(?:vegetation_trees_01|e_\w+_1)_(?:[89]|1[0-5])\b")
+    # A wood takes every species this install has, in MIXED's order.
+    mixed = [sheet for sheet in MIXED if sheet in decid or sheet in ever]
+    stale = re.compile(r"\b(?:vegetation_trees_01_\d+|e_[a-z]+_1_\d+)\b")
     # The species carry on from one rule to the next, so the file as a whole
     # works through all of them: a rule holds four trees at most, and starting
     # over at each would leave half the species on the shelf and every wood
@@ -147,7 +160,9 @@ def rewrite_trees(text: str, available_deciduous: list[str] | None = None,
         body = block.group(0)
         label = re.search(r"label = (.*)", body)
         label = label.group(1).strip() if label else ""
-        species = ever if "fir" in label.lower() else decid
+        if label.startswith(MARKER):
+            return body
+        species = ever if "fir" in label.lower() else mixed
         mix = mix_for(label)
         seen = {"n": 0}
 
@@ -269,7 +284,7 @@ def main(argv: list[str]) -> int:
         return _finish(root)
     rules.write_text(text, encoding="utf-8")
     print(f"tree tiles repointed  : {n_trees} across "
-          f"{len(DECIDUOUS)} species and {len(SIZE_INDEX)} sizes")
+          f"{len(MIXED)} species and {len(SIZE_INDEX)} sizes")
     print(f"tree rules written    : {len(blocks)} (replacing {old})")
     if left_out:
         print(f"    left out {len(left_out)} trees this install has no "
