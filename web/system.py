@@ -505,6 +505,32 @@ def api_settings():
     })
 
 
+
+@bp.route("/api/forest-preview")
+def api_forest_preview():
+    """A sample of forest drawn with these forest settings, for the sliders."""
+    import math
+
+    from generator.rendering.forest_preview import preview_png
+    from knoxbuild.settings import LIMITS
+
+    defaults = Settings()
+
+    def value(key):
+        default = float(getattr(defaults, key))
+        try:
+            v = float(request.args.get(key, default))
+        except (TypeError, ValueError):
+            v = default
+        if not math.isfinite(v):
+            v = default
+        lo, hi = LIMITS[key]
+        return min(max(v, lo), hi)
+
+    density = round(value("tree_density") * value("forest_density"), 2)
+    png = preview_png(density, round(value("forest_stand_m")), round(value("forest_edge_m")))
+    return send_file(io.BytesIO(png), mimetype="image/png", max_age=3600)
+
 @bp.route("/api/install", methods=["POST"])
 def api_install():
     """Package the compiled map into ~/Zomboid/mods."""
