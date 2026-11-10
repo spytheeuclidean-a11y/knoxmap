@@ -54,7 +54,7 @@ hand-authored data every time.
 
   | Class | On the map |
   |---|---|
-  | 10 Tree cover | a wood, through the same pass as mapped forest (edge, big trees, Forest density) |
+  | 10 Tree cover | a wood, through the same pass as mapped forest: stands, thin patches and clearings thinning to its edge (Forests, Stand size, Edge softness), big trees |
   | 20 Shrubland | clumped bushes and young trees, no grown trees |
   | 30 Grassland | grass tufts and the odd bush |
   | 40 Cropland | fields: 60–150 m plots of furrows, about half in corn, some fallow, some hedged |

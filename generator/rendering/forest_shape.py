@@ -14,7 +14,7 @@ natively on big maps; this re-grades it after.
 from __future__ import annotations
 
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image
 
 from .. import pz_colors as C
 
@@ -33,6 +33,7 @@ SHARE_TABLE = (
 EDGE_FLOOR = 0.35          # the edge's own tiles rank this low against the middle
 FINE = 0.25                # weight of the small lattice that roughens the stands
 SAMPLE_EVERY = 4           # the quantiles are read off every fourth tile
+EDGE_STEPS = 8             # a wide edge is measured in about this many steps
 STRIP_ROWS = 512
 
 
@@ -46,18 +47,49 @@ def shares(density: float) -> tuple[float, float, float, float]:
     return SHARE_TABLE[-1][1]
 
 
+def _erode(cur: np.ndarray) -> np.ndarray:
+    """One step of 3 x 3 erosion, the map's border counting as forest."""
+    p = np.pad(cur, 1, mode="edge")
+    rows = np.minimum(np.minimum(p[:-2], p[1:-1]), p[2:])
+    return np.minimum(np.minimum(rows[:, :-2], rows[:, 1:-1]), rows[:, 2:])
+
+
 def edge_depth(forest: np.ndarray, reach: int) -> np.ndarray:
     """How many tiles in from the forest's edge each tile is, up to `reach`.
-    The map's border is not an edge: the forest runs on past it."""
-    depth = np.zeros(forest.shape, dtype=np.uint8)
-    cur = Image.fromarray(forest.astype(np.uint8) * 255, "L")
-    for _ in range(reach):
-        cur = cur.filter(ImageFilter.MinFilter(3))
-        inside = np.asarray(cur) > 0
-        if not inside.any():
+    The map's border is not an edge: the forest runs on past it.
+
+    It only feeds a soft gradient, so a wide edge is measured on a coarser
+    grid - blocks of `step` tiles, a block forest only if all of it is - and
+    is right to within a block."""
+    h, w = forest.shape
+    step = max(1, reach // EDGE_STEPS)
+    if step > 1:
+        hh, ww = -(-h // step) * step, -(-w // step) * step
+        padded = np.pad(forest, ((0, hh - h), (0, ww - w)), mode="edge")
+        cur = padded.reshape(hh // step, step, ww // step, step).all(axis=(1, 3))
+    else:
+        cur = forest
+    cur = cur.astype(np.uint8)
+    depth = np.zeros(cur.shape, dtype=np.uint8)
+    for _ in range(-(-reach // step)):
+        cur = _erode(cur)
+        if not cur.any():
             break
-        depth += inside
+        depth += cur
+    if step > 1:
+        depth = np.minimum(depth.repeat(step, 0).repeat(step, 1)[:h, :w]
+                           .astype(np.int32) * step, 255).astype(np.uint8)
     return depth
+
+
+def _keys(arr: np.ndarray) -> np.ndarray:
+    """Each RGB tile as one number, so a colour is one comparison."""
+    return ((arr[..., 0].astype(np.uint32) << 16) | (arr[..., 1].astype(np.uint32) << 8)
+            | arr[..., 2])
+
+
+def _key(colour) -> int:
+    return (colour[0] << 16) | (colour[1] << 8) | colour[2]
 
 
 def _value(ys, xs, lats, depth, reach):
@@ -80,10 +112,11 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
     vegp = np.array(veg)
     land = np.array(landscape)
     h, w = forest.shape
-    graded = np.zeros((h, w), dtype=bool)
-    for c in GRADES:
-        graded |= np.all(vegp == c, axis=2)
-    todo = forest & graded & ~np.all(land == C.WATER, axis=2)
+    vkey = _keys(vegp)
+    lkey = _keys(land)
+    todo = (forest & np.isin(vkey, [_key(c) for c in GRADES])
+            & (lkey != _key(C.WATER)))
+    del vkey
     if not todo.any():
         return {n: 0 for n in NAMES}
 
@@ -118,10 +151,10 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
         grade = np.searchsorted(cuts, v, side="right")
         vp = vegp[top:bottom]
         vp[t] = colours[grade[t]]
-        lp = land[top:bottom]
+        lk = lkey[top:bottom]
         trees = t & (grade > 0)
-        lp[trees & (np.all(lp == C.MEDIUM_GRASS, axis=2)
-                    | np.all(lp == C.LIGHT_GRASS, axis=2))] = C.DARK_GRASS
+        land[top:bottom][trees & ((lk == _key(C.MEDIUM_GRASS))
+                                  | (lk == _key(C.LIGHT_GRASS)))] = C.DARK_GRASS
         counts += np.bincount(grade[t], minlength=4)
     veg.paste(Image.fromarray(vegp, "RGB"))
     landscape.paste(Image.fromarray(land, "RGB"))
