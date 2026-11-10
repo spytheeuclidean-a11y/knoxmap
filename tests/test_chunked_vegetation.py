@@ -1,5 +1,7 @@
 """Tests for chunked/strip-based vegetation rasterization optimization."""
 import unittest
+from unittest import mock
+
 import numpy as np
 from PIL import Image
 
@@ -96,7 +98,11 @@ class ChunkedVegetationTests(unittest.TestCase):
         land = Image.new("RGB", size, C.DARK_GRASS)
         veg = Image.new("RGB", size, C.TREES)
 
-        counts = V._plant_big_trees(veg, land, [], [], [], self.proj, 1.0)
+        # Big trees only exist where the game's tree rules were written; a
+        # machine without Project Zomboid's tiles plants none, and the pass
+        # says so by returning an empty count.
+        with mock.patch.object(V, "tree_rules_ready", return_value=True):
+            counts = V._plant_big_trees(veg, land, [], [], [], self.proj, 1.0)
         self.assertIsInstance(counts, dict)
         self.assertGreater(sum(counts.values()), 0)
 
