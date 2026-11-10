@@ -438,7 +438,13 @@ def check_odd_requests(check, work: str) -> None:
         check(open(knoxlog.MAIN_LOG, encoding="utf-8").read().count("page error") == before,
               "an empty page error report is not written to the log")
         was_mem = knoxlog.memory_status
+        from web import checks as webchecks
+        was_tile = webchecks.BYTES_PER_TILE
         try:
+            # A tenth of a degree is a small box; it is only bigger than this
+            # PC's whole memory at a per-tile cost that adds up, so the test
+            # says what that cost is instead of leaning on today's number.
+            webchecks.BYTES_PER_TILE = 100_000
             knoxlog.memory_status = lambda: (8 * 2 ** 30, 4 * 2 ** 30, 2 ** 40)
             r = client.post("/api/generate", json={"south": 10.0, "west": 10.0,
                                                    "north": 10.1, "east": 10.1, "mapName": "x"})
@@ -446,6 +452,7 @@ def check_odd_requests(check, work: str) -> None:
                   f"a map bigger than the PC's whole memory is refused ({r.status_code} {r.get_json()})")
         finally:
             knoxlog.memory_status = was_mem
+            webchecks.BYTES_PER_TILE = was_tile
     finally:
         knoxapp.osm.fetch_features_tiled = was_fetch
         webcommon.OUTPUT_DIR = was_out
