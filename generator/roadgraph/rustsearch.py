@@ -13,8 +13,7 @@ Build it with::
 
     cargo build --release --manifest-path rust/knoxroute/Cargo.toml
 
-A search that has no worked-out turn field (`turnable`) is the "graph" mode:
-this client leaves that to the interpreter's own search rather than guess.
+Without a turn mask, every reachable corner is eligible for a turn.
 
 ``rail_search`` uses the same binary's ``--rails`` mode with an independent
 versioned frame, so older road workers still work and rails can fall back.
@@ -145,7 +144,8 @@ class Router:
             bulk.append(np.asarray(dens).ravel()[flat].astype("<f8").tobytes())
         if occ is not None:
             bulk.append(np.asarray(occ).ravel()[flat].astype("<f8").tobytes())
-        bulk.append(np.asarray(turnable, "<u1").ravel()[flat].tobytes())
+        bulk.append(b"\x01" * idx.size if turnable is None
+                    else np.asarray(turnable, "<u1").ravel()[flat].tobytes())
         bulk.append(np.asarray(run_here, "<i4").ravel()[flat].tobytes())
         taken_idx = np.asarray(taken_idx, "<i4")
         taken_owner = np.asarray(taken_owner, "<i4")
