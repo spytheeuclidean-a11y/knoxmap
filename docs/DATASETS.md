@@ -81,7 +81,7 @@ hand-authored data every time.
   stock WorldEd `Rules.txt`.
   Before/after previews (layer off, then on) of farm country, a marsh, a
   town edge and tundra: `docs/images/worldcover/`.
-- **Setting:** `landcover=worldcover|osm|off` (default `worldcover`).
+- **Setting:** `landcover=worldcover|osm|off` (default `worldcover`); `osm` and `off` both leave WorldCover out, and the ground OSM leaves blank is grass with KnoxMap's scattered woods.
 - **Refresh cache:** delete `cache/datasets/worldcover/`.
 
 ### `elevation_3dep` — USGS 3DEP relief (US)

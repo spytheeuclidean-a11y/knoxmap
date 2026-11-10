@@ -937,7 +937,7 @@ const SETTING_LABELS = {
   parking_density:     ['Parking', 'Vehicles only ever spawn in a parking stall.'],
   basement_share:      ['Basements', 'The share of houses with a basement. Schools, hospitals, police stations and the like always get one.'],
   max_basement_depth:  ['Deepest basement', 'Levels a military base may go down, up to 32. 0 builds no basements at all.'],
-  landcover:           ['Land cover', 'WorldCover fills ground OpenStreetMap leaves blank: woods, meadow, farmland, dirt. OpenStreetMap only keeps today’s behaviour. Needs rasterio.'],
+  landcover:           ['Land cover', 'WorldCover fills ground OpenStreetMap leaves blank with what is really there: woods, scrub, meadow, fields, marsh, rock. Its data downloads once per area. OpenStreetMap only leaves that ground as grass with scattered made-up woods.'],
   elevation:           ['Terrain relief', 'USGS 3DEP adds real relief, up to Relief z-levels. Flat keeps today’s flat terrain. US only; needs rasterio.'],
   max_relief:          ['Relief', 'How many z-levels of real terrain relief to allow.'],
   ne_context:          ['Natural Earth context', 'Country, coastline fallback and place labels from Natural Earth.'],

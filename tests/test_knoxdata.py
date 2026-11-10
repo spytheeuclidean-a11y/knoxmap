@@ -128,6 +128,14 @@ class Spine(unittest.TestCase):
         self.assertEqual(report["elevation_3dep"],
                          {"fractions": {"Tree cover": 0.9}, "used": True})
 
+    def test_openstreetmap_only_turns_worldcover_off(self):
+        wc = knoxdata.sources()["worldcover"]
+        self.assertFalse(wc.enabled(Settings.from_dict({"landcover": "osm"})))
+        self.assertFalse(wc.enabled(Settings.from_dict({"landcover": "off"})))
+        self.assertTrue(wc.enabled(Settings()))
+        self.assertIsNone(knoxdata.landcover_for(Settings.from_dict({"landcover": "osm"}),
+                                                 (45.0, -69.0, 45.01, -68.99)))
+
     def test_disabled_layer_is_not_run(self):
         src = _Source(up=True)
         knoxdata._SOURCES = {"elevation_3dep": src}

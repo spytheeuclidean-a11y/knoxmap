@@ -96,7 +96,9 @@ class WorldCover(DatasetSource):
     license = "CC-BY 4.0"
     attribution = "Contains modified Copernicus/ESA WorldCover data 2021"
     setting = "landcover"
-    off_values = ("off", "", None, False)
+    # "OpenStreetMap only" is off too: the ground OSM leaves blank stays grass
+    # with KnoxMap's own scattered woods, as before WorldCover.
+    off_values = ("off", "", "osm", None, False)
 
     def available(self, bbox) -> bool:
         s, w, n, e = bbox
