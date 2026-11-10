@@ -7,7 +7,7 @@ downloads should come from a server of your own. KnoxMap needs nothing else
 changed: it sends the same queries, to your address.
 
 The **Map data server** panel can do all of this for you if Docker Desktop is
-installed: paste a Geofabrik `.osm.bz2` address, press Start, and press Use it
+installed: paste a Geofabrik `.osm.pbf` download URL, press Start, and press Use it
 when it says ready. The steps below are the same thing by hand.
 
 ## 1. Run an Overpass server for your region
@@ -20,10 +20,16 @@ extract that covers your map from [Geofabrik](https://download.geofabrik.de/)
 ```bash
 docker run -d --name overpass -p 12345:80 -v overpass_db:/db \
   -e OVERPASS_MODE=init \
-  -e OVERPASS_PLANET_URL=https://download.geofabrik.de/north-america/us/tennessee-latest.osm.bz2 \
+  -e OVERPASS_PLANET_URL=https://download.geofabrik.de/north-america/us/tennessee-latest.osm.pbf \
+  -e OVERPASS_PLANET_PREPROCESS='mv /db/planet.osm.bz2 /db/planet.osm.pbf && osmium cat /db/planet.osm.pbf -o /db/planet.osm.bz2 && rm /db/planet.osm.pbf' \
   -e OVERPASS_RULES_LOAD=10 \
   wiktorn/overpass-api
 ```
+
+The image uses its bundled Osmium to convert the PBF before importing it.
+Allow disk space for both formats during conversion and for the resulting
+database. If you already have a working database in the Docker volume,
+the image reuses it. Use a separate volume to import a different region.
 
 Loading takes from minutes to hours depending on the extract. Check
 `docker logs overpass` until it says it is serving. The image's own page lists
@@ -59,5 +65,5 @@ program; updates leave it alone):
   empty. Pick the extract with room to spare around the places you want.
 * Data is as old as the extract unless you set up the image's updates.
 * Use `https://` if the server is not on your own PC.
-* Reading a `.pbf` file directly is not supported; Overpass does the work of
-  assembling multipolygons and filtering tags, and KnoxMap relies on it.
+* To use a downloaded `.osm.pbf` without Docker, select it under
+  **Tools → Extract file**.
