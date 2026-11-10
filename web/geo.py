@@ -280,7 +280,13 @@ def api_overpass_status():
 LOCAL_NAME = "knoxmap-overpass"
 LOCAL_PORT = 12345
 LOCAL_URL = f"http://localhost:{LOCAL_PORT}/api/interpreter"
-LOCAL_EXTRACT = re.compile(r"^https://download\.geofabrik\.de/[A-Za-z0-9._/-]+\.osm\.bz2$")
+LOCAL_EXTRACT = re.compile(r"^https://download\.geofabrik\.de/[A-Za-z0-9._/-]+\.osm\.(?:pbf|bz2)$")
+# The image saves every download as planet.osm.bz2 before running this hook.
+LOCAL_PBF_PREPROCESS = (
+    "mv /db/planet.osm.bz2 /db/planet.osm.pbf && "
+    "osmium cat /db/planet.osm.pbf -o /db/planet.osm.bz2 && "
+    "rm /db/planet.osm.pbf"
+)
 
 
 def _docker(*args: str, timeout: int = 30) -> subprocess.CompletedProcess:
@@ -340,14 +346,18 @@ def api_local_overpass():
         if action == "start":
             if state["state"] == "none":
                 extract = str(body.get("extract") or "").strip()
-                if not LOCAL_EXTRACT.match(extract):
-                    return jsonify({"error": "Give a Geofabrik extract ending in .osm.bz2, "
+                if not LOCAL_EXTRACT.fullmatch(extract):
+                    return jsonify({"error": "Give a Geofabrik extract ending in .osm.pbf or .osm.bz2, "
                                              "e.g. https://download.geofabrik.de/north-america/"
-                                             "us/tennessee-latest.osm.bz2"}), 400
+                                             "us/tennessee-latest.osm.pbf"}), 400
+                preprocess = ()
+                if extract.endswith(".osm.pbf"):
+                    preprocess = ("-e", f"OVERPASS_PLANET_PREPROCESS={LOCAL_PBF_PREPROCESS}")
                 r = _docker("run", "-d", "--name", LOCAL_NAME,
                             "-p", f"127.0.0.1:{LOCAL_PORT}:80", "-v", "knoxmap_overpass_db:/db",
                             "-e", "OVERPASS_MODE=init", "-e", f"OVERPASS_PLANET_URL={extract}",
-                            "-e", "OVERPASS_RULES_LOAD=10", "wiktorn/overpass-api", timeout=600)
+                            "-e", "OVERPASS_RULES_LOAD=10", *preprocess,
+                            "wiktorn/overpass-api", timeout=600)
             else:
                 r = _docker("start", LOCAL_NAME)
         elif action == "stop":
