@@ -29,6 +29,10 @@ PALE_CONCRETE = (120, 120, 120)  # street — pale concrete slabs: pavements, ke
 PAVING = (170, 160, 130)         # sandstone slabs — squares, plazas
 CLAY = (110, 80, 60)             # clay — running tracks
 DIRT = (120, 70, 20)
+# Ground the relief and climate passes use (generator/renderer.py): "Dirt
+# Grass" and "Gravel Dirt" in the stock Rules.txt.
+DIRT_GRASS = (80, 55, 20)
+GRAVEL_DIRT = (140, 70, 15)
 WATER = (0, 138, 255)
 DARK_POTHOLE = (110, 100, 100)
 LIGHT_POTHOLE = (130, 120, 120)
@@ -178,6 +182,7 @@ LANDSCAPE_COLORS = {
     RAIL_NE_SW, RAIL_NW_SE, RAIL_NE_SW_W, RAIL_NE_SW_E,
     RAIL_NW_SE_N, RAIL_NW_SE_S,
     WATER, DARK_POTHOLE, LIGHT_POTHOLE, DIRT_ROWS_H, DIRT_ROWS_V,
+    DIRT_GRASS, GRAVEL_DIRT,
 }
 VEGETATION_COLORS = {
     TREES, TREES_DARK_GRASS, SPARSE_TREES, GRASS_ON_DARK,
