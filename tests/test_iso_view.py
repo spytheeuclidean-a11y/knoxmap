@@ -101,6 +101,32 @@ class IsoViewEndpointTests(unittest.TestCase):
         self.assertEqual(resp.content_type, "image/png")
         self.assertGreater(len(resp.data), 100)
 
+    def test_iso_render_empty_area_returns_blank_canvas(self):
+        # When render_lots.render returns None (no buildings/tiles in area),
+        # the endpoint should return a 200 PNG canvas rather than 404
+        self.mock_render.return_value = None
+        try:
+            resp = self.client.get(f"/api/iso-render/{self.test_map_name}?box=999,999,30,30")
+            self.assertEqual(resp.status_code, 200)
+            self.assertEqual(resp.content_type, "image/png")
+            self.assertGreater(len(resp.data), 50)
+        finally:
+            self.mock_render.return_value = Image.new("RGBA", (200, 150), (100, 150, 200, 255))
+
+    def test_iso_info_calculates_focus_coordinates(self):
+        # Add a mock placements CSV and verify focus_x and focus_y are returned
+        placements_file = self.map_dir / f"{self.test_map_name}_placements.csv"
+        placements_file.write_text("lot,tile_x,tile_y,level\nhouse.tbx,100,200,0\nshop.tbx,150,250,0\n", encoding="utf-8")
+        try:
+            resp = self.client.get(f"/api/iso-info/{self.test_map_name}")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            self.assertEqual(data["focus_x"], 125)
+            self.assertEqual(data["focus_y"], 225)
+        finally:
+            if placements_file.exists():
+                placements_file.unlink()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -175,6 +175,13 @@ def api_compile():
             with _PROGRESS_LOCK:
                 mapstate.stamp(str(map_dir), "compile")
                 _COMPILE[name] = {"state": "done", "error": None, "failed": left}
+            # Pre-generate overview pictures in the background so the In-game 2.5D view
+            # loads instantly as soon as the user opens it.
+            try:
+                from knoxbuild import picture as pictures
+                threading.Thread(target=pictures.pictures_of, args=(map_dir,), daemon=True).start()
+            except Exception:
+                pass
         except knoxstop.Stopped:
             log.info("compile %s: stopped after %.0fs", name, time.time() - t0)
             _done_stopping(name)
