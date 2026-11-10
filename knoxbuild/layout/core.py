@@ -334,7 +334,7 @@ ROOM_STYLE = {
     "mechanic": (C.FLOOR_LINO, "Mechanic", ["metal_rack", "crate", "counter", "metal_rack"]),
     "motelroom": (C.FLOOR_CARPET_BLUE, "Hotel Room",
                   ["double_bed", "sidetable", "tv", "armchair", "dresser", "lamp", "painting"]),
-    "bakery": (C.FLOOR_TILE_PALE, "Bakery", ["shop_display", "shop_counter", "shop_shelf"]),
+    "bakery": (C.FLOOR_TILE_PALE, "Bakery", ["shop_display_bakery", "shop_counter", "shop_shelf"]),
     **{k: (floor, label, ["shop_shelf", "shop_counter", "shop_shelf_wood"])
        for k, floor, label in (
            ("gasstore", C.FLOOR_TILE_PALE, "Gas Station Store"),
