@@ -348,6 +348,37 @@ def ensure_tree_catalogue(tilesets: Path) -> None:
         say(f"      added {len(missing)} missing tree and flower sheets to the tile catalogue")
 
 
+def ensure_road_catalogue(tilesets: Path) -> None:
+    """Ensure Build 42 curb and road marking sheets are in the tile catalogue."""
+    from tools.extract_tiles import read_tilesets_txt
+
+    sizes, _packs = read_tilesets_txt(str(tilesets))
+    entries = [
+        ("street_curbs_01", "Tiles2x.pack", 8),
+        ("street_curbs_01_blend_dark_grass", "Tiles2x.pack", 11),
+        ("street_curbs_01_blend_dirt", "Tiles2x.pack", 11),
+        ("street_curbs_01_blend_gravel", "Tiles2x.pack", 11),
+        ("street_curbs_01_blend_light_grass", "Tiles2x.pack", 11),
+        ("street_curbs_01_blend_medium_grass", "Tiles2x.pack", 11),
+        ("street_curbs_01_blend_sand", "Tiles2x.pack", 11),
+        ("street_curbs_01_blend_street", "Tiles2x.pack", 11),
+        ("street_curbs_01_diag", "Tiles2x.pack", 10),
+        ("street_curbs_01_diag_2", "Tiles2x.pack", 10),
+        ("street_trafficlines_01", "Tiles2x.pack", 7),
+        ("street_trafficlines_curb_white_faded", "Tiles2x.pack", 20),
+        ("street_trafficlines_curb_white_full", "Tiles2x.pack", 20),
+        ("street_trafficlines_curb_yellow_faded", "Tiles2x.pack", 20),
+        ("street_trafficlines_curb_yellow_full", "Tiles2x.pack", 20),
+        ("floors_exterior_natural_01", "Tiles2x.pack", 7),
+    ]
+    missing = [(name, pack, rows) for name, pack, rows in entries if name not in sizes]
+    if missing:
+        with tilesets.open("a", encoding="utf-8") as f:
+            for name, pack, rows in missing:
+                f.write(f"\ntileset\n{{\n    file = {pack}/{name}\n    size = 8,{rows}\n}}\n")
+        say(f"      added {len(missing)} missing curb and road marking sheets to the tile catalogue")
+
+
 def configure_tools(tools: Path, game: Path | None) -> None:
     step(4, "Tile artwork and tool configuration")
     config_dir = tools / "config"
@@ -397,16 +428,24 @@ def configure_tools(tools: Path, game: Path | None) -> None:
         if full.exists():
             shutil.copyfile(full, tilesets)
         ensure_tree_catalogue(tilesets)
+        ensure_road_catalogue(tilesets)
         catalog, _packs = extract_tiles.read_tilesets_txt(str(tilesets))
         # Sheets extracted before the split-sheet fix lack the tiles B42 keeps in
-        # the floor packs - flat roof tops among them - so merge those in once.
+        # the floor packs - flat roof tops among them - so merge those in once,
+        # or whenever the game's floor packs are updated.
         merged = tools / "settings" / "floor_tiles_merged"
+        floor_packs = sorted(packs.glob("*2x.floor.pack"))
+        needs_floor_merge = not merged.exists()
+        if not needs_floor_merge and floor_packs:
+            merged_mtime = merged.stat().st_mtime
+            if any(p.stat().st_mtime > merged_mtime for p in floor_packs):
+                needs_floor_merge = True
         present = sorted(n for n in catalog if (two_x / f"{n}.png").exists())
-        if present and not merged.exists():
+        if present and needs_floor_merge:
             say("      adding Build 42 floor-pack tiles to your tile sheets ...")
             log = io.StringIO()
             with contextlib.redirect_stdout(log):
-                for pack in sorted(packs.glob("*2x.floor.pack")):
+                for pack in floor_packs:
                     extract_tiles.extract_pack(str(pack), catalog, set(present), str(two_x), merge=True)
             merged.parent.mkdir(parents=True, exist_ok=True)
             merged.write_text("1", encoding="utf-8")
@@ -436,6 +475,9 @@ def configure_tools(tools: Path, game: Path | None) -> None:
     # furniture need no artwork, and the tree rules say what they are missing
     # if they do. Skipping the whole step on a PC without the game left both
     # red with nothing on screen to say why.
+    if game is None:
+        say("      Note: Big trees and tree rules require tile artwork from Project Zomboid.")
+        say("      They will be configured once Setup is run with your game folder located.")
     patch_rules(tools)
 
 

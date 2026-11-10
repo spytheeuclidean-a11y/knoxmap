@@ -61,5 +61,18 @@ class CleanRoadRuns(unittest.TestCase):
         self.assertLess(Point(roads[1].geometry[0]).distance(LineString(roads[0].geometry)),1e-8)
         self.assertLess(Point(roads[1].geometry[-1]).distance(LineString(roads[2].geometry)),1e-8)
 
+    def test_vertical_to_diagonal_corner_has_no_mid_diagonal_shift(self):
+        # North-south road bending 45 degrees into a diagonal road with an
+        # intermediate node must stay on one exact diagonal without a 1-tile step.
+        road = self.road(1, [(100, 20), (100, 80), (130, 111), (160, 141)])
+        projection = SimpleNamespace(width=400, height=400, to_px=lambda lat, lon: (lon, lat),
+                                     to_latlon=lambda x, y: (y, x))
+        octilinear.straighten_roads([road], projection, osm.classify, renderer._is_polygon, clean=True)
+        points = [(x, y) for y, x in road.geometry]
+        self.assertEqual(len(points), 3, points)
+        (x0, y0), (x1, y1), (x2, y2) = points
+        self.assertEqual(x0, x1)
+        self.assertEqual(abs(x2 - x1), abs(y2 - y1))
+
 
 if __name__=='__main__':unittest.main()
