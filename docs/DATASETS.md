@@ -49,7 +49,39 @@ hand-authored data every time.
   majority class per tile + 3×3 filter; class→behaviour table in
   `knoxdata/data/worldcover_classes.json`; class fractions feed the
   Rural/Town/Suburb/City preset suggestion.
-- **Setting:** `landcover=worldcover|osm|off` (default `worldcover`).
+- **What grows, per class** (only on ground OSM left blank; OSM wins, and
+  OSM forest/scrub polygons count as claimed though they paint no ground):
+
+  | Class | On the map |
+  |---|---|
+  | 10 Tree cover | a wood, through the same pass as mapped forest (edge, big trees, Forest density) |
+  | 20 Shrubland | clumped bushes and young trees, no grown trees |
+  | 30 Grassland | grass tufts and the odd bush |
+  | 40 Cropland | fields: 60–150 m plots of furrows, about half in corn, some fallow, some hedged |
+  | 50 Built-up | nothing new; gardens are planted as anywhere |
+  | 60 Bare / sparse | dirt with low rocks in clumps (~10%) and a few boulders |
+  | 70 Snow and ice | sand-coloured ground (no snow tile) |
+  | 80 Water | water |
+  | 90 Wetland, 95 Mangroves | dense marsh, the odd stunted tree, open-water pools on ~10% |
+  | 100 Moss and lichen | dirt and moss patches, low rocks in clumps (~30%), boulders (~3%), no trees |
+
+  Where WorldCover has a class, the random wild growth and woods KnoxMap
+  scatters on unmapped grass stay off it. No building stands in a field or a
+  lake: WorldCover cropland and water within 6 m of one becomes lawn, and OSM
+  farmland is kept off it the same way. A building in woods - OSM's or
+  WorldCover's - gets a clearing 10-30 m out from its walls with a wobbly,
+  thinning edge, and a house (not a shed) a gently bent tarmac drive to the
+  nearest road up to 400 m away, never through water or another building
+  (`generator/rendering/homesteads.py`). Mapped OSM `landuse=farmland` gets
+  the same fields, and OSM marsh/swamp/bog/reedbed wetland the same pools.
+  The renderer paints this ground in marker colours until OSM has painted
+  (`generator/rendering/landcover.py`); fields, pools and rocks are in
+  `generator/rendering/fields.py`, the planting in
+  `generator/rendering/landcover_veg.py`. All tiles come from rules already in
+  stock WorldEd `Rules.txt`.
+  Before/after previews (layer off, then on) of farm country, a marsh, a
+  town edge and tundra: `docs/images/worldcover/`.
+- **Setting:** `landcover=worldcover|osm|off` (default `worldcover`); `osm` and `off` both leave WorldCover out, and the ground OSM leaves blank is grass with KnoxMap's scattered woods.
 - **Refresh cache:** delete `cache/datasets/worldcover/`.
 
 ### `elevation_3dep` — USGS 3DEP relief (US)

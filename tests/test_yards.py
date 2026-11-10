@@ -40,7 +40,7 @@ def _building(folder, name, door=(3, 0, "N")):
                 f'<object type="door" x="{door[0]}" y="{door[1]}" dir="{door[2]}"/></floor></building>')
 
 
-def _paint(width, height, buildings, water=(), veg=False):
+def _paint(width, height, buildings, water=(), veg=False, tarmac=()):
     """Lawn with a pavement along the top two rows; return the painted ground,
     or the vegetation layer when `veg`.
 
@@ -52,6 +52,8 @@ def _paint(width, height, buildings, water=(), veg=False):
         ground[:2, :] = C.PALE_CONCRETE
         for x, y in water:
             ground[y, x] = C.WATER
+        for x, y in tarmac:
+            ground[y, x] = C.DARK_ASPHALT
         Image.fromarray(ground).save(os.path.join(out, "t.bmp"), format="BMP")
         Image.fromarray(np.zeros_like(ground)).save(os.path.join(out, "t_veg.bmp"),
                                                    format="BMP")
@@ -82,6 +84,19 @@ class FrontPaths(unittest.TestCase):
         drive = np.all(ground == C.DARK_ASPHALT, axis=2)
         self.assertTrue(drive[2:62].any(axis=1).all(),
                         "the drive does not reach the pavement")
+        self.assertTrue(_stone(ground, 13, 61), "no path from the door")
+
+    def test_a_house_with_a_drive_from_the_terrain_gets_no_second(self):
+        # A drive the woods' clearing laid (generator/rendering/homesteads.py):
+        # down the west side from the pavement, then in to the house's wall.
+        laid = ([(x, y) for x in range(2, 5) for y in range(2, 66)]
+                + [(x, y) for x in range(5, 10) for y in range(63, 66)])
+        ground = _paint(30, 80, [("house", 10, 62)], tarmac=laid)
+        drive = np.all(ground == C.DARK_ASPHALT, axis=2)
+        extra = drive.copy()
+        for x, y in laid:
+            extra[y, x] = False
+        self.assertFalse(extra.any(), "a second drive was laid beside the first")
         self.assertTrue(_stone(ground, 13, 61), "no path from the door")
 
     def test_a_house_far_back_with_no_drive_still_gets_a_path(self):

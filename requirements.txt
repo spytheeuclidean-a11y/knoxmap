@@ -7,7 +7,7 @@
 #
 # A full `pip freeze` cannot be used here instead: pywebview pulls different
 # packages on each system (pythonnet on Windows, Qt on Linux, pyobjc on macOS),
-# so a freeze from one machine will not install on another. So the eight
+# so a freeze from one machine will not install on another. So the nine
 # packages KnoxMap imports are pinned exactly, and pip resolves their own
 # dependencies.
 flask==3.1.3
@@ -18,3 +18,6 @@ shapely==2.2.0
 osmium==4.3.2
 numpy==2.5.3
 pywebview==6.2.1
+# Reads ESA WorldCover land cover (knoxdata/worldcover.py): what grows on
+# ground OpenStreetMap leaves blank. Prebuilt wheels for Windows, Linux, macOS.
+rasterio==1.5.2
