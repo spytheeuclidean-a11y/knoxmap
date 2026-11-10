@@ -300,6 +300,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            spawn_density: int = 10,
            tree_density: float = 1.0,
            forest_density: float = 1.0,
+           forest_stand_m: float = 60,
+           forest_edge_m: float = 6,
            rotation: float = 0.0,
            osm_cache: str | None = None,
            osm_bbox: tuple[float, float, float, float] | None = None,
@@ -594,7 +596,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # over open ground take the overall one only.
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
                       density=tree_density * forest_density, should_stop=should_stop,
-                      extra_forest=forest)
+                      extra_forest=forest, stand_m=forest_stand_m, edge_m=forest_edge_m)
     # A building in the woods gets a clearing and a drive to the road.
     homes = None
     try:

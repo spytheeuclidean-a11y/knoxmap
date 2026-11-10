@@ -158,6 +158,17 @@ class RenderWorldCoverTest(unittest.TestCase):
         ys, xs = region(proj, 0.75, 0.7, 0.95, 0.95)
         self.assertLess(is_(land[ys, xs], C.MEDIUM_GRASS).mean(), 0.9)
 
+    def test_worldcover_wood_is_patchy(self):
+        def wood(width, height, bounds=None):
+            return np.full((height, width), 10, dtype="uint8")
+        proj, _, veg = render(wood, feats=[])
+        ys, xs = region(proj, 0.2, 0.2, 0.8, 0.8)
+        v = veg[ys, xs]
+        dense = is_(v, C.TREES).mean()
+        self.assertGreater(dense, 0.3)
+        self.assertLess(dense, 0.75)
+        self.assertGreater(is_(v, C.VEG_NOTHING, C.SPARSE_TREES).mean(), 0.1)
+
     def test_broken_landcover_still_renders(self):
         def broken(w, h, bounds=None):
             raise RuntimeError("no data")

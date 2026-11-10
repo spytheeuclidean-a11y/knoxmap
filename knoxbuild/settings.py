@@ -62,6 +62,10 @@ class Settings:
     # - and a map wanted thick woods round a thinly planted town had no way
     # to say so.
     forest_density: float = 1.0
+    # How a wood is laid out (generator/rendering/forest_shape.py): how big its
+    # stands and clearings are, and how far in from its edge it thins out.
+    forest_stand_m: int = 60
+    forest_edge_m: int = 6
 
     # --- buildings -------------------------------------------------------
     seed: int = 1
@@ -261,6 +265,8 @@ LIMITS = {
     "m2_per_person": (10.0, 150.0),
     "tree_density": (0.0, 3.0),
     "forest_density": (0.0, 3.0),
+    "forest_stand_m": (20, 200),
+    "forest_edge_m": (0, 30),
     "seed": (0, 2 ** 31 - 1),
     "true_map": (0, 1),
     "fill_gaps": (0, 1),

@@ -430,6 +430,8 @@ def _generate(data):
             spawn_density=settings.spawn_density,
             tree_density=settings.tree_density,
             forest_density=settings.forest_density,
+            forest_stand_m=settings.forest_stand_m,
+            forest_edge_m=settings.forest_edge_m,
             rotation=rotation,
             osm_cache=osm_cache_name,
             osm_bbox=osm_bbox,
