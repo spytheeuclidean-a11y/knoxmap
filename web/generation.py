@@ -332,7 +332,15 @@ def _generate(data):
         layers = knoxdata.MapContext(
             bbox=(south, west, north, east), settings=settings,
             map_dir=map_dir, map_name=map_name, features=features)
-        _fetch_landcover(knoxdata, settings, (south, west, north, east), map_name)
+        # The map image runs past the bbox to whole cells, turned with the
+        # map: fetch every WorldCover tile under it, not only the bbox's.
+        try:
+            from generator.rendering.projection import Projector
+            extent = Projector.build(south, west, north, east, meters_per_tile,
+                                     rotation).latlon_bbox()
+        except Exception:                # noqa: BLE001
+            extent = (south, west, north, east)
+        _fetch_landcover(knoxdata, settings, extent, map_name)
         report = knoxdata.run_layers(settings, (south, west, north, east), map_dir,
                                      map_name=map_name, features=features,
                                      ctx=layers, require_cache=True)

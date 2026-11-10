@@ -117,6 +117,17 @@ class Spine(unittest.TestCase):
             (0, 0, 1, 1), ".")
         self.assertEqual(report["used"], [])
 
+    def test_what_a_layer_reports_is_kept(self):
+        # WorldCover's apply() reports its class fractions under its own name
+        # for the preset suggestion; marking it used must not wipe them.
+        class Reporting(_Source):
+            def apply(self, ctx, layer):
+                ctx.report.setdefault(self.name, {})["fractions"] = {"Tree cover": 0.9}
+        knoxdata._SOURCES = {"elevation_3dep": Reporting()}
+        report = knoxdata.run_layers(Settings(elevation="3dep"), (0, 0, 1, 1), ".")
+        self.assertEqual(report["elevation_3dep"],
+                         {"fractions": {"Tree cover": 0.9}, "used": True})
+
     def test_disabled_layer_is_not_run(self):
         src = _Source(up=True)
         knoxdata._SOURCES = {"elevation_3dep": src}

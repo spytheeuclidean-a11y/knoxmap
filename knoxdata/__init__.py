@@ -144,7 +144,8 @@ def run_layers(settings, bbox, map_dir, map_name="", features=None,
             layer = source.build_layer(ctx)
             source.apply(ctx, layer)
             used.append(name)
-            ctx.report[name] = {"used": True}
+            # Kept beside what apply() reported (WorldCover's class fractions).
+            ctx.report[name] = {**ctx.report.get(name, {}), "used": True}
         except Exception as exc:            # noqa: BLE001 - one layer never sinks a map
             log.warning("knoxdata: %s failed - %s: %s; continuing without it",
                         name, type(exc).__name__, exc)
