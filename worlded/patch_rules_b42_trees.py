@@ -136,24 +136,31 @@ def sheet_sizes(tilesets_txt: Path) -> dict[str, tuple[int, int]]:
 
 def rewrite_trees(text: str, available_deciduous: list[str] | None = None,
                   available_evergreen: list[str] | None = None) -> tuple[str, int]:
-    """Point every tree entry at a tile the game defines as a tree.
+    """Point every tree entry at a tile the game defines as a tree, and give
+    every wood every species.
 
-    Takes the shipped names and every species tile a run of this script
-    wrote, of any version, and deals them out again from the top of the file:
-    so an install patched when woods were broadleaf only gets the mixture, and
-    running it again deals the same hand and changes nothing. Our own rules
-    are rewritten whole later and left alone here; the big trees' sheets
-    (e_...JUMBO...) are never matched.
+    WorldEd picks one entry of a rule's list at random, so a rule's density is
+    its share of tree entries among the grass ones, and its species are only
+    the trees it lists. A rule held four trees, so dealing species out one per
+    slot gave each wood four of them. Here each tree slot becomes one entry per
+    species, at that slot's size, and every other entry is repeated as many
+    times: the share of trees is what it was and every species is in it.
+
+    The list is first brought back to its smallest form (every count divided
+    by their common factor), so an install patched by any earlier version -
+    shipped names, scenery indices, four species a rule - comes out the same,
+    and running it again changes nothing. Our own rules are rewritten whole
+    later and left alone here; the big trees' sheets (e_...JUMBO...) are never
+    matched.
     """
+    from functools import reduce
+    from math import gcd
+
     decid = available_deciduous if available_deciduous else DECIDUOUS
     ever = available_evergreen if available_evergreen else EVERGREEN
     # A wood takes every species this install has, in MIXED's order.
     mixed = [sheet for sheet in MIXED if sheet in decid or sheet in ever]
-    stale = re.compile(r"\b(?:vegetation_trees_01_\d+|e_[a-z]+_1_\d+)\b")
-    # The species carry on from one rule to the next, so the file as a whole
-    # works through all of them: a rule holds four trees at most, and starting
-    # over at each would leave half the species on the shelf and every wood
-    # made of the same four.
+    tree = re.compile(r"^(?:vegetation_trees_01_\d+|e_[a-z]+_1_\d+)$")
     count = {"n": 0}
 
     def rewrite_block(block: re.Match) -> str:
@@ -162,18 +169,29 @@ def rewrite_trees(text: str, available_deciduous: list[str] | None = None,
         label = label.group(1).strip() if label else ""
         if label.startswith(MARKER):
             return body
+        tiles = re.search(r"(tiles = \[\n)(.*?)(\n\s*\])", body, re.S)
+        if not tiles:
+            return body
+        entries = [e.strip() for e in tiles.group(2).splitlines() if e.strip()]
+        trees = sum(1 for e in entries if tree.match(e))
+        if not trees:
+            return body
+        others: dict[str, int] = {}
+        for e in entries:
+            if not tree.match(e):
+                others[e] = others.get(e, 0) + 1
+        factor = reduce(gcd, [trees, *others.values()])
         species = ever if "fir" in label.lower() else mixed
         mix = mix_for(label)
-        seen = {"n": 0}
-
-        def one(_m: re.Match) -> str:
-            i, n = seen["n"], count["n"]
-            seen["n"] += 1
-            count["n"] += 1
-            sheet = species[n % len(species)]
-            return f"{sheet}_{SIZE_INDEX[mix[i % len(mix)]]}"
-
-        return stale.sub(one, body)
+        out = []
+        for slot in range(trees // factor):
+            size = SIZE_INDEX[mix[slot % len(mix)]]
+            out += [f"{sheet}_{size}" for sheet in species]
+        for entry, n in others.items():
+            out += [entry] * (n // factor * len(species))
+        count["n"] += len(out) - sum(others.values()) // factor * len(species)
+        listed = "\n".join(f"        {e}" for e in out)
+        return body[:tiles.start(2)] + listed + body[tiles.end(2):]
 
     return re.sub(r"rule\s*\n\{.*?\n\}", rewrite_block, text, flags=re.S), count["n"]
 
