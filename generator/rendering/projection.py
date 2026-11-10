@@ -48,8 +48,22 @@ class Projector:
         xs, ys = zip(*(t.transform(lo, la) for lo, la in corners))
         raw_w = max(xs) - min(xs)
         raw_h = max(ys) - min(ys)
-        tiles_w = max(C.CELL_SIZE, _ceil_to(raw_w / meters_per_tile, C.CELL_SIZE))
-        tiles_h = max(C.CELL_SIZE, _ceil_to(raw_h / meters_per_tile, C.CELL_SIZE))
+        # A turned map is that rectangle rotated about its centre, so it needs
+        # the room the turned rectangle takes rather than the room it took
+        # upright: a square turned 45 degrees is half again as wide. Sizing the
+        # bitmap from the upright box instead pushed the selection's own corners
+        # past the edge of the bitmap, and silently - a feature drawn outside the
+        # bitmap is simply not drawn - so a town turned onto its street grid lost
+        # its four corners: a little at three degrees, a great deal at forty-five.
+        if rotation:
+            angle = math.radians(rotation)
+            cos_a, sin_a = abs(math.cos(angle)), abs(math.sin(angle))
+            span_w = raw_w * cos_a + raw_h * sin_a
+            span_h = raw_w * sin_a + raw_h * cos_a
+        else:
+            span_w, span_h = raw_w, raw_h
+        tiles_w = max(C.CELL_SIZE, _ceil_to(span_w / meters_per_tile, C.CELL_SIZE))
+        tiles_h = max(C.CELL_SIZE, _ceil_to(span_h / meters_per_tile, C.CELL_SIZE))
         # Re-center: expand bbox in meters to match the rounded-up tile count.
         cx, cy = (min(xs) + max(xs)) / 2, (min(ys) + max(ys)) / 2
         half_w_m = (tiles_w * meters_per_tile) / 2
