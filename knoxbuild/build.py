@@ -1659,6 +1659,33 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     rows = []
     skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0, "road": 0,
                "not a building": 0}
+    # And which footprint each of those was. The counts say how many were left
+    # out; somebody looking at the hole where their house should be needs to
+    # know which building it was and why, and the counts cannot tell them.
+    # Written out as <map>_left_out.csv and read back by
+    # tools/why_no_building.py.
+    left_out: list[dict] = []
+
+    def note_left_out(feat: dict, reason: str) -> None:
+        pts = _ring_points(feat.get("geometry") or {})
+        if len(pts) < 3:
+            return
+        tags = feat.get("properties") or {}
+        px = [proj.to_px(lat, lon) for lon, lat in pts]
+        xs = [x for x, _ in px]
+        ys = [y for _, y in px]
+        left_out.append({
+            "reason": reason,
+            "tile_x": int(round(sum(xs) / len(xs))),
+            "tile_y": int(round(sum(ys) / len(ys))),
+            "lat": round(sum(p[1] for p in pts) / len(pts), 6),
+            "lon": round(sum(p[0] for p in pts) / len(pts), 6),
+            "tiles_wide": int(round(max(xs) - min(xs))),
+            "tiles_tall": int(round(max(ys) - min(ys))),
+            "building": str(tags.get("building") or ""),
+            "name": str(tags.get("name") or ""),
+            "osm_id": str(tags.get("osm_id") or tags.get("id") or ""),
+        })
     sheds = 0        # outbuildings given a single storage room
     from_near = 0    # storeys borrowed from tagged neighbours
     from_osm = 0   # buildings whose storey count came from the data
@@ -1705,6 +1732,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         tags = feat.get("properties", {})
         if (tags.get("building") or "").strip().lower() in NOT_BUILDINGS:
             skipped["not a building"] += 1
+            note_left_out(feat, "not a building")
             if tags.get("amenity") == "fuel":
                 # A petrol station's canopy: its forecourt, pumps underneath.
                 canopies.append([proj.to_px(lat, lon) for lon, lat in pts])
@@ -1836,9 +1864,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                     deferred_large.append((_neg_area, i, px))
                 else:
                     skipped["large"] += 1
+                    note_left_out(feat, "large")
                 continue
         if fp is None:
             skipped[reason] += 1
+            note_left_out(feat, reason)
             continue
         x0, y0, w, h = fp.x0, fp.y0, fp.width, fp.height
         if fp.angle <= 8.0:
@@ -2333,6 +2363,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                              ["file"])
         wtr.writeheader()
         wtr.writerows(rows)
+
+    left_path = os.path.join(out_dir, f"{map_name}_left_out.csv")
+    left_fields = ["reason", "tile_x", "tile_y", "lat", "lon", "tiles_wide",
+                   "tiles_tall", "building", "name", "osm_id"]
+    with open(left_path, "w", newline="", encoding="utf-8") as f:
+        wtr = csv.DictWriter(f, fieldnames=left_fields)
+        wtr.writeheader()
+        wtr.writerows(sorted(left_out, key=lambda r: (r["tile_y"], r["tile_x"])))
 
     total_rooms = sum(r["rooms"] for r in rows)
     total_furn = sum(r["furniture"] for r in rows)

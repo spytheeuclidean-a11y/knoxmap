@@ -1,3 +1,25 @@
+## Unreleased
+
+- **Why a building is not there** (`knoxbuild/build.py`,
+  `tools/why_no_building.py`). A map is never all of OpenStreetMap: a
+  footprint is left out for being too small to furnish, too big to lay out,
+  off the edge of the map, already covered by a building placed before it, or
+  mostly road. The build said how many went each way, which is no help at all
+  to somebody looking at the gap where their own house should be. It now
+  writes a row for each footprint it left out - what the building was, where,
+  how big, and why - as `<map>_left_out.csv`, and a tool reads them back for
+  one place:
+
+      python tools/why_no_building.py output/mytown
+      python tools/why_no_building.py output/mytown --tiles 300,300 --radius 150
+      python tools/why_no_building.py output/mytown --at 39.1155,27.1884
+      python tools/why_no_building.py output/mytown --reason road
+
+  Each reason comes with what it means and what can be done about it, and the
+  buildings that were placed nearby are counted beside the ones that were not.
+  The file goes into the zip *Report a problem* makes, so a report about a
+  hole in a town carries the answer with it.
+
 ## 1.8.5.7
 
 - **Setup works on Build 42.22.** `floors_exterior_natural_01` ships tiles 8-11,

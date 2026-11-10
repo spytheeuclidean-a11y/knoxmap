@@ -577,10 +577,39 @@ def api_buildings():
     mapstate.stamp(str(map_dir), "build")
     log.info("buildings %s: %d files in %.1fs\n%s", map_dir.name, len(tbx),
              time.time() - t0, out.getvalue()[-3000:])
+    _log_left_out(map_dir)
     return jsonify({"count": len(tbx), "terrain": terrain,
                     "pzw": f"{map_dir.name}.pzw",
                     "settings": settings.to_dict(),
                     "population": _population(map_dir)})
+
+
+def _log_left_out(map_dir) -> None:
+    """Why footprints did not become buildings, in the log as well as the file.
+
+    The build prints this among everything else it has to say, and only the
+    last 3000 characters of that reach the log - on a map with a lot to report
+    the block scrolls off. It is the first thing wanted when somebody says
+    nothing generated where their house is, and the report zip carries both
+    this line and the file it names (knoxbuild/build.py, knoxlog.report_zip).
+    """
+    import collections
+    import csv as _csv
+
+    path = map_dir / f"{map_dir.name}_left_out.csv"
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            reasons = collections.Counter(row["reason"] for row in _csv.DictReader(f))
+    except (OSError, KeyError, ValueError):
+        return
+    if not reasons:
+        log.info("left out %s: nothing - every footprint became a building",
+                 map_dir.name)
+        return
+    log.info("left out %s: %d footprints (%s); each one with where and why in %s",
+             map_dir.name, sum(reasons.values()),
+             ", ".join(f"{n} {reason}" for reason, n in reasons.most_common()),
+             path.name)
 
 
 @bp.route("/api/layout-preview")
