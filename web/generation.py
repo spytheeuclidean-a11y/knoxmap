@@ -614,8 +614,41 @@ def api_buildings():
              time.time() - t0, out.getvalue()[-3000:])
     return jsonify({"count": len(tbx), "terrain": terrain,
                     "pzw": f"{map_dir.name}.pzw",
+                    # So the window can say what did not get built without
+                    # anybody reading a log for it.
+                    "left_out": _log_left_out(map_dir),
                     "settings": settings.to_dict(),
                     "population": _population(map_dir)})
+
+
+def _log_left_out(map_dir) -> dict:
+    """Why footprints did not become buildings, in the log as well as the file.
+
+    The build prints this among everything else it has to say, and only the
+    last 3000 characters of that reach the log - on a map with a lot to report
+    the block scrolls off. It is the first thing wanted when somebody says
+    nothing generated where their house is, and the report zip carries both
+    this line and the file it names (knoxbuild/build.py, knoxlog.report_zip).
+
+    Returns the counts in words as well, which is what the window shows under
+    the Buildings step so that nobody has to go and read a log at all.
+    """
+    from knoxbuild import why
+
+    try:
+        report = why.summary(str(map_dir))
+    except OSError:
+        return {}
+    if not report["total"]:
+        log.info("left out %s: nothing - every footprint became a building",
+                 map_dir.name)
+        return report
+    log.info("left out %s: %d footprints (%s); each one with where and why in %s",
+             map_dir.name, report["total"],
+             ", ".join(f"{line['n']} {line['reason']}"
+                       for line in report["lines"]),
+             f"{map_dir.name}_left_out.csv")
+    return report
 
 
 @bp.route("/api/layout-preview")

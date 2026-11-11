@@ -326,7 +326,11 @@ def report_zip(output_dir: Path | None = None, recent_maps: int = 3) -> bytes:
             maps = sorted((d for d in output_dir.iterdir() if d.is_dir()),
                           key=lambda d: d.stat().st_mtime, reverse=True)[:recent_maps]
             for d in maps:
-                for name in (f"{d.name}_info.json", "settings.json", f"{d.name}_population.json"):
+                # _left_out.csv is why each footprint did not become a
+                # building: the first thing to look at when somebody reports a
+                # hole in their town (tools/why_no_building.py reads it).
+                for name in (f"{d.name}_info.json", "settings.json",
+                             f"{d.name}_population.json", f"{d.name}_left_out.csv"):
                     p = d / name
                     if p.exists():
                         z.writestr(f"maps/{d.name}/{name}", redact(_tail(p)))

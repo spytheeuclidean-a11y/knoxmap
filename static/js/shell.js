@@ -429,7 +429,7 @@
         <button type="button" class="btn btn-small" data-opt="clear" ${currentRect ? '' : 'disabled'}>Clear the area</button>`,
       draw: '<b>Add to this area</b><span>Pick what to draw in the panel on the right, then draw it on the map.</span>',
       zone: '<b>Zones</b><span>Press Draw a zone on the right, draw it on the map, then give it its own settings.</span>',
-      change: '<b>Change what is here</b><span>Load what the map was built from, then click anything to remove it or say what it really is.</span>',
+      change: '<b>Change what is here</b><span>Load what the map was built from, then click a building to see whether it was built and why not - or anything at all to remove it or say what it really is.</span>',
     }[ws.tool];
     if (runningMap && runningMap === currentMap && ['area', 'draw', 'zone', 'change'].includes(ws.tool))
       h = `<span class="lock">This map is busy. Editing it now would not reach the step that is running.</span> ${h}`;
