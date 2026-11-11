@@ -144,6 +144,24 @@ def check(mod_root: str, project_dir: str | None = None) -> list[dict]:
     else:
         add("ok", f"{cells} compiled cell{'s' if cells != 1 else ''} are in the mod.")
 
+    # ---- the paper map the in-game map (M) is drawn from ------------------------
+    # Build 42 reads worldmap.xml.bin and cannot read worldmap.xml, so a mod with
+    # neither, or with only the XML, opens the in-game map on nothing - and the
+    # XML alone throws on every outline it draws (knoxbuild/worldmap_bin.py).
+    # Everything else about such a map works, which is why it is worth saying.
+    paper = False
+    if os.path.isdir(maps):
+        for folder in os.listdir(maps):
+            path = os.path.join(maps, folder)
+            if os.path.isdir(path) and os.path.exists(os.path.join(path, "worldmap.xml.bin")):
+                paper = True
+    if paper:
+        add("ok", "The paper map is in the binary form Build 42 reads (worldmap.xml.bin).")
+    else:
+        add("bad", "There is no worldmap.xml.bin, so the in-game map (M) will be blank.",
+            "Install the map again with this version of KnoxMap: older ones wrote only "
+            "worldmap.xml, which Build 42 cannot read.")
+
     # ---- the picture the Workshop page shows -----------------------------------
     preview = os.path.join(mod_root, "preview.png")
     if not os.path.exists(preview):

@@ -173,7 +173,7 @@ def api_compile():
             # told what is missing rather than a plain "done".
             left = compiler.failed_cells(str(map_dir))
             with _PROGRESS_LOCK:
-                mapstate.stamp(str(map_dir), "compile")
+                mapstate.stamp(str(map_dir), "compile", took=time.time() - t0)
                 _COMPILE[name] = {"state": "done", "error": None, "failed": left}
             # Pre-generate overview pictures in the background so the In-game 2.5D view
             # loads instantly as soon as the user opens it.

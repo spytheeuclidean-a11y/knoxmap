@@ -95,5 +95,35 @@ class Page(unittest.TestCase):
             make_map_workshop.workshop_txt("t", "x" * 9000)
 
 
+class PaperMap(unittest.TestCase):
+    """Build 42 reads worldmap.xml.bin and cannot read worldmap.xml, so a mod
+    without the binary opens the in-game map on nothing (knoxbuild/worldmap_bin.py).
+    Everything else about that mod works, which is why the check says so."""
+
+    def mod(self, root: str) -> str:
+        mod = os.path.join(root, "mod")
+        maps = os.path.join(mod, "common", "media", "maps", "Town")
+        os.makedirs(maps)
+        Path(maps, "0_0.lotheader").write_bytes(b"stand-in")
+        Path(maps, "map.info").write_text("title=Town\n", encoding="utf-8")
+        return mod
+
+    def paper(self, mod: str) -> list:
+        return [r for r in workshop_check.check(mod) if "worldmap.xml.bin" in r["what"]]
+
+    def test_a_map_without_the_binary_says_the_in_game_map_will_be_blank(self):
+        with tempfile.TemporaryDirectory() as t:
+            mod = self.mod(t)
+            got = self.paper(mod)
+            self.assertEqual([r["level"] for r in got], ["bad"], got)
+
+    def test_the_binary_puts_it_right(self):
+        with tempfile.TemporaryDirectory() as t:
+            mod = self.mod(t)
+            Path(mod, "common", "media", "maps", "Town", "worldmap.xml.bin").write_bytes(b"IGMB")
+            got = self.paper(mod)
+            self.assertEqual([r["level"] for r in got], ["ok"], got)
+
+
 if __name__ == "__main__":
     unittest.main()
