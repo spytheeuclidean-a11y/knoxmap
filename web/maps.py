@@ -223,6 +223,26 @@ def api_iso_info(name: str):
             if len(parts) == 2 and parts[0].isdigit() and parts[1].isdigit():
                 cells_list.append([int(parts[0]), int(parts[1])])
 
+    # Focus coordinates centered on the actual town buildings rather than arbitrary midpoint
+    focus_x = None
+    focus_y = None
+    placements_csv = map_dir / f"{map_dir.name}_placements.csv"
+    if placements_csv.is_file():
+        try:
+            import csv
+            xs, ys = [], []
+            with open(placements_csv, mode="r", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if "tile_x" in row and "tile_y" in row:
+                        xs.append(int(row["tile_x"]))
+                        ys.append(int(row["tile_y"]))
+            if xs and ys:
+                focus_x = round(sum(xs) / len(xs))
+                focus_y = round(sum(ys) / len(ys))
+        except Exception:
+            pass
+
     return jsonify({
         "name": map_dir.name,
         "compiled": compiled,
@@ -231,6 +251,8 @@ def api_iso_info(name: str):
         "cells_x": int(info.get("cells_x") or 0),
         "cells_y": int(info.get("cells_y") or 0),
         "building_count": int(info.get("building_count") or 0),
+        "focus_x": focus_x,
+        "focus_y": focus_y,
         "pictures": pictures,
         "cells": cells_list,
     })
@@ -289,7 +311,7 @@ def api_iso_render(name: str):
         pics_dir = map_dir / "pictures"
         if not roofs and (pics_dir / "inside_town.png").is_file():
             return send_file(pics_dir / "inside_town.png", mimetype="image/png")
-        target_name = "town.png" if roofs else "inside.png"
+        target_name = "town.png" if roofs else "inside_town.png"
         target_path = pics_dir / target_name
         if target_path.is_file():
             return send_file(target_path, mimetype="image/png")
@@ -321,7 +343,13 @@ def api_iso_render(name: str):
         return failed(f"Render failed: {exc}", 500, exc)
 
     if drawn is None:
-        return jsonify({"error": "Nothing compiled in this area."}), 404
+        # Return an empty ground canvas so the browser <img> element never breaks
+        from PIL import Image
+        TW = max(4, round(64 * scale))
+        half, quarter = TW // 2, TW // 4
+        width = (w + h) * half + TW
+        height = (w + h) * quarter + 2 * TW
+        drawn = Image.new("RGBA", (width, height), (24, 26, 28, 255))
 
     trimmed = _trim(drawn)
     try:

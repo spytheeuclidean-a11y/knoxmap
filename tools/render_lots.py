@@ -43,6 +43,11 @@ CHUNKS = 32
 CHUNK = 8
 LEVEL_PX = 96          # screen height of one storey at 1x
 
+# Persistent module-level cache for decoded tile sheets and resized sprites
+_SHEETS: dict[str, Image.Image | None] = {}
+_SPRITE_CACHE: dict[tuple[str, int], Image.Image | None] = {}
+_MAX_SPRITE_CACHE = 8192
+
 
 def read_header(path: str) -> tuple[list[str], int, int]:
     data = open(path, "rb").read()
@@ -121,6 +126,9 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     squares: dict[tuple[int, int, int], list[str]] = {}
     top = 0
     wx0, wy0 = ox + X, oy + Y
+    # At very small scales (broad county/town overviews), individual grass blend
+    # overlays are sub-pixel and skipping them cuts out over a million alpha-blends.
+    skip_blends = (scale < 0.25)
     for cxw in range(wx0 // CELL, (wx0 + W - 1) // CELL + 1):
         for cyw in range(wy0 // CELL, (wy0 + H - 1) // CELL + 1):
             header = os.path.join(lots, f"{cxw}_{cyw}.lotheader")
@@ -131,6 +139,10 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
             base_x, base_y = cxw * CELL, cyw * CELL
             local = (wx0 - base_x, wy0 - base_y, wx0 + W - base_x, wy0 + H - base_y)
             for (sx, sy, z), tiles in read_squares(pack, names, lo, hi, local).items():
+                if skip_blends:
+                    tiles = [t for t in tiles if not t.startswith("blends_")]
+                    if not tiles:
+                        continue
                 squares[(base_x + sx - wx0, base_y + sy - wy0, z)] = tiles
                 top = max(top, z)
     if not squares:
@@ -139,26 +151,27 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
         top = min(top, max_level)
 
     tiles_dir = knoxpaths.mapping_tools_dir() / "Tiles" / "2x"
-    sheets: dict[str, Image.Image | None] = {}
-    cache: dict[str, Image.Image | None] = {}
 
     def image(name: str):
-        if name in cache:
-            return cache[name]
+        key = (name, TW)
+        if key in _SPRITE_CACHE:
+            return _SPRITE_CACHE[key]
         img = None
         m = re.match(r"^(.*)_(\d+)$", name)
         if m:
             sheet_name, idx = m.group(1), int(m.group(2))
-            if sheet_name not in sheets:
+            if sheet_name not in _SHEETS:
                 path = tiles_dir / f"{sheet_name}.png"
-                sheets[sheet_name] = Image.open(path).convert("RGBA") if path.exists() else None
-            sheet = sheets[sheet_name]
+                _SHEETS[sheet_name] = Image.open(path).convert("RGBA") if path.exists() else None
+            sheet = _SHEETS[sheet_name]
             if sheet is not None:
                 cols = max(1, sheet.width // 128)
                 cx, cy = (idx % cols) * 128, (idx // cols) * 256
                 if cy + 256 <= sheet.height:
                     img = sheet.crop((cx, cy, cx + 128, cy + 256)).resize((TW, TW * 2), Image.LANCZOS)
-        cache[name] = img
+        if len(_SPRITE_CACHE) >= _MAX_SPRITE_CACHE:
+            _SPRITE_CACHE.clear()
+        _SPRITE_CACHE[key] = img
         return img
 
     # Sprites are shrunk before they are stacked, so a whole district can be
@@ -169,17 +182,19 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     height = (W + H) * quarter + 2 * TW + (top + 1) * level_px
     canvas = Image.new("RGBA", (width, height), (24, 26, 28, 255))
     lift = (top + 1) * level_px
-    # The game draws a storey at a time, bottom up, each back to front.
-    for z in range(0, top + 1):
-        for s in range(W + H - 1):
-            for dx in range(max(0, s - H + 1), min(W, s + 1)):
-                dy = s - dx
-                for name in squares.get((dx, dy, z), ()):
-                    img = image(name)
-                    if img is not None:
-                        canvas.alpha_composite(img, ((dx - dy) * half + H * half,
-                                                     (dx + dy) * quarter + lift - z * level_px
-                                                     - TW * 3 // 2))
+
+    # Iterating sorted populated squares directly is mathematically equivalent
+    # to the (z, s, dx) triple loop while skipping millions of empty coordinates.
+    ordered = sorted(squares.items(), key=lambda item: (item[0][2], item[0][0] + item[0][1], item[0][0]))
+    for (dx, dy, z), tile_names in ordered:
+        if max_level is not None and z > max_level:
+            continue
+        px = (dx - dy) * half + H * half
+        py = (dx + dy) * quarter + lift - z * level_px - TW * 3 // 2
+        for name in tile_names:
+            img = image(name)
+            if img is not None:
+                canvas.alpha_composite(img, (px, py))
     return canvas
 
 

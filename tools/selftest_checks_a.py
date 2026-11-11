@@ -1929,9 +1929,14 @@ def check_memory_guard(check) -> None:
         class Small:                      # a 32-bit Python
             maxsize = 2 ** 32 - 1
 
+        # The area is worked out from the per-tile cost the code declares, not
+        # written down here: at 80 bytes a tile 5400x6000 was over a 32-bit
+        # Python's room, and at 20 it is not. What is being tested is the rule.
+        room = 2_100_000_000 * 0.8
+        side = int(((room - webchecks.BASE_BYTES) / webchecks.BYTES_PER_TILE * 1.5) ** 0.5) + 1
         was, webchecks.sys = webchecks.sys, Small
         try:
-            big = knoxapp._too_big_for_memory(5400, 6000)
+            big = knoxapp._too_big_for_memory(side, side)
             small = knoxapp._too_big_for_memory(1200, 1200)
         finally:
             webchecks.sys = was
@@ -1939,7 +1944,7 @@ def check_memory_guard(check) -> None:
         check(big and "32-bit" in big and _kp.setup_command() in big and not small,
               "a map too big for a 32-bit Python is warned about, with a way out")
         knoxlog.memory_status = lambda: (15_000_000_000, 900_000_000, 140_000_000_000)
-        tight = knoxapp._too_big_for_memory(5400, 6000)
+        tight = knoxapp._too_big_for_memory(side, side)
         check(tight and "free" in tight,
               "and so is one too big for the memory that is free")
     finally:
