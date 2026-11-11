@@ -1,4 +1,69 @@
-## Unreleased
+## 1.8.5.8
+
+- **WorldCover now grows what it says grows** (`generator/rendering/landcover_veg.py`,
+  `generator/rendering/fields.py`, `knoxdata/worldcover.py`). On ground
+  OpenStreetMap leaves blank, WorldCover used to set the ground colour and
+  nothing else: its woods had no trees and its cropland was flat grass. Each
+  class now looks like what it is - woods where there is tree cover, bush
+  thickets on shrubland, grass tufts on grassland, ploughed fields with corn,
+  fallow plots and hedgerows on cropland, dense marsh with open pools on
+  wetland, and rocky ground with boulders on tundra and bare ground. OSM
+  farmland and wetland get the same fields and pools. The made-up woods that
+  used to scatter over land WorldCover describes are gone, and mixed forests
+  grow all eleven tree species, broadleaf and evergreen - real game trees that
+  change with the seasons and can be chopped - instead of a few broadleaf ones
+  that stayed in pink spring blossom.
+- **Houses in the woods are livable** (`generator/rendering/woodland.py`,
+  `knoxbuild/yards.py`). A forest house gets its own clearing with an
+  irregular edge and a curving drive to the nearest road, one per house. Every
+  building keeps a 6 m yard clear of cropland, water and OSM farmland plots,
+  so no building stands in a field or a lake.
+- **WorldCover lands in the right place** (`generator/renderer.py`). The
+  renderer's image is padded to whole cells past the bounding box, but the
+  grid was read for the box and stretched over the image, which put it up to
+  about 150 tiles out near the map's edges - on rotated maps too. It now asks
+  for what the image covers, and relief works again on maps with and without
+  WorldCover.
+- **WorldCover just works** (`web/generation.py`, `knoxmap_setup.py`).
+  Generating a map downloads its data once per area - nothing fetched it
+  before, so a new area silently got none - and a failed download still builds
+  the map without it. Setup installs the land-cover library. "OpenStreetMap
+  only" really turns WorldCover off now, as its help text always said, and the
+  suggested Rural/Town/Suburb/City preset appears, based on how built-up the
+  area is. After updating, Setup refreshes the tree rules, so each map does one
+  full recompile on its next build.
+- **Lighter on memory** (`generator/rendering/vegetation.py`, `web/maps.py`,
+  `static/js/iso_view.js`). Vegetation is rasterized a strip at a time instead
+  of holding the whole map's plants, gardens and paving masks at once, which is
+  what makes a big map fit on a PC that refused it before. The 2.5D view loads
+  its sectors quicker and holds fewer decoded images, and a large box selection
+  is drawn whole at a fitted scale rather than cropped to its top-left corner.
+  The memory guards read the new per-tile cost, so the advice a map too big to
+  make gives is still true.
+- **Spanish is complete** (`lang/espanol.txt`). The Leaflet draw tools, the
+  PBF panel, the 2.5D view and the window's error reports have translations,
+  and `tests/test_lang_files.py` keeps a key from going missing in future.
+- **Docker Overpass imports can take a `.osm.pbf`** (`web/geo.py`,
+  `templates/index.html`, `docs/SELF_HOSTING_OVERPASS.md`). A Geofabrik
+  extract can be mounted and imported without running a query against
+  Overpass, and a new Geofabrik import now asks for one.
+- **Public interiors** (`knoxbuild/interiors.py`,
+  `knoxbuild/layout/furnishing.py`, `knoxbuild/layout/core.py`,
+  `knoxbuild/buildtiles.py`, `knoxbuild/catalog.py`). Public bathrooms get
+  toilet stalls with doors, and there are more industrial room types. Butcher
+  display cases are kept for butcher shops and bakery cases for bakeries, with
+  generic cases elsewhere. Rebuilds notice when a layout module changed, so an
+  interior fix reaches a map that was built before it. Separately mapped or
+  absent sidewalks no longer come out doubled, and a paved path is drawn as
+  paving rather than as a dirt trail. Exterior grime stays on the ground floor,
+  and a map's save budget accounts for empty metadata cells.
+- **A map with no paper map says so** (`web/system.py`, `static/js/app.js`,
+  `tools/workshop_check.py`). Build 42 cannot read `worldmap.xml` and draws the
+  in-game map from `worldmap.xml.bin`; a mod carrying only the XML opens the
+  map on nothing and, on the minimap, on white - the one failure a player
+  cannot tell from a broken map. Installing such a mod now says in the warning
+  colour that the in-game map will be blank and to install again, and
+  publishing one is refused, since it would ship a blank in-game map.
 
 - **Why a building is not there** (`knoxbuild/build.py`,
   `tools/why_no_building.py`). A map is never all of OpenStreetMap: a
