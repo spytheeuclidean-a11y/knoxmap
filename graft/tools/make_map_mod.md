@@ -1,0 +1,23 @@
+# tools/make_map_mod.py
+
+- default_mods_dir · function · L29-L34 — def default_mods_dir() -> str: # knoxpaths knows about a Zomboid folder moved elsewhere (ZOMBOID_DIR or # the setup config); ~/Zomboid otherwise.
+- knoxpaths_module · function · L37-L40 — def knoxpaths_module()
+- worlds_already_made · function · L43-L61 — def worlds_already_made() -> list[str]
+- collect · function · L64-L80 — def collect(project_dir: str, lots_dir: str) -> tuple[list[str], list[str]]
+- _world_origin_tiles · function · L83-L95 — def _world_origin_tiles(project_dir: str) -> tuple[int, int]
+- _spawn_tiles · function · L98-L156 — def _spawn_tiles(project_dir: str, limit: int) -> list[tuple[int, int]]
+- inner_tile · function · L124-L141 — def inner_tile(x0, y0, mask): # Tiles whose eight neighbours are all floor, nearest the middle.
+- write_spawnpoints · function · L159-L213 — def write_spawnpoints(project_dir: str, map_dir: str, limit: int = 8) -> int
+- write_objects · function · L216-L264 — def write_objects(project_dir: str, map_dir: str) -> dict[str, int]
+- write_reset_loot · function · L272-L287 — def write_reset_loot(mod_root: str) -> bool
+- write_gun_cache · function · L290-L342 — def write_gun_cache(project_dir: str, mod_root: str, mod_id: str) -> dict | None
+- _lua_string · function · L345-L347 — def _lua_string(value: str) -> str
+- write_spawn_selector · function · L350-L427 — def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str, name: str) -> int
+- lua_str · function · L392-L393 — def lua_str(s: str) -> str
+- write_attribution · function · L433-L492 — def write_attribution(project_dir: str, mod_root: str, name: str) -> None
+- write_server_setup · function · L502-L607 — def write_server_setup(mod_root: str, mod_id: str, name: str, map_folder: str, needs_erika: bool = False) -> str
+- write_how_to_play · function · L610-L661 — def write_how_to_play(mod_root: str, name: str, cells: int, big: bool) -> None
+- folder_name · function · L664-L681 — def folder_name(title: str, fallback: str) -> str
+- _clear_folder · function · L684-L702 — def _clear_folder(folder: str, tries: int = 4) -> None
+- package · function · L705-L850 — def package(project_dir: str, name: str, mod_id: str, lots_dir: str | None = None, mods_dir: str | None = None, description: str = "") -> tuple[str, int, list[str]]
+- main · function · L853-L887 — def main(argv: list[str] | None = None) -> int: # Place names can be in any script, and a Windows console using a legacy # code page cannot print most of them - "OSM says Kadıköy" crashed a build # on cp1252. Print what it can and mark the rest, rather than dying.

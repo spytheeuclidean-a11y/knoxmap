@@ -535,7 +535,9 @@ def main(argv: list[str]) -> int:
         "shop_counter": "location_shop_generic_01_019",
         "shop_counter_red": "location_shop_zippee_01_019",
         "register": "location_shop_accessories_01_000",
-        "shop_display": "location_shop_generic_01_085",       # 1x3, W N
+        "shop_display": "location_shop_generic_01_103",       # general display case
+        "shop_display_butcher": "location_shop_generic_01_085",  # 1x3, W N
+        "shop_display_bakery": "location_shop_generic_01_033",   # 1x2, W N
         "shop_case": "location_shop_generic_01_103",          # faces E (099 faces W)
         "clothes_rack": "location_shop_generic_01_037",       # 1x2, W N
         "clothes_rack_small": "location_shop_generic_01_053",  # W N

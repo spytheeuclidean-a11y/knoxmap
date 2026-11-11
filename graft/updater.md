@@ -1,0 +1,39 @@
+# updater.py
+
+- _platform_tag · function · L52-L55 — def _platform_tag() -> str
+- _log · function · L96-L98 — def _log()
+- current_version · function · L101-L103 — def current_version() -> str
+- _parse · function · L114-L122 — def _parse(version: str) -> tuple
+- is_newer · function · L125-L126 — def is_newer(latest: str, current: str) -> bool
+- managed · function · L129-L132 — def managed() -> bool
+- enabled · function · L135-L143 — def enabled() -> bool
+- status · function · L146-L152 — def status() -> dict
+- _set · function · L155-L157 — def _set(**fields) -> None
+- check · function · L162-L209 — def check(force: bool = False) -> dict
+- _Bundle · class · L212-L247 — class _Bundle
+- __init__ · method · L215-L226 — def __init__(self, path: Path)
+- names · method · L228-L229 — def names(self) -> list[str]
+- extract · method · L231-L241 — def extract(self, where, members) -> None
+- __enter__ · method · L243-L244 — def __enter__(self)
+- __exit__ · method · L246-L247 — def __exit__(self, *exc) -> None
+- _open_release · function · L250-L251 — def _open_release(path: Path) -> _Bundle
+- _is_knoxmap · function · L264-L266 — def _is_knoxmap(release: dict) -> bool
+- _for_this_system · function · L269-L276 — def _for_this_system(release: dict) -> bool
+- _newest_release · function · L279-L297 — def _newest_release() -> dict | None
+- _asset · function · L300-L316 — def _asset(release: dict) -> dict | None
+- _stage · function · L319-L363 — def _stage(release: dict, chosen: bool) -> None
+- _fetch_releases · function · L371-L386 — def _fetch_releases() -> list[dict]
+- releases · function · L389-L403 — def releases() -> dict
+- choose · function · L406-L429 — def choose(version: str) -> dict
+- check_in_background · function · L432-L439 — def check_in_background() -> None
+- loop · function · L434-L438 — def loop()
+- _read_staged · function · L442-L446 — def _read_staged() -> dict | None
+- _protected · function · L451-L453 — def _protected(rel: str) -> bool
+- _digest · function · L456-L460 — def _digest(path: Path) -> str | None
+- _put_in_place · function · L463-L500 — def _put_in_place(src: Path, dest: Path, rel: str, budget: list[float]) -> None
+- _roll_back · function · L503-L524 — def _roll_back(done: list[tuple[str, Path | None]]) -> None
+- _clear_aside · function · L527-L531 — def _clear_aside() -> None
+- apply_staged · function · L534-L646 — def apply_staged() -> bool
+- _run · function · L649-L658 — def _run(cmd: list[str], what: str, env: dict | None = None) -> None
+- relaunch · function · L661-L677 — def relaunch() -> None
+- restart · function · L680-L684 — def restart() -> None

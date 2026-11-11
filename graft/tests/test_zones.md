@@ -1,0 +1,27 @@
+# tests/test_zones.py
+
+- Projector · class · L14-L19 — class Projector
+- to_px · method · L18-L19 — def to_px(lat, lon)
+- square · function · L22-L23 — def square(x0, y0, x1, y1)
+- zoning · function · L26-L28 — def zoning(*zone_dicts, settings=None)
+- Cleaning · class · L31-L67 — class Cleaning(unittest.TestCase)
+- test_a_zone_cannot_set_what_decides_the_whole_map · method · L32-L39 — def test_a_zone_cannot_set_what_decides_the_whole_map(self): # The seed, the scale and the rotation are what the map is; a zone # with its own would be a different map in the middle of this one.
+- test_values_are_clamped_to_what_the_generator_accepts · method · L41-L48 — def test_values_are_clamped_to_what_the_generator_accepts(self)
+- test_a_shape_that_is_not_a_shape_is_dropped · method · L50-L54 — def test_a_shape_that_is_not_a_shape_is_dropped(self)
+- test_unreadable_numbers_are_left_out_rather_than_guessed_at · method · L56-L61 — def test_unreadable_numbers_are_left_out_rather_than_guessed_at(self)
+- test_a_pinned_wall_style_is_kept_as_a_name · method · L63-L67 — def test_a_pinned_wall_style_is_kept_as_a_name(self)
+- Asking · class · L70-L113 — class Asking(unittest.TestCase)
+- test_inside_the_zone_its_settings_answer · method · L71-L74 — def test_inside_the_zone_its_settings_answer(self)
+- test_outside_it_the_map_answers_with_its_own_object · method · L76-L81 — def test_outside_it_the_map_answers_with_its_own_object(self)
+- test_a_zone_leaves_the_settings_it_says_nothing_about_alone · method · L83-L89 — def test_a_zone_leaves_the_settings_it_says_nothing_about_alone(self)
+- test_the_smallest_zone_wins_so_they_can_nest · method · L91-L95 — def test_the_smallest_zone_wins_so_they_can_nest(self)
+- test_an_int_setting_stays_an_int · method · L97-L101 — def test_an_int_setting_stays_an_int(self): # It is read straight into the generator, which indexes and ranges on # it; a float max_levels raises there rather than here.
+- test_a_pinned_style_is_only_pinned_inside · method · L103-L106 — def test_a_pinned_style_is_only_pinned_inside(self)
+- test_no_zones_is_the_map_everywhere · method · L108-L113 — def test_no_zones_is_the_map_everywhere(self)
+- AcrossTheWholeMap · class · L116-L143 — class AcrossTheWholeMap(unittest.TestCase)
+- test_the_chunk_grid_says_what_each_part_of_the_map_is_set_to · method · L117-L129 — def test_the_chunk_grid_says_what_each_part_of_the_map_is_set_to(self): # The spawn map is drawn a chunk at a time, so the zones are painted # into that grid once rather than asked about chunk by chunk. # The projector above makes a degree a thousand tiles, so this zone # is tiles 0-100 of a grid 20 chunks of 10 tiles across: 200 tiles.
+- test_a_zone_inside_another_wins_on_the_grid_too · method · L131-L137 — def test_a_zone_inside_another_wins_on_the_grid_too(self)
+- test_with_no_zones_every_chunk_is_the_map · method · L139-L143 — def test_with_no_zones_every_chunk_is_the_map(self)
+- ForTheWindow · class · L146-L157 — class ForTheWindow(unittest.TestCase)
+- test_every_offered_setting_is_one_a_zone_really_reads · method · L147-L149 — def test_every_offered_setting_is_one_a_zone_really_reads(self)
+- test_every_offered_setting_is_a_real_one_with_limits · method · L151-L157 — def test_every_offered_setting_is_a_real_one_with_limits(self)

@@ -213,6 +213,29 @@ class TheRulesPlaceTreesTheGameKnows(unittest.TestCase):
                    if t.startswith("e_")}
         self.assertEqual(indices, {patcher.SIZE_INDEX[1], patcher.SIZE_INDEX[2]})
 
+    def blocks(self, text):
+        import worlded.patch_rules_b42_trees as patcher
+        out = {}
+        for block in text.split("rule\n{")[1:]:
+            label = block.split("label = ", 1)[1].split("\n", 1)[0].strip()
+            if label.startswith(patcher.MARKER):
+                continue
+            tiles = block.split("tiles = [", 1)[1].split("]", 1)[0].split()
+            out[label] = tiles
+        return out
+
+    def test_and_each_keeps_its_share_of_trees(self):
+        import re
+        tree = re.compile(r"^(?:vegetation_trees_01_\d+|e_[a-z]+_1_\d+)$")
+        before = self.blocks(RULES)
+        after = self.blocks(patch(self.tools))
+        for label, tiles in before.items():
+            share = sum(bool(tree.match(t)) for t in tiles) / len(tiles)
+            new = after[label]
+            with self.subTest(label=label):
+                self.assertAlmostEqual(
+                    sum(bool(tree.match(t)) for t in new) / len(new), share)
+
     def test_running_it_again_changes_nothing(self):
         once = patch(self.tools)
         self.assertEqual(patch(self.tools), once)
@@ -442,6 +465,14 @@ class PlantingBlocks(unittest.TestCase):
 
     def test_or_of_a_mask_smaller_than_one_block(self):
         self.assertEqual(self.picks(np.ones((3, 3), dtype=bool), 8), [])
+
+
+
+class ThePictureShowsSummer(unittest.TestCase):
+    def test_the_preview_knows_every_broadleaf(self):
+        import worlded.patch_rules_b42_trees as patcher
+        from tools import render_lots
+        self.assertEqual(render_lots.SUMMER_SHEETS, set(patcher.DECIDUOUS))
 
 
 if __name__ == "__main__":

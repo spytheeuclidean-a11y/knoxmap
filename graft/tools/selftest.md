@@ -1,0 +1,127 @@
+# tools/selftest.py
+
+- _ll · function · L42-L48 — def _ll(x_m: float, y_m: float) -> tuple[float, float]
+- way · function · L51-L52 — def way(tags: dict, pts_m: list[tuple[float, float]]) -> OSMFeature
+- box · function · L55-L56 — def box(x0, y0, x1, y1)
+- town · function · L59-L160 — def town() -> list[OSMFeature]
+- Checks · class · L163-L170 — class Checks
+- __init__ · method · L164-L165 — def __init__(self)
+- __call__ · method · L167-L170 — def __call__(self, ok: bool, what: str) -> None
+- check_1_3_6 · function · L173-L335 — def check_1_3_6(check, out: str, tbx: list[str], pzw_text: str, log: str) -> None
+- _P · class · L249-L250 — class _P
+- ways_in · function · L269-L273 — def ways_in(kind, w, h)
+- check_dwellings · function · L338-L384 — def check_dwellings(check) -> None
+- share · function · L356-L358 — def share(tags, area)
+- check_split_large · function · L387-L414 — def check_split_large(check) -> None
+- check_mapped_rooms · function · L417-L452 — def check_mapped_rooms(check) -> None
+- drawn · function · L440-L447 — def drawn(rect, kind)
+- check_giant_outline · function · L455-L491 — def check_giant_outline(check, work: str) -> None
+- box · function · L467-L468 — def box(s, w, n, e)
+- holds · function · L483-L485 — def holds(r)
+- check_street_zombies · function · L494-L521 — def check_street_zombies(check) -> None
+- check_stop · function · L524-L566 — def check_stop(check) -> None
+- check_portable · function · L569-L794 — def check_portable(check) -> None
+- check_lots_apart · function · L797-L834 — def check_lots_apart(check, out: str, name: str = "selftest") -> None
+- dense_town · function · L837-L860 — def dense_town() -> list
+- check_procedural · function · L863-L888 — def check_procedural(check, work: str) -> None
+- _dense · function · L891-L940 — def _dense(check, work, renderer, build, Settings) -> None
+- houses · function · L905-L906 — def houses(rows)
+- median_rooms · function · L908-L910 — def median_rooms(rows)
+- check_rifle · function · L943-L986 — def check_rifle(check, out: str, mod_root: str) -> None
+- check_rpath · function · L989-L1062 — def check_rpath(check) -> None
+- elf · function · L1001-L1019 — def elf(tag: int) -> bytes
+- tag_of · function · L1021-L1022 — def tag_of(raw: bytes) -> int
+- check_facing · function · L1065-L1190 — def check_facing(check) -> None
+- check_qt_env · function · L1193-L1265 — def check_qt_env(check) -> None
+- check_compile_failures · function · L1268-L1389 — def check_compile_failures(check, work: str) -> None
+- Proc · class · L1283-L1285 — class Proc
+- __init__ · method · L1284-L1285 — def __init__(self, rc, out="")
+- harness · function · L1295-L1320 — def harness(plan)
+- fake · function · L1305-L1317 — def fake(cmd, should_stop, started)
+- check_wall_corners · function · L1392-L1477 — def check_wall_corners(check) -> None
+- walls_of · function · L1410-L1430 — def walls_of(grid)
+- inside · function · L1413-L1414 — def inside(x, y)
+- stepped · function · L1432-L1435 — def stepped(w, h, step)
+- _sides_for · function · L1480-L1487 — def _sides_for(grid, x, y, d)
+- at · function · L1484-L1485 — def at(px, py)
+- check_overture · function · L1490-L1615 — def check_overture(check, work: str) -> None
+- square · function · L1511-L1519 — def square(lat, lon, side_m, **row)
+- check_kitchen_fit · function · L1618-L1672 — def check_kitchen_fit(check) -> None
+- check_standing · function · L1675-L1730 — def check_standing(check) -> None
+- check_wall_styles · function · L1733-L1784 — def check_wall_styles(check) -> None
+- check_squares · function · L1787-L1813 — def check_squares(check) -> None
+- check_house_plan · function · L1816-L1876 — def check_house_plan(check) -> None
+- check_porch_lights · function · L1879-L1932 — def check_porch_lights(check, out: str) -> None
+- check_repair · function · L1935-L1978 — def check_repair(check, out: str) -> None
+- check_memory_guard · function · L1981-L2013 — def check_memory_guard(check) -> None
+- Small · class · L1996-L1997 — class Small: # a 32-bit Python
+- check_overpass_retry · function · L2016-L2106 — def check_overpass_retry(check) -> None
+- once_then_works · function · L2045-L2054 — def once_then_works(south, west, north, east, timeout, depth=0, first=0)
+- never_works · function · L2062-L2064 — def never_works(south, west, north, east, timeout, depth=0, first=0)
+- dead · function · L2086-L2088 — def dead(endpoint, query, timeout)
+- check_flat_selection · function · L2109-L2144 — def check_flat_selection(check) -> None
+- ask · function · L2121-L2124 — def ask(ring)
+- check_overpass_blank · function · L2147-L2306 — def check_overpass_blank(check) -> None
+- Reply · class · L2160-L2167 — class Reply
+- __init__ · method · L2161-L2164 — def __init__(self, payload, status=200)
+- json · method · L2166-L2167 — def json(self)
+- post · function · L2179-L2181 — def post(endpoint, data=None, headers=None, timeout=None)
+- counting · function · L2286-L2288 — def counting(*a, **k)
+- check_no_size_wall · function · L2309-L2361 — def check_no_size_wall(check, work: str) -> None
+- Reached · class · L2324-L2325 — class Reached(RuntimeError)
+- no_download · function · L2327-L2328 — def no_download(*_a, **_k)
+- check_repeatable_seeds · function · L2364-L2380 — def check_repeatable_seeds(check) -> None
+- check_compile_records · function · L2383-L2461 — def check_compile_records(check, work: str) -> None
+- Done · class · L2412-L2413 — class Done
+- fake · function · L2415-L2424 — def fake(cmd, should_stop, started)
+- check_odd_requests · function · L2464-L2490 — def check_odd_requests(check, work: str) -> None
+- no_download · function · L2469-L2470 — def no_download(*_a, **_k)
+- check_osm_parse_tolerant · function · L2493-L2520 — def check_osm_parse_tolerant(check) -> None
+- check_osm_cache · function · L2523-L2575 — def check_osm_cache(check, work: str) -> None
+- Boom · class · L2561-L2562 — class Boom(Exception)
+- check_config_file · function · L2578-L2613 — def check_config_file(check, work: str) -> None
+- check_install_clears · function · L2616-L2642 — def check_install_clears(check, work: str) -> None
+- check_odd_tags · function · L2645-L2703 — def check_odd_tags(check) -> None
+- check_degenerate_footprints · function · L2706-L2719 — def check_degenerate_footprints(check) -> None
+- check_car_park_stalls · function · L2722-L2753 — def check_car_park_stalls(check) -> None
+- original · function · L2728-L2738 — def original(bounds, w, h)
+- check_prop_lattice · function · L2756-L2778 — def check_prop_lattice(check) -> None
+- check_ground_shares · function · L2781-L2822 — def check_ground_shares(check, work: str) -> None
+- whole · function · L2797-L2809 — def whole(path: str)
+- check_street_angle · function · L2825-L2881 — def check_street_angle(check) -> None
+- street · function · L2833-L2835 — def street(p0, p1)
+- clip · function · L2837-L2847 — def clip(p0, p1, x0, y0, x1, y1)
+- grid · function · L2849-L2861 — def grid(angle, x0, y0, x1, y1, spacing=60)
+- turned · function · L2863-L2864 — def turned(feats)
+- check_throttle · function · L2884-L2912 — def check_throttle(check) -> None
+- check_saved_areas · function · L2915-L2958 — def check_saved_areas(check, work: str) -> None
+- check_portable_presets · function · L2961-L3041 — def check_portable_presets(check, work: str) -> None
+- check_health · function · L3044-L3052 — def check_health(check) -> None
+- check_worlded_size · function · L3055-L3068 — def check_worlded_size(check) -> None
+- check_other_websites · function · L3071-L3089 — def check_other_websites(check) -> None
+- post · function · L3077-L3079 — def post(**headers): # /api/stop with no map name answers 400 and does nothing: a refusal is 403.
+- check_overpass_setting · function · L3092-L3120 — def check_overpass_setting(check, work: str) -> None
+- check_workshop · function · L3123-L3167 — def check_workshop(check, work: str) -> None
+- levels · function · L3142-L3144 — def levels()
+- check_compile_state · function · L3170-L3270 — def check_compile_state(check, work: str) -> None
+- record · function · L3198-L3204 — def record(terrain_edit=None, content_edit=None) -> dict
+- make_maps · function · L3237-L3240 — def make_maps() -> None
+- check_big_bitmaps · function · L3273-L3311 — def check_big_bitmaps(check, work: str) -> None
+- check_box_any · function · L3314-L3341 — def check_box_any(check) -> None
+- whole_map · function · L3322-L3328 — def whole_map(mask, radius)
+- check_mapstate · function · L3344-L3383 — def check_mapstate(check, out: str) -> None
+- with_stages · function · L3357-L3361 — def with_stages(versions: dict) -> list[str]
+- check_straight_roads · function · L3386-L3419 — def check_straight_roads(check) -> None
+- runs_ok · function · L3404-L3410 — def runs_ok(f)
+- check_missing_drive · function · L3422-L3454 — def check_missing_drive(check) -> None
+- Gone · class · L3427-L3429 — class Gone(type(Path()))
+- stat · method · L3428-L3429 — def stat(self, *a, **k)
+- check_updater · function · L3457-L3596 — def check_updater(check, work: str) -> None
+- breaks_on_third · function · L3577-L3581 — def breaks_on_third(src, dest, rel, budget)
+- main · function · L3599-L4262 — def main(argv: list[str]) -> int: # The compile checks drive a stand-in for WorldEd; they are about WorldEd's failures.
+- tarmac_rows · function · L3645-L3647 — def tarmac_rows(x)
+- tbx_bytes · function · L3696-L3698 — def tbx_bytes() -> dict
+- gaps_match · function · L3772-L3779 — def gaps_match(t: str) -> bool
+- _walls · function · L3825-L3833 — def _walls(node)
+- _boom · function · L4035-L4036 — def _boom()
+- buffer_safe · function · L4142-L4151 — def buffer_safe(data) -> bool

@@ -1,0 +1,16 @@
+# tests/test_buildheader.py
+
+- squares · function · L7-L8 — def squares(pic)
+- covers · function · L11-L12 — def covers(rects)
+- RectTests · class · L15-L34 — class RectTests(unittest.TestCase)
+- test_a_rectangle_is_one_rect · method · L16-L17 — def test_a_rectangle_is_one_rect(self)
+- test_a_c_shape_cuts_the_way_worlded_does · method · L19-L21 — def test_a_c_shape_cuts_the_way_worlded_does(self)
+- test_a_row_wider_than_the_column_above_ends_the_column · method · L23-L25 — def test_a_row_wider_than_the_column_above_ends_the_column(self)
+- test_the_rects_always_cover_the_squares_exactly_once · method · L27-L34 — def test_the_rects_always_cover_the_squares_exactly_once(self)
+- building · function · L37-L39 — def building(rooms_by_floor, names=("hall", "kitchen"))
+- TableTests · class · L42-L80 — class TableTests(unittest.TestCase)
+- test_rooms_go_floor_by_floor_then_by_number · method · L43-L48 — def test_rooms_go_floor_by_floor_then_by_number(self)
+- test_a_later_building_takes_the_squares_it_covers · method · L50-L57 — def test_a_later_building_takes_the_squares_it_covers(self)
+- test_buildings_that_do_not_touch_stay_apart · method · L59-L62 — def test_buildings_that_do_not_touch_stay_apart(self)
+- test_a_building_is_listed_in_the_cell_of_its_north_west_corner_whole · method · L64-L70 — def test_a_building_is_listed_in_the_cell_of_its_north_west_corner_whole(self)
+- test_buildings_come_by_source_cell_row_by_row · method · L72-L80 — def test_buildings_come_by_source_cell_row_by_row(self)

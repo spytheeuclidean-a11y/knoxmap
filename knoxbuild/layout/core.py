@@ -115,6 +115,7 @@ class Plan:
     open_units: set = field(default_factory=set)
     # Wall edges carrying a switch, painting or mirror; windows keep off them.
     wall_pieces: set = field(default_factory=set)
+    stalls: list = field(default_factory=list)  # toilet tile and back-wall direction
     # The sleeve of floor round each room's way in that no optional piece may
     # take: one tile either side of the walkway and of every door.
     sleeve: set = field(default_factory=set)
@@ -333,7 +334,7 @@ ROOM_STYLE = {
     "mechanic": (C.FLOOR_LINO, "Mechanic", ["metal_rack", "crate", "counter", "metal_rack"]),
     "motelroom": (C.FLOOR_CARPET_BLUE, "Hotel Room",
                   ["double_bed", "sidetable", "tv", "armchair", "dresser", "lamp", "painting"]),
-    "bakery": (C.FLOOR_TILE_PALE, "Bakery", ["shop_display", "shop_counter", "shop_shelf"]),
+    "bakery": (C.FLOOR_TILE_PALE, "Bakery", ["shop_display_bakery", "shop_counter", "shop_shelf"]),
     **{k: (floor, label, ["shop_shelf", "shop_counter", "shop_shelf_wood"])
        for k, floor, label in (
            ("gasstore", C.FLOOR_TILE_PALE, "Gas Station Store"),
@@ -344,7 +345,11 @@ ROOM_STYLE = {
            ("camerastore", C.FLOOR_TILE_PALE, "Camera Store"),
            ("musicstore", C.FLOOR_WOOD, "Music Store"), ("movierental", C.FLOOR_CARPET_BLUE, "Video Store"),
            ("gunstore", C.FLOOR_LINO, "Gun Store"), ("sportstore", C.FLOOR_WOOD, "Sports Store"),
-           ("gardenstore", C.FLOOR_LINO, "Garden Store"),
+           ("gardenstore", C.FLOOR_LINO, "Farm and Garden Store"),
+           ("armysurplus", C.FLOOR_LINO, "Army Surplus"),
+           ("hunting", C.FLOOR_LINO, "Hunting and Outdoor Store"),
+           ("artstore", C.FLOOR_WOOD, "Art Supply Store"),
+           ("petstore", C.FLOOR_TILE_PALE, "Pet Store"),
            ("furniturestore", C.FLOOR_CARPET_RED, "Furniture Store"))},
     "armystorage": (C.FLOOR_LINO, "Army Storage",
                     ["metal_rack", "crate", "metal_rack", "crate", "filing_cabinet", "shelf"]),
@@ -491,6 +496,8 @@ SPECIAL_MIXES = {
                     "clothesstorage", "office", "toolstore", "musicstore",
                     "pharmacy", "candystore", "bakery", "icecreamkitchen",
                     "sewingstore", "optometrist", "janitor", "cornerstore",
+                    "gardenstore", "armysurplus", "hunting", "artstore",
+                    "petstore", "camerastore",
                     "departmentstorage", "security", "storage", "breakroom"],
                    ["clothesstore", "giftstore", "clothesstorage",
                     "toystore", "bookstore", "shoestore", "sportstore",

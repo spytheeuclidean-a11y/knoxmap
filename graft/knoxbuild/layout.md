@@ -1,0 +1,145 @@
+# knoxbuild/layout.py
+
+- Room · class · L39-L69 — class Room
+- w · method · L60-L61 — def w(self) -> int
+- h · method · L64-L65 — def h(self) -> int
+- area · method · L68-L69 — def area(self) -> int
+- Plan · class · L73-L124 — class Plan
+- _inside · function · L534-L544 — def _inside(x0: int, y0: int, x1: int, y1: int, mask: list[list[bool]] | None) -> int
+- _split · function · L547-L620 — def _split(x0: int, y0: int, x1: int, y1: int, rng: random.Random, depth: int, out: list[Room], target_area: int = TARGET_ROOM_AREA, mask: list[list[bool]] | None = None, small: list[bool] | None = None) -> None
+- _subtract · function · L623-L649 — def _subtract(box: tuple, others: list[tuple]) -> list[tuple]
+- _intersect · function · L652-L661 — def _intersect(box: tuple, others: list[tuple]) -> list[tuple]
+- _mapped_rooms · function · L664-L721 — def _mapped_rooms(plan: Plan, rng: random.Random, mapped: list[tuple[list[tuple[int, int]], str | None]], target_area: int, mask: list[list[bool]] | None, small: list[bool] | None) -> None
+- _flat_frontage · function · L792-L804 — def _flat_frontage(depth: int) -> tuple[int, int]
+- _slices · function · L827-L850 — def _slices(length: int, rng: random.Random, lo: int, hi: int) -> list[tuple[int, int]]
+- _corridor_axis · function · L853-L858 — def _corridor_axis(plan: Plan) -> str | None
+- _apartment_rooms · function · L861-L957 — def _apartment_rooms(plan: Plan, rng: random.Random, target: int, frontage: tuple[int, int] = FLAT_FRONTAGE) -> None
+- _contiguous · function · L967-L982 — def _contiguous(members: list[int], adj: dict[int, dict[int, int]]) -> bool
+- _stagger_flats · function · L985-L1032 — def _stagger_flats(plan: Plan, rng: random.Random) -> None
+- _neighbours · function · L1035-L1050 — def _neighbours(plan: Plan) -> dict[int, dict[int, int]]
+- _assign_flat_kinds · function · L1053-L1105 — def _assign_flat_kinds(plan: Plan, hotel: bool = False, reception: bool = False, rng: random.Random | None = None) -> None
+- _graph_distance · function · L1108-L1119 — def _graph_distance(adj: dict[int, dict[int, int]], start: int) -> dict[int, int]
+- _house_room_budgets · function · L1148-L1154 — def _house_room_budgets(plan: Plan, levels: int) -> tuple[int, int]
+- _house_bedrooms_on_floor · function · L1157-L1159 — def _house_bedrooms_on_floor(bedrooms: int, levels: int, level: int) -> int
+- _house_open_plan_share · function · L1162-L1167 — def _house_open_plan_share(profile) -> float
+- _house_dining_share · function · L1170-L1176 — def _house_dining_share(profile) -> float
+- _house_study_share · function · L1179-L1187 — def _house_study_share(profile) -> float
+- _merge_house_open_plan · function · L1190-L1207 — def _merge_house_open_plan(plan: Plan, living_id: int, kitchen_id: int) -> bool
+- _landing · function · L1218-L1232 — def _landing(plan: Plan, adj: dict, free: list, stairs: tuple[int, int, str] | None) -> int | None
+- _more_halls · function · L1246-L1268 — def _more_halls(plan: Plan, adj: dict, free: list, kinds: dict, seeds: list[int], cap: int) -> int
+- _assign_house_kinds · function · L1271-L1383 — def _assign_house_kinds(plan: Plan, level: int, levels: int, stairs: tuple[int, int, str] | None = None, rng: random.Random | None = None) -> None
+- take · function · L1303-L1305 — def take(i: int, kind: str) -> None
+- _shop_rooms · function · L1391-L1415 — def _shop_rooms(plan: Plan, rng: random.Random, street: str | None) -> None
+- _assign_shop_floor · function · L1419-L1480 — def _assign_shop_floor(plan: Plan, rng: random.Random, street: str | None, uses: list[tuple[str, str]] | None, several: bool) -> None
+- street_wall · function · L1439-L1444 — def street_wall(i)
+- _by_expected_size · function · L1572-L1580 — def _by_expected_size(kinds: list[str]) -> list[str]
+- _split_to_size · function · L1606-L1660 — def _split_to_size(plan: Plan, rng: random.Random) -> None
+- _assign_kinds · function · L1663-L1713 — def _assign_kinds(rooms: list[Room], mix: list[str], fill: list[str]) -> None
+- spare · function · L1671-L1673 — def spare(kind: str) -> bool
+- _circulation · function · L1740-L1757 — def _circulation(plan: Plan, rooms: list[Room]) -> int
+- _mall_rooms · function · L1798-L1904 — def _mall_rooms(plan: Plan, rng: random.Random, target: int, level: int = 0) -> None
+- put · function · L1825-L1836 — def put(a0, b0, a1, b1, kind=None, fixed=False)
+- cut · function · L1838-L1843 — def cut(a0, b0, a1, b1)
+- _clear_concourse · function · L1914-L1936 — def _clear_concourse(plan: Plan) -> int
+- _bridge_core · function · L1939-L1968 — def _bridge_core(plan: Plan, along_x: bool) -> None
+- _atrium_railings · function · L1971-L1998 — def _atrium_railings(plan: Plan) -> None
+- room_at · function · L1983-L1984 — def room_at(x, y)
+- _open_shopfronts · function · L2017-L2076 — def _open_shopfronts(plan: Plan) -> None
+- _merge_concourse · function · L2079-L2108 — def _merge_concourse(plan: Plan) -> None
+- _merge_halls · function · L2111-L2149 — def _merge_halls(plan: Plan) -> int
+- _renumber · function · L2152-L2168 — def _renumber(plan: Plan) -> None
+- _refit · function · L2171-L2183 — def _refit(plan: Plan) -> None
+- _paint · function · L2186-L2210 — def _paint(plan: Plan) -> None
+- _mend_fragments · function · L2221-L2290 — def _mend_fragments(plan: Plan) -> None
+- too_small · function · L2256-L2266 — def too_small(cells) -> bool
+- _unit_touches_corridor · function · L2293-L2364 — def _unit_touches_corridor(plan: Plan) -> None
+- pieces · function · L2314-L2327 — def pieces(members: list[int]) -> list[set[int]]
+- reaches · function · L2329-L2330 — def reaches(piece: set[int]) -> bool
+- _boundary_edges · function · L2367-L2383 — def _boundary_edges(plan: Plan) -> dict[tuple[int, int], list[tuple[int, int, str]]]
+- _door_spot · function · L2395-L2419 — def _door_spot(edges: list[tuple[int, int, str]], min_run: int, rng: random.Random | None = None ) -> tuple[tuple[int, int, str], int] | None
+- _along · function · L2422-L2430 — def _along(length: int, rng: random.Random | None) -> int
+- _door_cost · function · L2470-L2496 — def _door_cost(a: str, b: str) -> float
+- _doors · function · L2499-L2621 — def _doors(plan: Plan, rng: random.Random) -> None
+- start_room · function · L2521-L2526 — def start_room() -> int
+- _room_at · function · L2624-L2627 — def _room_at(plan: Plan, x: int, y: int) -> int
+- _side_edge · function · L2630-L2634 — def _side_edge(side: str, fixed: int, pos: int) -> tuple[int, int, str]
+- _outside_runs · function · L2637-L2677 — def _outside_runs(plan: Plan, idx: int) -> list[tuple[str, list[tuple[int, int, str]]]]
+- _exterior_door · function · L2687-L2734 — def _exterior_door(plan: Plan, rng: random.Random, avoid: tuple[int, int] | None = None, street: str | None = None, entrances: list[tuple[float, float, dict]] | None = None) -> None
+- score · function · L2720-L2728 — def score(run)
+- _widen_vehicle_entry · function · L2737-L2764 — def _widen_vehicle_entry(plan: Plan, street: str | None) -> None
+- _entrance_priority · function · L2767-L2781 — def _entrance_priority(entrance: tuple[float, float, dict]) -> tuple
+- _entrance_wall · function · L2784-L2827 — def _entrance_wall(plan: Plan, x: float, y: float, tags: dict) -> tuple[int, int, str] | None
+- _more_ways_in · function · L2846-L2875 — def _more_ways_in(plan: Plan, front: tuple[int, int, str]) -> None
+- _back_door · function · L2881-L2904 — def _back_door(plan: Plan, street: str | None = None) -> None
+- _facade_runs · function · L3057-L3101 — def _facade_runs(grid: list[list[int]]) -> list[tuple[str, list[tuple[int, int, str, int, int]]]]
+- inside · function · L3065-L3066 — def inside(x, y)
+- _room_edges · function · L3104-L3123 — def _room_edges(grid: list[list[int]]) -> set[tuple[int, int, str]]
+- _sides_of · function · L3126-L3133 — def _sides_of(grid: list[list[int]], x: int, y: int, d: str) -> tuple[int, int]
+- at · function · L3130-L3131 — def at(px, py)
+- _doors_off_corners · function · L3136-L3237 — def _doors_off_corners(storey, edges: set, corners: set) -> int
+- homes · function · L3163-L3165 — def homes(pair) -> tuple
+- joinable · function · L3167-L3175 — def joinable(pair) -> bool
+- reaches · function · L3184-L3206 — def reaches(doors) -> set
+- _front_side · function · L3240-L3261 — def _front_side(building: "Building", kind: str | None) -> set[str]
+- _bays · function · L3264-L3289 — def _bays(by_side: dict, front: set[str], near: int, far: int, only: set[str] | None = None) -> list[tuple[int, int, str, int, int]]
+- _place_windows · function · L3292-L3472 — def _place_windows(building: "Building", kind: str | None, shop_ground: bool = False) -> None
+- bays_for · function · L3331-L3338 — def bays_for(grid)
+- spaced · function · L3385-L3393 — def spaced(x, y, d)
+- add · function · L3395-L3402 — def add(edge): # Never across the hole in a mall floor. That edge is a railing # over the concourse below, and glazing it put windows in mid-air # inside the building.
+- _facing · function · L3480-L3486 — def _facing(role: str, wanted: str) -> str
+- _cells_for · function · L3489-L3495 — def _cells_for(role: str, x: int, y: int, orient: str) -> list[tuple[int, int]]
+- _wall_anchor · function · L3498-L3506 — def _wall_anchor(role: str, x: int, y: int, orient: str, wall: str) -> tuple[int, int]
+- use_mod_tiles · function · L3566-L3576 — def use_mod_tiles(allowed: bool) -> None
+- _erika_ready · function · L3579-L3591 — def _erika_ready() -> bool
+- _is_wall_piece · function · L3594-L3599 — def _is_wall_piece(role: str) -> bool
+- _wall_edge · function · L3602-L3611 — def _wall_edge(x: int, y: int, facing: str) -> tuple[int, int, str]
+- _furnish_middle · function · L3694-L3723 — def _furnish_middle(plan: Plan, idx: int, room: Room, occupied: set[tuple[int, int]], keep_clear: set[tuple[int, int]], palette: dict[str, str] | None = None) -> int
+- own · function · L3707-L3708 — def own(group)
+- _seat_the_table · function · L3735-L3759 — def _seat_the_table(plan: Plan, idx: int, keep_clear: set[tuple[int, int]], added: list) -> None
+- _once · function · L3768-L3769 — def _once(role: str) -> bool
+- _place_group · function · L3772-L3814 — def _place_group(plan: Plan, idx: int, room: Room, group: list[tuple[str, int, int, str]], repeat: int, occupied: set[tuple[int, int]], keep_clear: set[tuple[int, int]]) -> int
+- _bathroom_wishlist · function · L3817-L3841 — def _bathroom_wishlist(area: int, public: bool) -> list[str]
+- _bath_mat_spot · function · L3844-L3869 — def _bath_mat_spot(plan: Plan, idx: int, room: Room, occupied: set[tuple[int, int]], keep_clear: set[tuple[int, int]])
+- _furnish · function · L3872-L4280 — def _furnish(plan: Plan, rng: random.Random, stairs: tuple[int, int, str] | None = None, street: str | None = None) -> None
+- on_facade · function · L3939-L3942 — def on_facade(slot: tuple[int, int, str]) -> bool
+- hang · function · L3944-L3958 — def hang(role: str, x: int, y: int, facing: str) -> bool
+- slot_order · function · L4208-L4212 — def slot_order(slot)
+- _is_sink · function · L4296-L4297 — def _is_sink(role: str) -> bool
+- _needs_front · function · L4306-L4307 — def _needs_front(role: str) -> bool
+- _needs_surface · function · L4310-L4311 — def _needs_surface(role: str) -> bool
+- _stand_on_something · function · L4327-L4374 — def _stand_on_something(plan: Plan, idx: int, room: Room, palette: dict) -> None
+- _counter_runs · function · L4473-L4535 — def _counter_runs(plan: Plan, idx: int, slots, occupied: set, door_tiles: set, stair_tiles: set, counter: str = "counter", cabinets: bool = True, area: int = 0, rng: random.Random | None = None) -> None
+- Building · class · L4539-L4567 — class Building
+- rooms · method · L4560-L4561 — def rooms(self) -> list[Room]
+- grid_for · method · L4563-L4567 — def grid_for(self, level: int) -> list[list[int]]
+- _pick_corridor · function · L4585-L4641 — def _pick_corridor(width: int, height: int, mask: list[list[bool]] | None, rng: random.Random) -> tuple[int, int, int, int] | None
+- inside · function · L4612-L4614 — def inside(a: int, b: int) -> bool
+- _pick_core · function · L4644-L4686 — def _pick_core(width: int, height: int, mask: list[list[bool]] | None, rng: random.Random, street: str | None = None ) -> tuple[int, int, int, int] | None
+- _pick_shaft · function · L4701-L4750 — def _pick_shaft(core: tuple[int, int, int, int], width: int, height: int, mask: list[list[bool]] | None, stairs: tuple[int, int, str] | None ) -> tuple[tuple[int, int, int, int], tuple[int, int, str]] | None
+- inside · function · L4719-L4723 — def inside(x0, y0)
+- _carve_shaft · function · L4753-L4766 — def _carve_shaft(plan: Plan, shaft: tuple[int, int, int, int], door: tuple[int, int, str]) -> None
+- _stairs_in_core · function · L4769-L4780 — def _stairs_in_core(core: tuple[int, int, int, int] ) -> tuple[int, int, str]
+- _clear_for_stairs · function · L4783-L4791 — def _clear_for_stairs(plan: Plan, x: int, y: int, d: str) -> None
+- _blocks · function · L4794-L4796 — def _blocks(role: str) -> bool
+- _tiles_under · function · L4799-L4805 — def _tiles_under(role: str, x: int, y: int, orient: str)
+- _ways_in · function · L4808-L4830 — def _ways_in(building: "Building", level: int, storey: "Plan") -> set
+- room · function · L4813-L4814 — def room(x, y)
+- _under_a_window · function · L4841-L4844 — def _under_a_window(role: str) -> bool
+- _open_up · function · L4847-L4947 — def _open_up(storey: "Plan", starts: set) -> set
+- step · function · L4858-L4871 — def step(ax, ay, bx, by) -> bool
+- _clear_the_way · function · L4950-L4969 — def _clear_the_way(building: "Building") -> int
+- build_building · function · L4972-L5081 — def build_building(width: int, height: int, levels: int = 1, commercial: bool = False, seed: int = 0, kind: str | None = None, mask: list[list[bool]] | None = None, settings: Settings | None = None, street: str | None = None, retail: bool = False, uses: list[tuple[str, str]] | None = None, hotel: bool = False, party: dict | None = None, entrances: list[tuple[float, float, dict]] | None = None, profile: object | None = None, mapped: list | None = None, garage_door: bool = False) -> Building
+- _plan_seed · function · L5045-L5049 — def _plan_seed(lvl: int) -> int
+- _setback · function · L5093-L5126 — def _setback(width: int, height: int, mask, levels: int, core, shaft, corridor: bool)
+- kept · function · L5106-L5116 — def kept(x, y)
+- _place_escalators · function · L5129-L5159 — def _place_escalators(building: "Building") -> None
+- _clear_railing_at · function · L5162-L5187 — def _clear_railing_at(building: "Building", pair: list) -> None
+- _shop_doors · function · L5190-L5201 — def _shop_doors(plan: "Plan", street: str | None) -> None
+- _stair_foot · function · L5204-L5208 — def _stair_foot(stairs: tuple[int, int, str] | None) -> tuple[int, int] | None
+- _room_cap · function · L5258-L5259 — def _room_cap(kind: str | None) -> int
+- build_plan · function · L5262-L5436 — def build_plan(width: int, height: int, commercial: bool = False, seed: int = 0, kind: str | None = None, mask: list[list[bool]] | None = None, ground: bool = True, settings: Settings | None = None, core: tuple[int, int, int, int] | None = None, level: int = 0, levels: int = 1, stairs: tuple[int, int, str] | None = None, corridor: bool = False, shaft: tuple[int, int, int, int] | None = None, shaft_door: tuple[int, int, str] | None = None, street: str | None = None, uses: list[tuple[str, str]] | None = None, hotel: bool = False, party: set | None = None, entrances: list[tuple[float, float, dict]] | None = None, profile: object | None = None, mapped: list | None = None) -> Plan
+- _hangs_on_wall · function · L5439-L5471 — def _hangs_on_wall(plan: Plan, role: str, x: int, y: int, d: str, edges: set) -> bool
+- _relight · function · L5474-L5503 — def _relight(plan: Plan, unlit: set, edges: set) -> None
+- _largest_rectangle · function · L5506-L5527 — def _largest_rectangle(todo: list[list[bool]]) -> tuple[int, int, int, int] | None
+- roof_rects · function · L5530-L5569 — def roof_rects(grid: list[list[int]]) -> list[tuple[int, int, int, int, dict]]
+- open_side · function · L5558-L5560 — def open_side(cells) -> bool

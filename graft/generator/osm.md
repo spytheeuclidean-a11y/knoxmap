@@ -1,0 +1,39 @@
+# generator/osm.py
+
+- _config_list · function · L31-L38 — def _config_list(key: str) -> list
+- set_endpoints · function · L67-L82 — def set_endpoints(urls: Sequence[str] | None) -> list
+- _note_down · function · L95-L97 — def _note_down(endpoint: str) -> None
+- _note_up · function · L100-L102 — def _note_up(endpoint: str) -> None
+- _is_cooling · function · L105-L111 — def _is_cooling(endpoint: str) -> bool
+- _probe · function · L118-L127 — def _probe(endpoint: str, lat: float, lon: float) -> bool
+- check_endpoints · function · L130-L146 — def check_endpoints(south: float, west: float, north: float, east: float) -> None
+- one · function · L141-L143 — def one(endpoint)
+- _endpoint_order · function · L149-L167 — def _endpoint_order(first: int) -> list
+- OSMFeature · class · L303-L308 — class OSMFeature
+- _build_query · function · L311-L330 — def _build_query(south: float, west: float, north: float, east: float, timeout: int = 60) -> str: # Catch an out-of-range bbox here rather than letting Overpass answer with # a static error, which arrives as an XHTML page and costs a round trip to # all three servers to learn the same thing.
+- OverpassError · class · L333-L345 — class OverpassError(RuntimeError)
+- __init__ · method · L336-L345 — def __init__(self, message: str, too_big: bool = False, timed_out: bool = False, busy: bool = False)
+- _error_text · function · L361-L380 — def _error_text(body: str) -> str
+- _ask · function · L383-L410 — def _ask(endpoint: str, query: str, timeout: int) -> list[OSMFeature]: # A host that is down never completes the connection; waiting the whole # query timeout to learn that cost 100 s per dead instance per tile.
+- fetch_features · function · L413-L469 — def fetch_features(south: float, west: float, north: float, east: float, timeout: int = 60, first: int = 0) -> list[OSMFeature]
+- explain · function · L472-L489 — def explain(exc: BaseException) -> str
+- _area_km2 · function · L492-L495 — def _area_km2(south: float, west: float, north: float, east: float) -> float
+- _say · function · L498-L509 — def _say(progress, done: int, total: int, note: str) -> None
+- _tile_cache_file · function · L519-L522 — def _tile_cache_file(box: tuple) -> str
+- _tile_cache_get · function · L525-L532 — def _tile_cache_get(box: tuple) -> list | None
+- _tile_cache_put · function · L535-L539 — def _tile_cache_put(box: tuple, feats: list) -> None
+- _local_features · function · L542-L567 — def _local_features(south: float, west: float, north: float, east: float) -> list
+- inside · function · L562-L565 — def inside(f: OSMFeature) -> bool
+- _flat · function · L570-L575 — def _flat(points)
+- fetch_features_tiled · function · L578-L717 — def fetch_features_tiled(south: float, west: float, north: float, east: float, max_tile_km2: float = 30.0, timeout: int = 90, progress=None, should_stop=None) -> list[OSMFeature]
+- run · function · L631-L651 — def run(args)
+- _retry_pause · function · L740-L742 — def _retry_pause(attempt: int) -> int
+- _fetch_splitting · function · L745-L772 — def _fetch_splitting(south: float, west: float, north: float, east: float, timeout: int, depth: int = 0, first: int = 0) -> list[OSMFeature]
+- cache_path · function · L775-L776 — def cache_path(output_dir: str, map_name: str) -> str
+- save_cache · function · L779-L810 — def save_cache(path: str, bbox: tuple[float, float, float, float], feats: list[OSMFeature]) -> None
+- load_cache · function · L813-L840 — def load_cache(path: str, bbox: tuple[float, float, float, float]) -> list[OSMFeature] | None
+- assemble_rings · function · L843-L873 — def assemble_rings(role_geoms: list[tuple[str, list[tuple[float, float]]]] ) -> list[tuple[str, list[tuple[float, float]]]]
+- _points · function · L876-L892 — def _points(geometry) -> list[tuple[float, float]]
+- _parse · function · L895-L930 — def _parse(payload: dict) -> list[OSMFeature]
+- road_hierarchy · function · L971-L973 — def road_hierarchy(tags: dict) -> str | None
+- classify · function · L976-L1124 — def classify(tags: dict, area: bool = False) -> str | None

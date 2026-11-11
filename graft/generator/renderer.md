@@ -1,0 +1,63 @@
+# generator/renderer.py
+
+- Projector · class · L37-L134 — class Projector
+- build · method · L59-L81 — def build(cls, south: float, west: float, north: float, east: float, meters_per_tile: float, rotation: float = 0.0) -> "Projector"
+- to_px · method · L83-L95 — def to_px(self, lat: float, lon: float) -> tuple[float, float]
+- to_latlon · method · L97-L114 — def to_latlon(self, px: float, py: float) -> tuple[float, float]
+- latlon_bbox · method · L116-L131 — def latlon_bbox(self) -> tuple[float, float, float, float]
+- cell_grid · method · L133-L134 — def cell_grid(self) -> tuple[int, int]
+- shape_px · function · L168-L188 — def shape_px(shape: dict | None, proj: Projector)
+- _inside · function · L191-L211 — def _inside(feat: OSMFeature, proj: Projector, shape) -> bool
+- _clip_to_shape · function · L214-L260 — def _clip_to_shape(landscape: Image.Image, shape, buckets: dict[str, list[OSMFeature]], proj: Projector) -> None
+- cover_bbox · function · L263-L281 — def cover_bbox(south: float, west: float, north: float, east: float, meters_per_tile: float) -> tuple[float, float, float, float]
+- _grid_delta · function · L284-L288 — def _grid_delta(a: float, b: float) -> float
+- dominant_road_angle · function · L291-L403 — def dominant_road_angle(features: Iterable[OSMFeature], south: float, west: float, north: float, east: float) -> tuple[float, float]
+- _ceil_to · function · L406-L407 — def _ceil_to(value: float, step: int) -> int
+- _sidewalk_width_m · function · L513-L515 — def _sidewalk_width_m(feat: OSMFeature, cat: str) -> float
+- _verge_width_m · function · L518-L520 — def _verge_width_m(feat: OSMFeature, cat: str) -> float
+- _way_width_m · function · L573-L600 — def _way_width_m(feat: OSMFeature, cat: str) -> float
+- _pixel_width · function · L603-L605 — def _pixel_width(metres: float, metres_per_tile: float) -> int
+- _road_markings · function · L608-L636 — def _road_markings(feat: OSMFeature, cat: str) -> list[tuple[str, float]]
+- _feature_coords_px · function · L639-L651 — def _feature_coords_px(feat: OSMFeature, proj: Projector) -> list[list[tuple[float, float]]]
+- _is_polygon · function · L654-L660 — def _is_polygon(feat: OSMFeature) -> bool
+- _road_hierarchy_image · function · L663-L679 — def _road_hierarchy_image(buckets: dict[str, list[OSMFeature]], proj: Projector) -> Image.Image
+- _paint_multipolygon · function · L682-L705 — def _paint_multipolygon(image: Image.Image, feat: OSMFeature, proj: Projector, fill: tuple[int, int, int]) -> None
+- _draw_polygon · function · L708-L712 — def _draw_polygon(draw: ImageDraw.ImageDraw, rings: list[list[tuple[float, float]]], fill: tuple[int, int, int]) -> None
+- _draw_line · function · L715-L725 — def _draw_line(draw: ImageDraw.ImageDraw, rings: list[list[tuple[float, float]]], fill: tuple[int, int, int], width_px: int) -> None
+- RenderResult · class · L731-L741 — class RenderResult
+- render · function · L744-L1002 — def render(features: Iterable[OSMFeature], south: float, west: float, north: float, east: float, meters_per_tile: float, output_dir: str, map_name: str, spawn_density: int = 10, tree_density: float = 1.0, rotation: float = 0.0, osm_cache: str | None = None, osm_bbox: tuple[float, float, float, float] | None = None, shape: dict | None = None, straight_roads: bool = True, should_stop=None) -> RenderResult
+- ground_rings · function · L833-L841 — def ground_rings(feat: OSMFeature) -> list[list[tuple[float, float]]]
+- sea_polygons · function · L1015-L1098 — def sea_polygons(feats: list[OSMFeature], proj: Projector) -> list
+- seaward · function · L1076-L1095 — def seaward(face) -> bool
+- _real_kerbs · function · L1101-L1137 — def _real_kerbs(sides)
+- run3 · function · L1123-L1126 — def run3(here, a, a2, b, b2, allowed): # At least three in a row along the edge, this tile included.
+- _smooth_road_edges · function · L1140-L1183 — def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None
+- _paint_road_details · function · L1186-L1304 — def _paint_road_details(veg: Image.Image, landscape: Image.Image, buckets: dict[str, list[OSMFeature]], proj: Projector) -> None
+- is_colour · function · L1201-L1208 — def is_colour(ground, colours)
+- road_at · function · L1277-L1278 — def road_at(x, y)
+- _mod_tiles_ready · function · L1333-L1347 — def _mod_tiles_ready() -> bool
+- _paint_street_furniture · function · L1352-L1523 — def _paint_street_furniture(veg: Image.Image, landscape: Image.Image, road_hierarchy: Image.Image | None = None) -> dict
+- is_colour · function · L1371-L1375 — def is_colour(arr, colours)
+- carriageway · function · L1441-L1446 — def carriageway(gx, gy, sx, sy)
+- hierarchy_at · function · L1448-L1457 — def hierarchy_at(gx, gy, sx, sy)
+- _pave_dense_ground · function · L1526-L1618 — def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature], buckets: dict[str, list[OSMFeature]], proj: Projector) -> None
+- _weather_roads · function · L1621-L1653 — def _weather_roads(landscape: Image.Image, proj: Projector) -> None
+- _paint_vegetation · function · L1656-L1662 — def _paint_vegetation(veg: Image.Image, landscape: Image.Image, feats: list[OSMFeature], proj: Projector, density: float = 1.0) -> None
+- _paint_woodland · function · L1665-L1740 — def _paint_woodland(veg: Image.Image, landscape: Image.Image, feats: list[OSMFeature], proj: Projector, density: float = 1.0) -> None
+- graded · function · L1715-L1720 — def graded(colour) -> tuple[int, int, int]
+- _paint_vegetation_extras · function · L1743-L1805 — def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image, feats: list[OSMFeature], proj: Projector) -> None
+- polygon_mask · function · L1761-L1767 — def polygon_mask(feat)
+- _box_any · function · L1835-L1855 — def _box_any(mask, radius: int)
+- _paint_gardens · function · L1858-L1922 — def _paint_gardens(veg: Image.Image, landscape: Image.Image, building_feats: list[OSMFeature], proj: Projector, density: float = 1.0) -> int
+- _paint_wild_growth · function · L1945-L1986 — def _paint_wild_growth(veg: Image.Image, landscape: Image.Image, proj: Projector, density: float = 1.0) -> int
+- _clear_building_vegetation · function · L1989-L2004 — def _clear_building_vegetation(veg: Image.Image, feats: list[OSMFeature], proj: Projector) -> None
+- _clear_road_vegetation · function · L2007-L2025 — def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None
+- _places · function · L2028-L2042 — def _places(feats: list[OSMFeature], proj: Projector) -> list[dict]
+- _areas_geojson · function · L2048-L2069 — def _areas_geojson(buckets: dict[str, list[OSMFeature]]) -> dict
+- _lines_geojson · function · L2075-L2087 — def _lines_geojson(feats: list[OSMFeature]) -> dict
+- _build_spawn_map · function · L2090-L2140 — def _build_spawn_map(landscape: Image.Image, w: int, h: int, max_density: int) -> Image.Image
+- band · function · L2107-L2118 — def band(chance: float, lo: float, hi: float) -> int
+- _build_preview · function · L2143-L2156 — def _build_preview(landscape: Image.Image, vegetation: Image.Image) -> Image.Image
+- _off_the_road · function · L2194-L2224 — def _off_the_road(x: float, y: float, need: float, roads, road_half, road_tree, push_limit: float)
+- _houses_from_addresses · function · L2227-L2302 — def _houses_from_addresses(feats: list["OSMFeature"], buildings: list["OSMFeature"], proj: "Projector") -> list["OSMFeature"]
+- _buildings_geojson · function · L2314-L2387 — def _buildings_geojson(feats: list[OSMFeature], indoor: list[OSMFeature] = ()) -> dict

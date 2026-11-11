@@ -96,7 +96,9 @@ class WorldCover(DatasetSource):
     license = "CC-BY 4.0"
     attribution = "Contains modified Copernicus/ESA WorldCover data 2021"
     setting = "landcover"
-    off_values = ("off", "", None, False)
+    # "OpenStreetMap only" is off too: the ground OSM leaves blank stays grass
+    # with KnoxMap's own scattered woods, as before WorldCover.
+    off_values = ("off", "", "osm", None, False)
 
     def available(self, bbox) -> bool:
         s, w, n, e = bbox
@@ -112,28 +114,50 @@ class WorldCover(DatasetSource):
         return all((root / name).exists() for name in tile_names(bbox))
 
     def rasterise(self, bbox, width: int, height: int):
-        """WorldCover class at one sample per map tile, 3x3-filtered."""
+        """WorldCover class at one sample per map tile.
+
+        Read at WorldCover's own 10 m, 3x3-majority filtered there to take the
+        speckle out, then sampled per tile: filtered after the stretch to map
+        tiles, a 10 m pixel is ten tiles across and the filter changed nothing.
+        Only tiles already on disk are read - this is the build path, and the
+        generate step fetched what it needs."""
         import numpy as np
         import rasterio
         from rasterio.enums import Resampling
         from rasterio.windows import from_bounds
 
-        root = self.fetch(bbox)          # cached: no download on the build path
-        grid = np.zeros((height, width), dtype="uint8")
+        root = self.tile_dir()
         s, w, n, e = bbox
+        native = None
         for name in tile_names(bbox):
             path = root / name
             if not path.exists():
                 continue
             with rasterio.open(path) as src:
+                if native is None:
+                    rx, ry = abs(src.transform.a), abs(src.transform.e)
+                    native = np.zeros((max(1, round((n - s) / ry)),
+                                       max(1, round((e - w) / rx))), dtype="uint8")
                 data = src.read(1, window=from_bounds(w, s, e, n, src.transform),
-                                out_shape=(height, width),
-                                resampling=Resampling.nearest)
-            grid[data > 0] = data[data > 0]   # OSM still paints over this
-        return _majority3(grid)
+                                out_shape=native.shape,
+                                resampling=Resampling.nearest,
+                                boundless=True, fill_value=0)
+            native[data > 0] = data[data > 0]   # OSM still paints over this
+        if native is None:
+            return np.zeros((height, width), dtype="uint8")
+        native = _majority3(native)
+        rows = np.minimum((np.arange(height) + 0.5) * native.shape[0] / height,
+                          native.shape[0] - 1).astype(np.int64)
+        cols = np.minimum((np.arange(width) + 0.5) * native.shape[1] / width,
+                          native.shape[1] - 1).astype(np.int64)
+        return native[rows[:, None], cols[None, :]]
+
+    def tile_dir(self):
+        """Where the downloaded tiles are kept."""
+        return cache.DATASET_DIR / "worldcover" / VERSION
 
     def fetch(self, bbox, cache_dir=None, progress_cb=None):
-        root = cache.DATASET_DIR / "worldcover" / VERSION
+        root = self.tile_dir()
         for name in tile_names(bbox):
             path = root / name
             if not cache.fresh(path, TTL_DAYS):

@@ -9,22 +9,26 @@ from ..osm import OSMFeature, classify
 from .geometry import _feature_coords_px, _is_polygon
 from .projection import Projector
 from . import woodland
+from .noise import lattices, smooth_noise
 
 import knoxstop
 
 
 def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
-                      density: float = 1.0, should_stop=None) -> None:
+                      density: float = 1.0, should_stop=None,
+                      extra_forest=None) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
-                     {"forest", "scrub", "tree_single"}], proj, density, should_stop)
+                     {"forest", "scrub", "tree_single"}], proj, density, should_stop,
+                    extra_forest=extra_forest)
 
 
 def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
-                    density: float = 1.0, should_stop=None) -> None:
+                    density: float = 1.0, should_stop=None,
+                    extra_forest=None) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,
@@ -61,6 +65,12 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                 x, y = rings[0][0]
                 r = max(1, int(2 / proj.meters_per_tile))
                 mask_draw.ellipse((x - r, y - r, x + r, y + r), fill=255)
+
+    if extra_forest is not None and extra_forest.any():
+        # WorldCover tree cover OSM left blank: a wood like any mapped one.
+        import numpy as np
+        mask = Image.fromarray(np.maximum(np.asarray(mask),
+                                          extra_forest.astype(np.uint8) * 255), "L")
 
     # Build a "border band" of the forest mask so we can paint edges lighter.
     eroded = mask.filter(ImageFilter.MinFilter(5))
@@ -229,31 +239,57 @@ def _paint_gardens(veg: Image.Image, landscape: Image.Image,
 
     if not building_feats or density <= 0:
         return 0
-    houses = Image.new("1", veg.size, 0)
+    w, h = veg.size
+    houses = Image.new("1", (w, h), 0)
     hd = ImageDraw.Draw(houses)
     for feat in building_feats:
         for ring in _feature_coords_px(feat, proj):
             if len(ring) >= 3:
                 hd.polygon(ring, fill=1)
-    house = np.array(houses, dtype=bool)
-    del houses
-    ground = np.array(landscape.convert("RGB"))
-    grass = np.zeros(house.shape, dtype=bool)
-    for colour in GRASS_COLOURS:
-        grass |= np.all(ground == colour, axis=2)
-    del ground                       # a town's worth of pixels; let it go
-    vegp = np.array(veg.convert("RGB"))
-    empty = np.all(vegp == 0, axis=2)
-    del vegp
-    lawn = grass & empty & ~house
-    del empty
-    paved_near = _box_any(~grass & ~house, GARDEN_CLEAR_OF_PAVING)
 
-    yard = lawn & _box_any(house, GARDEN_REACH_TILES)         & ~_box_any(house, GARDEN_CLEAR_OF_HOUSE) & ~paved_near
+    pad = GARDEN_REACH_TILES
+    yard = np.zeros((h, w), dtype=bool)
+    beside = np.zeros((h, w), dtype=bool)
+    open_grass = np.zeros((h, w), dtype=bool)
+
+    # Process in strips with a reach halo to avoid keeping gigabytes of
+    # intermediate RGB arrays in memory simultaneously.
+    for top in range(0, h, BOX_STRIP_ROWS):
+        bottom = min(h, top + BOX_STRIP_ROWS)
+        y0 = max(0, top - pad)
+        y1 = min(h, bottom + pad)
+
+        ground_s = np.asarray(landscape.crop((0, y0, w, y1)))
+        grass_s = np.zeros(ground_s.shape[:2], dtype=bool)
+        for colour in GRASS_COLOURS:
+            grass_s |= np.all(ground_s == colour, axis=2)
+
+        veg_s = np.asarray(veg.crop((0, y0, w, y1)))
+        empty_s = np.all(veg_s == 0, axis=2)
+        house_s = np.asarray(houses.crop((0, y0, w, y1)), dtype=bool)
+
+        lawn_s = grass_s & empty_s & ~house_s
+        paved_near_s = _box_any(~grass_s & ~house_s, GARDEN_CLEAR_OF_PAVING)
+
+        reach_house_s = _box_any(house_s, GARDEN_REACH_TILES)
+        clear_house_s = _box_any(house_s, GARDEN_CLEAR_OF_HOUSE)
+        wall_s = _box_any(house_s, 1)
+
+        y_s = lawn_s & reach_house_s & ~clear_house_s & ~paved_near_s
+        b_s = lawn_s & wall_s & ~house_s & ~paved_near_s
+        og_s = lawn_s & ~b_s & ~house_s
+
+        offset = top - y0
+        valid_len = bottom - top
+        yard[top:bottom] = y_s[offset : offset + valid_len]
+        beside[top:bottom] = b_s[offset : offset + valid_len]
+        open_grass[top:bottom] = og_s[offset : offset + valid_len]
+
+    del houses
+
     rng = np.random.default_rng(1234)
     step = GARDEN_TREE_EVERY
     chance = min(1.0, GARDEN_TREE_CHANCE * density)
-    h, w = house.shape
     px = veg.load()
     planted = 0
     for y0 in range(0, h, step):
@@ -270,13 +306,11 @@ def _paint_gardens(veg: Image.Image, landscape: Image.Image,
     # Shrubs: lawn right against a wall, not in front of the paving.
     # The dice are rolled for the tiles in question, not for every tile on the
     # map: one roll each way over a town is a quarter of a gigabyte of floats.
-    beside = lawn & _box_any(house, 1) & ~house & ~paved_near
     ys, xs = np.nonzero(beside)
     keep = rng.random(len(xs)) < SHRUB_CHANCE * density
     for x, y in zip(xs[keep].tolist(), ys[keep].tolist()):
         px[x, y] = C.BUSHES
 
-    open_grass = lawn & ~beside & ~_box_any(house, 0)
     ys, xs = np.nonzero(open_grass)
     roll = rng.random(len(xs))
     for colour, share, lo in ((C.SHORT_GRASS, SHORT_GRASS_SHARE, 0.0),
@@ -309,29 +343,39 @@ WILD_CLEAR_OF_PAVING = 2       # tiles off a kerb, a drive or a path
 WILD_GROUND = (C.DARK_GRASS, C.MEDIUM_GRASS)
 
 
+def _get_wild_strip_free(landscape: Image.Image, veg: Image.Image,
+                         top: int, bottom: int, w: int, h: int,
+                         pad: int = WILD_CLEAR_OF_PAVING, exclude=None):
+    """Free open grass tiles on a horizontal strip, with reach boundary padding."""
+    import numpy as np
+
+    y0 = max(0, top - pad)
+    y1 = min(h, bottom + pad)
+    ground_s = np.asarray(landscape.crop((0, y0, w, y1)))
+    open_s = np.zeros(ground_s.shape[:2], dtype=bool)
+    for col in WILD_GROUND:
+        open_s |= np.all(ground_s == col, axis=2)
+    veg_s = np.asarray(veg.crop((0, y0, w, y1)))
+    free_s = open_s & np.all(veg_s == 0, axis=2)
+    if pad > 0:
+        free_s &= ~_box_any(~open_s, pad)
+    if exclude is not None:
+        free_s &= ~exclude[y0:y1]
+    offset = top - y0
+    return free_s[offset : offset + (bottom - top)]
+
+
 def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
-                       proj: Projector, density: float = 1.0) -> int:
-    """Scatter trees and scrub over open grass. Returns what was planted."""
+                       proj: Projector, density: float = 1.0, exclude=None) -> int:
+    """Scatter trees and scrub over open grass. Returns what was planted.
+
+    `exclude` (bool array) is ground WorldCover has a class for, which grows
+    what its class says (landcover_veg.py) instead of a guess."""
     import numpy as np
 
     if density <= 0:
         return 0
-    ground = np.array(landscape.convert("RGB"))
-    open_ground = np.zeros(ground.shape[:2], dtype=bool)
-    for colour in WILD_GROUND:
-        open_ground |= np.all(ground == colour, axis=2)
-    del ground
-    vegp = np.array(veg.convert("RGB"))
-    bare = np.all(vegp == 0, axis=2)
-    del vegp
-    free = open_ground & bare
-    del bare
-    # Not up against a road, a pavement or a building: those tiles are the
-    # verge, and the road details pass has its own plans for them.
-    free &= ~_box_any(~open_ground, WILD_CLEAR_OF_PAVING)
-    del open_ground
-
-    h, w = free.shape
+    w, h = veg.size
     step = max(2, int(round(WILD_TREE_EVERY_M / proj.meters_per_tile)))
     clump = max(step * 2, int(round(WILD_CLUMP_M / proj.meters_per_tile)))
     rng = np.random.default_rng(9871)
@@ -339,21 +383,30 @@ def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
     px = veg.load()
     young = C.TREE_SMALL if tree_rules_ready() else C.TREES
     planted = 0
-    for y0 in range(0, h, step):
-        for x0 in range(0, w, step):
-            thickness = field[y0 // clump, x0 // clump]
-            if rng.random() >= min(1.0, WILD_TREE_CHANCE * thickness * density):
-                continue
-            ys, xs = np.nonzero(free[y0:y0 + step, x0:x0 + step])
-            if len(xs) == 0:
-                continue
-            i = int(rng.integers(len(xs)))
-            roll = rng.random()
-            px[int(x0 + xs[i]), int(y0 + ys[i])] = (
-                C.BUSHES if roll < WILD_BUSH_SHARE
-                else young if roll < WILD_BUSH_SHARE + WILD_SAPLING_SHARE
-                else C.TREES)
-            planted += 1
+
+    strip_step_rows = max(step, (BOX_STRIP_ROWS // step) * step)
+
+    for top in range(0, h, strip_step_rows):
+        bottom = min(h, top + strip_step_rows)
+        free_strip = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
+                                          WILD_CLEAR_OF_PAVING, exclude)
+
+        for y_cur in range(top, bottom, step):
+            local_y = y_cur - top
+            for x0 in range(0, w, step):
+                thickness = field[y_cur // clump, x0 // clump]
+                if rng.random() >= min(1.0, WILD_TREE_CHANCE * thickness * density):
+                    continue
+                ys, xs = np.nonzero(free_strip[local_y : local_y + step, x0 : x0 + step])
+                if len(xs) == 0:
+                    continue
+                i = int(rng.integers(len(xs)))
+                roll = rng.random()
+                px[int(x0 + xs[i]), int(y_cur + ys[i])] = (
+                    C.BUSHES if roll < WILD_BUSH_SHARE
+                    else young if roll < WILD_BUSH_SHARE + WILD_SAPLING_SHARE
+                    else C.TREES)
+                planted += 1
     return planted
 
 
@@ -372,61 +425,55 @@ GROVE_SEED = 5513
 
 
 def _paint_groves(veg: Image.Image, landscape: Image.Image,
-                  proj: Projector, density: float = 1.0) -> int:
-    """Woods on open grass. Returns the tiles planted."""
+                  proj: Projector, density: float = 1.0, exclude=None) -> int:
+    """Woods on open grass, off `exclude`. Returns the tiles planted."""
     import numpy as np
 
     if density <= 0:
         return 0
-    ground = np.array(landscape.convert("RGB"))
-    open_ground = np.zeros(ground.shape[:2], dtype=bool)
-    for colour in WILD_GROUND:
-        open_ground |= np.all(ground == colour, axis=2)
-    del ground
-    vegp = np.array(veg.convert("RGB"))
-    free = open_ground & np.all(vegp == 0, axis=2)
-    del vegp
-    free &= ~_box_any(~open_ground, WILD_CLEAR_OF_PAVING)
-    del open_ground
-    h, w = free.shape
-    if not free.any():
-        return 0
+    w, h = veg.size
 
-    rng = np.random.default_rng(GROVE_SEED)
     big = max(8, int(round(GROVE_CELL_M / proj.meters_per_tile)))
     small = max(4, int(round(GROVE_RAGGED_M / proj.meters_per_tile)))
-    lat_big = rng.random((h // big + 3, w // big + 3), dtype=np.float32)
-    lat_small = rng.random((h // small + 3, w // small + 3), dtype=np.float32)
-
-    def lattice(lat, cell, ys, xs):
-        fy, fx = ys / cell, xs / cell
-        y0, x0 = fy.astype(int), fx.astype(int)
-        ty, tx = fy - y0, fx - x0
-        ty, tx = ty * ty * (3 - 2 * ty), tx * tx * (3 - 2 * tx)   # smoothstep
-        y1, x1 = y0 + 1, x0 + 1
-        top = lat[np.ix_(y0, x0)] * (1 - tx) + lat[np.ix_(y0, x1)] * tx
-        bot = lat[np.ix_(y1, x0)] * (1 - tx) + lat[np.ix_(y1, x1)] * tx
-        return top * (1 - ty[:, None]) + bot * ty[:, None]
+    lats = lattices(h, w, [(big, 0.85), (small, 0.15)], GROVE_SEED)
 
     def noise(ys, xs):
-        return (0.85 * lattice(lat_big, big, ys, xs)
-                + 0.15 * lattice(lat_small, small, ys, xs))
+        return smooth_noise(ys, xs, lats)
 
     # The edge is where the noise is high enough for `share` of the open
-    # ground to lie above it, read off a thin sample rather than every tile.
-    share = min(0.6, GROVE_SHARE * density)
-    sy, sx = np.arange(0, h, 6), np.arange(0, w, 6)
-    sample = noise(sy.astype(np.float32), sx.astype(np.float32))[free[::6, ::6]]
+    # ground to lie above it, read off a thin sample in strips.
+    sample_parts = []
+    sx = np.arange(0, w, 6, dtype=np.float32)
+    for top in range(0, h, BOX_STRIP_ROWS):
+        bottom = min(h, top + BOX_STRIP_ROWS)
+        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
+                                          WILD_CLEAR_OF_PAVING, exclude)
+        sub_y = [y for y in range(top, bottom) if y % 6 == 0]
+        if not sub_y:
+            continue
+        rel_y = [y - top for y in sub_y]
+        sub_free = free_s[rel_y][:, ::6]
+        if not sub_free.any():
+            continue
+        n_sub = noise(np.array(sub_y, dtype=np.float32), sx)
+        sample_parts.append(n_sub[sub_free])
+
+    if not sample_parts:
+        return 0
+    sample = np.concatenate(sample_parts)
     if sample.size == 0:
         return 0
+    share = min(0.6, GROVE_SHARE * density)
     edge = float(np.quantile(sample, 1.0 - share))
 
     planted = 0
     xs = np.arange(w, dtype=np.float32)
     for top in range(0, h, BOX_STRIP_ROWS):
         bottom = min(h, top + BOX_STRIP_ROWS)
+        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
+                                          WILD_CLEAR_OF_PAVING, exclude)
         n = noise(np.arange(top, bottom, dtype=np.float32), xs)
-        inside = free[top:bottom] & (n > edge)
+        inside = free_s & (n > edge)
         if not inside.any():
             continue
         strip = np.array(veg.crop((0, top, w, bottom)).convert("RGB"))
@@ -561,26 +608,50 @@ def _paint_parks(veg: Image.Image, landscape: Image.Image,
 
     if not park_feats or density <= 0:
         return 0
-    park = _polygon_mask(veg.size, park_feats, proj)
-    if park is None:
+    w, h = veg.size
+    park_im = Image.new("1", (w, h), 0)
+    draw = ImageDraw.Draw(park_im)
+    drawn = 0
+    for feat in park_feats:
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 3:
+                draw.polygon(ring, fill=1)
+                drawn += 1
+    if not drawn:
         return 0
-    ground = np.array(landscape.convert("RGB"))
-    grass = np.zeros(park.shape, dtype=bool)
-    for colour in PARK_GROUND:
-        grass |= np.all(ground == colour, axis=2)
-    del ground
-    vegp = np.array(veg.convert("RGB"))
-    free = park & grass & np.all(vegp == 0, axis=2)
-    del vegp
-    # Not up against a path or a road: the paths are the one thing in a park
-    # people need, and a tree on the kerb of one blocks it.
-    free &= ~_box_any(~grass, PARK_CLEAR_OF_PAVING)
-    del grass
-    # The belt is everything within PARK_EDGE_M of the park's own boundary.
+
     deep = max(1, int(round(PARK_EDGE_M / proj.meters_per_tile)))
-    belt = free & _box_any(~park, deep)
-    middle = free & ~belt
-    del free, park
+    pad = max(deep, PARK_CLEAR_OF_PAVING)
+
+    belt = np.zeros((h, w), dtype=bool)
+    middle = np.zeros((h, w), dtype=bool)
+
+    # Process in strips to avoid holding full-resolution RGB arrays in RAM.
+    for top in range(0, h, BOX_STRIP_ROWS):
+        bottom = min(h, top + BOX_STRIP_ROWS)
+        y0 = max(0, top - pad)
+        y1 = min(h, bottom + pad)
+
+        ground_s = np.asarray(landscape.crop((0, y0, w, y1)))
+        grass_s = np.zeros(ground_s.shape[:2], dtype=bool)
+        for colour in PARK_GROUND:
+            grass_s |= np.all(ground_s == colour, axis=2)
+
+        veg_s = np.asarray(veg.crop((0, y0, w, y1)))
+        park_s = np.asarray(park_im.crop((0, y0, w, y1)), dtype=bool)
+
+        free_s = park_s & grass_s & np.all(veg_s == 0, axis=2)
+        free_s &= ~_box_any(~grass_s, PARK_CLEAR_OF_PAVING)
+
+        belt_s = free_s & _box_any(~park_s, deep)
+        mid_s = free_s & ~belt_s
+
+        offset = top - y0
+        valid_len = bottom - top
+        belt[top:bottom] = belt_s[offset : offset + valid_len]
+        middle[top:bottom] = mid_s[offset : offset + valid_len]
+
+    del park_im
 
     rng = np.random.default_rng(0xBEEC4)
     px = veg.load()
@@ -680,23 +751,27 @@ def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
     counts: dict[str, int] = {}
     if density <= 0 or not tree_rules_ready():
         return counts
-    vegp = np.array(veg.convert("RGB"))
-    tree = np.zeros(vegp.shape[:2], dtype=bool)
-    for colour in PLANTABLE:
-        tree |= np.all(vegp == colour, axis=2)
+    w, h = veg.size
+
+    # Build tree and blocked masks in strips rather than holding duplicate
+    # 3-channel RGB arrays for the entire map in RAM.
+    tree = np.zeros((h, w), dtype=bool)
+    blocked = np.zeros((h, w), dtype=bool)
+
+    for top in range(0, h, BOX_STRIP_ROWS):
+        bottom = min(h, top + BOX_STRIP_ROWS)
+        veg_s = np.asarray(veg.crop((0, top, w, bottom)))
+        for col in PLANTABLE:
+            tree[top:bottom] |= np.all(veg_s == col, axis=2)
+        for col in (C.BUSHES, C.DENSE_BUSHES_GRASS, C.FLOWERS):
+            blocked[top:bottom] |= np.all(veg_s == col, axis=2)
+
+        ground_s = np.asarray(landscape.crop((0, top, w, bottom)))
+        blocked[top:bottom] |= np.all(ground_s == C.WATER, axis=2)
+
     if not tree.any():
         return counts
     canopy = _Canopy(tree.shape)
-    # A hedge, a bed of dense bush or a flower bed is something a mapper drew
-    # or a pass put there on purpose; a big tree's square would clear a hole in
-    # it, so it is kept off them. Water too: a tree does not stand in a river.
-    blocked = np.zeros(tree.shape, dtype=bool)
-    for colour in (C.BUSHES, C.DENSE_BUSHES_GRASS, C.FLOWERS):
-        blocked |= np.all(vegp == colour, axis=2)
-    del vegp
-    ground = np.array(landscape.convert("RGB"))
-    blocked |= np.all(ground == C.WATER, axis=2)
-    del ground
     canopy.blocked = blocked
 
     woods = _polygon_mask(veg.size, [f for f in wood_feats if _is_polygon(f)

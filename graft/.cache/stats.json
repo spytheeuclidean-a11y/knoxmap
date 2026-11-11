@@ -1,0 +1,18 @@
+{
+  "nodeCount": 2352,
+  "edgeCount": 5667,
+  "languages": [
+    "c",
+    "javascript",
+    "lua",
+    "python",
+    "rust"
+  ],
+  "totalCount": 2352,
+  "readyCount": 0,
+  "staleCount": 0,
+  "dirty": false,
+  "syncing": false,
+  "syncedAt": "2026-10-13T06:16:43.091Z",
+  "lastFile": ".graphify_chunk_01.json"
+}

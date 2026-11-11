@@ -1,0 +1,17 @@
+# tests/test_terrain.py
+
+- pictures · function · L48-L54 — def pictures(h=40, w=50)
+- RulesTests · class · L57-L73 — class RulesTests(unittest.TestCase)
+- test_parse · method · L58-L63 — def test_parse(self)
+- test_real_rules_file_parses_if_present · method · L65-L73 — def test_real_rules_file_parses_if_present(self)
+- TerrainTests · class · L76-L111 — class TerrainTests(unittest.TestCase)
+- setUp · method · L77-L79 — def setUp(self)
+- run_layers · method · L81-L85 — def run_layers(self, seed=1, land=None, veg=None, x0=0, y0=0)
+- test_tiles_come_from_the_rules_and_only_where_the_colour_is · method · L87-L96 — def test_tiles_come_from_the_rules_and_only_where_the_colour_is(self)
+- test_same_seed_same_tiles_and_another_seed_other_tiles · method · L98-L101 — def test_same_seed_same_tiles_and_another_seed_other_tiles(self)
+- test_a_cut_out_window_gets_the_tiles_the_whole_picture_got · method · L103-L107 — def test_a_cut_out_window_gets_the_tiles_the_whole_picture_got(self)
+- test_stack_order · method · L109-L111 — def test_stack_order(self)
+- CellSourceTests · class · L114-L142 — class CellSourceTests(unittest.TestCase)
+- words · method · L115-L121 — def words(self, data, names)
+- test_header_and_every_square_is_covered · method · L123-L137 — def test_header_and_every_square_is_covered(self)
+- test_empty_level_is_one_run · method · L139-L142 — def test_empty_level_is_one_run(self)

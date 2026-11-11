@@ -1,0 +1,31 @@
+# knoxbuild/designer.py
+
+- room_label · function · L45-L47 — def room_label(kind: str) -> str
+- _mix_for · function · L50-L59 — def _mix_for(kind: str | None) -> list[str]
+- room_kinds · function · L62-L89 — def room_kinds(kind: str | None = None) -> list[dict]
+- entry · function · L70-L74 — def entry(name: str, group: str) -> dict: # The colour it is drawn in on the plan, so the palette and the # picture agree about which room is which.
+- _int · function · L94-L101 — def _int(value, low, high, fallback)
+- _stable_seed · function · L104-L105 — def _stable_seed(*parts) -> int
+- blank · function · L108-L110 — def blank(kind: str | None = None, width: int = 20, height: int = 16) -> dict
+- clean · function · L113-L166 — def clean(raw) -> dict
+- painted · function · L169-L171 — def painted(design: dict, level: int = 0) -> int
+- tally · function · L174-L181 — def tally(design: dict, level: int | None = None) -> list[tuple[str, int]]
+- _mask · function · L186-L194 — def _mask(design: dict, level: int) -> list[list[bool]]
+- _rooms_of · function · L197-L200 — def _rooms_of(design: dict, level: int) -> list[L.Room]
+- style_for · function · L203-L219 — def style_for(design: dict) -> dict
+- style_choices · function · L222-L225 — def style_choices(kind: str | None = None) -> list[str]
+- stack · function · L236-L295 — def stack(design: dict, settings: Settings | None = None, only: int | None = None) -> L.Building
+- tbx_text · function · L298-L304 — def tbx_text(design: dict, name: str | None = None) -> str
+- autofill · function · L307-L330 — def autofill(design: dict, settings: Settings | None = None) -> dict
+- _tile_names · function · L335-L341 — def _tile_names(entry, limit: int = 6) -> list[str]
+- tiles_used · function · L344-L365 — def tiles_used(design: dict) -> list[dict]
+- room_colour · function · L378-L389 — def room_colour(kind: str) -> tuple[int, int, int]
+- one_storey_at_a_time · function · L392-L396 — def one_storey_at_a_time(design: dict) -> bool
+- scale_for · function · L399-L401 — def scale_for(design: dict, longest: int = 760) -> int
+- preview · function · L404-L476 — def preview(design: dict, level: int = 0, scale: int | None = None, building: L.Building | None = None)
+- room_at · function · L428-L431 — def room_at(x, y)
+- design_path · function · L481-L483 — def design_path(base_dir, name: str) -> str
+- save_design · function · L486-L498 — def save_design(base_dir, name: str, design: dict) -> None
+- load_design · function · L501-L506 — def load_design(base_dir, name: str) -> dict | None
+- drop_design · function · L509-L514 — def drop_design(base_dir, name: str) -> bool
+- keep · function · L517-L529 — def keep(base_dir, name: str, design: dict) -> dict

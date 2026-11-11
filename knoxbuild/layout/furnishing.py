@@ -1681,6 +1681,35 @@ def _furnish(plan: Plan, rng: random.Random,
         elif r.kind == "bathroom":
             public = plan.kind not in HOUSE_LIKE_KINDS | {"apartment"}
             base = _bathroom_wishlist(r.area, public)
+            if public and r.area >= 9:
+                # The toilet occupies the cubicle; its front stays clear for the door.
+                fitted = 0
+                for x, y, facing in slots:
+                    if "toilet" not in base:
+                        break
+                    if facing not in ("N", "W") or (x, y, facing) in door_edges:
+                        continue
+                    dx, dy = (0, 1) if facing == "N" else (1, 0)
+                    inside = {(x, y)}
+                    front = (x + dx, y + dy)
+                    if facing == "N":
+                        side_edges = {(x, y, "W"), (x + 1, y, "W")}
+                    else:
+                        side_edges = {(x, y, "N"), (x, y + 1, "N")}
+                    if (x, y) in no_go or (x, y) in occupied or front in occupied \
+                            or front in door_tiles or _room_at(plan, *front) != idx \
+                            or side_edges & door_edges or not keeps_open(inside):
+                        continue
+                    plan.furniture.append(("toilet", x, y, _facing("toilet", facing)))
+                    occupied.update(inside | {front})
+                    no_go.add(front)
+                    plan.stalls.append((x, y, facing))
+                    plan.wall_pieces.add((x, y, facing))
+                    plan.wall_pieces.update(side_edges)
+                    base.remove("toilet")
+                    fitted += 1
+                if fitted:
+                    base = [role for role in base if role != "toilet"]
         elif plan.kind in CIVIC_KINDS and r.kind in CIVIC_ROOMS:
             # A police station's corridor is not somebody's hallway. The
             # wishlist for hall and lobby is a domestic one - side table,
@@ -2818,6 +2847,9 @@ def _make_way_for_windows(storey: "Plan", stairs: tuple[int, int, str] | None) -
     if not squares and not at_door:
         return 0
     off = squares | door_tiles
+    for x, y, facing in storey.stalls:
+        off.add((x, y))
+        off.add((x, y + 1) if facing == "N" else (x + 1, y))
     if stairs is not None:
         sx, sy, sd = stairs
         dx, dy = (0, 1) if sd == "N" else (1, 0)

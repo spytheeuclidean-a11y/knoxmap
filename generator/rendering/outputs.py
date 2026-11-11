@@ -180,6 +180,12 @@ def _build_preview(landscape: Image.Image, vegetation: Image.Image) -> Image.Ima
                                      C.BUSHES_TREES_DARK_GRASS, C.TREE_SMALL)]
     arr[np.isin(key, other_trees)] = (65, 95, 45)
     arr[key == code(C.TREES)] = (40, 75, 35)
+    # Fields, rocks and scrub, so a field reads as a field and a marsh as a
+    # marsh rather than as the bare ground under them.
+    for c, rgb in ((C.CORN_1, (200, 170, 60)), (C.CORN_2, (185, 150, 55)),
+                   (C.ROCKS, (150, 150, 145)), (C.BOULDERS, (115, 115, 110)),
+                   (C.BUSHES, (80, 110, 50)), (C.DENSE_BUSHES_GRASS, (70, 100, 60))):
+        arr[key == code(c)] = rgb
     # A big tree covers more ground than its one tile, so the preview gives it
     # the square it keeps clear - otherwise a wood of them reads as a clearing.
     for c, side in C.BIG_TREE_ROOM.items():

@@ -1,0 +1,45 @@
+# knoxbuild/build.py
+
+- is_notable · function · L94-L102 — def is_notable(tags: dict, kind: str | None) -> bool
+- _cut_big · function · L274-L308 — def _cut_big(units: list, metres_per_tile: float, max_side: int | None = None) -> list
+- needs_cut · function · L294-L296 — def needs_cut(u) -> bool
+- row_units · function · L311-L338 — def row_units(fp, special: str | None, btag: str, n_uses: int, metres_per_tile: float, max_side: int | None = None)
+- looks_like_apartment · function · L355-L375 — def looks_like_apartment(tags: dict, area_tiles: int, rng, settings: Settings) -> bool
+- _number · function · L383-L404 — def _number(raw: str | None) -> float | None
+- levels_from_tags · function · L407-L435 — def levels_from_tags(tags: dict, settings: Settings) -> int | None
+- building_levels · function · L438-L465 — def building_levels(tags: dict, kind: str | None, area_tiles: int, rng, settings: Settings, metres_per_tile: float = 1.0, region: str | None = None) -> tuple[int, bool]
+- classify_building · function · L468-L492 — def classify_building(tags: dict) -> str | None
+- _business_kind · function · L495-L499 — def _business_kind(special: str | None, uses: list[tuple[str, str]]) -> str | None
+- _wall_pool · function · L540-L553 — def _wall_pool(kind: str | None) -> list[dict]
+- style_names · function · L556-L567 — def style_names(kind: str | None = None) -> list[str]
+- style_named · function · L570-L597 — def style_named(name: str, kind: str | None) -> dict | None
+- wall_variants · function · L600-L627 — def wall_variants(kind: str) -> list[dict]
+- pick_style · function · L630-L681 — def pick_style(kind: str | None, tile_x: int, tile_y: int, rng, settings: Settings, density: float = 0.0, profile: BuildingProfile | None = None, region: str | None = None) -> dict
+- car_park_stalls · function · L688-L715 — def car_park_stalls(bounds: tuple[int, int, int, int], w: int, h: int)
+- _detect_zones · function · L718-L857 — def _detect_zones(landscape_path: str, placements, rng_seed: int = 7, settings: Settings | None = None, areas=None, drives=(), keep_clear=(), road_hierarchy: np.ndarray | None = None)
+- is_asphalt · function · L751-L759 — def is_asphalt(x: int, y: int) -> bool
+- _ring_points · function · L860-L867 — def _ring_points(geom: dict) -> list[list[float]]
+- _street_finder · function · L874-L915 — def _street_finder(out_dir: str, map_name: str, road_hierarchy: np.ndarray | None = None)
+- side · function · L894-L913 — def side(x0: int, y0: int, w: int, h: int) -> str | None
+- _load_road_hierarchy · function · L918-L924 — def _load_road_hierarchy(out_dir: str, map_name: str, proj) -> np.ndarray | None
+- _road_weight · function · L927-L952 — def _road_weight(out_dir: str, map_name: str, proj, road_hierarchy: np.ndarray | None = None) -> np.ndarray | None
+- _drawn_features · function · L955-L977 — def _drawn_features(out_dir: str, map_name: str) -> list
+- _points_of_use · function · L980-L1005 — def _points_of_use(out_dir: str, info: dict, map_name: str, proj) -> dict
+- _points_inside · function · L1008-L1028 — def _points_inside(grid: dict, px: list, taken: set) -> list[dict]
+- _entrances_inside · function · L1031-L1047 — def _entrances_inside(grid: dict, px: list) -> list[tuple[float, float, dict]]
+- _entrances_by_unit · function · L1050-L1072 — def _entrances_by_unit(entrances: list[tuple[float, float, dict]], units ) -> list[list[tuple[float, float, dict]]]
+- _rooms_by_unit · function · L1075-L1107 — def _rooms_by_unit(entries, fp, units, proj) -> list
+- _party_walls · function · L1110-L1132 — def _party_walls(owner: np.ndarray, me: int, x0: int, y0: int, mask: np.ndarray, levels: list[int]) -> dict
+- _make_one · function · L1135-L1173 — def _make_one(job: tuple) -> tuple
+- _code_fingerprint · function · L1187-L1203 — def _code_fingerprint() -> str
+- _job_key · function · L1206-L1212 — def _job_key(job: tuple) -> str
+- _read_cache · function · L1215-L1223 — def _read_cache(out_dir: str, code: str) -> dict
+- _write_cache · function · L1226-L1233 — def _write_cache(out_dir: str, code: str, entries: dict) -> None
+- _make_all · function · L1236-L1269 — def _make_all(jobs: list[tuple], tick=None) -> list[tuple[int, int, int]]
+- run_here · function · L1243-L1249 — def run_here() -> list
+- build · function · L1272-L2019 — def build(out_dir: str, seed: int | None = None, min_size: int | None = None, max_size: int | None = None, settings: Settings | None = None, should_stop=None, progress=None) -> int
+- say · function · L1285-L1287 — def say(text: str, fraction: float | None = None) -> None
+- candidates · function · L1491-L1495 — def candidates()
+- laid_out · function · L1770-L1771 — def laid_out(done: int, total: int) -> None
+- make_spawn_map · function · L1879-L1894 — def make_spawn_map(): # Redrawn from the people in the buildings just placed. It replaces the # ground-colour one the renderer wrote, at the same path and size, so # the WorldEd project picks it up unchanged.
+- main · function · L2022-L2067 — def main(argv: list[str] | None = None) -> int: # Place names can be in any script, and a Windows console using a legacy # code page cannot print most of them - "OSM says Kadıköy" crashed a build # on cp1252. Print what it can and mark the rest, rather than dying.

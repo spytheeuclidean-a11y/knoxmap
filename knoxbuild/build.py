@@ -1391,6 +1391,12 @@ def _code_fingerprint() -> str:
             h.update(name.encode())
             with open(os.path.join(here, name), "rb") as f:
                 h.update(f.read())
+    layout_dir = os.path.join(here, "layout")
+    for name in sorted(os.listdir(layout_dir)):
+        if name.endswith(".py"):
+            h.update(("layout/" + name).encode())
+            with open(os.path.join(layout_dir, name), "rb") as f:
+                h.update(f.read())
     h.update(b"erika" if _erika_ready() else b"vanilla")
     from . import room_solver
     h.update(os.environ.get(room_solver.ENV, "").encode())     # it overrides the setting

@@ -1,0 +1,14 @@
+{
+  "lastQuery": "can v3code be integrated into claude code?",
+  "perAgentQuery": {},
+  "graftReads": 0,
+  "sourceReads": 0,
+  "savedTokens": 0,
+  "injectedPointers": [
+    "knoxbuild/build.py:L1187-L1203",
+    "static/js/app.js:L2515-L2521",
+    "rust/knoxlots/src/bin/knoxlots.rs:L65-L120"
+  ],
+  "nudges": 0,
+  "summarized": true
+}

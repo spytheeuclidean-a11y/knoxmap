@@ -1,0 +1,43 @@
+# tests/test_presets.py
+
+- tbx · function · L16-L22 — def tbx(width, height, floors=3, rooms=4)
+- Reading · class · L25-L48 — class Reading(unittest.TestCase)
+- test_a_building_file_is_measured_off_its_header · method · L26-L31 — def test_a_building_file_is_measured_off_its_header(self)
+- test_a_single_storey_building_is_one_storey · method · L33-L34 — def test_a_single_storey_building_is_one_storey(self)
+- test_anything_that_is_not_a_building_file_is_not_one · method · L36-L40 — def test_anything_that_is_not_a_building_file_is_not_one(self)
+- test_a_name_that_could_escape_the_folder_cannot · method · L42-L48 — def test_a_name_that_could_escape_the_folder_cannot(self)
+- TheLibrary · class · L51-L90 — class TheLibrary(unittest.TestCase)
+- setUp · method · L52-L53 — def setUp(self)
+- test_what_goes_in_is_what_comes_out · method · L55-L59 — def test_what_goes_in_is_what_comes_out(self): # The whole point of a hand-built building: nothing happens to it.
+- test_saving_something_that_is_not_a_building_is_refused · method · L61-L63 — def test_saving_something_that_is_not_a_building_is_refused(self)
+- test_a_preset_needs_a_name · method · L65-L67 — def test_a_preset_needs_a_name(self)
+- test_the_library_lists_what_is_there_smallest_first · method · L69-L73 — def test_the_library_lists_what_is_there_smallest_first(self)
+- test_a_stray_file_in_the_folder_is_not_offered · method · L75-L81 — def test_a_stray_file_in_the_folder_is_not_offered(self)
+- test_a_library_that_is_not_there_is_empty_rather_than_an_error · method · L83-L84 — def test_a_library_that_is_not_there_is_empty_rather_than_an_error(self)
+- test_one_can_be_thrown_away · method · L86-L90 — def test_one_can_be_thrown_away(self)
+- Choosing · class · L93-L136 — class Choosing(unittest.TestCase)
+- setUp · method · L94-L98 — def setUp(self)
+- test_only_what_actually_fits_is_offered · method · L100-L102 — def test_only_what_actually_fits_is_offered(self)
+- test_a_preset_is_never_stretched_to_fit · method · L104-L107 — def test_a_preset_is_never_stretched_to_fit(self): # It is used at the size it was built, so a plot too small gets none.
+- test_the_footprint_has_to_fit_the_way_round_it_is · method · L109-L113 — def test_the_footprint_has_to_fit_the_way_round_it_is(self): # The .tbx is not rotated, so a 12x10 cottage does not go on a 10x12 # plot however near the two are in area. Only the shed fits there.
+- test_the_biggest_that_fits_wins · method · L115-L119 — def test_the_biggest_that_fits_wins(self): # A plot meant for a cottage should not get a shed on it.
+- test_the_same_plot_gets_the_same_building_every_time · method · L121-L128 — def test_the_same_plot_gets_the_same_building_every_time(self): # A rebuild that moved the hand-built houses around would be worse # than not having them.
+- test_different_plots_do_not_all_get_the_same_one · method · L130-L133 — def test_different_plots_do_not_all_get_the_same_one(self): # A street of identical plots should not be a street of one house.
+- test_an_empty_library_chooses_nothing · method · L135-L136 — def test_an_empty_library_chooses_nothing(self)
+- ForAKindOfBuilding · class · L139-L246 — class ForAKindOfBuilding(unittest.TestCase)
+- setUp · method · L148-L153 — def setUp(self)
+- test_every_kind_offered_is_one_the_generator_can_recognise · method · L155-L160 — def test_every_kind_offered_is_one_the_generator_can_recognise(self)
+- test_only_presets_built_for_the_kind_are_used_for_it · method · L162-L165 — def test_only_presets_built_for_the_kind_are_used_for_it(self)
+- test_the_kind_is_preferred_and_any_building_is_the_fallback · method · L167-L176 — def test_the_kind_is_preferred_and_any_building_is_the_fallback(self): # A plot big enough for the station gets the station...
+- test_a_preset_for_another_kind_is_never_stamped_as_this_one · method · L178-L183 — def test_a_preset_for_another_kind_is_never_stamped_as_this_one(self): # The shed fits every plot here and is still never a police station.
+- test_a_building_with_no_special_kind_is_a_house · method · L185-L188 — def test_a_building_with_no_special_kind_is_a_house(self)
+- test_nothing_is_switched_on_to_begin_with · method · L190-L191 — def test_nothing_is_switched_on_to_begin_with(self)
+- test_a_kind_can_be_switched_on_and_off_again · method · L193-L198 — def test_a_kind_can_be_switched_on_and_off_again(self)
+- test_a_kind_the_generator_does_not_know_cannot_be_switched_on · method · L200-L204 — def test_a_kind_the_generator_does_not_know_cannot_be_switched_on(self)
+- test_what_a_preset_is_for_is_kept_beside_it_not_in_it · method · L206-L211 — def test_what_a_preset_is_for_is_kept_beside_it_not_in_it(self)
+- test_a_preset_saved_without_a_kind_stands_in_for_any_building · method · L213-L215 — def test_a_preset_saved_without_a_kind_stands_in_for_any_building(self)
+- test_what_a_preset_is_for_can_be_changed · method · L217-L222 — def test_what_a_preset_is_for_can_be_changed(self)
+- test_a_kind_the_generator_does_not_know_cannot_be_recorded · method · L224-L226 — def test_a_kind_the_generator_does_not_know_cannot_be_recorded(self)
+- test_throwing_a_preset_away_forgets_what_it_was_for · method · L228-L231 — def test_throwing_a_preset_away_forgets_what_it_was_for(self)
+- test_a_folder_with_no_manifest_is_empty_rather_than_an_error · method · L233-L235 — def test_a_folder_with_no_manifest_is_empty_rather_than_an_error(self)
+- test_a_manifest_full_of_nonsense_is_ignored_rather_than_believed · method · L237-L246 — def test_a_manifest_full_of_nonsense_is_ignored_rather_than_believed(self)

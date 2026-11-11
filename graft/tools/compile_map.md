@@ -1,0 +1,49 @@
+# tools/compile_map.py
+
+- _end_batch · function · L55-L75 — def _end_batch(proc) -> None
+- send · function · L57-L67 — def send(hard: bool) -> None
+- _STARTUPINFOW · class · L83-L103 — class _STARTUPINFOW(ctypes.Structure)
+- _PROCESS_INFORMATION · class · L105-L111 — class _PROCESS_INFORMATION(ctypes.Structure)
+- _HiddenDesktopProcess · class · L113-L278 — class _HiddenDesktopProcess
+- __init__ · method · L124-L167 — def __init__(self, cmd, stdout_f, stderr_f, env=None)
+- _monitor_popups · method · L169-L225 — def _monitor_popups(self)
+- enum_proc · function · L176-L215 — def enum_proc(hwnd, lParam)
+- poll · method · L227-L237 — def poll(self)
+- wait · method · L239-L248 — def wait(self, timeout=None)
+- terminate · method · L250-L252 — def terminate(self)
+- kill · method · L254-L255 — def kill(self)
+- _cleanup · method · L257-L275 — def _cleanup(self)
+- __del__ · method · L277-L278 — def __del__(self)
+- _run_batch · function · L281-L338 — def _run_batch(cmd, should_stop, started: float, tick=None)
+- scratch · function · L297-L298 — def scratch()
+- said · function · L311-L320 — def said() -> tuple[str, str]
+- bitmap_pixels · function · L351-L354 — def bitmap_pixels(width: int, height: int) -> int
+- scale_that_fits · function · L357-L364 — def scale_that_fits(width: int, height: int, meters_per_tile: float) -> int | None
+- too_large_note · function · L367-L379 — def too_large_note(project: Path) -> str
+- world_size · function · L382-L385 — def world_size(pzw: Path) -> tuple[int, int]
+- _tool_path · function · L388-L394 — def _tool_path(path: Path) -> str
+- assign_converted_maps · function · L397-L433 — def assign_converted_maps(pzw: Path) -> int
+- fill · function · L421-L428 — def fill(m)
+- clear_stale · function · L436-L481 — def clear_stale(project: Path) -> None
+- newest · function · L448-L449 — def newest(paths) -> float
+- _pid_alive · function · L508-L540 — def _pid_alive(pid: int) -> bool
+- _only_one · function · L544-L571 — def _only_one(project: Path, run: str)
+- failed_cells · function · L574-L586 — def failed_cells(project_dir: str | Path) -> list[dict]
+- _record_failures · function · L589-L603 — def _record_failures(project: Path, run: str, batch: int, failures: list[dict]) -> None
+- _why · function · L606-L612 — def _why(proc) -> str
+- default_workers · function · L625-L635 — def default_workers() -> int
+- Throttle · class · L638-L679 — class Throttle
+- __init__ · method · L652-L656 — def __init__(self, limit: int)
+- acquire · method · L658-L663 — def acquire(self, should_stop=None) -> None
+- release · method · L665-L668 — def release(self) -> None
+- ease · method · L670-L679 — def ease(self) -> int | None
+- _free_memory_gb · function · L682-L704 — def _free_memory_gb() -> float
+- MEM · class · L688-L693 — class MEM(ctypes.Structure)
+- knoxlots_exe · function · L707-L719 — def knoxlots_exe() -> Path | None
+- default_backend · function · L722-L728 — def default_backend() -> str
+- compile_rust · function · L731-L795 — def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: int | None = None, on_phase=None) -> int
+- phase · function · L758-L760 — def phase(text: str, fraction: float) -> None
+- tick · function · L770-L772 — def tick() -> None
+- compile_map · function · L798-L1075 — def compile_map(project_dir: str, batch: int = 4, exe: str | None = None, on_progress=None, should_stop=None, only_cells: list | None = None, workers: int | None = None, on_detail=None, incremental: bool = True, fresh: bool = False, backend: str | None = None, on_phase=None) -> int
+- do_batch · function · L936-L1025 — def do_batch(i, bx, by, x1, y1)
+- main · function · L1078-L1100 — def main(argv: list[str] | None = None) -> int: # Place names can be in any script, and a Windows console using a legacy # code page cannot print most of them - "OSM says Kadıköy" crashed a build # on cp1252. Print what it can and mark the rest, rather than dying.

@@ -1,0 +1,21 @@
+# knoxbuild/world.py
+
+- origin · function · L45-L47 — def origin() -> tuple[int, int]
+- set_origin · function · L50-L51 — def set_origin(value) -> None
+- _project_box · function · L54-L66 — def _project_box(pzw_path: str) -> tuple[int, int, int, int] | None
+- _installed_boxes · function · L69-L101 — def _installed_boxes() -> list[tuple[int, int, int, int]]
+- choose_origin · function · L104-L135 — def choose_origin(out_dir: str, cells_x: int, cells_y: int) -> tuple[int, int]
+- Zone · class · L158-L179 — class Zone
+- cell_x · method · L166-L167 — def cell_x(self) -> int
+- cell_y · method · L170-L171 — def cell_y(self) -> int
+- offset_x · method · L174-L175 — def offset_x(self) -> int
+- offset_y · method · L178-L179 — def offset_y(self) -> int
+- Placement · class · L183-L214 — class Placement
+- cell_x · method · L201-L202 — def cell_x(self) -> int
+- cell_y · method · L205-L206 — def cell_y(self) -> int
+- offset_x · method · L209-L210 — def offset_x(self) -> int
+- offset_y · method · L213-L214 — def offset_y(self) -> int
+- _tool_path · function · L217-L225 — def _tool_path(path: str) -> str
+- render_pzw · function · L228-L359 — def render_pzw(cells_x: int, cells_y: int, bmp_name: str, placements: list[Placement], map_name: str = "", project_dir: str = "", zones: list[Zone] | None = None) -> str: # Nothing may name a cell outside the world: WorldEd rejects the whole # project over one ("error reading world, invalid cell coordinates").
+- on_grid · function · L234-L235 — def on_grid(cx: int, cy: int) -> bool
+- cell_map · function · L330-L337 — def cell_map(cx: int, cy: int) -> str

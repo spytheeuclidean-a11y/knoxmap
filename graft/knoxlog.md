@@ -1,0 +1,22 @@
+# knoxlog.py
+
+- setup · function · L50-L81 — def setup(program: str = "app", console: bool = False) -> logging.Logger
+- _install_hooks · function · L84-L104 — def _install_hooks() -> None
+- on_error · function · L89-L91 — def on_error(kind, value, tb)
+- on_thread_error · function · L96-L102 — def on_thread_error(args)
+- error_id · function · L107-L108 — def error_id() -> str
+- record · function · L111-L119 — def record(exc: BaseException | None = None, where: str = "", **context) -> str
+- _short · function · L122-L124 — def _short(value, limit: int = 300) -> str
+- version · function · L129-L139 — def version() -> str
+- memory_status · function · L142-L165 — def memory_status() -> tuple[int, int, int] | None
+- Status · class · L153-L158 — class Status(ctypes.Structure)
+- _memory_status_posix · function · L168-L185 — def _memory_status_posix() -> tuple[int, int, int] | None
+- _memory · function · L188-L193 — def _memory() -> str
+- system_summary · function · L196-L226 — def system_summary() -> str
+- save_tool_output · function · L231-L246 — def save_tool_output(tool: str, map_name: str, label: str, returncode: int, stdout: str, stderr: str) -> Path | None
+- explain_exit · function · L269-L270 — def explain_exit(code: int) -> str
+- _safe · function · L273-L274 — def _safe(text: str) -> str
+- redact · function · L279-L289 — def redact(text: str) -> str
+- report_zip · function · L292-L327 — def report_zip(output_dir: Path | None = None, recent_maps: int = 3) -> bytes
+- _tail · function · L330-L337 — def _tail(path: Path, limit: int = 3 * 1024 * 1024) -> str
+- open_folder · function · L340-L365 — def open_folder(path=None) -> bool

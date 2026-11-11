@@ -503,6 +503,13 @@ def render_tbx(plan: Plan | Building, name: str,
     rails = any(st.railing for st in storeys)
     rail_idx = _add(entries, C.RAILING) if rails else 0
     rail_ext_idx = _add(entries, C.RAILING_EXT) if rails else 0
+    stalls = any(st.stalls for st in storeys)
+    stall_wall = _add(entries, {"category": "interior_walls", "tiles": {
+        "West": "fixtures_bathroom_01_040", "North": "fixtures_bathroom_01_044",
+        "WestDoor": "fixtures_bathroom_01_043", "NorthDoor": "fixtures_bathroom_01_042"}}) if stalls else 0
+    stall_door = _add(entries, {"category": "doors", "tiles": {
+        "West": "fixtures_bathroom_01_048", "North": "fixtures_bathroom_01_049",
+        "WestOpen": "fixtures_bathroom_01_050", "NorthOpen": "fixtures_bathroom_01_051"}}) if stalls else 0
 
     out.append(f"<building{_attrs(building_attrs)}>")
 
@@ -604,6 +611,29 @@ def render_tbx(plan: Plan | Building, name: str,
     for level, storey in enumerate(storeys):
         out.append(" <floor>")
         out.extend(above_roofs.pop(level, []))
+        for sx, sy, facing in storey.stalls:
+            if facing == "N":
+                walls = [(sx, sy + 1, "W")]
+                if sx > 0 and storey.grid[sy][sx - 1] == storey.grid[sy][sx]:
+                    walls.append((sx, sy, "N"))
+                if sx + 1 < storey.width and storey.grid[sy][sx + 1] == storey.grid[sy][sx]:
+                    walls.append((sx + 1, sy, "N"))
+                door_x, door_y = sx, sy + 1
+            else:
+                walls = [(sx + 1, sy, "N")]
+                if sy > 0 and storey.grid[sy - 1][sx] == storey.grid[sy][sx]:
+                    walls.append((sx, sy, "W"))
+                if sy + 1 < storey.height and storey.grid[sy + 1][sx] == storey.grid[sy][sx]:
+                    walls.append((sx, sy + 1, "W"))
+                door_x, door_y = sx + 1, sy
+            for x, y, d in walls:
+                out.append("  <object" + _attrs([
+                    ("type", "wall"), ("length", 1), ("InteriorTile", stall_wall),
+                    ("ExteriorTrim", 0), ("InteriorTrim", 0), ("x", x), ("y", y),
+                    ("dir", d), ("Tile", 0)]) + "/>")
+            out.append("  <object" + _attrs([
+                ("type", "door"), ("FrameTile", 0), ("x", door_x), ("y", door_y),
+                ("dir", facing), ("Tile", stall_door)]) + "/>")
         
         # The three doors _widen_vehicle_entry cut into one wide opening are
         # still three door objects - BuildingEd has no object that spans more

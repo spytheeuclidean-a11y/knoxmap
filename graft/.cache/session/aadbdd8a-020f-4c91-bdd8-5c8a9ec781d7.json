@@ -1,0 +1,10 @@
+{
+  "lastQuery": "<task-notification>\n<task-id>b81zhjv8d</task-id>\n<tool-use-id>toolu_01YZjqSLFsxEFrcF9iExMhQU</tool-use-id>\n<output-file>C:\\Users\\TheTaZe\\AppData\\Local\\Temp\\claude\\C--KnoxMap\\aadbdd8a-020f-4c91-bdd8-5c8a9ec781d7\\tasks\\b81zhjv8d.output</output-file>\n<status>completed</status>\n<summary>Monitor \"Wait for install completion message\" stream ended</summary>\n<event>Run ./scripts/convert.sh to regenerate after adding or editing agents.\n282\n[exited with code 0]</event>\n</task-notification>",
+  "perAgentQuery": {},
+  "graftReads": 0,
+  "sourceReads": 0,
+  "savedTokens": 0,
+  "injectedPointers": [],
+  "nudges": 0,
+  "summarized": true
+}
