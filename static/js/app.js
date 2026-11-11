@@ -3066,11 +3066,19 @@ document.getElementById('installBtn').addEventListener('click', async () => {
         lifts += ' With "Spawn Selector" enabled you can start at any landmark of the map.';
       }
     } catch (_) { /* the install itself worked; the tip is optional */ }
+    // Build 42 draws the in-game map (M) from worldmap.xml.bin and cannot read
+    // the XML, so a map without it opens the map on nothing while everything
+    // else works - worth saying, and worth saying what to do about it.
+    const paper = data.paperMap === false
+      ? ' The in-game map (M) will be blank: this map has no paper map '
+        + '(worldmap.xml.bin). Install it again, and if it still has none, send '
+        + 'KnoxMap the log from that install.'
+      : '';
     note('installNote',
          `Installed ${data.cells} cells to ${data.modRoot}. Enable "${data.title}" `
          + 'in the game\'s Mods menu, then start a NEW save. In a save you are '
          + 'already playing, right-click the ground and pick "Reset loot" for '
-         + 'fresh loot in a building.' + lifts, 'ok');
+         + 'fresh loot in a building.' + lifts + paper, data.paperMap === false ? 'warn' : 'ok');
     document.getElementById('publishCard').hidden = false;
     loadMaps();
   } catch (err) {

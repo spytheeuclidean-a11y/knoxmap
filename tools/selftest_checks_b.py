@@ -1373,6 +1373,10 @@ def check_workshop(check, work: str) -> None:
     os.makedirs(maps)
     open(os.path.join(maps, "0_0.lotheader"), "wb").close()
     open(os.path.join(maps, "map.info"), "w").close()
+    # Build 42 draws the in-game map (M) from worldmap.xml.bin and cannot read
+    # the XML, so an installed mod has one (tools/make_map_mod.py).
+    paper = os.path.join(maps, "worldmap.xml.bin")
+    open(paper, "wb").close()
     with open(os.path.join(root, "ATTRIBUTION.txt"), "w", encoding="utf-8") as f:
         from knoxbuild import credits
         f.write("Map data (c) OpenStreetMap contributors, available under the Open Database "
@@ -1388,6 +1392,13 @@ def check_workshop(check, work: str) -> None:
     Image.new("RGB", (300, 300)).save(os.path.join(root, "preview.png"))
     lv, s = levels()
     check(lv == {"ok"} and s["warn"] == 0, "and with a square preview it has nothing to say")
+    os.remove(paper)
+    res = wc.check(root)
+    said = [r for r in res if "worldmap.xml.bin" in r["what"]]
+    check("bad" in {r["level"] for r in res} and not wc.summary(res)["ready"] and said
+          and "in-game map" in said[0]["what"],
+          "a mod with no paper map is not ready, and says the in-game map will be blank")
+    open(paper, "wb").close()
     Image.new("RGB", (300, 200)).save(os.path.join(root, "preview.png"))
     check(levels()[1]["warn"] == 1, "a preview that is not square is warned about")
     with open(os.path.join(root, "preview.png"), "wb") as f:

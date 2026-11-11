@@ -512,8 +512,19 @@ def api_install():
     mapstate.stamp(str(map_dir), "install", took=time.time() - t0)
     mapstate.record_install(str(map_dir), str(mod_root), mod_id, title)
     log.info("install %s: %d cells as %s, extras %s", map_dir.name, n_cells, mod_id, extras)
+    # The in-game map (M) is drawn from worldmap.xml.bin and nothing else: Build
+    # 42 cannot read the XML (knoxbuild/worldmap_bin.py). A map without it still
+    # plays, so the install succeeds - the page says the map will be blank, which
+    # is the one symptom a player cannot tell from a broken map.
+    paper_map = os.path.exists(os.path.join(
+        str(mod_root), "common", "media", "maps",
+        make_map_mod.folder_name(title, mod_id), "worldmap.xml.bin"))
+    if not paper_map:
+        log.warning("install %s: no worldmap.xml.bin, so the in-game map will be blank",
+                    map_dir.name)
     return jsonify({"modRoot": str(mod_root), "cells": n_cells,
-                    "extras": extras, "modId": mod_id, "title": title})
+                    "extras": extras, "modId": mod_id, "title": title,
+                    "paperMap": paper_map})
 
 
 @bp.route("/api/uninstall", methods=["POST"])
