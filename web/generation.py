@@ -577,14 +577,16 @@ def api_buildings():
     mapstate.stamp(str(map_dir), "build")
     log.info("buildings %s: %d files in %.1fs\n%s", map_dir.name, len(tbx),
              time.time() - t0, out.getvalue()[-3000:])
-    _log_left_out(map_dir)
     return jsonify({"count": len(tbx), "terrain": terrain,
                     "pzw": f"{map_dir.name}.pzw",
+                    # So the window can say what did not get built without
+                    # anybody reading a log for it.
+                    "left_out": _log_left_out(map_dir),
                     "settings": settings.to_dict(),
                     "population": _population(map_dir)})
 
 
-def _log_left_out(map_dir) -> None:
+def _log_left_out(map_dir) -> dict:
     """Why footprints did not become buildings, in the log as well as the file.
 
     The build prints this among everything else it has to say, and only the
@@ -592,24 +594,26 @@ def _log_left_out(map_dir) -> None:
     the block scrolls off. It is the first thing wanted when somebody says
     nothing generated where their house is, and the report zip carries both
     this line and the file it names (knoxbuild/build.py, knoxlog.report_zip).
-    """
-    import collections
-    import csv as _csv
 
-    path = map_dir / f"{map_dir.name}_left_out.csv"
+    Returns the counts in words as well, which is what the window shows under
+    the Buildings step so that nobody has to go and read a log at all.
+    """
+    from knoxbuild import why
+
     try:
-        with open(path, newline="", encoding="utf-8") as f:
-            reasons = collections.Counter(row["reason"] for row in _csv.DictReader(f))
-    except (OSError, KeyError, ValueError):
-        return
-    if not reasons:
+        report = why.summary(str(map_dir))
+    except OSError:
+        return {}
+    if not report["total"]:
         log.info("left out %s: nothing - every footprint became a building",
                  map_dir.name)
-        return
+        return report
     log.info("left out %s: %d footprints (%s); each one with where and why in %s",
-             map_dir.name, sum(reasons.values()),
-             ", ".join(f"{n} {reason}" for reason, n in reasons.most_common()),
-             path.name)
+             map_dir.name, report["total"],
+             ", ".join(f"{line['n']} {line['reason']}"
+                       for line in report["lines"]),
+             f"{map_dir.name}_left_out.csv")
+    return report
 
 
 @bp.route("/api/layout-preview")

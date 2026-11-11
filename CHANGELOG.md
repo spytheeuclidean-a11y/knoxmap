@@ -20,6 +20,31 @@
   The file goes into the zip *Report a problem* makes, so a report about a
   hole in a town carries the answer with it.
 
+- **Most buildings** (`knoxbuild/procedural.py`, `knoxbuild/settings.py`).
+  A ceiling on how many buildings the whole map may hold, as a number rather
+  than True map generation's "about half". The landmarks are kept - a map
+  worth driving across has a police station and a school on it - and the
+  housing is spaced out until the count fits, so what goes is spread over
+  the whole map instead of coming off one end of a list. No random stream,
+  so a map built twice is the same map. 0 is no ceiling, which is the
+  default. A mapped terrace is left as the one building the survey drew
+  rather than cut into its shopfronts while a ceiling is set, since
+  otherwise one footprint becomes a dozen buildings and the number asked
+  for means nothing. It is a ceiling, not a quota: footprints skipped for
+  other reasons come off the total, and a footprint too big to be one
+  building is still cut into ones that fit.
+
+- **And without a command line** (`knoxbuild/why.py`, `web/zones.py`,
+  `static/js/app.js`). The Buildings step now says how many footprints did
+  not become buildings and why, in words - "667 off the edge of the map, 22
+  mapped twice over" - with a *Why is my building missing?* button that picks
+  the Change tool and loads what the map was built from. Click a building and
+  it says whether it was built, and if not, the reason and what to change.
+  The wording lives in one place, so the window and the tool cannot answer
+  the same question two different ways. Footprints now carry their
+  OpenStreetMap id through to the map's geojson, which is what ties a
+  building on screen to the row the build wrote about it.
+
 ## 1.8.5.7
 
 - **Setup works on Build 42.22.** `floors_exterior_natural_01` ships tiles 8-11,

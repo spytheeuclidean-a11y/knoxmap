@@ -622,6 +622,24 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .edit-selected .hint { flex: 1 1 120px; margin: 0; }
 .edit-selected small { opacity: .6; }
 .edit-selected .btn, .edit-selected select { font-size: 12px; padding: 4px 8px; }
+/* Why the clicked building is not on the map. Its own line under the row,
+   because the remedy is a sentence and not a label. */
+.why { flex: 1 1 100%; font-size: 12px; line-height: 1.45; margin-top: 2px;
+  padding: 6px 8px; border-radius: 5px; background: var(--field);
+  border-left: 3px solid var(--line-strong); }
+.why[hidden] { display: none; }
+.why .hint { font-size: 12px; }
+.why-out { background: var(--warn-soft); border-left-color: var(--warn); }
+.why-in { background: var(--accent-soft); border-left-color: var(--accent); }
+
+/* What the build left out, under the Buildings step. */
+.left-out { margin: 8px 0 2px; padding: 8px 10px; border-radius: 6px;
+  background: var(--field); border-left: 3px solid var(--warn);
+  font-size: 12px; }
+.left-out[hidden] { display: none; }
+.left-out-head { font-weight: 600; margin-bottom: 4px; }
+.left-out ul { margin: 0 0 8px; padding-left: 18px; color: var(--muted); }
+.left-out li { margin: 1px 0; }
 
 /* ---- the drawing board ----------------------------------------------- */
 /* Its own screen rather than a layer over the world map: a blank sheet, the

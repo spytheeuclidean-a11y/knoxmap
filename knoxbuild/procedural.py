@@ -207,15 +207,20 @@ class _Kept:
         self._cells.setdefault(key, []).append((cx, cy, width))
         self.widest = max(self.widest, width)
 
-    def near(self, cx: float, cy: float, width: float) -> list:
+    def near(self, cx: float, cy: float, width: float,
+             factor: float = 0.0) -> list:
         """Everything kept that could possibly matter to a building this wide
         standing here - near enough to thin it, or to stop it growing.
 
         The reach allows for the widest thing kept anywhere and for the most
         this one could grow, so it never misses a neighbour; it is generous
-        rather than exact, and the buckets keep that cheap.
+        rather than exact, and the buckets keep that cheap. `factor` is for a
+        caller working to a wider spacing than the thinning does - a ceiling
+        on how many buildings the map may hold - which would otherwise look
+        for neighbours over a shorter distance than it is spacing them by,
+        and quietly keep more than it was asked for.
         """
-        reach = max(GAP, GROW_MAX_LANDMARK) * (width + self.widest) / 2.0
+        reach = max(GAP, GROW_MAX_LANDMARK, factor) * (width + self.widest) / 2.0
         span = int(reach // BUCKET) + 1
         gx, gy = int(cx // BUCKET), int(cy // BUCKET)
         out: list = []
@@ -225,15 +230,20 @@ class _Kept:
         return out
 
 
-def plan(cands: list[Candidate], max_size: float) -> tuple[list[Candidate], dict]:
+def plan(cands: list[Candidate], max_size: float,
+         gap: float = GAP) -> tuple[list[Candidate], dict]:
     """Which of these to build, in the order they should claim their ground.
 
     Returns the survivors - with `px` already grown - and a count of what
     happened, for the build's printout. Landmarks come first so the ground a
     police station needs is not already under the bungalow next door;
     everything else follows in descending size, as it did before.
+
+    `gap` is the spacing rule at the top of this file. It is a parameter
+    because `cap` turns it up until the map holds the number of buildings
+    somebody asked for.
     """
-    counts = {"thinned": 0, "grown": 0, "landmarks": 0}
+    counts = {"thinned": 0, "grown": 0, "landmarks": 0, "dropped": []}
     by_size = (lambda c: (-c.area, c.index))
     landmarks = sorted((c for c in cands if c.landmark), key=by_size)
     housing = sorted((c for c in cands if not c.landmark), key=by_size)
@@ -266,9 +276,211 @@ def plan(cands: list[Candidate], max_size: float) -> tuple[list[Candidate], dict
         # against. Judging a house by its own width alone would let a
         # bungalow sit inside the school's new footprint, and judging it by
         # the larger width alone would clear the whole block around one.
-        if any((cx - ox) ** 2 + (cy - oy) ** 2 < (GAP * (c.width + ow) / 2) ** 2
+        if any((cx - ox) ** 2 + (cy - oy) ** 2 < (gap * (c.width + ow) / 2) ** 2
                for ox, oy, ow in nearby):
             counts["thinned"] += 1
+            counts["dropped"].append(c.index)
             continue
         take(c, cx, cy, nearby)
     return out, counts
+
+
+# How many times the spacing may be tried before the search gives up. Each
+# round halves the range it is looking in, so twenty rounds is finer than the
+# difference one house makes.
+CAP_ROUNDS = 20
+# The widest spacing worth trying. At this gap an ordinary suburb keeps about
+# one house in twenty; past it the search is only emptying the map.
+CAP_MAX_GAP = 60.0
+
+
+class _Grid:
+    """Where things stand, on a grid sized to the question being asked.
+
+    _Kept's buckets are sized for the thinning rule's reach. A ceiling on the
+    whole map spaces buildings out tens of times further than that, and over
+    that distance the same buckets mean scanning several hundred of them per
+    building - which on a city of ten thousand is minutes. This sizes its own
+    cell so that everything that can matter is in the nine cells around the
+    one being asked about.
+    """
+
+    def __init__(self, cell: float) -> None:
+        self.cell = max(1.0, cell)
+        self._cells: dict[tuple[int, int], list] = {}
+
+    def key(self, cx: float, cy: float) -> tuple[int, int]:
+        return int(cx // self.cell), int(cy // self.cell)
+
+    def add(self, cx: float, cy: float, width: float) -> None:
+        self._cells.setdefault(self.key(cx, cy), []).append((cx, cy, width))
+
+    def around(self, cx: float, cy: float, rings: int = 1):
+        gx, gy = self.key(cx, cy)
+        for ix in range(gx - rings, gx + rings + 1):
+            for iy in range(gy - rings, gy + rings + 1):
+                yield from self._cells.get((ix, iy), ())
+
+    def nearest(self, cx: float, cy: float) -> float:
+        """How far the closest thing stands. Rings out until it finds one, so
+        a building alone in a field costs more than one in a street - which
+        is the right way round, there being few of the former."""
+        if not self._cells:
+            return float("inf")
+        rings = 1
+        while True:
+            best = min((math.hypot(cx - ox, cy - oy)
+                        for ox, oy, _ow in self.around(cx, cy, rings)),
+                       default=float("inf"))
+            # One more ring than the distance found, because a thing in a
+            # further ring can still be nearer than one in a corner of this.
+            if best < float("inf") and best <= rings * self.cell:
+                return best
+            if rings > 64:
+                return best
+            rings += 1
+
+
+def _spread(items: list[tuple], gap: float) -> list[int]:
+    """The indices kept when nothing may stand closer than `gap` allows.
+
+    `items` are (index, cx, cy, width, landmark), landmarks first. The rule is
+    the thinning rule at the top of this file; landmarks are kept whatever
+    and claim their ground first, so a police station is never the thing a
+    ceiling takes away.
+    """
+    if gap <= 0:
+        return [it[0] for it in items]
+    widest = max((it[3] for it in items), default=1.0)
+    # Two buildings matter to each other within gap * (w + ow) / 2, which is
+    # at most gap * widest. A cell that big puts every one of them in the
+    # nine cells around this one.
+    grid = _Grid(gap * widest)
+    out: list[int] = []
+    for i, cx, cy, w, landmark in items:
+        if not landmark and any(
+                (cx - ox) ** 2 + (cy - oy) ** 2 < (gap * (w + ow) / 2) ** 2
+                for ox, oy, ow in grid.around(cx, cy)):
+            continue
+        grid.add(cx, cy, w)
+        out.append(i)
+    return out
+
+
+def cap(items: list[tuple], limit: int) -> set[int]:
+    """Which buildings to keep when the map may hold only so many.
+
+    Somebody wanting a big map to travel across does not want it paved with
+    houses, and "about half" is not a number anyone can ask for. The
+    landmarks stay - a map worth crossing is one with a police station and a
+    school on it - and the housing is spaced out until the total is at or
+    under `limit`, so what goes is spread over the whole map rather than
+    taken off one end of a list. No random stream, so a map built twice is
+    the same map.
+
+    `items` are (index, cx, cy, width, landmark). Returns the indices kept.
+    """
+    if limit <= 0 or len(items) <= limit:
+        return {i for i, *_ in items}
+    items = sorted(items, key=lambda it: (not it[4], -it[3], it[0]))
+    landmarks = [it for it in items if it[4]]
+    if len(landmarks) >= limit:
+        # More landmarks than the ceiling: the housing all goes and the
+        # biggest landmarks stay, because a map of sheds is not what anybody
+        # meant by a limit.
+        return {it[0] for it in landmarks[:limit]}
+
+    low, high, best = 0.0, CAP_MAX_GAP, None
+    for _ in range(CAP_ROUNDS):
+        mid = (low + high) / 2
+        out = _spread(items, mid)
+        if len(out) <= limit:
+            best = out
+            high = mid          # room to spare: try to keep more
+        else:
+            low = mid
+    if best is None:
+        # Even the widest spacing leaves too many: a handful standing far
+        # enough apart that no spacing separates them, or a map that is
+        # nearly all landmarks. Take them farthest-apart first instead.
+        wide = _spread(items, CAP_MAX_GAP)
+        if len(wide) > limit:
+            by_index = {it[0]: it for it in items}
+            seed = wide[0]
+            return _fill_up([by_index[i] for i in wide], {seed}, limit)
+        best = wide
+    return _fill_up(items, set(best), limit)
+
+
+def _fill_up(items: list[tuple], kept: set[int], limit: int) -> set[int]:
+    """Put buildings back until there are exactly as many as were asked for.
+
+    A spacing rule cannot land on an arbitrary number: a street of evenly
+    spaced houses goes from all of them to every other one as the spacing
+    passes the width of one house, and there is nothing in between. Asking
+    for 600 and being given 500 is not what "the number I want" meant, so
+    the search stops under the ceiling and the room left over is filled
+    here - by spacing out what was dropped, the same way, and then one at a
+    time by whichever stands furthest from anything kept. Both fill the
+    emptiest ground first, so the result still reads as a town with space in
+    it rather than a full street beside a bare one.
+    """
+    room = limit - len(kept)
+    if room <= 0:
+        return kept
+    left = [it for it in items if it[0] not in kept]
+
+    # Spacing passes first: each one is a walk over what is left, where
+    # putting them back one at a time is a measurement per candidate per
+    # building added - minutes, on a city asked to lose only a tenth of
+    # itself.
+    for _ in range(8):
+        if room <= 0 or not left:
+            break
+        if len(left) <= room:
+            kept.update(it[0] for it in left)
+            room -= len(left)
+            left = []
+            break
+        low, high, best = 0.0, CAP_MAX_GAP, None
+        for _round in range(CAP_ROUNDS):
+            mid = (low + high) / 2
+            out = _spread(left, mid)
+            if len(out) <= room:
+                best, high = out, mid
+            else:
+                low = mid
+        if not best:
+            break
+        kept.update(best)
+        room -= len(best)
+        chosen = set(best)
+        left = [it for it in left if it[0] not in chosen]
+
+    if room <= 0 or not left:
+        return kept
+
+    # And the last few, farthest from anything kept first.
+    import heapq
+    by_index = {it[0]: it for it in items}
+    span = (max((it[1] for it in items), default=0.0)
+            - min((it[1] for it in items), default=0.0))
+    here = _Grid(max(1.0, span / max(8.0, math.sqrt(max(1, limit)))))
+    for i in kept:
+        _, cx, cy, w, _l = by_index[i]
+        here.add(cx, cy, w)
+    heap = [(-here.nearest(it[1], it[2]), 0, it[0]) for it in left]
+    heapq.heapify(heap)
+    stamp = 0
+    while heap and room > 0:
+        _neg, when, i = heapq.heappop(heap)
+        _, cx, cy, w, _l = by_index[i]
+        if when < stamp:
+            # Measured before something went in; measure it again.
+            heapq.heappush(heap, (-here.nearest(cx, cy), stamp, i))
+            continue
+        kept.add(i)
+        here.add(cx, cy, w)
+        stamp += 1
+        room -= 1
+    return kept

@@ -98,6 +98,28 @@ class AMapWithHolesInIt(unittest.TestCase):
     def test_a_name_in_another_alphabet_survives(self):
         self.assertIn("Kızıl Avlu", self.run_tool("--reason", "small"))
 
+    def test_one_building_by_its_openstreetmap_id(self):
+        # The id is the only handle that is certain: plenty of buildings have
+        # no name, and "the one on the corner" is not something to type in.
+        text = self.run_tool("--osm", "3")
+        self.assertIn("On The Road", text)
+        self.assertIn("mostly road", text)
+        self.assertNotIn("Off Map", text)
+
+    def test_the_id_may_be_pasted_as_a_whole_openstreetmap_link(self):
+        self.assertIn("On The Road",
+                      self.run_tool("--osm", "https://openstreetmap.org/way/3"))
+
+    def test_an_id_that_was_not_left_out_says_so_rather_than_nothing(self):
+        text = self.run_tool("--osm", "987654321")
+        self.assertIn("987654321", text)
+        self.assertIn("not among this map's footprints", text)
+
+    def test_by_part_of_a_name(self):
+        text = self.run_tool("--name", "road")
+        self.assertIn("On The Road", text)
+        self.assertNotIn("Off Map", text)
+
 
 class TheBuildWritesThem(unittest.TestCase):
     def test_every_reason_the_build_can_give_has_words(self):

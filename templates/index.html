@@ -372,9 +372,11 @@
       <details id="editMap">
         <summary>Change what is already here
           <span class="count" id="editCount"></span></summary>
-        <p class="hint">Open a map, then load what it was built from. Click
-          anything to remove it or say what it really is; drag its corners to
-          move it. Generate map again and the change is in.</p>
+        <p class="hint">Open a map, then load what it was built from. Click a
+          building and it says whether it was built, and if it was not, why
+          not and what to change. Click anything to remove it or say what it
+          really is; drag its corners to move it. Generate map again and the
+          change is in.</p>
         <div class="sketch-actions">
           <button type="button" id="editLoad" class="btn" disabled>Load what is here</button>
           <button type="button" id="editShape" class="btn" disabled>Move and reshape</button>
@@ -428,6 +430,9 @@
       <div class="pipe-body">
         <div class="pipe-title">3. Buildings</div>
         <span id="buildingsNote" class="step-note">Makes a furnished building for every footprint.</span>
+        <!-- What did not get built, said plainly and in the open. The reasons
+             used to live in knoxmap.log, where nobody looks. -->
+        <div id="leftOut" class="left-out" hidden></div>
         <div class="bar bar-indet"><div class="bar-fill"></div></div>
         <div id="layoutPreview" class="layout-preview" hidden>
           <div class="census-head">What was built

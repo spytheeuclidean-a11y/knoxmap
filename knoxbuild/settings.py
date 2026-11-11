@@ -97,6 +97,17 @@ class Settings:
     # has no army checkpoint in it, so the game's rifles - which spawn from
     # army and police loot - may have nowhere at all to appear.
     guaranteed_rifle: int = 1
+    # The most buildings the whole map may hold; 0 is no ceiling at all.
+    #
+    # A big map paved with houses is a big map nobody wants to cross: the
+    # point of the drive from one town to the next is that there is nothing
+    # in between. "About half" is not a number anybody can ask for, so this
+    # is the number itself. The landmarks are kept whatever - a map worth
+    # crossing has a police station and a school on it - and the housing is
+    # spaced out until the count fits, so what goes is spread over the whole
+    # map (knoxbuild/procedural.cap). Fewer buildings is also the one
+    # setting that reliably makes a map faster to build and to play.
+    max_buildings: int = 0
     min_size: int = 3            # skip footprints narrower than this, in tiles
     # and larger than this. It was 60, which threw away the largest
     # buildings in town - the factory, the cultural centre - which are
@@ -264,6 +275,9 @@ LIMITS = {
     "straight_roads": (0, 4),
     "include_proposed_roads": (0, 1),
     "max_size": (8, 250),
+    # 0 is no ceiling; the top end is past the largest town anybody has
+    # built with this, so the number is the mapper's to choose.
+    "max_buildings": (0, 200000),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),
     # Build 42 has 32 levels above ground (WorldEd's MAX_WORLD_LEVELS is 64,

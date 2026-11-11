@@ -4,6 +4,8 @@
     python tools/why_no_building.py <map folder> --at 39.1155,27.1884 --radius 120
     python tools/why_no_building.py <map folder> --tiles 300,420 --radius 60
     python tools/why_no_building.py <map folder> --reason road --list 40
+    python tools/why_no_building.py <map folder> --name "Attalos"
+    python tools/why_no_building.py <map folder> --osm 24992409
 
 A map is never all of OpenStreetMap: footprints are left out for being too
 small to furnish, too large to lay out, off the edge of the map, already
@@ -21,7 +23,6 @@ usual scale). With neither, the whole map is summed up.
 from __future__ import annotations
 
 import argparse
-import csv
 import math
 import os
 import sys
@@ -29,35 +30,14 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-# What each reason means, in the words somebody would use about their own map.
-WHY = {
-    "small": "smaller than the smallest building that can be furnished",
-    "large": "too big to lay out, even cut into units",
-    "outside": "its footprint falls off the edge of the map",
-    "taken": "the ground was already taken by a building placed before it",
-    "road": "mostly road: more of its footprint is tarmac than ground",
-    "not a building": "tagged as something that is not a building "
-                      "(a roof, a ruin, a tank)",
-}
-# What to try about it.
-FIX = {
-    "small": "lower 'Smallest building' in Fine tuning, or leave it: "
-             "a 3x4 shed has nowhere to put a door.",
-    "large": "raise 'Largest building'; past that it is cut into units.",
-    "outside": "draw the area a little wider and generate again.",
-    "taken": "two footprints overlap in OpenStreetMap - often a building "
-             "mapped twice. The bigger one wins.",
-    "road": "the road is drawn over the building in OpenStreetMap, or the "
-            "road is laid wider than it really is at this scale.",
-    "not a building": "nothing to do: these are not buildings.",
-}
+from knoxbuild import why  # noqa: E402  (after the path is set up)
 
-
-def read_rows(path: str) -> list[dict]:
-    if not os.path.exists(path):
-        return []
-    with open(path, newline="", encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+# The wording lives in knoxbuild/why.py so that the window and this tool
+# cannot answer the same question two different ways.
+WHY = why.WHY
+FIX = why.FIX
+read_rows = why.read_rows
+describe = why.describe
 
 
 def number(row: dict, *names, default=0.0) -> float:
@@ -85,16 +65,6 @@ def near(row: dict, centre, radius: float, latlon: bool) -> bool:
     return math.hypot(dx, dy) <= radius
 
 
-def describe(row: dict) -> str:
-    what = row.get("name") or row.get("building") or "a building"
-    size = ""
-    if row.get("tiles_wide"):
-        size = f" ({row['tiles_wide']}x{row['tiles_tall']} tiles)"
-    where = f"at {row.get('tile_x')},{row.get('tile_y')}"
-    osm = f"  osm {row['osm_id']}" if row.get("osm_id") else ""
-    return f"{what}{size} {where}{osm}"
-
-
 def main(argv: list[str]) -> int:
     # Building names are whatever the place calls them, and a Windows console
     # is not UTF-8: without this, "Kızıl Avlu" comes out as mojibake or stops
@@ -111,14 +81,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--radius", type=float, default=100.0,
                     help="how far to look, in tiles (default 100)")
     ap.add_argument("--reason", help="only this reason")
+    ap.add_argument("--name", help="only buildings whose name holds this")
+    ap.add_argument("--osm", help="one building, by its OpenStreetMap id")
     ap.add_argument("--list", type=int, default=20,
                     help="how many to name (default 20)")
     args = ap.parse_args(argv[1:])
 
     folder = args.map_folder.rstrip("/\\")
     name = os.path.basename(folder)
-    left = read_rows(os.path.join(folder, f"{name}_left_out.csv"))
-    placed = read_rows(os.path.join(folder, f"{name}_placements.csv"))
+    left = read_rows(why.left_out_path(folder))
+    placed = read_rows(why.placements_path(folder))
     if not left and not placed:
         print(f"No building records in {folder}.\n"
               f"Looked for {name}_left_out.csv and {name}_placements.csv - "
@@ -133,9 +105,31 @@ def main(argv: list[str]) -> int:
         centre = tuple(float(v) for v in args.tiles.split(","))
         latlon = False
 
+    # One building, asked for by what is known about it rather than where it
+    # is: its OpenStreetMap id, or part of its name. An id is the only handle
+    # that is certain - plenty of buildings have no name at all - and it is
+    # what openstreetmap.org/way/<id> opens.
+    if args.osm:
+        wanted = args.osm.strip().rsplit("/", 1)[-1]
+        one = [r for r in left if r.get("osm_id") == wanted]
+        if not one:
+            built_here = any(r for r in placed if wanted and wanted in str(r))
+            print(f"Nothing was left out with the id {wanted}."
+                  + ("  It looks like it was built." if built_here else
+                     "  It is not among this map's footprints at all - check"
+                     " the id, or whether it is inside the area you drew."))
+            return 0
+        for r in one:
+            print(f"{describe(r)}\n  left out: {r['reason']} - "
+                  f"{WHY.get(r['reason'], '')}\n  -> {FIX.get(r['reason'], '')}")
+        return 0
+
     here = [r for r in left if near(r, centre, args.radius, bool(latlon))]
     if args.reason:
         here = [r for r in here if r["reason"] == args.reason]
+    if args.name:
+        want = args.name.casefold()
+        here = [r for r in here if want in (r.get("name") or "").casefold()]
     # A placement row has no lat/lon, so a lat/lon search counts only tiles.
     built = [r for r in placed
              if near({"tile_x": r.get("tile_x"), "tile_y": r.get("tile_y")},

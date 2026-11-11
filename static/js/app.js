@@ -923,6 +923,7 @@ const SETTING_LABELS = {
   straight_roads:      ['Road layout', 'As mapped draws roads as they are. Knox County straight lays every road in straight runs along the tiles and on 45-degree diagonals. Knox County straight (clean) does that and squares off the short kinks between runs, so a street stays on one grid line or one diagonal - the default. Vanilla curves routes them the way the game’s own B42 map draws its streets: along the tiles, 45 degrees and the 2:1 slopes, with its curves and street shapes. Built-up streets square keeps streets lined with buildings on the grid, as the buildings are, and off them. The vanilla choices take a few minutes on a town.'],
   include_proposed_roads: ['Proposed roads', 'On includes roads marked as proposed in OpenStreetMap, even though they may not exist yet. Off leaves them out.'],
   max_size:            ['Largest building', 'Footprints above this are skipped.'],
+  max_buildings:       ['Most buildings', 'The most buildings the whole map may hold. 0 is no ceiling. Set it and the landmarks are kept - the police station, the school, the shops - while the houses are spaced out over the whole map until the count fits, so a big map is one worth driving across rather than one paved with houses. Fewer buildings is also the surest way to make a map quicker to build and lighter to play. It is a ceiling, not a quota: the finished map can come out a little under it, because some footprints are skipped for other reasons as well - too small to furnish, off the edge, under a road. Click a building under Change what is here to see which.'],
   apartment_footprint: ['Flats above', 'An untagged footprint this big reads as flats.'],
   apartment_chance:    ['Flats chance', 'How often such a footprint really becomes flats.'],
   vanilla_tiles:       ['Vanilla tiles only', 'On builds with the game’s own art only, leaving Erika’s Tiles out even when it is installed. A map built with the mod needs the mod to look right, so this is the one to turn on before handing a map to somebody who has not subscribed.'],
@@ -2871,6 +2872,9 @@ function setupPipeline(data) {
   if (data.buildingsReady) {
     const when = (data.builtAt || '').replace('T', ' ').slice(0, 16);
     showBuilt(`Built${when ? ' ' + when : ''} → ${data.mapName}.pzw. Build again to lay them out afresh.`);
+    loadLeftOut(data.mapName);
+  } else {
+    showLeftOut(null);
   }
   // Whatever the last compile of this map left behind, said again now: the
   // window has been closed and reopened since, and "done" would be a lie.
@@ -2889,6 +2893,46 @@ function setupPipeline(data) {
     .catch(() => { /* nothing to add if it cannot be asked */ });
 }
 
+// What the build left out, under the step that left it out, with the way to
+// ask about one building right there. The counts and their wording come from
+// the build (knoxbuild/why.py) so a new reason needs nothing here.
+function showLeftOut(report) {
+  const box = document.getElementById('leftOut');
+  if (!box) return;
+  if (!report || !report.total) { box.hidden = true; box.innerHTML = ''; return; }
+  const lines = (report.lines || []).map(l =>
+    `<li>${l.n} ${escapeHtml(l.text)}</li>`).join('');
+  box.hidden = false;
+  box.innerHTML = `<div class="left-out-head">${report.total} footprint${
+    report.total === 1 ? '' : 's'} did not become a building</div>
+    <ul>${lines}</ul>
+    <button type="button" id="whyOne" class="btn btn-small">Why is my
+      building missing?</button>`;
+  document.getElementById('whyOne').addEventListener('click', () => {
+    // Pick the Change tool, read the map's own features, and say what to
+    // click: the alternative was a csv and a command line. The tool button
+    // is what moves the panel to where it can be seen (shell.js); without
+    // the shell the panel is where it stands.
+    const tool = document.querySelector('[data-tool="change"]');
+    if (tool) tool.click();
+    const panel = document.getElementById('editMap');
+    panel.open = true;
+    if (!tool) panel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    loadEditable();
+  });
+}
+
+// The same counts for a map that was built earlier and is being opened
+// again, where no build just answered with them.
+async function loadLeftOut(mapName) {
+  if (!mapName) return;
+  try {
+    const res = await fetch(`/api/why/${encodeURIComponent(mapName)}`);
+    const data = await res.json();
+    if (res.ok) showLeftOut(data);
+  } catch (err) { /* nothing to show if it cannot be asked */ }
+}
+
 // The buildings are there: Buildings is done, and both ways to compile are
 // open. The WorldEd note said "Generate the buildings first" even after they
 // were built.
@@ -2905,6 +2949,7 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
   const btn = document.getElementById('buildingsBtn');
   btn.disabled = true;
   note('buildingsNote', 'Generating…');
+  showLeftOut(null);          // the last build's tally is not this one's
   showStop(currentMap);
   // The request answers only when the whole step is over, so what it is up to
   // comes from /api/progress meanwhile.
@@ -2938,6 +2983,7 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
     if (data.terrain) renderResults(data.terrain);
     renderCensus(data.population);
     showBuilt(`${data.count} buildings → ${data.pzw}`);
+    showLeftOut(data.left_out);
   } catch (err) {
     note('buildingsNote', err.message, 'bad');
   } finally {
@@ -3457,8 +3503,55 @@ function describeTags(tags) {
   for (const entry of sketchPalette) {
     if (Object.entries(entry.tags).every(([k, v]) => tags[k] === v)) return entry.label;
   }
-  const first = Object.entries(tags || {})[0];
+  // Its name before any tag of its own: "Manhattan New York Temple" is what
+  // somebody is looking for, and "addr:city=New York" is the first tag in
+  // alphabetical order rather than anything about the building.
+  const t = tags || {};
+  if (t.name) return t.name;
+  for (const key of ['building', 'amenity', 'shop', 'highway', 'landuse',
+                     'leisure', 'natural', 'waterway']) {
+    if (t[key]) return `${key}=${t[key]}`;
+  }
+  const first = Object.entries(t)[0];
   return first ? `${first[0]}=${first[1]}` : 'something';
+}
+
+// Why the building that was just clicked is not on the map - the question
+// everybody asks about a gap where their own house should be. The build keeps
+// the answer per footprint; this is only the asking (web/zones.py, and
+// tools/why_no_building.py for a whole area at once).
+async function showWhy(layer, tags) {
+  const box = document.getElementById('editWhy');
+  if (!box || !openedMap || !(tags || {}).building) return;
+  box.hidden = false;
+  box.textContent = 'Looking up what the build did with it...';
+  let data;
+  try {
+    const res = await fetch(`/api/why/${encodeURIComponent(openedMap.mapName)}`
+                            + `?osm=${encodeURIComponent(layer.osmId)}`);
+    data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+  } catch (err) {
+    // A building that cannot be explained is not worth an error in the way
+    // of removing it, which is what this panel is really for.
+    if (editSelected === layer) box.hidden = true;
+    return;
+  }
+  // Clicked away while it was being read: the answer is about the other one.
+  if (editSelected !== layer) return;
+  if (data.state === 'left out') {
+    box.className = 'why why-out';
+    box.innerHTML = `<strong>Not built:</strong> ${escapeHtml(data.why || data.reason)}.
+      <br><span class="hint">${escapeHtml(data.fix || '')}</span>`;
+  } else if (data.state === 'built') {
+    box.className = 'why why-in';
+    box.textContent = 'This one was built.';
+  } else {
+    box.className = 'why';
+    box.textContent = 'This map was generated before KnoxMap kept these '
+      + 'records. Generate it again and clicking a building says why it is '
+      + 'missing.';
+  }
 }
 
 function pickEdit(layer) {
@@ -3475,7 +3568,12 @@ function pickEdit(layer) {
     <select id="editRetag"><option value="">Say what it is...</option>
       ${sketchPalette.filter(e => e.geometry !== 'point').map(e =>
         `<option value="${e.id}">${escapeHtml(e.label)}</option>`).join('')}
-    </select>`;
+    </select>
+    <div class="why" id="editWhy" hidden></div>`;
+  // The panel is taller than the window; what was just clicked is no use
+  // sitting a couple of thousand pixels below the fold.
+  box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  showWhy(layer, tags);
   document.getElementById('editDelete').addEventListener('click', () => {
     mapEdits.removed.push(layer.osmId);
     delete mapEdits.moved[layer.osmId];

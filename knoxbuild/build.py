@@ -347,14 +347,24 @@ def _cut_big(units: list, metres_per_tile: float,
 
 
 def row_units(fp, special: str | None, btag: str, n_uses: int,
-              metres_per_tile: float, max_side: int | None = None):
+              metres_per_tile: float, max_side: int | None = None,
+              split: bool = True):
     """One footprint per unit of a row, or the footprint as it stands.
 
     `max_side` (see _cut_big) is passed only for a footprint that was too
     wide for settings.max_size and placed anyway, to be cut into units that
     fit rather than dropped.
+
+    `split` is off when the map is being held to a number of buildings
+    (settings.max_buildings): a mapped terrace is one footprint that would
+    otherwise become a dozen buildings, and a ceiling that counts footprints
+    while the map counts shopfronts is not the number anybody asked for. A
+    row then stays the one building the survey drew.
     """
     from .footprint import split_row
+
+    if not split:
+        return _cut_big([fp], metres_per_tile, max_side)
 
     if special == "mall" and max_side is None and \
             fp.tiles * metres_per_tile * metres_per_tile <= MALL_MAX_M2:
@@ -1754,8 +1764,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # police station needs is still free (knoxbuild/procedural.py). With
     # true_map on, nothing here runs and the order is the one it always was.
     thinning: dict = {}
-    if not settings.true_map:
-        from .procedural import HOUSING, Candidate, plan
+    # The candidates are wanted for either job: laying the town out for the
+    # game, or holding it to the number of buildings somebody asked for.
+    if not settings.true_map or settings.max_buildings:
+        from .procedural import HOUSING, Candidate, cap, plan
         cands = []
         m2_per_tile = info["meters_per_tile"] ** 2
         for _neg_area, i, px in order:
@@ -1785,8 +1797,45 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             has_use = (not notable and kind in HOUSING
                        and bool(_points_inside(points, px, set())))
             cands.append(Candidate(i, px, -_neg_area, kind, notable, has_use))
-        kept, thinning = plan(cands, max_size)
-        order = [(-c.area, c.index, c.px) for c in kept]
+        if not settings.true_map:
+            kept, thinning = plan(cands, max_size)
+            for i in thinning.pop("dropped", ()):
+                note_left_out(geo["features"][i], "thinned")
+            order = [(-c.area, c.index, c.px) for c in kept]
+            cands = kept
+        if settings.max_buildings:
+            # A ceiling on the whole map: the landmarks stay and the housing
+            # is spaced out until the count fits, so a big map can be one
+            # worth travelling across rather than one paved with houses.
+            def _mid(c):
+                # The polygon's centroid where there is one; the average of
+                # its corners for the handful whose centroid came back empty.
+                got = centres.get(c.index)
+                if got is not None:
+                    return got
+                return (sum(p[0] for p in c.px) / len(c.px),
+                        sum(p[1] for p in c.px) / len(c.px))
+
+            # Footprints that fall right off the map are not spent out of
+            # the ceiling: they were never going to be built, and counting
+            # them against it is how asking for 300 buildings gets 162. They
+            # stay in the order and the placement loop records them as
+            # "outside", exactly as it did before.
+            def _on_map(c) -> bool:
+                xs = [pt[0] for pt in c.px]
+                ys = [pt[1] for pt in c.px]
+                return (max(xs) > 0 and min(xs) < proj.width
+                        and max(ys) > 0 and min(ys) < proj.height)
+
+            on_map = [c for c in cands if _on_map(c)]
+            keep = cap([(c.index, *_mid(c), c.width, c.landmark)
+                        for c in on_map], int(settings.max_buildings))
+            for c in on_map:
+                if c.index not in keep:
+                    note_left_out(geo["features"][c.index], "over the limit")
+            off_map = {c.index for c in cands} - {c.index for c in on_map}
+            order = [o for o in order if o[1] in keep or o[1] in off_map]
+            thinning["capped"] = len(on_map) - len(keep)
     metres_per_tile = info["meters_per_tile"]
     context = Context(proj.width, proj.height, surroundings, metres_per_tile,
                       road_hierarchy=road_hierarchy)
@@ -1989,7 +2038,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         # one building it is the "uber building" players reported. Each unit
         # becomes its own building, standing wall to wall with the next.
         units = row_units(fp, special, btag, len(uses), metres_per_tile,
-                          max_side=max_size if oversize else None)
+                          max_side=max_size if oversize else None,
+                          split=not settings.max_buildings)
         if oversize:
             split_large += 1
         unit_mapped = _rooms_by_unit(mapped, fp, units, proj)
@@ -2402,10 +2452,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"  kind from land use  : {from_area}")
     print(f"  sheds and garages   : {sheds}")
     print(f"  rows cut into units : {rows_split} rows -> {units_made} buildings")
-    if thinning:
+    if "thinned" in thinning:
         print(f"  town laid out for PZ: {thinning['thinned']} houses left out, "
               f"{thinning['grown']} buildings grown, "
               f"{thinning['landmarks']} landmarks kept and placed first")
+    if thinning.get("capped"):
+        print(f"  held to {settings.max_buildings} buildings: "
+              f"{thinning['capped']} more left out, spread over the map, "
+              f"landmarks kept")
     print(f"  storeys from nearby : {from_near}")
     storeys = _c.Counter(r["levels"] for r in rows)
     print(f"  storeys             : {dict(sorted(storeys.items()))}")
