@@ -1327,14 +1327,23 @@ def check_overpass_setting(check, work: str) -> None:
                   "without Docker the local server says so and starts nothing")
             geo.shutil.which, geo._docker = (lambda name: "docker"), fake_docker
             check(client.post("/api/local-overpass", json={
-                "action": "start", "extract": "https://evil.example/x.osm.bz2"}).status_code == 400
+                "action": "start", "extract": "https://evil.example/x.osm.pbf"}).status_code == 400
                 and not any(c[0] == "run" for c in calls),
                 "only a Geofabrik extract is accepted, and nothing is run for any other")
-            good = "https://download.geofabrik.de/north-america/us/tennessee-latest.osm.bz2"
-            client.post("/api/local-overpass", json={"action": "start", "extract": good})
+            base = "https://download.geofabrik.de/north-america/us/tennessee-latest.osm"
+            legacy = client.post("/api/local-overpass", json={
+                "action": "start", "extract": f"{base}.bz2"})
+            check(legacy.status_code == 400 and ".osm.pbf" in legacy.get_json()["error"]
+                  and not any(c[0] == "run" for c in calls),
+                  "a legacy BZ2 URL is rejected with guidance to use PBF")
+            good = f"{base}.pbf"
+            response = client.post("/api/local-overpass", json={"action": "start", "extract": good})
             run = next((c for c in calls if c[0] == "run"), ())
-            check(f"OVERPASS_PLANET_URL={good}" in run and "127.0.0.1:12345:80" in run,
-                  "a good extract starts the container, reachable from this PC only")
+            check(response.status_code == 200 and f"OVERPASS_PLANET_URL={good}" in run
+                  and "127.0.0.1:12345:80" in run,
+                  "a Geofabrik PBF starts a localhost-only container")
+            check(f"OVERPASS_PLANET_PREPROCESS={geo.LOCAL_PBF_PREPROCESS}" in run,
+                  "the PBF import gets the conversion hook")
             d = client.post("/api/local-overpass", json={"action": "use"}).get_json()
             check(osm.OVERPASS_ENDPOINTS[0] == geo.LOCAL_URL
                   and len(osm.OVERPASS_ENDPOINTS) == len(osm._DEFAULT_ENDPOINTS) + 1,
