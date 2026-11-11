@@ -54,7 +54,7 @@ HIGHWAY_VALUE = {
     "road_major": "primary", "road_medium": "secondary",
     "road_minor": "tertiary", "road_service": "tertiary",
     "pedestrian": "tertiary",
-    "dirt_path": "trail", "paved_path": "trail",
+    "dirt_path": "trail", "paved_path": "tertiary",
 }
 RAIL_WIDTH_M = 4.0
 AREA_VALUE = {"water": ("water", "river"), "pool": ("water", "river"),

@@ -106,11 +106,18 @@ class ThinningAWholeBuilding(unittest.TestCase):
 
 
 class WhatTheBufferHolds(unittest.TestCase):
+    def test_empty_game_grid_is_reserved_before_rooms(self):
+        from tools.make_map_mod import META_BUDGET, META_CELL, META_ROOM
+        with mock.patch("knoxbuild.placement.standalone", return_value=True):
+            rooms = _rooms_that_fit(0, {"cells_x": 1, "cells_y": 1}, ".")
+        self.assertLessEqual(rooms, (META_BUDGET - 501 * 501 * META_CELL) // META_ROOM)
+
     def test_knox_county_is_given_up_when_the_map_stands_alone(self):
         from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
                                         META_CELL, META_ROOM)
         info = {"cells_x": 10, "cells_y": 10}
-        left = META_BUDGET - META_BUILDING * 1000 - META_CELL * 100
+        left = (META_BUDGET - META_BUILDING * 1000 - META_CELL * 100
+                - make_map_mod.META_EMPTY_GRID_RESERVE)
         with mock.patch("knoxbuild.placement.standalone", return_value=True):
             alone = _rooms_that_fit(1000, info, ".")
         with mock.patch("knoxbuild.placement.standalone", return_value=False):
@@ -123,7 +130,8 @@ class WhatTheBufferHolds(unittest.TestCase):
                                         META_ROOM)
         with mock.patch("knoxbuild.placement.standalone", return_value=True):
             rooms = _rooms_that_fit(500, {"cells_x": 20, "cells_y": 8}, ".")
-        expect = (META_BUDGET - META_BUILDING * 500 - META_CELL * 160) // META_ROOM
+        expect = (META_BUDGET - META_BUILDING * 500 - META_CELL * 160
+                  - make_map_mod.META_EMPTY_GRID_RESERVE) // META_ROOM
         self.assertEqual(rooms, expect)
 
 
@@ -162,7 +170,8 @@ class AWholeTownFitsTheBuffer(unittest.TestCase):
             allowed = plain["total"] * 3 // 4
             budget = (10 * allowed
                       + 23 * (plain["rows"] + plain["cellars"])
-                      + 8 * plain["cells"] + make_map_mod.KNOX_COUNTY_META)
+                      + 8 * plain["cells"] + make_map_mod.KNOX_COUNTY_META
+                      + make_map_mod.META_EMPTY_GRID_RESERVE)
             thin = self.town(os.path.join(work, "thin", "town"), budget)
 
             self.assertLess(thin["total"], plain["total"], "nothing was thinned")
