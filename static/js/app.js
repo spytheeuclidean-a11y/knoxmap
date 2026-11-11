@@ -2347,6 +2347,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     status.className = 'success';
     status.textContent = `Done in ${data.osmSeconds}s (OSM query). ${data.featureCount} features rendered.`;
+    showGapFill(data, status);
     fx.overlay.done(`${data.featureCount.toLocaleString()} features on the map`);
     fx.step('terrain', 'done');
     fx.toast('ok', 'Terrain generated',
@@ -2371,6 +2372,44 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+// ---- a town that came out empty ---------------------------------------------
+//
+// OpenStreetMap is drawn by people, so in plenty of the world a town is the
+// high street and not much else, and the two fillers that stand in for the rest
+// are optional. The server says why the fill added nothing (web/generation.py);
+// this says it beside the finished map, and when the reason is a package that is
+// not installed, offers to install it rather than telling the player to run pip.
+function showGapFill(data, status) {
+  const why = String(data.gapFillWhy || '').trim();
+  if (!why) return;
+  status.appendChild(document.createTextNode(' ' + why));
+  if (!/duckdb/i.test(why)) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-small';
+  btn.textContent = 'Install DuckDB';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Installing…';
+    try {
+      const res = await fetch('/api/install-optional', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'overture' }),
+      });
+      const done = await res.json();
+      if (!res.ok) throw apiError(done, res);
+      btn.replaceWith(document.createTextNode(
+        'DuckDB is installed. Generate this area again to fill the gaps.'));
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+      status.appendChild(document.createTextNode(` Could not install it: ${err.message}`));
+    }
+  });
+  status.appendChild(document.createTextNode(' '));
+  status.appendChild(btn);
+}
 
 // ---- stopping a long step ----
 //

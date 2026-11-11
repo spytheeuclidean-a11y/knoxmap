@@ -286,6 +286,7 @@ def _generate(data):
         _set_progress(map_name, stage="overture", done=0, total=1)
         # Microsoft's files first: plain downloads, nothing to install. Overture
         # (DuckDB) only if they cannot be reached.
+        source = "Microsoft's footprints"
         try:
             try:
                 features, gaps = msbuildings.add_missing(
@@ -295,6 +296,7 @@ def _generate(data):
                 raise
             except Exception as exc:  # noqa: BLE001
                 log.warning("microsoft buildings %s: %s", map_name, exc)
+                source = "Overture Maps"
                 features, gaps = overture.add_missing(
                     features, fetch_box, str(map_dir), map_name,
                     should_stop=_stopper(map_name))
@@ -304,8 +306,26 @@ def _generate(data):
             log.warning("overture %s: %s", map_name, exc)
             gaps = {"added": 0, "error": str(exc)}
         if gaps.get("added"):
-            log.info("overture %s: %d buildings OSM had not got, from %d fetched",
-                     map_name, gaps["added"], gaps.get("fetched", 0))
+            log.info("fill gaps %s: %d buildings OSM had not got, from %d fetched (%s)",
+                     map_name, gaps["added"], gaps.get("fetched", 0), source)
+        else:
+            # A town that came out empty is the report KnoxMap gets most, and
+            # this used to end in "0 from Overture" whether the package that
+            # reads it was missing, the download failed, or OpenStreetMap
+            # already had every roof in the box - the one case that needs
+            # nothing done about it. The window says this beside the finished
+            # map, and offers the install when a missing package is the reason
+            # (the reply's `gapFillWhy`, web/system.py's /api/install-optional).
+            roofs = gaps.get("fetched", 0)
+            if gaps.get("error") or gaps.get("why"):
+                gaps["why"] = gaps.get("error") or gaps.get("why")
+            elif roofs:
+                gaps["why"] = (f"{source} had {roofs} roof{'s' if roofs != 1 else ''} here "
+                               "and OpenStreetMap already had every one of them")
+            else:
+                gaps["why"] = (f"{source} had nothing here, so OpenStreetMap's own "
+                               "buildings are all there is")
+            log.warning("fill gaps %s: nothing added - %s", map_name, gaps["why"])
 
     # What the mapper drew, on top of whatever came down. It goes in here, with
     # the real features and before a single thing is measured from them, so the
@@ -456,7 +476,7 @@ def _generate(data):
     except (OSError, ValueError):
         pass
     log.info("generate %s: done, %d features, %dx%d tiles, rotation %.1f, "
-             "%d houses from addresses, %d from Overture, %.1fs (download %.1fs)",
+             "%d houses from addresses, %d from gap fill, %.1fs (download %.1fs)",
              map_name, len(features), result.width, result.height, rotation,
              from_addresses, gaps.get("added", 0), time.time() - t0, osm_time)
 
@@ -477,8 +497,11 @@ def _generate(data):
         # As they were taken, clamped and saved - not as the page sent them -
         # so it can tell afterwards which knobs have really been moved since.
         "settings": settings.to_dict(),
-        "fromOverture": gaps.get("added", 0),
-        "overtureError": gaps.get("error") or gaps.get("why") or "",
+        # What the gap fill put in that OpenStreetMap had not got - Microsoft's
+        # footprints or Overture, whichever answered - and when it added
+        # nothing, why not, in a sentence the window can show as it stands.
+        "fromGapFill": gaps.get("added", 0),
+        "gapFillWhy": gaps.get("error") or gaps.get("why") or "",
         # What the optional data layers did (knoxdata/): which applied, the
         # suggested preset from real land cover, and the region/climate read.
         "dataLayers": (layers.report.get("used", []) if layers else []),

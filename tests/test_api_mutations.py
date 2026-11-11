@@ -85,6 +85,34 @@ class TheSetupCard(unittest.TestCase):
                 self.assertIn("ok", check)
 
 
+class InstallingAnOptionalPackage(unittest.TestCase):
+    """The one route that runs pip, so the only thing worth testing without a
+    network is that it runs it for the two packages it knows and nothing else."""
+
+    def setUp(self):
+        self.client = A.app.test_client()
+
+    def test_anything_else_is_refused_and_pip_is_not_run(self):
+        from web import system
+
+        for bad in ("", "duckdb", "pip", "../../etc", None, ["duckdb"]):
+            with self.subTest(id=bad):
+                with mock.patch("subprocess.run") as run:
+                    answer = self.client.post("/api/install-optional", json={"id": bad})
+                self.assertEqual(answer.status_code, 400)
+                run.assert_not_called()
+        self.assertEqual(set(system.OPTIONAL_PACKAGES), {"overture", "room_solver"})
+
+    def test_the_ids_are_the_ones_the_setup_report_offers(self):
+        # The page asks for the id the report gave it, so a renamed one would
+        # leave a button that installs nothing.
+        from web import system
+
+        offered = {c["id"] for c in self.client.get("/api/setup-status").get_json()["optional"]}
+        self.assertTrue(set(system.OPTIONAL_PACKAGES) <= offered,
+                        f"{set(system.OPTIONAL_PACKAGES) - offered} is not offered")
+
+
 class Updates(unittest.TestCase):
     def test_restarting_with_nothing_ready_is_a_refusal(self):
         with mock.patch.dict(os.environ, {"KNOXMAP_WINDOW": "1"}):

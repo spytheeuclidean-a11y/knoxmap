@@ -148,6 +148,59 @@ def api_setup_status():
     return jsonify(_setup_report())
 
 
+# The optional pieces that are a pip install away, by the id the setup report
+# gives them. Nothing else may be installed through the endpoint: it runs pip
+# on the player's PC, and a name the page sent would be a name anybody's page
+# could send. The two ids are the report's own, so the page asks for what the
+# report offered and the two cannot drift apart.
+OPTIONAL_PACKAGES = {
+    "overture": ("duckdb", "Fill gaps from Overture"),
+    "room_solver": ("ortools", "Planned house rooms"),
+}
+
+
+@bp.route("/api/install-optional", methods=["POST"])
+def api_install_optional():
+    """Install one optional package into the Python KnoxMap is running on.
+
+    That interpreter and not "the system": a player's KnoxMap runs from its own
+    .venv (setup.sh, Setup.bat), and a package installed anywhere else is one
+    the app cannot import. It used to be a line in a readiness list telling the
+    player to find that Python and run pip themselves, which is where the
+    report of a town with no buildings in it ended up (#86).
+    """
+    import importlib
+    import subprocess
+
+    wanted = str(_json_body().get("id") or "")
+    if wanted not in OPTIONAL_PACKAGES:
+        return jsonify({"error": f"{wanted!r} is not an optional package KnoxMap installs."}), 400
+    package, what = OPTIONAL_PACKAGES[wanted]
+    log.info("installing %s for %s with %s", package, what, sys.executable)
+    try:
+        done = subprocess.run([sys.executable, "-m", "pip", "install",
+                               "--disable-pip-version-check", package],
+                              capture_output=True, text=True, timeout=600)
+    except subprocess.TimeoutExpired:
+        return failed(f"Installing {package} took longer than ten minutes. Check the "
+                      "internet connection and try again.", 504)
+    except OSError as exc:
+        return failed(f"Could not run pip to install {package}: {exc}", 500, exc)
+    if done.returncode != 0:
+        tail = [line for line in (done.stderr or done.stdout or "").splitlines()
+                if line.strip()][-4:]
+        return failed(f"pip could not install {package}: " + " / ".join(tail), 500)
+    importlib.invalidate_caches()
+    try:
+        importlib.import_module(package)
+        ready = True
+    except Exception as exc:  # noqa: BLE001 - installed and unimportable is worth saying
+        log.warning("%s installed but does not import: %s", package, exc)
+        ready = False
+    log.info("installed %s for %s (importable: %s)", package, what, ready)
+    return jsonify({"id": wanted, "package": package, "ready": ready})
+
+
 def _setup_report() -> dict:
     """What is installed, so the page can say exactly what is missing.
 
