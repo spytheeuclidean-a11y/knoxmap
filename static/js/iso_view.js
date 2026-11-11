@@ -44,7 +44,6 @@
 
   // Progress overlay elements and state
   let overlay = null;
-  let progressKicker = null;
   let progressTitle = null;
   let progressSub = null;
   let progressBar = null;
@@ -204,7 +203,6 @@
     popoverCoords = document.getElementById('isoPopoverCoords');
 
     overlay = document.getElementById('isoOverlay');
-    progressKicker = document.getElementById('isoProgressKicker');
     progressTitle = document.getElementById('isoProgressTitle');
     progressSub = document.getElementById('isoProgressSub');
     progressBar = document.getElementById('isoProgressBar');

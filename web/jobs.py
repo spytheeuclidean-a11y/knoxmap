@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+import time
 
 from flask import Blueprint, jsonify, request
 
@@ -16,10 +17,41 @@ _PROGRESS: dict[str, dict] = {}
 _COMPILE: dict[str, dict] = {}
 _PROGRESS_LOCK = threading.Lock()
 
+# A stage's pace needs a few seconds behind it before the time it implies is
+# worth showing: off the first tile of a big map it is noise, and a time-left
+# that jumps about is worse than none.
+ETA_AFTER_SECONDS = 5
+
+
+def _eta(now: dict) -> int | None:
+    """Seconds left in the stage `now` describes, from the pace it has set.
+
+    The share of the work done - tiles, files, buildings - against the time
+    since the stage began. None until there is enough of both to mean anything.
+    """
+    done, total = now.get("done"), now.get("total")
+    share = done / total if done and total and 0 < done < total else now.get("fraction")
+    started = now.get("started")
+    if not isinstance(share, (int, float)) or not 0 < share < 1 or not started:
+        return None
+    elapsed = time.time() - started
+    if elapsed < ETA_AFTER_SECONDS:
+        return None
+    return max(1, int(round(elapsed / share * (1 - share))))
+
 
 def _set_progress(map_name: str, **fields) -> None:
     with _PROGRESS_LOCK:
-        _PROGRESS.setdefault(map_name, {}).update(fields)
+        now = _PROGRESS.setdefault(map_name, {})
+        stage = fields.get("stage")
+        if stage is not None and stage != now.get("stage"):
+            now["started"] = time.time()      # a new stage starts its own clock
+        now.update(fields)
+        left = _eta(now)
+        if left is None:
+            now.pop("etaSeconds", None)
+        else:
+            now["etaSeconds"] = left
     # Discord Rich Presence, if the player asked for it. It is a set on a
     # background thread and nothing here waits on it: knoxpresence swallows
     # its own errors so a Discord that is closed, restarting or not installed
