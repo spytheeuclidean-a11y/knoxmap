@@ -201,8 +201,9 @@ def _buildings_geojson(feats: list[OSMFeature],
                     # amenity/shop/leisure carry what a building actually is
                     # far more reliably than the building tag alone, and
                     # knoxbuild uses them to pick materials and room plans.
-                    "properties": {k: v for k, v in f.tags.items()
-                                   if k in BUILDING_TAGS},
+                    "properties": {**{k: v for k, v in f.tags.items()
+                                      if k in BUILDING_TAGS},
+                                   "osm_id": f.osm_id},
                     "geometry": {"type": "Polygon", "coordinates": [coords]},
                 })
                 if indoor:
@@ -219,8 +220,9 @@ def _buildings_geojson(feats: list[OSMFeature],
             if rings:
                 features.append({
                     "type": "Feature",
-                    "properties": {k: v for k, v in f.tags.items()
-                                   if k in BUILDING_TAGS},
+                    "properties": {**{k: v for k, v in f.tags.items()
+                                      if k in BUILDING_TAGS},
+                                   "osm_id": f.osm_id},
                     "geometry": {"type": "MultiPolygon", "coordinates":
                                  [[r] for r in rings]},
                 })

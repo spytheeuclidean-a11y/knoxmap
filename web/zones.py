@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from generator import edits as mapedits
 from generator import osm, sketch
+from knoxbuild import why
 
 from web.common import CACHE_DIR, _json_body, _map_dir, failed
 from web.mapfiles import (_load_design, _load_edits, _load_settings,
@@ -58,6 +59,25 @@ def api_features(name: str):
     out = mapedits.as_geojson(features, view, EDIT_FEATURE_LIMIT)
     out["edits"] = _load_edits(map_dir)
     return jsonify(out)
+
+
+@bp.route("/api/why/<name>")
+def api_why(name: str):
+    """Why one footprint did not become a building, for the clicked building.
+
+    The build already writes a row per footprint it left out; this is that
+    row, in words, so that the answer is a click rather than a csv and a
+    command line (tools/why_no_building.py does the same for a whole area).
+    """
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Bad map name."}), 400
+    osm_id = (request.args.get("osm") or "").strip()
+    if not osm_id:
+        # No building named: how the whole map went, which is what the window
+        # shows under the Buildings step when a built map is opened again.
+        return jsonify(why.summary(str(map_dir)))
+    return jsonify(why.for_id(str(map_dir), osm_id))
 
 
 @bp.route("/api/edits/<name>", methods=["GET", "POST"])
