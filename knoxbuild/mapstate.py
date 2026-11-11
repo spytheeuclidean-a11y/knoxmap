@@ -66,14 +66,22 @@ def read(map_dir: str) -> dict:
         return {}
 
 
-def stamp(map_dir: str, stage: str, version: str | None = None) -> None:
-    """Record that `stage` just ran, with this KnoxMap's version."""
+def stamp(map_dir: str, stage: str, version: str | None = None,
+          took: float | None = None) -> None:
+    """Record that `stage` just ran, with this KnoxMap's version.
+
+    `took` is how many seconds it took, when the caller timed it: it is what the
+    window's forecast for the next map is worked out from, and it costs a line
+    in a file that is already being written.
+    """
     if version is None:
         import knoxlog
         version = knoxlog.version()
     state = read(map_dir)
     stages = state.setdefault("stages", {})
     stages[stage] = {"version": version, "at": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    if took is not None and took > 0:
+        stages[stage]["took"] = round(float(took), 1)
     # A step invalidates whatever was made from its output.
     for later in STAGES[STAGES.index(stage) + 1:]:
         stages.pop(later, None)
@@ -81,6 +89,19 @@ def stamp(map_dir: str, stage: str, version: str | None = None) -> None:
         knoxfiles.write(_path(map_dir), state, indent=2)
     except OSError:
         pass          # a map whose stamp cannot be written still works
+
+
+def took(map_dir: str, stage: str) -> float | None:
+    """How long this map's last run of `stage` took, or None if it was not timed.
+
+    Maps stamped before durations were recorded have only `at`, and a guessed
+    stage has nothing at all - both read as unknown rather than as fast.
+    """
+    rec = (read(map_dir).get("stages") or {}).get(stage) or {}
+    value = rec.get("took")
+    if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0:
+        return float(value)
+    return None
 
 
 def record_install(map_dir: str, mod_root: str, mod_id: str, title: str = "") -> None:

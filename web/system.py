@@ -495,6 +495,7 @@ def api_install():
     # follow it on /api/progress like the other steps, instead of a greyed-out
     # button and nothing else until it was over.
     from web.jobs import _set_progress
+    t0 = time.time()
     _set_progress(map_dir.name, stage="install", done=0, total=0)
     try:
         mod_root, n_cells, extras = make_map_mod.package(
@@ -508,7 +509,7 @@ def api_install():
         _set_progress(map_dir.name, stage="install-failed")
         return failed(f"Install failed: {exc}", 500, exc)
     _set_progress(map_dir.name, stage="installed")
-    mapstate.stamp(str(map_dir), "install")
+    mapstate.stamp(str(map_dir), "install", took=time.time() - t0)
     mapstate.record_install(str(map_dir), str(mod_root), mod_id, title)
     log.info("install %s: %d cells as %s, extras %s", map_dir.name, n_cells, mod_id, extras)
     return jsonify({"modRoot": str(mod_root), "cells": n_cells,

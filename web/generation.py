@@ -48,6 +48,31 @@ def generate():
     return _generate(_json_body())
 
 
+@bp.route("/api/forecast", methods=["POST"])
+def api_forecast():
+    """How long this area will take, from how long the last maps did.
+
+    Asked before Generate, so it comes with the area in the request rather than
+    reading a map that does not exist yet. Nothing here refuses anything: the
+    size checks already do that, and this is the answer to "can I do this
+    tonight?".
+    """
+    from web.forecast import forecast
+
+    data = _json_body()
+    try:
+        south, west, north, east = (float(data["south"]), float(data["west"]),
+                                    float(data["north"]), float(data["east"]))
+        meters_per_tile = float(data.get("metersPerTile") or 1.0)
+    except (KeyError, TypeError, ValueError):
+        return jsonify({"error": "Draw an area first."}), 400
+    (south, west, north, east), why = _normalise_bbox(south, west, north, east)
+    if why:
+        return jsonify({"error": why}), 400
+    return jsonify(forecast(common.OUTPUT_DIR, south, west, north, east,
+                            tidy_scale(meters_per_tile)))
+
+
 def _fetch_landcover(knoxdata, settings, bbox, map_name) -> None:
     """Download the WorldCover tiles this map needs, if they are not cached.
 
@@ -419,7 +444,7 @@ def _generate(data):
 
     _write_readme(map_dir, map_name, result)
     _set_progress(map_name, stage="done")
-    mapstate.stamp(str(map_dir), "generate")
+    mapstate.stamp(str(map_dir), "generate", took=time.time() - t0)
     from_addresses = 0
     try:
         with open(map_dir / f"{map_name}_info.json", encoding="utf-8") as f:
@@ -609,7 +634,7 @@ def api_buildings():
                  out.getvalue()[-4000:])
         return failed(f"Building generation failed: {exc}", 500, exc)
     tbx = sorted((map_dir / "buildings").glob("*.tbx"))
-    mapstate.stamp(str(map_dir), "build")
+    mapstate.stamp(str(map_dir), "build", took=time.time() - t0)
     log.info("buildings %s: %d files in %.1fs\n%s", map_dir.name, len(tbx),
              time.time() - t0, out.getvalue()[-3000:])
     return jsonify({"count": len(tbx), "terrain": terrain,

@@ -677,6 +677,50 @@ function boxSize(s, w, n, e) {
   };
 }
 
+// How long this area will take, at the pace of the maps already made here.
+// A step with no history behind it says nothing rather than guessing: a
+// forecast wrong by an hour is worse than none, because somebody plans an
+// evening around it.
+let forecastToken = 0;
+let forecastTimer = null;
+function loadForecast(s, w, n, e, mpt) {
+  // The selection is dragged, not clicked: wait for it to settle rather than
+  // asking on every pixel.
+  clearTimeout(forecastTimer);
+  forecastTimer = setTimeout(() => requestForecast(s, w, n, e, mpt), 400);
+}
+async function requestForecast(s, w, n, e, mpt) {
+  const box = document.getElementById('forecastNote');
+  if (!box) return;
+  const mine = ++forecastToken;
+  let data;
+  try {
+    const res = await fetch('/api/forecast', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ south: s, west: w, north: n, east: e,
+                             metersPerTile: mpt }),
+    });
+    data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+  } catch (_) {
+    box.hidden = true;          // no answer is not a reason to say anything
+    return;
+  }
+  if (mine !== forecastToken) return;   // the selection moved while this was out
+  const label = { generate: 'Generate', build: 'Build', compile: 'Compile' };
+  const said = [];
+  for (const step of ['generate', 'build', 'compile']) {
+    const seconds = data.steps && data.steps[step];
+    if (seconds) said.push(`${label[step]} about ${formatLeft(seconds)}`);
+  }
+  if (!said.length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  box.textContent = `At the pace of the maps already made here: ${said.join(' · ')}.`;
+}
+
 function updateBboxFields() {
   if (!currentRect) return clearBboxFields();
   const { s, w, n, e } = rectBounds(currentRect);
@@ -735,6 +779,7 @@ function updateBboxFields() {
         <span>${fill < 1 ? '<1' : Math.round(fill)}% of limit</span></div>
       <div class="bar"><div class="bar-fill" style="width:${fill}%"></div></div>
     </div>
+    <div id="forecastNote" class="stat-note" hidden></div>
     ${selectionShape() !== null && shapeKm2 !== null ? `<div class="stat-note shape">
       Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b>
       (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.
@@ -747,6 +792,7 @@ function updateBboxFields() {
       mostly OpenStreetMap downloads.</div>` : ''}
   `;
   fx.countUp(stats);
+  loadForecast(s, w, n, e, mpt);
   btn.disabled = false;
   fx.step('area', 'done');
 
@@ -2382,6 +2428,12 @@ function wasStopped(data, res) {
 
 let progressTimer = null;
 
+// " - about 12 min left", once a stage has set a pace. Compile has said
+// this for a while; this is the same reading for the steps before it.
+function leftText(p) {
+  return p && p.etaSeconds ? ` \u2014 about ${formatLeft(p.etaSeconds)} left` : '';
+}
+
 function startProgress(mapName) {
   clearInterval(progressTimer);
   progressTimer = setInterval(async () => {
@@ -2397,8 +2449,8 @@ function startProgress(mapName) {
         status.textContent = p.note
           ? p.note
           : (total > 1
-            ? `Querying OpenStreetMap — area ${(p.done || 0) + 1} of ${total}…`
-            : 'Querying OpenStreetMap…');
+            ? `Querying OpenStreetMap — area ${(p.done || 0) + 1} of ${total}`
+            : 'Querying OpenStreetMap') + leftText(p) + '…';
       } else if (p.stage === 'overture') {
         // A few minutes, nearly all of it Overture's own files being sifted
         // for the handful that cover this box. Saying so beats a dead bar.
@@ -2408,10 +2460,10 @@ function startProgress(mapName) {
         status.textContent = `Routing the roads — ${(p.done || 0).toLocaleString()} of `
                            + `${(p.total || 0).toLocaleString()} stretches…`
                            + (p.slowRoads ? ' Slowly: the fast road router (knoxroute) is '
-                              + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '');
+                              + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '') + leftText(p);
       } else if (p.stage === 'render') {
         status.textContent = `Rendering ${p.features.toLocaleString()} features `
-                           + 'into bitmaps…';
+                           + 'into bitmaps…' + leftText(p);
       }
     } catch (_) { /* the generate call is the source of truth */ }
   }, 1500);
@@ -2916,7 +2968,7 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
         `/api/progress?map=${encodeURIComponent(watching)}`)).json();
       if (!over && p.stage === 'buildings' && p.note) {
         const pct = p.fraction != null ? ` (${Math.round(100 * p.fraction)}%)` : '';
-        note('buildingsNote', `${p.note}${pct}…`);
+        note('buildingsNote', `${p.note}${pct}${leftText(p)}…`);
       }
     } catch (_) { /* the next tick will do */ }
   }, 1500);
