@@ -407,8 +407,13 @@ def write_gun_cache(project_dir: str, mod_root: str, mod_id: str) -> dict | None
 
 
 def _lua_string(value: str) -> str:
-    """A Lua string literal. Map names carry apostrophes and backslashes."""
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A Lua string literal. Map names carry apostrophes and backslashes, and
+    place names are written in any script - knoxbuild/worldmap.py's lua_string
+    is the one that decides how, so a name that reaches the game one way reaches
+    it the same way in every file KnoxMap writes."""
+    from knoxbuild.worldmap import lua_string
+
+    return lua_string(str(value))
 
 
 def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
@@ -430,6 +435,8 @@ def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
     import json as _json
     import re as _re
 
+    from knoxbuild.worldmap import lua_text
+
     annotations = os.path.join(project_dir, "worldmap-annotations.lua")
     pois, town = [], name
     if os.path.exists(annotations):
@@ -438,7 +445,7 @@ def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
         found = _re.findall(r'addUntranslatedText\("((?:[^"\\]|\\.)*)", "([a-z-]+)", '
                             r'(-?[\d.]+), (-?[\d.]+)\)', text)
         for label, style, x, y in found:
-            label = label.replace('\\"', '"').replace("\\\\", "\\")
+            label = lua_text(label)
             if style == "text-town":
                 town = label
             elif style in SPAWN_SELECTOR_STYLES and len(pois) < SPAWN_SELECTOR_MAX_POIS:
@@ -454,8 +461,7 @@ def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
         return 0
     ox, oy = _world_origin_tiles(project_dir)
 
-    def lua_str(s: str) -> str:
-        return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
+    lua_str = _lua_string
 
     entries = "\n".join(
         f'        {{ type = "custom_poi", group = {lua_str(group)}, name = {lua_str(label)}, '
@@ -623,6 +629,10 @@ SAVE_BUFFER = 10_485_760
 META_BUDGET = 9_000_000
 META_CELL, META_ROOM, META_BUILDING = 8, 10, 23
 KNOX_COUNTY_META = 1_160_348
+# Build 42's world grid spans at least -250..250 on each axis; savePart writes
+# two integers even for a cell without a lot header. Count populated cells again
+# below for a conservative reserve, including Knox County's existing cells.
+META_EMPTY_GRID_RESERVE = 501 * 501 * META_CELL
 
 
 def save_bytes(cells: list[str]) -> int:
@@ -1030,7 +1040,8 @@ def package(project_dir: str, name: str, mod_id: str,
     if big_map:
         extra_names.append("HOW TO PLAY.txt - a map this size needs more memory "
                            "than the game gives itself; the file says how")
-    meta = save_bytes(cells) + (0 if is_standalone else KNOX_COUNTY_META)
+    meta = (save_bytes(cells) + META_EMPTY_GRID_RESERVE
+            + (0 if is_standalone else KNOX_COUNTY_META))
     if meta > META_BUDGET:
         extra_names.append(
             f"WARNING: too many rooms for the game to save - {meta / 1e6:.1f} MB of "

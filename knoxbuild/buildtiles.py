@@ -166,7 +166,7 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
     - Walls stand on the north and west edge of a square, and exist where the room
       number on the other side of the edge differs. A square with a room uses that
       room's interior wall tile (and its trim, if the room has one), an empty square the building's exterior wall tile, with
-      its grime on top on every storey and its trim band on the ground level only.
+      its grime and trim band on the ground level only.
     - A square with both a north and a west wall has the NorthWest tile instead of the two.
     - An exterior post (SouthEast) stands on an empty square with no wall of its own
       where a wall ends on the square to its north and another on the square to its west.
@@ -185,8 +185,8 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
 
     ext = _entry(b, b.attrs.get("ExteriorWall", 0))
     trim = _entry(b, b.attrs.get("ExteriorWallTrim", 0))
-    grime = _entry(b, b.attrs.get("GrimeWall", 0))
     ground = z == 0
+    grime = _entry(b, b.attrs.get("GrimeWall", 0)) if ground else {}
 
     custom_walls = {}
     custom_ends = {}
@@ -207,8 +207,7 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
         return (x, y, "North") in custom_walls or room(x, y - 1) != room(x, y)
 
     def outside_tiles(wall: str, trim_tile: str, grime_tile: str) -> list[str]:
-        """A wall on an empty square: its trim band on the ground level, its grime on
-        every storey - a weathered facade is weathered all the way up."""
+        """A wall on an empty square, with its ground-level trim and grime."""
         return [wall] + ([trim_tile] if ground else []) + [grime_tile]
 
     floors: dict[tuple[int, int], list[str]] = {}

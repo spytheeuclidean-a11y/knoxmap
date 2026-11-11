@@ -359,6 +359,8 @@ def _get_wild_strip_free(landscape: Image.Image, veg: Image.Image,
     free_s = open_s & np.all(veg_s == 0, axis=2)
     if pad > 0:
         free_s &= ~_box_any(~open_s, pad)
+    # WorldCover's class for this ground wins over the guess, so the strip is
+    # the same whole-map `exclude` sliced to the rows it covers.
     if exclude is not None:
         free_s &= ~exclude[y0:y1]
     offset = top - y0
@@ -447,7 +449,7 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
     for top in range(0, h, BOX_STRIP_ROWS):
         bottom = min(h, top + BOX_STRIP_ROWS)
         free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
-                                          WILD_CLEAR_OF_PAVING, exclude)
+                                      WILD_CLEAR_OF_PAVING, exclude)
         sub_y = [y for y in range(top, bottom) if y % 6 == 0]
         if not sub_y:
             continue
@@ -471,7 +473,7 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
     for top in range(0, h, BOX_STRIP_ROWS):
         bottom = min(h, top + BOX_STRIP_ROWS)
         free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
-                                          WILD_CLEAR_OF_PAVING, exclude)
+                                      WILD_CLEAR_OF_PAVING, exclude)
         n = noise(np.arange(top, bottom, dtype=np.float32), xs)
         inside = free_s & (n > edge)
         if not inside.any():

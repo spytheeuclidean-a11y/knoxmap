@@ -103,6 +103,20 @@ class RoadHierarchyTests(unittest.TestCase):
         self.assertEqual(renderer._verge_width_m(residential, "road_minor"), 1.5)
         self.assertEqual(renderer._verge_width_m(service, "road_service"), 0.0)
 
+    def test_explicitly_mapped_or_absent_sidewalks_are_not_generated(self):
+        for tags in ({"sidewalk:both": "separate"},
+                     {"sidewalk:left": "no", "sidewalk:right": "separate"},
+                     {"sidewalk": "no"}):
+            feat = SimpleNamespace(tags={"highway": "residential", **tags})
+            self.assertEqual(renderer._sidewalk_width_m(feat, "road_minor"), 0)
+        feat = SimpleNamespace(tags={"highway": "residential", "sidewalk:left": "separate"})
+        self.assertGreater(renderer._sidewalk_width_m(feat, "road_minor"), 0)
+
+    def test_map_distinguishes_paved_sidewalks_from_dirt_trails(self):
+        from knoxbuild.worldmap import HIGHWAY_VALUE
+        self.assertEqual(HIGHWAY_VALUE["dirt_path"], "trail")
+        self.assertNotEqual(HIGHWAY_VALUE["paved_path"], "trail")
+
     def test_road_hierarchy_raster_covers_the_right_of_way(self):
         feat = osm.OSMFeature(1, "way", {"highway": "residential"},
                               [(20, 8), (20, 56)])

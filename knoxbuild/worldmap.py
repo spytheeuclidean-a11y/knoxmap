@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from xml.sax.saxutils import quoteattr
 
 from shapely.geometry import LineString, MultiLineString, Polygon, box
@@ -54,7 +55,7 @@ HIGHWAY_VALUE = {
     "road_major": "primary", "road_medium": "secondary",
     "road_minor": "tertiary", "road_service": "tertiary",
     "pedestrian": "tertiary",
-    "dirt_path": "trail", "paved_path": "trail",
+    "dirt_path": "trail", "paved_path": "tertiary",
 }
 RAIL_WIDTH_M = 4.0
 AREA_VALUE = {"water": ("water", "river"), "pool": ("water", "river"),
@@ -237,10 +238,67 @@ def write(out_dir: str, map_name: str, proj, info: dict,
     return {"map_features": len(features), "map_cells": cells, "streets": named,
             "labels": len(labels)}
 
-def _lua_string(text: str) -> str:
-    escaped = (text.replace("\\", "\\\\").replace('"', '\\"')
-               .replace("\n", " ").replace("\r", " "))
-    return f'"{escaped}"'
+def lua_string(text: str) -> str:
+    """A Lua string literal for `text`, with every byte above ASCII escaped.
+
+    The game reads worldmap-annotations.lua with a reader that a non-ASCII byte
+    stops: a town whose name is in Cyrillic lost its whole in-game map, and
+    replacing the one Cyrillic character in a name with a Latin lookalike brought
+    all 44 of that map's annotations back (#38). A Lua decimal escape is the same
+    byte in the string and nothing but ASCII in the file, so the name is still
+    the name - the bytes are exactly the UTF-8 they were, and nothing here
+    guesses at how the game reads them.
+    """
+    out = []
+    for char in text:
+        if char == "\\":
+            out.append("\\\\")
+        elif char == '"':
+            out.append('\\"')
+        elif char in "\n\r" or ord(char) < 0x20 or ord(char) == 0x7F:
+            out.append(" ")          # a control character has no place in a label
+        elif ord(char) < 0x7F:
+            out.append(char)
+        else:
+            # UTF-8 never starts or continues with a byte below 128, so every
+            # escape here is three digits and cannot run into the next one.
+            out.extend(f"\\{byte}" for byte in char.encode("utf-8"))
+    return '"' + "".join(out) + '"'
+
+
+_LUA_ESCAPES = {"n": "\n", "t": "\t", "r": "\r", "a": "\a", "b": "\b", "f": "\f",
+                "v": "\v", "\\": "\\", '"': '"', "'": "'"}
+
+
+def lua_text(literal: str) -> str:
+    """The text a Lua string literal stands for - lua_string() the other way.
+
+    Takes the literal with or without its quotes: the regex that reads a label
+    back out of worldmap-annotations.lua captures what is between them. A string
+    that is not a literal is decoded as it stands, because a map built by an
+    older KnoxMap has raw UTF-8 in that file and it still has to install.
+    """
+    body = literal[1:-1] if (len(literal) >= 2 and literal.startswith('"')
+                             and literal.endswith('"')) else literal
+    out, i = bytearray(), 0
+    while i < len(body):
+        char = body[i]
+        if char != "\\":
+            out += char.encode("utf-8")
+            i += 1
+            continue
+        following = body[i + 1] if i + 1 < len(body) else ""
+        digits = re.match(r"\d{1,3}", body[i + 1:]) if following.isdigit() else None
+        if digits:
+            out.append(int(digits.group(0)) & 0xFF)
+            i += 1 + len(digits.group(0))
+        elif following in _LUA_ESCAPES:
+            out += _LUA_ESCAPES[following].encode("utf-8")
+            i += 2
+        else:
+            out += following.encode("utf-8")     # not an escape Lua knows: keep it
+            i += 2
+    return out.decode("utf-8", errors="replace")
 
 
 def _write_annotations(path: str, labels: list[tuple[str, str, float, float, float]],
@@ -257,7 +315,7 @@ def _write_annotations(path: str, labels: list[tuple[str, str, float, float, flo
             continue
         seen.add((name, layer))
         lines += [
-            f"\tsymbol = symbolsAPI:addUntranslatedText({_lua_string(name)}, "
+            f"\tsymbol = symbolsAPI:addUntranslatedText({lua_string(name)}, "
             f'"{layer}", {round(x + ox)}, {round(y + oy)})',
             "\tsymbol:setRGBA(0.000, 0.000, 0.000, 0.000)",
             f"\tsymbol:setScale({scale:.3f})",

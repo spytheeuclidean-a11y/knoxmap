@@ -188,3 +188,35 @@ def _population(map_dir: Path) -> dict | None:
             return json.load(f)
     except (OSError, ValueError):
         return None
+
+
+def _layout_audit(map_dir: Path) -> dict | None:
+    """What knoxbuild/audit.py found when this map was last built.
+
+    Build writes it beside the map ({name}_layout.json): how many buildings it
+    checked, how many of them need a look, and the total of each thing wrong -
+    a room with no way in, a door onto the stairs, a flat with no front door.
+    None for a map built before the audit existed, or by a build where the
+    checks could not run.
+    """
+    try:
+        with open(map_dir / f"{map_dir.name}_layout.json", encoding="utf-8") as f:
+            found = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return found if isinstance(found, dict) else None
+
+
+def _audited(map_dir: Path, population: dict | None) -> dict | None:
+    """The population, with the layout audit beside it.
+
+    Two files rather than one: a recount redraws the zombies without laying a
+    building out again, and would write the audit away with the population if
+    they shared a file. Joined here so no caller has to know that.
+    """
+    if population is None:
+        return None
+    audit = _layout_audit(map_dir)
+    if audit is not None:
+        population["audit"] = audit
+    return population

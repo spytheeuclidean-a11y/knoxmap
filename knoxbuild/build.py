@@ -1292,12 +1292,57 @@ def _party_walls(owner: np.ndarray, me: int, x0: int, y0: int, mask: np.ndarray,
 JOB_FIELDS = 21
 
 
+def _layout_problems(plan, kind, below) -> dict | None:
+    """What knoxbuild/audit.py finds wrong with this building, for the census.
+
+    A room with no way in, a door onto the stairs, a flat with no front door:
+    the things a player meets first. Build reports the totals beside the map so
+    a town that came out wrong is known before it is compiled, which is where
+    the hours go.
+
+    None means "not checked" and {} means "checked and clean", so a check that
+    falls over reads as missing rather than as a perfect town - and never as a
+    failed building, since a diagnostic must not cost a town its house.
+    """
+    try:
+        from .audit import audit as layout_audit, basement_unreached
+
+        found = {k: v for k, v in layout_audit(plan, kind).items()
+                 if v and not k.startswith("stat:")}
+        if below is not None:
+            unreached, _rooms = basement_unreached(below)
+            if unreached:
+                found["basement room with no way in"] = unreached
+        return found
+    except Exception:  # noqa: BLE001 - a check that breaks must not break a build
+        return None
+
+
+def _audit_report(results) -> dict:
+    """The layout audit's totals over the buildings one build holds.
+
+    `results` are the tuples _make_one returns. A building that failed, or one
+    the checks could not read (None), is left out rather than counted as clean,
+    so "0 of 0" says the audit did not run instead of claiming a perfect town.
+    """
+    checked = [r_ for r_ in results if r_ and not r_[3] and r_[6] is not None]
+    found = collections.Counter()
+    for r_ in checked:
+        found.update(r_[6])
+    return {"buildings": len(checked),
+            "flagged": sum(1 for r_ in checked if r_[6]),
+            "problems": dict(found.most_common())}
+
+
 def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
     """Lay out one building and write its .tbx. Returns (storeys, rooms,
-    furniture, error, escalators, basement): a building that cannot be laid out
-    is left out with the reason, instead of stopping the other two thousand.
+    furniture, error, escalators, basement, problems): a building that cannot be
+    laid out is left out with the reason, instead of stopping the other two
+    thousand.
     `basement` is what basements.plan_basement made of the job's last element
     (a BasementSpec), written beside the building as <name>_bsmt.tbx, or None.
+    `problems` is what knoxbuild/audit.py found wrong with it (_layout_problems):
+    None when it could not be checked, {} when it is clean.
     `room_limit`, when given, is how many rooms this building may have: the
     map needed thinning to fit the game's save buffer (layout.thin_building)."""
     (w, h, levels, commercial, seed, kind, mask, settings, style, label, path, street, retail,
@@ -1317,10 +1362,12 @@ def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
         except OSError as exc:
             return (0, 0, 0, f"{os.path.basename(path)}: the preset "
                              f"{os.path.basename(preset_file)} could not be "
-                             f"read ({exc})", [], None)
+                             f"read ({exc})", [], None, None)
         from . import presets as P
         about = P.measure(text) or {"storeys": 1, "rooms": 0}
-        return (about["storeys"], about["rooms"], 0, None, [], None)
+        # A hand-built building is not checked: there is no plan here to check,
+        # only the file its author saved.
+        return (about["storeys"], about["rooms"], 0, None, [], None, None)
     try:
         # a house planned whole by the room solver (Settings.room_solver), when
         # it is on and the house fits; anything else is laid out as always
@@ -1348,13 +1395,16 @@ def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
             from . import basements
             # Before the house is written: the stairs down open its ground floor.
             below = basements.plan_basement(plan, basement, seed, settings)
+        # After thinning and the basement, so the rooms checked are the rooms
+        # that will be in the file.
+        problems = _layout_problems(plan, kind, below)
         text = render_tbx(plan, label, style)
         below_text = (basements.render_basement(below, f"{label} basement", style)
                       if below is not None else None)
     except Exception:  # noqa: BLE001
         import traceback
         return (0, 0, 0, f"{os.path.basename(path)} ({kind or 'house'}, {w}x{h}, "
-                         f"{levels} storeys): {traceback.format_exc()}", [], None)
+                         f"{levels} storeys): {traceback.format_exc()}", [], None, None)
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
     info = None
@@ -1368,7 +1418,7 @@ def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
                 "rooms": len(below.building.rooms)}
     return (len(plan.storeys), len(plan.rooms),
             sum(len(s.furniture) for s in plan.storeys), None,
-            list(plan.escalators), info)
+            list(plan.escalators), info, problems)
 
 
 # Below this many buildings, starting worker processes costs more than it saves.
@@ -1432,10 +1482,11 @@ def _rooms_that_fit(buildings: int, info: dict, out_dir: str) -> int:
     rooms may take, in the 10 bytes a room costs.
     """
     from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
-                                    META_CELL, META_ROOM)
+                                    META_CELL, META_EMPTY_GRID_RESERVE, META_ROOM)
     from . import placement
 
     left = META_BUDGET - META_BUILDING * buildings
+    left -= META_EMPTY_GRID_RESERVE
     left -= META_CELL * int(info["cells_x"]) * int(info["cells_y"])
     if not placement.standalone(out_dir):
         left -= KNOX_COUNTY_META
@@ -2165,8 +2216,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                 and (jobs[j][JOB_FIELDS] is None
                      or (below is not None and below["file"] in earlier_files))):
             storeys, rooms, furniture, escalators = old["result"][:4]
+            # A cache written before the audit carries no problems for this
+            # building: it reads as unchecked rather than as clean.
+            cached = old["result"][5] if len(old["result"]) > 5 else None
             results[j] = (storeys, rooms, furniture, None,
-                          [tuple(e) for e in escalators], below)
+                          [tuple(e) for e in escalators], below, cached)
         else:
             todo.append(j)
     reused = len(jobs) - len(todo)
@@ -2179,7 +2233,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         say(f"Laying out buildings: {done:,} of {total:,}", 0.05 + 0.55 * done / total)
 
     def entry(j: int, r_: tuple) -> dict:
-        return {"key": keys[j], "result": [r_[0], r_[1], r_[2], r_[4], r_[5]]}
+        return {"key": keys[j],
+                "result": [r_[0], r_[1], r_[2], r_[4], r_[5], r_[6]]}
 
     # From here the files are written, so the cache keeps only what is true of
     # them: the buildings reused, then each one as it is made.
@@ -2253,7 +2308,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     basement_counts = {"house": 0, "large": 0, "installation": 0}
     for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
          style, mask, real_name), (storeys, rooms, furniture, error,
-                                   escalators, below) in zip(decided, results):
+                                   escalators, below, _problems) in zip(decided, results):
         if error:
             failed_buildings.append(error)
             continue
@@ -2294,9 +2349,19 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     rows.sort(key=lambda r: r["file"])
     knoxstop.check(should_stop, "the buildings")
 
+    # What knoxbuild/audit.py found, over every building the map holds. The
+    # census shows it beside the population, so a town that came out wrong is
+    # known before the compile rather than after it; it is written down rather
+    # than only printed because the window reads it back, and a reopened map
+    # shows it too.
+    audit_report = _audit_report(results)
+    knoxfiles.write(os.path.join(out_dir, f"{map_name}_layout.json"), audit_report,
+                    indent=2)
+
     # Remember what was made, and clear out what was left from before and not
     # written this time.
-    entries = {d[0]: {"key": keys[j], "result": [r_[0], r_[1], r_[2], r_[4], r_[5]]}
+    entries = {d[0]: {"key": keys[j],
+                      "result": [r_[0], r_[1], r_[2], r_[4], r_[5], r_[6]]}
                for j, (d, r_) in enumerate(zip(decided, results)) if not r_[3]}
     _write_cache(out_dir, code, entries)
     below_files = {r_[5]["file"] for r_ in results if not r_[3] and r_[5]}
@@ -2474,14 +2539,26 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           f"rest inferred from footprint")
     print(f"  rooms               : {total_rooms}")
     print(f"  furniture pieces    : {total_furn}")
+    if audit_report["buildings"]:
+        if audit_report["flagged"]:
+            worst = ", ".join(f"{k} x{v}"
+                              for k, v in list(audit_report["problems"].items())[:4])
+            print(f"  layout audit        : {audit_report['flagged']:,} of "
+                  f"{audit_report['buildings']:,} buildings need a look - {worst}")
+        else:
+            print(f"  layout audit        : {audit_report['buildings']:,} buildings "
+                  f"checked, nothing wrong")
     # The game saves every room's and building's state through one 10 MB
     # buffer (tools/make_map_mod.py, META_BUDGET); said here as well as at
     # install, before an hour of compiling a map whose saves will fail.
-    from tools.make_map_mod import META_BUDGET, META_BUILDING, META_ROOM
+    from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
+                                    META_CELL, META_EMPTY_GRID_RESERVE, META_ROOM)
     # A basement is saved as a lot of its own, with rooms of its own.
     cellars = [r_[5] for r_ in results if r_ and not r_[3] and r_[5]]
     meta = (META_ROOM * (total_rooms + sum(b["rooms"] for b in cellars))
-            + META_BUILDING * (len(rows) + len(cellars)))
+            + META_BUILDING * (len(rows) + len(cellars)) + META_EMPTY_GRID_RESERVE
+            + META_CELL * int(info["cells_x"]) * int(info["cells_y"])
+            + (0 if _placement.standalone(out_dir) else KNOX_COUNTY_META))
     if meta > META_BUDGET:
         print(f"  WARNING             : {meta / 1e6:.1f} MB of rooms and buildings for the "
               f"game to save, past the {META_BUDGET / 1e6:.0f} MB it can; every save will "

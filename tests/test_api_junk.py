@@ -35,6 +35,7 @@ SAFE_POSTS = [
     "/api/design/no_such_map",
     "/api/sketch/no_such_map",
     "/api/overpass",
+    "/api/forecast",
 ]
 
 # A value of the wrong shape at every level: not a dict, not a list, not a

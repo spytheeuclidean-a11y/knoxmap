@@ -677,6 +677,50 @@ function boxSize(s, w, n, e) {
   };
 }
 
+// How long this area will take, at the pace of the maps already made here.
+// A step with no history behind it says nothing rather than guessing: a
+// forecast wrong by an hour is worse than none, because somebody plans an
+// evening around it.
+let forecastToken = 0;
+let forecastTimer = null;
+function loadForecast(s, w, n, e, mpt) {
+  // The selection is dragged, not clicked: wait for it to settle rather than
+  // asking on every pixel.
+  clearTimeout(forecastTimer);
+  forecastTimer = setTimeout(() => requestForecast(s, w, n, e, mpt), 400);
+}
+async function requestForecast(s, w, n, e, mpt) {
+  const box = document.getElementById('forecastNote');
+  if (!box) return;
+  const mine = ++forecastToken;
+  let data;
+  try {
+    const res = await fetch('/api/forecast', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ south: s, west: w, north: n, east: e,
+                             metersPerTile: mpt }),
+    });
+    data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+  } catch (_) {
+    box.hidden = true;          // no answer is not a reason to say anything
+    return;
+  }
+  if (mine !== forecastToken) return;   // the selection moved while this was out
+  const label = { generate: 'Generate', build: 'Build', compile: 'Compile' };
+  const said = [];
+  for (const step of ['generate', 'build', 'compile']) {
+    const seconds = data.steps && data.steps[step];
+    if (seconds) said.push(`${label[step]} about ${formatLeft(seconds)}`);
+  }
+  if (!said.length) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  box.textContent = `At the pace of the maps already made here: ${said.join(' · ')}.`;
+}
+
 function updateBboxFields() {
   if (!currentRect) return clearBboxFields();
   const { s, w, n, e } = rectBounds(currentRect);
@@ -735,6 +779,7 @@ function updateBboxFields() {
         <span>${fill < 1 ? '<1' : Math.round(fill)}% of limit</span></div>
       <div class="bar"><div class="bar-fill" style="width:${fill}%"></div></div>
     </div>
+    <div id="forecastNote" class="stat-note" hidden></div>
     ${selectionShape() !== null && shapeKm2 !== null ? `<div class="stat-note shape">
       Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b>
       (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.
@@ -747,6 +792,7 @@ function updateBboxFields() {
       mostly OpenStreetMap downloads.</div>` : ''}
   `;
   fx.countUp(stats);
+  loadForecast(s, w, n, e, mpt);
   btn.disabled = false;
   fx.step('area', 'done');
 
@@ -2302,6 +2348,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
 
     status.className = 'success';
     status.textContent = `Done in ${data.osmSeconds}s (OSM query). ${data.featureCount} features rendered.`;
+    showGapFill(data, status);
     fx.overlay.done(`${data.featureCount.toLocaleString()} features on the map`);
     fx.step('terrain', 'done');
     fx.toast('ok', 'Terrain generated',
@@ -2326,6 +2373,44 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     btn.disabled = false;
   }
 });
+
+// ---- a town that came out empty ---------------------------------------------
+//
+// OpenStreetMap is drawn by people, so in plenty of the world a town is the
+// high street and not much else, and the two fillers that stand in for the rest
+// are optional. The server says why the fill added nothing (web/generation.py);
+// this says it beside the finished map, and when the reason is a package that is
+// not installed, offers to install it rather than telling the player to run pip.
+function showGapFill(data, status) {
+  const why = String(data.gapFillWhy || '').trim();
+  if (!why) return;
+  status.appendChild(document.createTextNode(' ' + why));
+  if (!/duckdb/i.test(why)) return;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'btn btn-small';
+  btn.textContent = 'Install DuckDB';
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Installing…';
+    try {
+      const res = await fetch('/api/install-optional', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'overture' }),
+      });
+      const done = await res.json();
+      if (!res.ok) throw apiError(done, res);
+      btn.replaceWith(document.createTextNode(
+        'DuckDB is installed. Generate this area again to fill the gaps.'));
+    } catch (err) {
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+      status.appendChild(document.createTextNode(` Could not install it: ${err.message}`));
+    }
+  });
+  status.appendChild(document.createTextNode(' '));
+  status.appendChild(btn);
+}
 
 // ---- stopping a long step ----
 //
@@ -2383,6 +2468,12 @@ function wasStopped(data, res) {
 
 let progressTimer = null;
 
+// " - about 12 min left", once a stage has set a pace. Compile has said
+// this for a while; this is the same reading for the steps before it.
+function leftText(p) {
+  return p && p.etaSeconds ? ` \u2014 about ${formatLeft(p.etaSeconds)} left` : '';
+}
+
 function startProgress(mapName) {
   clearInterval(progressTimer);
   progressTimer = setInterval(async () => {
@@ -2398,8 +2489,8 @@ function startProgress(mapName) {
         status.textContent = p.note
           ? p.note
           : (total > 1
-            ? `Querying OpenStreetMap — area ${(p.done || 0) + 1} of ${total}…`
-            : 'Querying OpenStreetMap…');
+            ? `Querying OpenStreetMap — area ${(p.done || 0) + 1} of ${total}`
+            : 'Querying OpenStreetMap') + leftText(p) + '…';
       } else if (p.stage === 'overture') {
         // A few minutes, nearly all of it Overture's own files being sifted
         // for the handful that cover this box. Saying so beats a dead bar.
@@ -2409,10 +2500,10 @@ function startProgress(mapName) {
         status.textContent = `Routing the roads — ${(p.done || 0).toLocaleString()} of `
                            + `${(p.total || 0).toLocaleString()} stretches…`
                            + (p.slowRoads ? ' Slowly: the fast road router (knoxroute) is '
-                              + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '');
+                              + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '') + leftText(p);
       } else if (p.stage === 'render') {
         status.textContent = `Rendering ${p.features.toLocaleString()} features `
-                           + 'into bitmaps…';
+                           + 'into bitmaps…' + leftText(p);
       }
     } catch (_) { /* the generate call is the source of truth */ }
   }, 1500);
@@ -2961,7 +3052,7 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
         `/api/progress?map=${encodeURIComponent(watching)}`)).json();
       if (!over && p.stage === 'buildings' && p.note) {
         const pct = p.fraction != null ? ` (${Math.round(100 * p.fraction)}%)` : '';
-        note('buildingsNote', `${p.note}${pct}…`);
+        note('buildingsNote', `${p.note}${pct}${leftText(p)}…`);
       }
     } catch (_) { /* the next tick will do */ }
   }, 1500);
@@ -3060,11 +3151,19 @@ document.getElementById('installBtn').addEventListener('click', async () => {
         lifts += ' With "Spawn Selector" enabled you can start at any landmark of the map.';
       }
     } catch (_) { /* the install itself worked; the tip is optional */ }
+    // Build 42 draws the in-game map (M) from worldmap.xml.bin and cannot read
+    // the XML, so a map without it opens the map on nothing while everything
+    // else works - worth saying, and worth saying what to do about it.
+    const paper = data.paperMap === false
+      ? ' The in-game map (M) will be blank: this map has no paper map '
+        + '(worldmap.xml.bin). Install it again, and if it still has none, send '
+        + 'KnoxMap the log from that install.'
+      : '';
     note('installNote',
          `Installed ${data.cells} cells to ${data.modRoot}. Enable "${data.title}" `
          + 'in the game\'s Mods menu, then start a NEW save. In a save you are '
          + 'already playing, right-click the ground and pick "Reset loot" for '
-         + 'fresh loot in a building.' + lifts, 'ok');
+         + 'fresh loot in a building.' + lifts + paper, data.paperMap === false ? 'warn' : 'ok');
     document.getElementById('publishCard').hidden = false;
     loadMaps();
   } catch (err) {
@@ -3107,6 +3206,7 @@ function renderCensus(pop) {
   }
   refreshLayoutPreview();
   box.hidden = false;
+  renderAudit(pop.audit);
   const tiles = document.getElementById('censusTiles');
   tiles.innerHTML = `
     ${fx.tile(pop.residents, '', 'residents')}
@@ -3121,6 +3221,34 @@ function renderCensus(pop) {
         `<b>${escapeHtml(p.name || p.place)}</b> at ${p.population.toLocaleString()} people`
       ).join(', ') + ' — official figures can cover a whole district, not just what is on the map.'
     : '';
+}
+
+// What knoxbuild/audit.py found in the buildings just laid out: a room with no
+// way in, a door onto the stairs, a flat with no front door. Said here because
+// this is the last moment it is cheap to put right - compiling takes hours, and
+// finding it after that means walking the town in game.
+function renderAudit(found) {
+  const box = document.getElementById('censusAudit');
+  if (!found || !found.buildings) {
+    box.hidden = true;
+    box.textContent = '';
+    return;
+  }
+  box.hidden = false;
+  const problems = Object.entries(found.problems || {});
+  const checked = found.buildings.toLocaleString();
+  if (!found.flagged) {
+    box.className = 'census-audit';
+    box.textContent = `Layout audit: ${checked} buildings checked, nothing wrong.`;
+    box.title = '';
+    return;
+  }
+  const list = problems.slice(0, 3).map(([what, n]) => `${what} \u00d7${n}`).join(', ');
+  const more = problems.length > 3 ? `, and ${problems.length - 3} more` : '';
+  box.className = 'census-audit bad';
+  box.textContent = `Layout audit: ${found.flagged.toLocaleString()} of ${checked} `
+    + `buildings need a look - ${list}${more}.`;
+  box.title = problems.map(([what, n]) => `${what}: ${n}`).join('\n');
 }
 
 document.getElementById('recountBtn').addEventListener('click', async () => {
