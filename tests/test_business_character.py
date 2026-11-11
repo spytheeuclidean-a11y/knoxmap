@@ -35,6 +35,17 @@ class BusinessCharacter(unittest.TestCase):
             self.assertIn("bedroom", kinds)
             self.assertLessEqual(kinds["firestorage"] * 2, sum(kinds.values()))
 
+    def test_industrial_buildings_have_work_and_staff_rooms(self):
+        for seed in range(3):
+            plan = layout.build_building(40, 32, kind="industrial", commercial=True,
+                                         seed=seed).storeys[0]
+            kinds = {r.kind for r in plan.rooms}
+            self.assertTrue({"warehouse", "mechanic", "breakroom", "lockerroom"} <= kinds)
+            for kind in ("mechanic", "breakroom", "lockerroom"):
+                self.assertTrue(any(plan.grid[y][x] == i and role != "light"
+                                    for i, r in enumerate(plan.rooms, 1) if r.kind == kind
+                                    for role, x, y, _ in plan.furniture))
+
     def test_barn_and_shed_are_not_broken_into_a_grid_of_small_rooms(self):
         for kind in ("barn", "shed"):
             for seed in range(4):

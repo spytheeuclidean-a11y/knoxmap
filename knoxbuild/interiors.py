@@ -71,8 +71,8 @@ _LIKE = {
     # cashier can see the pumps. Coolers on every wall was a cold room.
     "gasstore": ("conveniencestore", {"wall": ["shop_shelf_red", "shop_shelf_red", "shop_fridge"],
                                       "front": ["vending", "vending_snacks"], "produce": 1}),
-    "butcher": ("grocery", {"back_counter": "shop_counter", "rows": "shop_display", "back": ["shop_fridge_double", "shop_freezer"]}),
-    "bakery": ("generalstore", {"back_counter": "shop_counter", "rows": "shop_display", "back": ["shop_shelf_white"],
+    "butcher": ("grocery", {"back_counter": "shop_counter", "rows": "shop_display_butcher", "back": ["shop_fridge_double", "shop_freezer"]}),
+    "bakery": ("generalstore", {"back_counter": "shop_counter", "rows": "shop_display_bakery", "back": ["shop_shelf_white"],
                                 "front": ["shop_case"]}),
     "departmentstore": ("clothingstore", {"wall": ["shop_shelf", "clothes_rack"]}),
     "sportstore": ("clothingstore", {"wall": ["metal_rack", "shop_shelf"], "front": ["mannequin_male"]}),
@@ -433,8 +433,8 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
     mix = [r for r in (spec.get("aisles") or [row_role]) if r in C.FURNITURE and r not in RACKS]
     mix = mix or [row_role]
     row_starts = list(range(2, frame.length - 2, every))
-    if row_role == "shop_display":
-        # Cases are a deli counter, not a floor of aisles: a row or two.
+    if row_role in ("shop_display", "shop_display_butcher", "shop_display_bakery"):
+        # Display cases stand in a row or two, not a floor of aisles.
         row_starts = row_starts[::max(1, len(row_starts) // max(1, frame.length // 12))][:MAX_CASE_ROWS]
     for a in row_starts:
         lines = [(a, "E" if frame.along_x else "S"), (a + 1, "W" if frame.along_x else "N")] \

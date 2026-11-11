@@ -629,6 +629,10 @@ SAVE_BUFFER = 10_485_760
 META_BUDGET = 9_000_000
 META_CELL, META_ROOM, META_BUILDING = 8, 10, 23
 KNOX_COUNTY_META = 1_160_348
+# Build 42's world grid spans at least -250..250 on each axis; savePart writes
+# two integers even for a cell without a lot header. Count populated cells again
+# below for a conservative reserve, including Knox County's existing cells.
+META_EMPTY_GRID_RESERVE = 501 * 501 * META_CELL
 
 
 def save_bytes(cells: list[str]) -> int:
@@ -1036,7 +1040,8 @@ def package(project_dir: str, name: str, mod_id: str,
     if big_map:
         extra_names.append("HOW TO PLAY.txt - a map this size needs more memory "
                            "than the game gives itself; the file says how")
-    meta = save_bytes(cells) + (0 if is_standalone else KNOX_COUNTY_META)
+    meta = (save_bytes(cells) + META_EMPTY_GRID_RESERVE
+            + (0 if is_standalone else KNOX_COUNTY_META))
     if meta > META_BUDGET:
         extra_names.append(
             f"WARNING: too many rooms for the game to save - {meta / 1e6:.1f} MB of "

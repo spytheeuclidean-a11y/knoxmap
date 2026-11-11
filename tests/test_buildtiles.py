@@ -75,10 +75,17 @@ class BuildTilesTests(unittest.TestCase):
         self.assertEqual(self.square(t, 4, 3), ["ew_3", "tr_3", "gr_3"])           # the post at the corner
         self.assertEqual(self.square(t, 5, 5), [])
 
-    def test_upper_levels_wear_grime_but_no_trim_outside(self):
+    def test_upper_levels_have_neither_grime_nor_trim_outside(self):
         t = tbx(4, 3, [(grid(4, 3), []), (grid(4, 3), [])])
-        self.assertEqual(self.square(t, 1, 3, z=1), ["ew_1", "gr_1"])
+        self.assertEqual(self.square(t, 1, 3, z=1), ["ew_1"])
         self.assertEqual(self.square(t, 1, 3, z=0), ["ew_1", "tr_1", "gr_1"])
+
+    def test_upper_floor_exterior_windows_and_doors_have_no_grime(self):
+        objects = [dict(type="window", x=1, y=3, dir="N"),
+                   dict(type="door", x=2, y=3, dir="N")]
+        t = tbx(4, 3, [(grid(4, 3), []), (grid(4, 3), objects)])
+        for x in (1, 2):
+            self.assertFalse(any(tile.startswith("gr_") for tile in self.square(t, x, 3, z=1)))
 
     def test_a_wall_between_two_rooms_belongs_to_the_room_on_its_south_or_east(self):
         g = [[1, 1, 2, 2], [1, 1, 2, 2], [1, 1, 2, 2]]
