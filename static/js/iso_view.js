@@ -735,7 +735,7 @@
       const w = parseInt(document.getElementById('isoSectorW')?.value || '60', 10);
       const h = parseInt(document.getElementById('isoSectorH')?.value || '60', 10);
       const roofs = currentSector ? currentSector.roofs : 1;
-      renderSectorBox(x, y, w, h, roofs);
+      renderSectorBox(x, y, w, h, roofs, true);
     });
 
     // Go to Compile button. The pipeline enables Compile only once the map and
@@ -915,7 +915,7 @@
     }
   }
 
-  function renderSectorBox(x, y, w, h, roofs = 1) {
+  function renderSectorBox(x, y, w, h, roofs = 1, bustCache = false) {
     if (!activeMap) return;
 
     clearBoxSelection();
@@ -942,13 +942,16 @@
     // past that the same area is drawn whole at a smaller scale, which is the
     // server's rule too.
     const scale = Math.min(1, 412 / Math.max(10, w + h));
-    const url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${w},${h}`
-              + `&scale=${scale.toFixed(2)}&roofs=${roofs ? 1 : 0}&t=${Date.now()}`;
+    let url = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${x},${y},${w},${h}`
+            + `&scale=${scale.toFixed(2)}&roofs=${roofs ? 1 : 0}`;
+    if (bustCache) {
+      url += `&t=${Date.now()}`;
+    }
     const roofText = roofs ? 'with roofs' : 'furnished interiors';
     const at = scale < 0.99 ? ` at ${Math.round(scale * 100)}% to fit` : '';
     loadImage(url, `Rendering HD sector ${x},${y} (${w}×${h} tiles, ${roofText}${at})…`,
               roofs ? 'Compositing in-game sprites' : 'Compositing furnished rooms, walls and partitions',
-              scale < 0.99 ? 12 : 4);
+              scale < 0.99 ? 6 : 3);
   }
 
   async function showIsoView(name) {
@@ -1014,10 +1017,12 @@
         mapInfo.cells.map(([cx, cy]) => `<option value="${cx}_${cy}">Cell ${cx}, ${cy}</option>`).join('');
     }
 
-    // Update sector default coordinates to middle
+    // Update sector default coordinates: prefer actual building focus or center
     const midX = Math.round((mapInfo.width_tiles || 1000) / 2);
     const midY = Math.round((mapInfo.height_tiles || 1000) / 2);
-    updateSectorInputs(midX, midY, 60, 60);
+    const initX = (typeof mapInfo.focus_x === 'number') ? mapInfo.focus_x : midX;
+    const initY = (typeof mapInfo.focus_y === 'number') ? mapInfo.focus_y : midY;
+    updateSectorInputs(initX, initY, 60, 60);
 
     // Pick initial mode: 'town' if available, otherwise 'close', 'inside', or 'sector'
     let initialMode = 'town';

@@ -85,9 +85,10 @@ class CoolersAreBanks(unittest.TestCase):
     def test_display_cases_are_a_row_or_two(self):
         for seed in range(6):
             plan, idx, furniture = sales_floor("butcher", seed)
-            cases = {f[2] for f in furniture if f[0] == "shop_display"}
+            cases = {f[2] for f in furniture if f[0] == "shop_display_butcher"}
             with self.subTest(seed=seed):
-                self.assertLessEqual(len({f[1] for f in furniture if f[0] == "shop_display"}), 2)
+                self.assertTrue(cases)
+                self.assertLessEqual(len({f[1] for f in furniture if f[0] == "shop_display_butcher"}), 2)
 
 
 class Salons(unittest.TestCase):

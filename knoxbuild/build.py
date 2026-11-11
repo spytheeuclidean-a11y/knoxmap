@@ -1401,6 +1401,12 @@ def _code_fingerprint() -> str:
             h.update(name.encode())
             with open(os.path.join(here, name), "rb") as f:
                 h.update(f.read())
+    layout_dir = os.path.join(here, "layout")
+    for name in sorted(os.listdir(layout_dir)):
+        if name.endswith(".py"):
+            h.update(("layout/" + name).encode())
+            with open(os.path.join(layout_dir, name), "rb") as f:
+                h.update(f.read())
     h.update(b"erika" if _erika_ready() else b"vanilla")
     from . import room_solver
     h.update(os.environ.get(room_solver.ENV, "").encode())     # it overrides the setting
@@ -1426,10 +1432,11 @@ def _rooms_that_fit(buildings: int, info: dict, out_dir: str) -> int:
     rooms may take, in the 10 bytes a room costs.
     """
     from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
-                                    META_CELL, META_ROOM)
+                                    META_CELL, META_EMPTY_GRID_RESERVE, META_ROOM)
     from . import placement
 
     left = META_BUDGET - META_BUILDING * buildings
+    left -= META_EMPTY_GRID_RESERVE
     left -= META_CELL * int(info["cells_x"]) * int(info["cells_y"])
     if not placement.standalone(out_dir):
         left -= KNOX_COUNTY_META
@@ -2471,11 +2478,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # The game saves every room's and building's state through one 10 MB
     # buffer (tools/make_map_mod.py, META_BUDGET); said here as well as at
     # install, before an hour of compiling a map whose saves will fail.
-    from tools.make_map_mod import META_BUDGET, META_BUILDING, META_ROOM
+    from tools.make_map_mod import (KNOX_COUNTY_META, META_BUDGET, META_BUILDING,
+                                    META_CELL, META_EMPTY_GRID_RESERVE, META_ROOM)
     # A basement is saved as a lot of its own, with rooms of its own.
     cellars = [r_[5] for r_ in results if r_ and not r_[3] and r_[5]]
     meta = (META_ROOM * (total_rooms + sum(b["rooms"] for b in cellars))
-            + META_BUILDING * (len(rows) + len(cellars)))
+            + META_BUILDING * (len(rows) + len(cellars)) + META_EMPTY_GRID_RESERVE
+            + META_CELL * int(info["cells_x"]) * int(info["cells_y"])
+            + (0 if _placement.standalone(out_dir) else KNOX_COUNTY_META))
     if meta > META_BUDGET:
         print(f"  WARNING             : {meta / 1e6:.1f} MB of rooms and buildings for the "
               f"game to save, past the {META_BUDGET / 1e6:.0f} MB it can; every save will "

@@ -60,6 +60,11 @@ VERGE_BY_HIERARCHY_M = {
 
 
 def _sidewalk_width_m(feat: OSMFeature, cat: str) -> float:
+    tags = feat.tags
+    both = tags.get("sidewalk:both", tags.get("sidewalk", ""))
+    if all(tags.get(f"sidewalk:{side}", both) in {"no", "none", "separate"}
+           for side in ("left", "right")):
+        return 0.0
     return SIDEWALK_BY_HIERARCHY_M.get(road_hierarchy(feat.tags),
                                       SIDEWALK_M.get(cat, 0.0))
 

@@ -438,7 +438,13 @@ def check_odd_requests(check, work: str) -> None:
         check(open(knoxlog.MAIN_LOG, encoding="utf-8").read().count("page error") == before,
               "an empty page error report is not written to the log")
         was_mem = knoxlog.memory_status
+        from web import checks as webchecks
+        was_tile = webchecks.BYTES_PER_TILE
         try:
+            # A tenth of a degree is a small box; it is only bigger than this
+            # PC's whole memory at a per-tile cost that adds up, so the test
+            # says what that cost is instead of leaning on today's number.
+            webchecks.BYTES_PER_TILE = 100_000
             knoxlog.memory_status = lambda: (8 * 2 ** 30, 4 * 2 ** 30, 2 ** 40)
             r = client.post("/api/generate", json={"south": 10.0, "west": 10.0,
                                                    "north": 10.1, "east": 10.1, "mapName": "x"})
@@ -446,6 +452,7 @@ def check_odd_requests(check, work: str) -> None:
                   f"a map bigger than the PC's whole memory is refused ({r.status_code} {r.get_json()})")
         finally:
             knoxlog.memory_status = was_mem
+            webchecks.BYTES_PER_TILE = was_tile
     finally:
         knoxapp.osm.fetch_features_tiled = was_fetch
         webcommon.OUTPUT_DIR = was_out
@@ -1320,14 +1327,23 @@ def check_overpass_setting(check, work: str) -> None:
                   "without Docker the local server says so and starts nothing")
             geo.shutil.which, geo._docker = (lambda name: "docker"), fake_docker
             check(client.post("/api/local-overpass", json={
-                "action": "start", "extract": "https://evil.example/x.osm.bz2"}).status_code == 400
+                "action": "start", "extract": "https://evil.example/x.osm.pbf"}).status_code == 400
                 and not any(c[0] == "run" for c in calls),
                 "only a Geofabrik extract is accepted, and nothing is run for any other")
-            good = "https://download.geofabrik.de/north-america/us/tennessee-latest.osm.bz2"
-            client.post("/api/local-overpass", json={"action": "start", "extract": good})
+            base = "https://download.geofabrik.de/north-america/us/tennessee-latest.osm"
+            legacy = client.post("/api/local-overpass", json={
+                "action": "start", "extract": f"{base}.bz2"})
+            check(legacy.status_code == 400 and ".osm.pbf" in legacy.get_json()["error"]
+                  and not any(c[0] == "run" for c in calls),
+                  "a legacy BZ2 URL is rejected with guidance to use PBF")
+            good = f"{base}.pbf"
+            response = client.post("/api/local-overpass", json={"action": "start", "extract": good})
             run = next((c for c in calls if c[0] == "run"), ())
-            check(f"OVERPASS_PLANET_URL={good}" in run and "127.0.0.1:12345:80" in run,
-                  "a good extract starts the container, reachable from this PC only")
+            check(response.status_code == 200 and f"OVERPASS_PLANET_URL={good}" in run
+                  and "127.0.0.1:12345:80" in run,
+                  "a Geofabrik PBF starts a localhost-only container")
+            check(f"OVERPASS_PLANET_PREPROCESS={geo.LOCAL_PBF_PREPROCESS}" in run,
+                  "the PBF import gets the conversion hook")
             d = client.post("/api/local-overpass", json={"action": "use"}).get_json()
             check(osm.OVERPASS_ENDPOINTS[0] == geo.LOCAL_URL
                   and len(osm.OVERPASS_ENDPOINTS) == len(osm._DEFAULT_ENDPOINTS) + 1,

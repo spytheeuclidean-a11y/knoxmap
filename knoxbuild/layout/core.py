@@ -115,6 +115,7 @@ class Plan:
     open_units: set = field(default_factory=set)
     # Wall edges carrying a switch, painting or mirror; windows keep off them.
     wall_pieces: set = field(default_factory=set)
+    stalls: list = field(default_factory=list)  # toilet tile and back-wall direction
     # The sleeve of floor round each room's way in that no optional piece may
     # take: one tile either side of the walkway and of every door.
     sleeve: set = field(default_factory=set)
@@ -333,7 +334,7 @@ ROOM_STYLE = {
     "mechanic": (C.FLOOR_LINO, "Mechanic", ["metal_rack", "crate", "counter", "metal_rack"]),
     "motelroom": (C.FLOOR_CARPET_BLUE, "Hotel Room",
                   ["double_bed", "sidetable", "tv", "armchair", "dresser", "lamp", "painting"]),
-    "bakery": (C.FLOOR_TILE_PALE, "Bakery", ["shop_display", "shop_counter", "shop_shelf"]),
+    "bakery": (C.FLOOR_TILE_PALE, "Bakery", ["shop_display_bakery", "shop_counter", "shop_shelf"]),
     **{k: (floor, label, ["shop_shelf", "shop_counter", "shop_shelf_wood"])
        for k, floor, label in (
            ("gasstore", C.FLOOR_TILE_PALE, "Gas Station Store"),
@@ -437,9 +438,9 @@ SPECIAL_MIXES = {
     "retail":     (["generalstore", "conveniencestore", "clothingstore", "cafe",
                     "storage"],
                    ["generalstore", "cafe", "storage"]),
-    "industrial": (["warehouse", "warehouse", "office", "storage", "bathroom",
-                    "garage"],
-                   ["warehouse", "storage"]),
+    "industrial": (["warehouse", "mechanic", "garage", "office", "breakroom",
+                    "lockerroom", "storage", "bathroom"],
+                   ["warehouse", "garage", "storage"]),
     "barn":       (["warehouse", "storage", "garage"], ["warehouse", "storage"]),
     "garage":     (["garage"], ["garage"]),
     # A base's buildings: army stores (the game's army loot), offices,

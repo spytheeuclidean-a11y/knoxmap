@@ -92,6 +92,27 @@ class Projector:
         lon, lat = back.transform(x_m, y_m)
         return lat, lon
 
+    def to_latlon_many(self, px, py):
+        """to_latlon for numpy arrays of pixel coordinates: (lat, lon) arrays."""
+        import numpy as np
+
+        back = getattr(self, "_back", None)
+        if back is None:
+            back = pyproj.Transformer.from_crs(self._transformer.target_crs,
+                                               "EPSG:4326", always_xy=True)
+            object.__setattr__(self, "_back", back)
+        x_m = self.min_x_m + np.asarray(px, dtype=np.float64) * self.meters_per_tile
+        y_m = self.min_y_m + (self.height - np.asarray(py, dtype=np.float64)) * self.meters_per_tile
+        if self.rotation:
+            cx = self.min_x_m + self.width * self.meters_per_tile / 2
+            cy = self.min_y_m + self.height * self.meters_per_tile / 2
+            a = math.radians(-self.rotation)
+            dx, dy = x_m - cx, y_m - cy
+            x_m = cx + dx * math.cos(a) - dy * math.sin(a)
+            y_m = cy + dx * math.sin(a) + dy * math.cos(a)
+        lon, lat = back.transform(x_m, y_m)
+        return np.asarray(lat), np.asarray(lon)
+
     def latlon_bbox(self) -> tuple[float, float, float, float]:
         """(south, west, north, east) covering the whole map, turned or not."""
         back = pyproj.Transformer.from_crs(self._transformer.target_crs,

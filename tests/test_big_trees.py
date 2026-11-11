@@ -213,6 +213,62 @@ class TheRulesPlaceTreesTheGameKnows(unittest.TestCase):
                    if t.startswith("e_")}
         self.assertEqual(indices, {patcher.SIZE_INDEX[1], patcher.SIZE_INDEX[2]})
 
+    def wood(self, text):
+        import worlded.patch_rules_b42_trees as patcher
+        found = set()
+        for block in text.split("rule\n{")[1:]:
+            if patcher.MARKER in block or "Fir" in block:
+                continue
+            found |= {t.rsplit("_", 1)[0] for t in self.entries(block)}
+        return found
+
+    def blocks(self, text):
+        import worlded.patch_rules_b42_trees as patcher
+        out = {}
+        for block in text.split("rule\n{")[1:]:
+            label = block.split("label = ", 1)[1].split("\n", 1)[0].strip()
+            if label.startswith(patcher.MARKER):
+                continue
+            tiles = block.split("tiles = [", 1)[1].split("]", 1)[0].split()
+            out[label] = tiles
+        return out
+
+    def test_every_wood_rule_has_every_species(self):
+        import worlded.patch_rules_b42_trees as patcher
+        for label, tiles in self.blocks(patch(self.tools)).items():
+            species = {t.rsplit("_", 1)[0] for t in tiles if t.startswith("e_")}
+            want = set(patcher.EVERGREEN if "Fir" in label else patcher.MIXED)
+            with self.subTest(label=label):
+                self.assertEqual(species, want)
+
+    def test_and_each_keeps_its_share_of_trees(self):
+        import re
+        tree = re.compile(r"^(?:vegetation_trees_01_\d+|e_[a-z]+_1_\d+)$")
+        before = self.blocks(RULES)
+        after = self.blocks(patch(self.tools))
+        for label, tiles in before.items():
+            share = sum(bool(tree.match(t)) for t in tiles) / len(tiles)
+            new = after[label]
+            with self.subTest(label=label):
+                self.assertAlmostEqual(
+                    sum(bool(tree.match(t)) for t in new) / len(new), share)
+
+    def test_a_wood_is_every_species_broadleaf_and_evergreen(self):
+        import worlded.patch_rules_b42_trees as patcher
+        found = self.wood(patch(self.tools))
+        self.assertTrue(found & set(patcher.EVERGREEN), found)
+        self.assertTrue(found & set(patcher.DECIDUOUS), found)
+
+    def test_an_install_patched_broadleaf_only_gets_the_mixture(self):
+        import worlded.patch_rules_b42_trees as patcher
+        once = patch(self.tools)
+        broadleaf = once
+        for sheet in patcher.EVERGREEN:
+            broadleaf = broadleaf.replace(sheet + "_", "e_redmaple_1_")
+        # ...but only in the woods: our own rules are rewritten whole anyway.
+        (self.tools / "config" / "Rules.txt").write_text(broadleaf, encoding="utf-8")
+        self.assertEqual(patch(self.tools), once)
+
     def test_running_it_again_changes_nothing(self):
         once = patch(self.tools)
         self.assertEqual(patch(self.tools), once)
@@ -442,6 +498,14 @@ class PlantingBlocks(unittest.TestCase):
 
     def test_or_of_a_mask_smaller_than_one_block(self):
         self.assertEqual(self.picks(np.ones((3, 3), dtype=bool), 8), [])
+
+
+
+class ThePictureShowsSummer(unittest.TestCase):
+    def test_the_preview_knows_every_broadleaf(self):
+        import worlded.patch_rules_b42_trees as patcher
+        from tools import render_lots
+        self.assertEqual(render_lots.SUMMER_SHEETS, set(patcher.DECIDUOUS))
 
 
 if __name__ == "__main__":
