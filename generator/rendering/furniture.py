@@ -94,7 +94,8 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                                   C.DARKEST_ASPHALT))
     pavement = is_colour(ground, (C.PALE_CONCRETE,))
     roadside = pavement | is_colour(
-        ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.PAVING))
+        ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.PAVING,
+                 C.DIRT_ROWS_H, C.DIRT_ROWS_V))
     # Hydrants, bins and mailboxes stand on the grass or paving beside the
     # sidewalk, never on the sidewalk itself, and only where there is a
     # building to serve: down an open stretch of road they were furniture for

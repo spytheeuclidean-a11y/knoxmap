@@ -39,6 +39,10 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 CELL = 256
+# The broadleaf species sheets (worlded/patch_rules_b42_trees.py DECIDUOUS).
+SUMMER_SHEETS = {"e_redmaple_1", "e_americanlinden_1", "e_yellowwood_1",
+                 "e_riverbirch_1", "e_dogwood_1", "e_easternredbud_1",
+                 "e_cockspurhawthorn_1", "e_carolinasilverbell_1"}
 CHUNKS = 32
 CHUNK = 8
 LEVEL_PX = 96          # screen height of one storey at 1x
@@ -160,6 +164,11 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
         m = re.match(r"^(.*)_(\d+)$", name)
         if m:
             sheet_name, idx = m.group(1), int(m.group(2))
+            # A broadleaf tree is stored as its bare picture (sizes 0-3) and
+            # the game draws the season's; the picture shows summer, which is
+            # four rows of four on: bare, snow, spring, summer.
+            if sheet_name in SUMMER_SHEETS and idx < 4:
+                idx += 12
             if sheet_name not in _SHEETS:
                 path = tiles_dir / f"{sheet_name}.png"
                 _SHEETS[sheet_name] = Image.open(path).convert("RGBA") if path.exists() else None

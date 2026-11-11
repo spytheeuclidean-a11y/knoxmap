@@ -9,22 +9,26 @@ from ..osm import OSMFeature, classify
 from .geometry import _feature_coords_px, _is_polygon
 from .projection import Projector
 from . import woodland
+from .noise import lattices, smooth_noise
 
 import knoxstop
 
 
 def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
-                      density: float = 1.0, should_stop=None) -> None:
+                      density: float = 1.0, should_stop=None,
+                      extra_forest=None) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
-                     {"forest", "scrub", "tree_single"}], proj, density, should_stop)
+                     {"forest", "scrub", "tree_single"}], proj, density, should_stop,
+                    extra_forest=extra_forest)
 
 
 def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
-                    density: float = 1.0, should_stop=None) -> None:
+                    density: float = 1.0, should_stop=None,
+                    extra_forest=None) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,
@@ -61,6 +65,12 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                 x, y = rings[0][0]
                 r = max(1, int(2 / proj.meters_per_tile))
                 mask_draw.ellipse((x - r, y - r, x + r, y + r), fill=255)
+
+    if extra_forest is not None and extra_forest.any():
+        # WorldCover tree cover OSM left blank: a wood like any mapped one.
+        import numpy as np
+        mask = Image.fromarray(np.maximum(np.asarray(mask),
+                                          extra_forest.astype(np.uint8) * 255), "L")
 
     # Build a "border band" of the forest mask so we can paint edges lighter.
     eroded = mask.filter(ImageFilter.MinFilter(5))
@@ -334,7 +344,8 @@ WILD_GROUND = (C.DARK_GRASS, C.MEDIUM_GRASS)
 
 
 def _get_wild_strip_free(landscape: Image.Image, veg: Image.Image,
-                         top: int, bottom: int, w: int, h: int, pad: int = WILD_CLEAR_OF_PAVING):
+                         top: int, bottom: int, w: int, h: int,
+                         pad: int = WILD_CLEAR_OF_PAVING, exclude=None):
     """Free open grass tiles on a horizontal strip, with reach boundary padding."""
     import numpy as np
 
@@ -348,13 +359,20 @@ def _get_wild_strip_free(landscape: Image.Image, veg: Image.Image,
     free_s = open_s & np.all(veg_s == 0, axis=2)
     if pad > 0:
         free_s &= ~_box_any(~open_s, pad)
+    # WorldCover's class for this ground wins over the guess, so the strip is
+    # the same whole-map `exclude` sliced to the rows it covers.
+    if exclude is not None:
+        free_s &= ~exclude[y0:y1]
     offset = top - y0
     return free_s[offset : offset + (bottom - top)]
 
 
 def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
-                       proj: Projector, density: float = 1.0) -> int:
-    """Scatter trees and scrub over open grass. Returns what was planted."""
+                       proj: Projector, density: float = 1.0, exclude=None) -> int:
+    """Scatter trees and scrub over open grass. Returns what was planted.
+
+    `exclude` (bool array) is ground WorldCover has a class for, which grows
+    what its class says (landcover_veg.py) instead of a guess."""
     import numpy as np
 
     if density <= 0:
@@ -372,7 +390,8 @@ def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
 
     for top in range(0, h, strip_step_rows):
         bottom = min(h, top + strip_step_rows)
-        free_strip = _get_wild_strip_free(landscape, veg, top, bottom, w, h, WILD_CLEAR_OF_PAVING)
+        free_strip = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
+                                          WILD_CLEAR_OF_PAVING, exclude)
 
         for y_cur in range(top, bottom, step):
             local_y = y_cur - top
@@ -408,33 +427,20 @@ GROVE_SEED = 5513
 
 
 def _paint_groves(veg: Image.Image, landscape: Image.Image,
-                  proj: Projector, density: float = 1.0) -> int:
-    """Woods on open grass. Returns the tiles planted."""
+                  proj: Projector, density: float = 1.0, exclude=None) -> int:
+    """Woods on open grass, off `exclude`. Returns the tiles planted."""
     import numpy as np
 
     if density <= 0:
         return 0
     w, h = veg.size
 
-    rng = np.random.default_rng(GROVE_SEED)
     big = max(8, int(round(GROVE_CELL_M / proj.meters_per_tile)))
     small = max(4, int(round(GROVE_RAGGED_M / proj.meters_per_tile)))
-    lat_big = rng.random((h // big + 3, w // big + 3), dtype=np.float32)
-    lat_small = rng.random((h // small + 3, w // small + 3), dtype=np.float32)
-
-    def lattice(lat, cell, ys, xs):
-        fy, fx = ys / cell, xs / cell
-        y0, x0 = fy.astype(int), fx.astype(int)
-        ty, tx = fy - y0, fx - x0
-        ty, tx = ty * ty * (3 - 2 * ty), tx * tx * (3 - 2 * tx)   # smoothstep
-        y1, x1 = y0 + 1, x0 + 1
-        top = lat[np.ix_(y0, x0)] * (1 - tx) + lat[np.ix_(y0, x1)] * tx
-        bot = lat[np.ix_(y1, x0)] * (1 - tx) + lat[np.ix_(y1, x1)] * tx
-        return top * (1 - ty[:, None]) + bot * ty[:, None]
+    lats = lattices(h, w, [(big, 0.85), (small, 0.15)], GROVE_SEED)
 
     def noise(ys, xs):
-        return (0.85 * lattice(lat_big, big, ys, xs)
-                + 0.15 * lattice(lat_small, small, ys, xs))
+        return smooth_noise(ys, xs, lats)
 
     # The edge is where the noise is high enough for `share` of the open
     # ground to lie above it, read off a thin sample in strips.
@@ -442,7 +448,8 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
     sx = np.arange(0, w, 6, dtype=np.float32)
     for top in range(0, h, BOX_STRIP_ROWS):
         bottom = min(h, top + BOX_STRIP_ROWS)
-        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h, WILD_CLEAR_OF_PAVING)
+        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
+                                      WILD_CLEAR_OF_PAVING, exclude)
         sub_y = [y for y in range(top, bottom) if y % 6 == 0]
         if not sub_y:
             continue
@@ -465,7 +472,8 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
     xs = np.arange(w, dtype=np.float32)
     for top in range(0, h, BOX_STRIP_ROWS):
         bottom = min(h, top + BOX_STRIP_ROWS)
-        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h, WILD_CLEAR_OF_PAVING)
+        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
+                                      WILD_CLEAR_OF_PAVING, exclude)
         n = noise(np.arange(top, bottom, dtype=np.float32), xs)
         inside = free_s & (n > edge)
         if not inside.any():

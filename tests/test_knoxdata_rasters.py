@@ -66,10 +66,46 @@ class WorldCoverProcessing(unittest.TestCase):
                            transform=from_bounds(w, s, e, n, 10, 10)) as dst:
             dst.write(data, 1)
         src = worldcover.WorldCover()
-        src.fetch = lambda bbox, cache_dir=None, progress_cb=None: tmp
+        src.tile_dir = lambda: tmp
+        src.fetch = lambda *a, **k: self.fail("rasterise must not download")
         grid = src.rasterise((s, w, n, e), 10, 10)
         self.assertEqual(grid.shape, (10, 10))
         self.assertTrue(set(np.unique(grid).tolist()) <= {10, 30})
+
+    def _tile(self, data, s=32.0, w=-87.0, n=32.5, e=-86.5):
+        import rasterio
+        from rasterio.transform import from_bounds
+        from knoxdata import worldcover
+
+        tmp = Path(tempfile.mkdtemp())
+        name = worldcover.tile_names((s, w, n, e))[0]
+        h, wd = data.shape
+        with rasterio.open(tmp / name, "w", driver="GTiff", height=h, width=wd,
+                           count=1, dtype="uint8", crs="EPSG:4326",
+                           transform=from_bounds(w, s, e, n, wd, h)) as dst:
+            dst.write(data, 1)
+        src = worldcover.WorldCover()
+        src.tile_dir = lambda: tmp
+        return src
+
+    def test_speckle_is_filtered_at_10_m_not_at_map_tiles(self):
+        # A lone 10 m pixel of cropland in a wood: noise, gone however finely
+        # the map samples it. Filtered after the stretch, it survived.
+        data = np.full((20, 20), 10, dtype="uint8")
+        data[10, 10] = 40
+        src = self._tile(data)
+        grid = src.rasterise((32.0, -87.0, 32.5, -86.5), 200, 200)
+        self.assertEqual(set(np.unique(grid).tolist()), {10})
+
+    def test_area_past_the_tile_is_left_empty_not_stretched(self):
+        # The east half of the box has no tile on disk: it stays 0 (no data),
+        # and the west half keeps the tile's own split at its own place.
+        data = np.full((20, 20), 10, dtype="uint8")
+        data[:, :10] = 30
+        src = self._tile(data, s=32.0, w=-87.0, n=32.5, e=-86.5)
+        grid = src.rasterise((32.0, -86.75, 32.5, -86.25), 100, 50)
+        self.assertTrue((grid[:, :45] == 10).all())
+        self.assertTrue((grid[:, 55:] == 0).all())
 
 
 @unittest.skipUnless(HAS_RASTERIO, "rasterio not installed")
