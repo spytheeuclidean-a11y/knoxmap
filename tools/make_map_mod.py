@@ -407,8 +407,13 @@ def write_gun_cache(project_dir: str, mod_root: str, mod_id: str) -> dict | None
 
 
 def _lua_string(value: str) -> str:
-    """A Lua string literal. Map names carry apostrophes and backslashes."""
-    return '"' + str(value).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    """A Lua string literal. Map names carry apostrophes and backslashes, and
+    place names are written in any script - knoxbuild/worldmap.py's lua_string
+    is the one that decides how, so a name that reaches the game one way reaches
+    it the same way in every file KnoxMap writes."""
+    from knoxbuild.worldmap import lua_string
+
+    return lua_string(str(value))
 
 
 def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
@@ -430,6 +435,8 @@ def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
     import json as _json
     import re as _re
 
+    from knoxbuild.worldmap import lua_text
+
     annotations = os.path.join(project_dir, "worldmap-annotations.lua")
     pois, town = [], name
     if os.path.exists(annotations):
@@ -438,7 +445,7 @@ def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
         found = _re.findall(r'addUntranslatedText\("((?:[^"\\]|\\.)*)", "([a-z-]+)", '
                             r'(-?[\d.]+), (-?[\d.]+)\)', text)
         for label, style, x, y in found:
-            label = label.replace('\\"', '"').replace("\\\\", "\\")
+            label = lua_text(label)
             if style == "text-town":
                 town = label
             elif style in SPAWN_SELECTOR_STYLES and len(pois) < SPAWN_SELECTOR_MAX_POIS:
@@ -454,8 +461,7 @@ def write_spawn_selector(project_dir: str, mod_root: str, mod_id: str,
         return 0
     ox, oy = _world_origin_tiles(project_dir)
 
-    def lua_str(s: str) -> str:
-        return '"' + s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", " ") + '"'
+    lua_str = _lua_string
 
     entries = "\n".join(
         f'        {{ type = "custom_poi", group = {lua_str(group)}, name = {lua_str(label)}, '
