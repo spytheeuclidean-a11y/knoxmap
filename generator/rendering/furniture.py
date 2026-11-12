@@ -156,18 +156,22 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     k = EDGE_LINE_MIN_WIDTH
     edge_lines = 0
     diag_kerbs = {}
+    # What counts as "no road on the far side": a car park's dark tarmac is
+    # road too, and a kerb drawn against it stood in the middle of a paved
+    # yard in game - a white strip with nothing to kerb.
+    beside = driveable
     for colour, (dx, dy) in ((C.EDGE_LINE_W, (-1, 0)), (C.EDGE_LINE_E, (1, 0)),
                              (C.EDGE_LINE_N, (0, -1)), (C.EDGE_LINE_S, (0, 1))):
         outside = np.zeros_like(asphalt)
         across = np.ones_like(asphalt)
         if dx:
             if dx < 0:
-                outside[:, 1:] = ~asphalt[:, :-1]
+                outside[:, 1:] = ~beside[:, :-1]
                 for i in range(1, k):
                     across[:, :-i] &= asphalt[:, i:]
                     across[:, -i:] = False
             else:
-                outside[:, :-1] = ~asphalt[:, 1:]
+                outside[:, :-1] = ~beside[:, 1:]
                 for i in range(1, k):
                     across[:, i:] &= asphalt[:, :-i]
                     across[:, :i] = False
@@ -175,12 +179,12 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
             side_a[1:, :] = asphalt[:-1, :]; side_b[:-1, :] = asphalt[1:, :]
         else:
             if dy < 0:
-                outside[1:, :] = ~asphalt[:-1, :]
+                outside[1:, :] = ~beside[:-1, :]
                 for i in range(1, k):
                     across[:-i, :] &= asphalt[i:, :]
                     across[-i:, :] = False
             else:
-                outside[:-1, :] = ~asphalt[1:, :]
+                outside[:-1, :] = ~beside[1:, :]
                 for i in range(1, k):
                     across[i:, :] &= asphalt[:-i, :]
                     across[:i, :] = False
