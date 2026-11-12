@@ -357,6 +357,17 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
             ys, xs = np.nonzero(kerb_mask)
             for i in rng.permutation(len(xs)).tolist():
                 gx, gy = int(xs[i]), int(ys[i])
+                # A bench leans on a straight kerb. On a road at an angle the
+                # kerb steps a square at a time, so the squares either side of
+                # this one along its own axis are road, not edge - and a seat
+                # laid along that step hangs off the pavement.
+                if along_y:
+                    if not (0 < gy < h - 1 and kerb_mask[gy - 1, gx]
+                            and kerb_mask[gy + 1, gx]):
+                        continue
+                elif not (0 < gx < w - 1 and kerb_mask[gy, gx - 1]
+                          and kerb_mask[gy, gx + 1]):
+                    continue
                 spot = beside_the_pavement(gx, gy, sx, sy)
                 if spot is None:
                     continue

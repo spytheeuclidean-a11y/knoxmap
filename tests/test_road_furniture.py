@@ -110,6 +110,30 @@ class RoadsideProps(unittest.TestCase):
             with self.subTest(at=(x, y)):
                 self.assertEqual(vegetation.getpixel((x, y + 1)), C.BENCH_Y[1])
 
+    def test_a_bench_never_stands_on_a_road_at_an_angle(self):
+        """An angled road is a staircase of kerbs; a seat laid along one step
+        hangs off the pavement, so benches are for straight kerbs only."""
+        length, height = 180, 120
+        ground = Image.new("RGB", (length, height), C.DARK_GRASS)
+        pixels = ground.load()
+        for y in range(height):
+            shift = y                      # one square across per square down
+            for x in range(4 + shift, 12 + shift):
+                if x < length:
+                    pixels[x, y] = C.MEDIUM_ASPHALT
+            if 12 + shift < length:
+                pixels[12 + shift, y] = C.PALE_CONCRETE
+        vegetation = Image.new("RGB", ground.size, C.VEG_NOTHING)
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=True):
+            counts = renderer._paint_street_furniture(
+                vegetation, ground, None,
+                self.buildings_near(ground.size, (10, 0, 120, 120)))
+        self.assertEqual(counts.get("bench", 0), 0,
+                         "a bench was laid along an angled road")
+        self.assertFalse([1 for x in range(ground.width) for y in range(ground.height)
+                          if vegetation.getpixel((x, y)) in {*C.BENCH_Y, *C.BENCH_X}])
+
     def test_the_kiosk_and_the_collection_box_stand_by_the_sidewalk(self):
         vegetation, ground = self.long_road()
         with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
