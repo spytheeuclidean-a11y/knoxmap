@@ -176,6 +176,9 @@ BUILDING_TAGS = {
     "name", "addr:housenumber", "addr:street", "addr:flats",
     "amenity", "shop", "leisure", "tourism", "industrial",
     "healthcare", "office", "craft", "man_made", "residential", "cuisine",
+    # What tells a drive-in from any other cinema: knoxbuild/landmarks.py puts
+    # its board up by the road only when this says so.
+    "drive_in",
 }
 
 

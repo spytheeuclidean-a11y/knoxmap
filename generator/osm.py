@@ -415,7 +415,14 @@ OVERPASS_FILTERS: Sequence[str] = (
     # Towers: a water tower, a lighthouse, a windmill or a clock tower is a
     # landmark somebody navigates by, not a house. Without this they arrive
     # only when the mapper also tagged building=*, and then as a bungalow.
-    'nwr["man_made"~"^(water_tower|lighthouse|windmill|tower)$"]',
+    'nwr["man_made"~"^(water_tower|lighthouse|windmill|tower|silo|grain_elevator)$"]',
+    # Silos are as often drawn as the building they are: building=silo is on
+    # knoxbuild/build.py's list of things that are not buildings, so without
+    # this they were dropped from the map altogether.
+    'nwr["building"~"^(silo|grain_elevator)$"]',
+    # Transmission towers. Every pylon in a county is a landmark over it, and
+    # the lines between them are not drawn, so only the towers come down.
+    'nwr["power"="tower"]',
     # buildings
     'way["building"]',
     'relation["building"]',
@@ -483,7 +490,7 @@ OVERPASS_FILTERS: Sequence[str] = (
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 16
+FILTERS_VERSION = 17
 
 
 @dataclass

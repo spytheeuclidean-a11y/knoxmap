@@ -116,9 +116,11 @@ RULES = [
     ("Swing", (12, 41, 222), "location_community_park_01_010", "0_Furniture"),
     # The line of poles along a county road. The game has no wire to string
     # between them, so the pole carries the line on its own.
-    # The bare pole beside the flag in the street decoration sheet; it is not
-    # a catalogue furniture, so the tile is taken from the sheet itself.
-    ("Utility pole", (12, 36, 211), "street_decoration_01_017", "0_Furniture"),
+    # The bare pole in the street decoration sheet, between the letterboxes and
+    # the street-name sign; it is not a catalogue furniture, so the tile is
+    # taken from the sheet itself. Not _017, which is an empty cell there and
+    # gets dropped as blank - which left the poles with no rule at all.
+    ("Utility pole", (12, 36, 211), "street_decoration_01_024", "0_Furniture"),
     # Back yards: patio grill, table and chairs, a clothesline, a raised bed.
     ("Yard grill", (12, 37, 200), "appliances_cooking_01_035", "0_Furniture"),
     ("Yard chair_w", (12, 37, 201), "furniture_seating_outdoor_01_016", "0_Furniture"),
@@ -245,6 +247,14 @@ def main(argv: list[str]) -> int:
                   "\n", text, flags=re.S)
     blocks = []
     rail_blocks = []
+    # Two rules per rail, one colour. That is not a duplicate to be tidied
+    # away: the tools match every rule against the pixel and place its tiles on
+    # that rule's own layer (see the BMP Tools page: "When a BMP image has a
+    # pixel with the same color as the rule, one of the rule's tiles will be
+    # ... placed in the map"), so a rail's colour lays the lightgravel bed on
+    # 0_Floor and its track piece on 0_FloorOverlay6. One square of a bitmap
+    # holds one colour, so two colours could not both be painted there and the
+    # track would lose either its bed or itself.
     for label, (r, g, b), rail in RAIL_RULES:
         for tile, layer in (("lightgravel", "0_Floor"), (rail, "0_FloorOverlay6")):
             rail_blocks.append(
