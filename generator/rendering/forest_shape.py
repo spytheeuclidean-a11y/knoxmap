@@ -49,7 +49,7 @@ SHARE_TABLE = (
 # go. Thinning it inwards carved a bare band inside every wood, and its narrow
 # arms, all edge, went first.
 #
-# How far it spills is moved in and out by smooth noise, up to JITTER of Edge
+# How far it spills is moved in and out by smooth noise, up to Edge wobble of Edge
 # softness, so the spill keeps to neither WorldCover's 10 m staircase nor a
 # mapper's straight line. Beside a narrow arm it spills no further than the arm
 # is wide.
@@ -57,7 +57,7 @@ SHARE_TABLE = (
 # middle of a wood, and nothing scaled much below it got past them, so a 12 m
 # spill reached 3 m. Its trees cover all of the grass beside the wood, falling
 # in a straight line to none at Edge softness out; where the stand noise is
-# high they stand thicker, the top SPILL_THICK of what grows trees in grass.
+# high they stand thicker, the top Spill thickness of what grows trees in grass.
 SAMPLE_EVERY = 4           # the quantiles are read off every fourth tile
 EDGE_STEPS = 8             # a wide edge is measured in about this many steps
 STRIP_ROWS = 512
@@ -158,19 +158,24 @@ def _value(ys, xs, lats):
     return smooth_noise(ys.astype(np.float32), xs.astype(np.float32), lats)
 
 
-def _spill_out(ys, xs, edge, reach, wobble_share):
+def _spill_out(ys, xs, edge, reach, wobble_share, keep=1.0):
     """How far out of the wood each tile is, as a share of how far it spills
     there (0 beside it, 1 and over past the spill), the spill's reach moved
-    by noise and no wider than the wood beside it. Inside the wood, 0."""
+    by noise, no wider than the wood beside it and - Keep meadows open - no
+    more than `keep` of the way across the open space it spills into. Inside
+    the wood, 0."""
     from .noise import smooth_noise
 
-    signed, half, jitter = edge
+    signed, half, jitter, open_half = edge
     at = np.ix_(ys, xs)
     r = np.clip(half[at].astype(np.float32), 1.0, float(reach))
+    if open_half is not None:
+        r = np.minimum(r, keep * 2 * open_half[at].astype(np.float32))
     d = np.maximum(-signed[at].astype(np.float32) / 2 - 0.5, 0.0)
     wobble = (smooth_noise(ys.astype(np.float32), xs.astype(np.float32), jitter)
               - 0.5) * (2 * wobble_share)
-    return d / (r * (1 + wobble))
+    there = r * (1 + wobble)
+    return np.where(there > 0, d / np.maximum(there, 1e-6), np.inf)
 
 
 def _spread_max(a: np.ndarray, r: int) -> np.ndarray:
@@ -191,11 +196,18 @@ def _spread_max(a: np.ndarray, r: int) -> np.ndarray:
     return out
 
 
-def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int, seed: int):
-    """What `_value` needs to know about the edge, or None with no Edge
+def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int, seed: int,
+                 keep: float = 1.0):
+    """What the spill needs to know about the edge, or None with no Edge
     softness: the signed distance from it (int16 half tiles, + inside: a tile
     beside the edge on either side is 1 or -1), the half width of the wood
-    round each tile (up to `reach`), and the lattice that moves the spill."""
+    round each tile (up to `reach`), the lattice that moves the spill, and the
+    half width of the open space round each tile - None when Keep meadows
+    open is off (`keep` 1) and nothing needs it.
+
+    The open space is measured as far as it has to be: a spill of `reach` is
+    only cut short in a space narrower than reach / keep, so that is how deep
+    it is looked at (at most 255 tiles, the depth's own limit)."""
     from .noise import lattices
 
     if not reach:
@@ -208,7 +220,11 @@ def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int, seed: int):
     signed = np.where(forest, 2 * depth.astype(np.int16) + 1,
                       -(2 * outside + 1)).astype(np.int16)
     jitter = lattices(h, w, [(max(3, reach), 1.0)], seed + 1)
-    return signed, half, jitter
+    open_half = None
+    if keep < 1:
+        deep = int(min(255, max(reach, np.ceil(reach / max(2 * keep, 1e-3)))))
+        open_half = _spread_max(edge_depth(~forest, deep), deep)
+    return signed, half, jitter, open_half
 
 
 def _free_grass(land: np.ndarray, vegp: np.ndarray, forest: np.ndarray) -> np.ndarray:
@@ -258,7 +274,7 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
     cell = max(2, int(round(stand_m / metres_per_tile)))
     lats = stand_lattices(h, w, cell, p.stand_variety, p.raggedness, p.seed)
     reach = int(round(edge_m / metres_per_tile))
-    edge = _edge_fields(forest, reach, h, w, p.seed)
+    edge = _edge_fields(forest, reach, h, w, p.seed, p.keep_meadows)
     # The fringe reaches as far out as the wood beside it is soft: a thin arm's
     # fringe is as thin as its own edge.
     near = (_free_grass(land, vegp, forest)
@@ -303,9 +319,10 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
             # never closes into a wall.
             if spill_on:
                 u = np.clip((v - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
-                t_out = _spill_out(ys, xs, edge, reach, p.edge_wobble)
-                out_grade = np.where(u > t_out + (1 - t_out) * (1 - p.spill_thick), 2,
-                                     np.where(u > t_out, 1, 0))
+                t_out = _spill_out(ys, xs, edge, reach, p.edge_wobble, p.keep_meadows)
+                with np.errstate(invalid="ignore"):   # t_out is inf where no spill reaches
+                    out_grade = np.where(u > t_out + (1 - t_out) * (1 - p.spill_thick), 2,
+                                         np.where(u > t_out, 1, 0))
                 grade[n] = out_grade[n]
             else:
                 grade[n] = 0

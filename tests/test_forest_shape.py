@@ -291,5 +291,42 @@ class Knobs(unittest.TestCase):
         self.assertFalse((~mask & (grade_of(veg) >= 2)).any())
 
 
+def meadow_in_a_wood(width=30, size=400):
+    """A wood with a meadow `width` tiles wide across its middle, and a
+    300-tile field east of it."""
+    land, veg, mask = forest(size=size)
+    mask[:, 100:] = False                   # the field
+    mid = 50
+    mask[:, mid - width // 2:mid + width - width // 2] = False   # the meadow
+    v = np.array(veg); g = np.array(land)
+    v[~mask] = C.VEG_NOTHING; g[~mask] = C.MEDIUM_GRASS
+    return Image.fromarray(g, "RGB"), Image.fromarray(v, "RGB"), mask, mid
+
+
+class KeepMeadowsOpen(unittest.TestCase):
+    def grown(self, keep):
+        land, veg, mask, mid = meadow_in_a_wood()
+        F.shape_forest(veg, land, mask, 1.0, 20, 30, 1.0, ForestParams(keep_meadows=keep))
+        return grade_of(veg) > 0, mask, mid
+
+    def test_a_small_meadow_keeps_its_middle(self):
+        trees, _, mid = self.grown(0.33)
+        self.assertLess(trees[:, mid - 3:mid + 3].mean(), 0.05)
+
+    def test_off_fills_it(self):
+        trees, _, mid = self.grown(1.0)
+        self.assertGreater(trees[:, mid - 3:mid + 3].mean(), 0.15)
+
+    def test_a_big_field_gets_the_full_spill(self):
+        a, _, _ = self.grown(0.33)
+        b, _, _ = self.grown(1.0)
+        # 8-12 tiles into the 300-tile field east of the wood.
+        self.assertAlmostEqual(a[:, 108:112].mean(), b[:, 108:112].mean(), delta=0.03)
+
+    def test_zero_grows_no_spill(self):
+        trees, mask, _ = self.grown(0.0)
+        self.assertFalse((trees & ~mask).any())
+
+
 if __name__ == "__main__":
     unittest.main()
