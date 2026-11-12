@@ -214,6 +214,23 @@ def town() -> list[OSMFeature]:
     # come out as a bungalow with a sofa in it.
     feats.append(way({"man_made": "water_tower", "building": "yes",
                       "name": "Selftest Water Tower"}, box(392, 420, 400, 428)))
+    # The rest of the skyline: a silo over the farmyard, a transmission tower
+    # on the ridge, and the two businesses that put a board up by the road.
+    # The steeple is not here - a church does not carry its tower as its own
+    # feature, and knoxbuild/landmarks.py puts one beside it.
+    feats.append(way({"man_made": "silo", "building": "silo", "name": "Selftest Silo"},
+                     box(340, 435, 346, 441)))
+    feats.append(OSMFeature(next(_ids), "node", {"power": "tower",
+                                                 "name": "Selftest Pylon"}, [_ll(470, 430)]))
+    feats.append(way({"building": "yes", "tourism": "motel", "name": "Selftest Motel"},
+                     box(168, 510, 190, 524)))
+    # The same motel as a point inside its own outline, which is how a third of
+    # them are mapped: one business, two targets, and only one board in front
+    # of it (knoxbuild/landmarks.py).
+    feats.append(OSMFeature(next(_ids), "node", {"tourism": "motel",
+                                                 "name": "Selftest Motel"}, [_ll(179, 517)]))
+    feats.append(way({"building": "yes", "amenity": "cinema", "drive_in": "yes",
+                      "name": "Selftest Drive-In"}, box(248, 510, 272, 524)))
     # A coast along the south: land on the left of the line, sea to the right.
     # Deliberately short: a real download often holds only part of a shore.
     feats.append(way({"natural": "coastline"}, [(0, 30), (600, 30)]))
@@ -232,6 +249,45 @@ def town() -> list[OSMFeature]:
     return feats
 
 
+
+
+def _lot_tiles(path: str) -> list[tuple[int, int, int, str, str]]:
+    """(x, y, level, layer, tile) from a tile-only lot, as the editor reads it."""
+    text = open(path, encoding="utf-8").read()
+    names = re.findall(r'<tile tile="([^"]+)"',
+                       text.split("<user_tiles>")[1].split("</user_tiles>")[0])
+    out = []
+    for z, floor in enumerate(re.findall(r"<floor>(.*?)</floor>", text, re.S)):
+        for layer, body in re.findall(r'<tiles layer="([^"]+)">(.*?)</tiles>', floor, re.S):
+            for y, row in enumerate(body.strip().splitlines()):
+                for x, value in enumerate(row.strip().rstrip(",").split(",")):
+                    if value.strip() not in ("", "0"):
+                        out.append((x, y, z, layer, names[int(value) - 1]))
+    return out
+
+
+def _project_lots(pzw_path: str, tag: str) -> list[tuple[int, int, str]]:
+    """(x, y, tile) in map tiles for every lot of one kind, via the project.
+
+    A lot's tbx is written in its own coordinates, so where it ended up is only
+    answered by the .pzw: cell origin plus the lot's offset in the cell.
+    """
+    from knoxbuild.structures import CELL
+
+    text = open(pzw_path, encoding="utf-8").read()
+    out = []
+    for cell in re.finditer(r'<cell x="(\d+)" y="(\d+)"[^>]*>(.*?)</cell>', text, re.S):
+        cx, cy = int(cell.group(1)), int(cell.group(2))
+        for lot in re.finditer(r'<lot x="(\d+)" y="(\d+)"[^>]*map="([^"]+)"',
+                               cell.group(3)):
+            if tag not in lot.group(3):
+                continue
+            path = os.path.join(os.path.dirname(pzw_path),
+                                lot.group(3).replace("/", os.sep))
+            for x, y, _z, _layer, tile in _lot_tiles(path):
+                out.append((cx * CELL + int(lot.group(1)) + x,
+                            cy * CELL + int(lot.group(2)) + y, tile))
+    return out
 
 
 class Checks:
@@ -434,6 +490,26 @@ def main(argv: list[str]) -> int:
               and "Selftest Water Tower" not in names,
               f"the water tower is a tank on legs, not a house ({top + 1} storeys, "
               f"{len(by_level.get(top, ()))} tiles on top over {len(by_level.get(0, ()))})")
+        # The same path, two more shapes: a silo is a drum with a cap, and a
+        # transmission tower a mast with its arms out.
+        sx, sy = proj.to_px(*_ll(343, 438))
+        silo = [(x, y, z) for x, y, z, _l, _t in tiles
+                if abs(x - sx) <= 5 and abs(y - sy) <= 5]
+        silo_top = max((z for _x, _y, z in silo), default=0)
+        drum = len({(x, y) for x, y, z in silo if z == silo_top - 1})
+        cap = len({(x, y) for x, y, z in silo if z == silo_top})
+        check(silo_top + 1 >= 5 and drum > 3 and cap == 1,
+              f"the silo is a drum under a domed cap ({silo_top + 1} storeys, "
+              f"{drum} squares wide, {cap} under the dome)")
+        px_, py_ = proj.to_px(*_ll(470, 430))
+        pylon = [(x, y, z, layer) for x, y, z, layer, _t in tiles
+                 if abs(x - px_) <= 4 and abs(y - py_) <= 4]
+        mast = {(x, y) for x, y, z, layer in pylon if layer == "Floor"}
+        arms = {z for _x, _y, z, layer in pylon if layer == "Furniture"}
+        check(len(mast) == 1 and len(arms) == 2
+              and max((z for _x, _y, z, _l in pylon), default=0) >= 3,
+              f"and the transmission tower is a mast with its arms out "
+              f"({len(mast)} square up, {len(arms)} pairs of arms)")
         veg = Image.open(os.path.join(out, "selftest_veg.bmp")).convert("RGB")
         pixels = veg.get_flattened_data() if hasattr(veg, "get_flattened_data") else veg.getdata()
         kerbs = sum(1 for c in pixels if c[0] == 12 and c[1] == 34)
@@ -458,6 +534,116 @@ def main(argv: list[str]) -> int:
               f"the building step reports its stages, in order ({len(said)} reports)")
         rows = open(os.path.join(out, "selftest_placements.csv"), encoding="utf-8").read().splitlines()
         check(len(rows) - 1 >= 60, f"buildings placed ({len(rows) - 1})")
+
+        # The steeple and the boards by the road are put beside the buildings
+        # (knoxbuild/landmarks.py): a tower on a church is not a feature of its
+        # own on the map, and a motel's sign is a detail of the motel. Read
+        # back from their lots, as the editor reads them.
+        steeples = boards = 0
+        landmark_lots = [n for n in os.listdir(os.path.join(out, "buildings"))
+                         if n.endswith(".tbx") and "_landmarks_" in n]
+        for name_ in landmark_lots:
+            text = open(os.path.join(out, "buildings", name_), encoding="utf-8").read()
+            boards += len(re.findall(r'layer="WallFurniture"', text))
+            filled = [sum(value.strip() not in ("", "0")
+                          for value in body.replace("\n", ",").split(","))
+                      for body in re.findall(r'<tiles layer="Floor">(.*?)</tiles>',
+                                             text, re.S)]
+            steeples = max(steeples, len([f for f in filled if f]))
+        check(steeples >= 5, f"the church has a steeple beside it ({steeples} storeys)")
+        # Exactly one board each: the motel is mapped as an outline and a point
+        # inside it, and two boards in front of one motel is the failure this
+        # count catches.
+        check(boards == 2,
+              f"one board each for the motel and the drive-in ({boards})")
+        # A board hangs on the WallFurniture layer with no wall on its square:
+        # the tiles are furniture in BuildingFurniture.txt, not wall pieces, so
+        # the editor has to accept the lot as it stands.
+        import validate_tbx
+        check(all(not validate_tbx.check(os.path.join(out, "buildings", n))
+                  for n in landmark_lots),
+              f"and a board with no wall behind it passes the editor "
+              f"({len(landmark_lots)} landmark lots)")
+        # A board hangs on its post. Every panel in a landmark lot must have a
+        # column of post tiles on one of the squares the board covers, running
+        # from the ground to the storey the board is on - otherwise the board
+        # is a poster floating in the air, which is what the preview showed.
+        from knoxbuild.landmarks import SIGN_POLE
+        boards_seen = held = 0
+        for name_ in landmark_lots:
+            tiles_ = _lot_tiles(os.path.join(out, "buildings", name_))
+            panels: dict[int, set] = {}
+            columns: dict[tuple[int, int], set] = {}
+            for x, y, z, layer, tile in tiles_:
+                if layer == "WallFurniture":
+                    panels.setdefault(z, set()).add((x, y))
+                elif layer == "Furniture" and tile == SIGN_POLE:
+                    columns.setdefault((x, y), set()).add(z)
+            for z, cells in panels.items():
+                boards_seen += 1
+                if any(set(range(z + 1)) <= columns.get(cell, set())
+                       for cell in cells):
+                    held += 1
+        check(boards_seen and held == boards_seen,
+              f"every board stands on its post ({held} of {boards_seen} boards)")
+
+        print("story vignettes")
+        # The same props as the bases and the churchyards, put where the story
+        # is: the way out of town held, the school turned into a refuge, a main
+        # road stopped. Read back out of the project, so a checkpoint has to be
+        # near the map's edge and a school's supplies near the school.
+        import numpy as _np
+
+        from knoxbuild.props import BARRICADE_X, BARRICADE_Y, CARRIAGEWAY, CRATES, DRUMS
+        vignettes = _project_lots(os.path.join(out, "selftest.pzw"), "_vignettes")
+        barriers = [(x, y) for x, y, tile in vignettes
+                    if tile in BARRICADE_X + BARRICADE_Y]
+        check(barriers, "the scenes are stamped from their props "
+                        f"({len(vignettes)} props, {len(barriers)} barrier segments)")
+        # A barrier across a road has to stand on the road: it is the one prop
+        # here that goes onto the carriageway rather than beside it.
+        on_road = [(x, y) for x, y in barriers
+                   if tuple(ground.getpixel((x, y))) in CARRIAGEWAY]
+        check(barriers and len(on_road) == len(barriers),
+              f"and every barrier stands on the carriageway "
+              f"({len(on_road)} of {len(barriers)} segments)")
+        gw, gh = ground.width, ground.height
+        # The checkpoint holds the way out of town, which is the outermost
+        # tarmac there is - the border on a tight map, the edge of the built
+        # area on one padded to a minimum size.
+        ground_pixels = _np.asarray(ground)
+        tarmac = _np.zeros((gh, gw), dtype=bool)
+        for colour in CARRIAGEWAY:
+            tarmac |= _np.all(ground_pixels == _np.array(colour), axis=2)
+        ys, xs = _np.nonzero(tarmac)
+        nearest = int(_np.minimum.reduce([xs, ys, gw - 1 - xs, gh - 1 - ys]).min())
+        outer = min(min(x, y, gw - 1 - x, gh - 1 - y) for x, y in barriers) if barriers else -1
+        check(barriers and outer <= nearest + 2,
+              f"and a checkpoint holds the way out of town "
+              f"({outer} tiles from the border, the outermost road)")
+        places: list = []
+        for x, y in barriers:
+            for place in places:
+                if abs(x - place[0]) < 20 and abs(y - place[1]) < 20:
+                    break
+            else:
+                places.append((x, y))
+        check(len(places) >= 2,
+              f"and a main road away from the end is stopped too "
+              f"({len(barriers)} segments in {len(places)} places)")
+        import csv as _csv
+        with open(os.path.join(out, "selftest_placements.csv"),
+                  newline="", encoding="utf-8") as handle:
+            school = next(row_ for row_ in _csv.DictReader(handle)
+                          if row_["kind"] == "school")
+        sx, sy = int(school["tile_x"]), int(school["tile_y"])
+        sw, sh = int(school["width"]), int(school["height"])
+        supplies = [(x, y) for x, y, tile in vignettes
+                    if tile in CRATES + DRUMS
+                    and sx - 6 <= x <= sx + sw + 6 and sy - 6 <= y <= sy + sh + 6]
+        check(len(supplies) >= 3,
+              f"and the school yard is an evacuation centre "
+              f"({len(supplies)} crates and drums beside the school)")
 
         print("street props")
         # Painted into the vegetation bitmap, and placed by rules the map tools

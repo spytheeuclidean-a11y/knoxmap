@@ -2452,6 +2452,51 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     prop_placements, prop_counts = place_props(out_dir, map_name, bdir, occupied,
                                                areas, metres_per_tile,
                                                seed=seed + 5)
+    # A steeple on each church, and the board a motel or a drive-in puts up by
+    # the road (knoxbuild/landmarks.py). The rest of the skyline - water
+    # towers, silos and transmission masts - is mapped as its own feature and
+    # built by generator/structures.py.
+    from .landmarks import place_landmarks, sign_for
+    businesses: list[tuple[int, int, int, int, str]] = []
+    for group in (points or {}).values():
+        for bx, by, tags in group:
+            what = sign_for(tags)
+            if what:
+                businesses.append((int(bx), int(by), int(bx), int(by), what))
+    # A motel is as often the building as a point inside it, and only the
+    # building's own tags come with the outline it was built from. The board
+    # is put up at the edge of that outline, so the pass is given all of it.
+    for feat in geo.get("features", []):
+        what = sign_for(feat.get("properties") or {})
+        ring = _ring_points(feat.get("geometry") or {}) if what else []
+        if len(ring) < 3:
+            continue
+        px_ring = [proj.to_px(lat, lon) for lon, lat in ring]
+        businesses.append((int(round(min(x for x, _y in px_ring))),
+                           int(round(min(y for _x, y in px_ring))),
+                           int(round(max(x for x, _y in px_ring))),
+                           int(round(max(y for _x, y in px_ring))), what))
+    landmark_placements, landmark_counts = place_landmarks(
+        out_dir, map_name, bdir, occupied, rows, businesses,
+        metres_per_tile=metres_per_tile, seed=seed + 7)
+    if landmark_counts["steeples"] or landmark_counts["signs"]:
+        print(f"landmarks             : {landmark_counts['steeples']} steeples, "
+              f"{landmark_counts['signs']} roadside signs "
+              f"({landmark_counts['motel_signs']} motels, "
+              f"{landmark_counts['drive_in_signs']} drive-ins)")
+
+    # The three scenes: the way out of town held by the army, the school turned
+    # into a refuge, a main road stopped. Same props as the bases above, put
+    # where the story is instead of where a land use is.
+    from .props import place_vignettes
+    vignette_placements, vignette_counts = place_vignettes(
+        out_dir, map_name, bdir, occupied, rows, road_hierarchy=road_hierarchy,
+        seed=seed + 9)
+    if vignette_counts["vignette_props"]:
+        print(f"story vignettes       : {vignette_counts['checkpoints']} checkpoints, "
+              f"{vignette_counts['road_blocks']} roadblocks, "
+              f"{vignette_counts['evac_centres']} evacuation centres "
+              f"({vignette_counts['vignette_props']} props)")
 
     if used_presets:
         tally = ", ".join(f"{name} x{n}" for name, n in used_presets.most_common(6))
@@ -2505,8 +2550,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         zones = job_zones.result()
         structure_placements, raised = job_structures.result()
     placements = (placements + fence_placements + structure_placements +
-                  pump_placements + prop_placements + light_placements
-                  + escalator_placements)
+                  pump_placements + prop_placements + landmark_placements
+                  + vignette_placements + light_placements + escalator_placements)
 
     say("Writing the WorldEd project", 0.95)
     pzw_path = os.path.join(out_dir, f"{map_name}.pzw")
