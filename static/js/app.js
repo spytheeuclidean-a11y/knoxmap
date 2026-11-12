@@ -960,6 +960,18 @@ const SETTING_LABELS = {
   forest_density:      ['Forests', 'Scales every wood, on top of Woodland: the ones the mapper drew and the tree cover WorldCover finds. Thick forest round a thinly planted town, or the other way about.'],
   forest_stand_m:      ['Stand size', 'How big the clumps of forest and the clearings between them are, in metres.'],
   forest_edge_m:       ['Edge softness', 'How far a wood spills out past its edge, in metres, thinning as it goes. 0 is a hard edge.'],
+  forest_thickets:     ['Thickets', 'How much of a wood is a wall of trees. 1 is a tenth of it.'],
+  forest_stand_variety: ['Stand variety', 'At 0 the stands are all about one size; higher mixes big, middling and small.'],
+  forest_raggedness:   ['Raggedness', 'Smooth blobs at 0, ragged and broken stands at 1.'],
+  forest_edge_wobble:  ['Edge wobble', 'How irregular the line is that a wood spills out to.'],
+  forest_spill_thick:  ['Spill thickness', 'How much of the spill past a wood is thick trees rather than single ones.'],
+  forest_keep_meadows: ['Keep meadows open', 'How far across a clearing a wood may spill. 1 lets it fill small meadows.'],
+  forest_seed:         ['Forest seed', 'Another layout of the woods with the same settings.'],
+  forest_house_clearing_m: ['House clearings', 'How far the clearing round a house in the woods reaches, in metres. 0 is none.'],
+  forest_big_trees:    ['Big trees', 'How many big old trees stand in the woods.'],
+  forest_groves:       ['Made-up woods', 'Woods made up where there is no land cover data.'],
+  forest_wild_growth:  ['Scrub on open ground', 'Trees and bushes scattered over open grass where there is no land cover data.'],
+  forest_shrubland:    ['Shrubland and marsh', 'How thickly the land cover\'s shrubland, grass tufts and marsh are planted.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
   fill_gaps:           ['Fill gaps from Microsoft footprints', 'On adds the buildings OpenStreetMap has not got, from Microsoft’s machine-detected building footprints, same licence. Downloads about 30 MB per tile on the first run, nothing to install. Worth it where your town is half missing from OSM; elsewhere it adds sheds. Falls back to Overture (needs DuckDB) if Microsoft cannot be reached.'],
   fill_frontage:       ['Fill gaps in streets', 'On builds the buildings missing from a street that has buildings either side of the gap: the shop missing from a row of shops, the houses from a run of houses. They are made like their neighbours, same width, depth, set-back and storeys, and only where there is room: never across a road, on water, in a park or a wood. Uses nothing but the map itself, so it costs no download. Off leaves the gaps as OpenStreetMap has them.'],
@@ -1004,84 +1016,181 @@ async function loadSettings() {
   buildSettingsForm(settingsMeta.current);
 }
 
-function buildSettingsForm(values) {
-  const body = document.getElementById('advanced-body');
-  body.innerHTML = '';
-  for (const [key, [label, hint]] of Object.entries(SETTING_LABELS)) {
-    if (!(key in settingsMeta.defaults)) continue;   // knob has been removed
-    const [lo, hi] = settingsMeta.limits[key];
-    const isInt = settingsMeta.types
-      ? settingsMeta.types[key] === 'int'
-      : Number.isInteger(settingsMeta.defaults[key]);
-    const choices = settingsMeta.options?.[key];
-    const isChoice = Array.isArray(choices);
-    // A setting that is only ever 0 or 1 is a switch, not a quantity. As a
-    // slider it was two positions wide, read "1" or "0" rather than on or
-    // off, and could be left halfway on a touchscreen.
-    const isSwitch = !isChoice && isInt && lo === 0 && hi === 1;
-    const wrap = document.createElement('div');
-    wrap.className = isSwitch ? 'setting setting-switch' : 'setting';
-    // A seed is an identifier, not a quantity: nobody wants to drag a slider
-    // across two billion values to find one, so it gets a box and a dice.
-    const control = key === 'seed'
-      ? `<div class="seed-row"><input type="number" data-key="${key}" min="${lo}"
-           max="${hi}" step="1" value="${values[key]}"><button type="button"
-           class="dice" title="Random seed">random</button></div>`
-      : isChoice
-      ? `<select data-key="${key}">${choices.map(([value, name]) =>
-          `<option value="${value}"${value === values[key] ? ' selected' : ''}>${name}</option>`).join('')}</select>`
-      : isSwitch
-      ? ''
-      : `<input type="range" data-key="${key}" min="${lo}" max="${hi}"
-           step="${isInt ? 1 : 0.05}" value="${values[key]}">`;
-    // The switch sits in the heading, where the number used to be: the name
-    // on the left, what it is set to on the right, the hint underneath.
-    const head = isSwitch
-      ? `<label class="switch"><input type="checkbox" role="switch"
-           data-key="${key}" aria-label="${label}"${values[key] ? ' checked' : ''}>
-         <span class="switch-track"></span></label>`
-      : key === 'seed' || isChoice ? ''
-      : `<output class="setting-val">${values[key]}</output>`;
-    wrap.innerHTML = `
-      <div class="setting-head"><span class="setting-name">${label}</span>
-        ${head}</div>
-      ${control}
-      <span class="setting-hint">${hint}</span>`;
-    body.appendChild(wrap);
-  }
-  addForestPreview(body);
-  fx.wireSettings(body);
-  runListSearch('advanced-body');
+// Settings that belong together are drawn as a card of their own, the most
+// used on show and the rest behind Advanced. A key named here is drawn in its
+// card; any other key in the list as before, so a new group is a table entry.
+const SETTING_GROUPS = {
+  forest: {
+    title: 'Forest',
+    preview: true,
+    main: ['forest_density', 'forest_thickets', 'forest_stand_m', 'forest_stand_variety',
+           'forest_edge_m'],
+    advanced: [
+      ['Shape', ['forest_raggedness', 'forest_edge_wobble', 'forest_spill_thick',
+                 'forest_keep_meadows', 'forest_seed']],
+      ['Around the woods', ['forest_house_clearing_m', 'forest_big_trees', 'forest_groves',
+                            'forest_wild_growth', 'forest_shrubland']],
+      ['Everywhere', ['tree_density', 'landcover', 'winter_look']],
+    ],
+  },
+};
+// The preview's sample land has land cover all over it, as a map with
+// WorldCover does, and these do nothing there.
+const NOT_IN_PREVIEW = new Set(['forest_groves', 'forest_wild_growth', 'landcover',
+                                'winter_look']);
+
+function groupKeys(group) {
+  return [...group.main, ...group.advanced.flatMap(([, keys]) => keys)];
 }
 
-// The forest sliders draw a sample of forest as they move, from the same code
-// the map is drawn with (/api/forest-preview), so what is seen is what is got.
-const FOREST_PREVIEW_KEYS = ['tree_density', 'forest_density', 'forest_stand_m', 'forest_edge_m'];
+function settingElement(key, label, hint, values) {
+  const [lo, hi] = settingsMeta.limits[key];
+  const isInt = settingsMeta.types
+    ? settingsMeta.types[key] === 'int'
+    : Number.isInteger(settingsMeta.defaults[key]);
+  const choices = settingsMeta.options?.[key];
+  const isChoice = Array.isArray(choices);
+  // A setting that is only ever 0 or 1 is a switch, not a quantity. As a
+  // slider it was two positions wide, read "1" or "0" rather than on or
+  // off, and could be left halfway on a touchscreen.
+  const isSwitch = !isChoice && isInt && lo === 0 && hi === 1;
+  // A seed is an identifier, not a quantity: nobody wants to drag a slider
+  // across a million values to find one, so it gets a box and a dice.
+  const isSeed = key === 'seed' || key === 'forest_seed';
+  const wrap = document.createElement('div');
+  wrap.className = isSwitch ? 'setting setting-switch' : 'setting';
+  const control = isSeed
+    ? `<div class="seed-row"><input type="number" data-key="${key}" min="${lo}"
+         max="${hi}" step="1" value="${values[key]}"><button type="button"
+         class="dice" title="Random seed">random</button></div>`
+    : isChoice
+    ? `<select data-key="${key}">${choices.map(([value, name]) =>
+        `<option value="${value}"${value === values[key] ? ' selected' : ''}>${name}</option>`).join('')}</select>`
+    : isSwitch
+    ? ''
+    : `<input type="range" data-key="${key}" min="${lo}" max="${hi}"
+         step="${isInt ? 1 : 0.05}" value="${values[key]}">`;
+  // The switch sits in the heading, where the number used to be: the name
+  // on the left, what it is set to on the right, the hint underneath.
+  const head = isSwitch
+    ? `<label class="switch"><input type="checkbox" role="switch"
+         data-key="${key}" aria-label="${label}"${values[key] ? ' checked' : ''}>
+       <span class="switch-track"></span></label>`
+    : isSeed || isChoice ? ''
+    : `<output class="setting-val">${values[key]}</output>`;
+  wrap.innerHTML = `
+    <div class="setting-head"><span class="setting-name">${label}</span>
+      ${head}</div>
+    ${control}
+    <span class="setting-hint">${hint}</span>`;
+  return wrap;
+}
 
-function addForestPreview(body) {
-  const last = body.querySelector('[data-key="forest_edge_m"]');
-  if (!last) return;
+// The forest card draws a sample of land as its sliders move, from the same
+// code the map is drawn with (/api/forest-preview), so what is seen is what
+// is got. The old picture stays until the new one has loaded.
+function forestPreview(card, group) {
   const fig = document.createElement('figure');
   fig.className = 'forest-preview';
   fig.innerHTML = `<img alt="A sample of forest with these settings" width="300" height="300">
-    <figcaption>300 m of forest with a road and a field, as these settings draw it.</figcaption>`;
-  last.closest('.setting').after(fig);
+    <figcaption>300 m of woods, a road, houses and a field, as these settings draw them.</figcaption>`;
   const img = fig.querySelector('img');
+  const keys = groupKeys(group).filter(k => !NOT_IN_PREVIEW.has(k));
   let timer = null;
   const refresh = () => {
     const q = new URLSearchParams();
-    for (const key of FOREST_PREVIEW_KEYS) {
-      const el = body.querySelector(`[data-key="${key}"]`);
+    for (const key of keys) {
+      const el = card.querySelector(`[data-key="${key}"]`);
       if (el && el.value !== '') q.set(key, el.value);
     }
-    img.src = `/api/forest-preview?${q}`;
+    const next = new Image();
+    next.onload = () => { img.src = next.src; };
+    next.src = `/api/forest-preview?${q}`;
   };
-  body.addEventListener('input', e => {
-    if (!FOREST_PREVIEW_KEYS.includes(e.target.dataset?.key)) return;
+  card.addEventListener('input', e => {
+    if (!keys.includes(e.target.dataset?.key)) return;
     clearTimeout(timer);
     timer = setTimeout(refresh, 150);
   });
-  refresh();
+  setTimeout(refresh, 0);       // once the card's sliders are in it
+  return fig;
+}
+
+function settingGroup(name, group, values) {
+  const card = document.createElement('section');
+  card.className = 'setting-group';
+  card.dataset.group = name;
+  card.innerHTML = `<div class="setting-group-head"><span class="setting-group-title">${group.title}</span>
+    <button type="button" class="linkish group-reset">Reset</button></div>`;
+  const add = (parent, key) => {
+    if (!(key in settingsMeta.defaults) || !SETTING_LABELS[key]) return;
+    const [label, hint] = SETTING_LABELS[key];
+    const el = settingElement(key, label, hint, values);
+    if (NOT_IN_PREVIEW.has(key)) {
+      el.insertAdjacentHTML('beforeend', '<span class="setting-note">Not shown in the picture.</span>');
+    }
+    parent.appendChild(el);
+  };
+  if (group.preview) card.appendChild(forestPreview(card, group));
+  group.main.forEach(key => add(card, key));
+  const advanced = document.createElement('details');
+  advanced.className = 'setting-group-advanced';
+  advanced.innerHTML = '<summary>Advanced</summary>';
+  for (const [title, keys] of group.advanced) {
+    const head = document.createElement('div');
+    head.className = 'setting-subhead';
+    head.textContent = title;
+    advanced.appendChild(head);
+    keys.forEach(key => add(advanced, key));
+  }
+  // Open or closed is remembered in this browser; a private window that
+  // refuses storage just starts closed.
+  const remember = `knoxmap.${name}.advanced`;
+  try { advanced.open = localStorage.getItem(remember) === '1'; } catch (e) { /* no storage */ }
+  advanced.addEventListener('toggle', () => {
+    try { localStorage.setItem(remember, advanced.open ? '1' : '0'); } catch (e) { /* no storage */ }
+  });
+  card.appendChild(advanced);
+  card.querySelector('.group-reset').addEventListener('click', () => resetGroup(card, group));
+  return card;
+}
+
+// The card's own keys back to the chosen kind of place's values, and nothing
+// else: Reset at the bottom of the list still does every setting.
+function resetGroup(card, group) {
+  const preset = settingsMeta.presets[document.getElementById('preset').value]
+    || settingsMeta.defaults;
+  for (const key of groupKeys(group)) {
+    const el = card.querySelector(`[data-key="${key}"]`);
+    if (!el || !(key in preset)) continue;
+    if (el.type === 'checkbox') el.checked = !!preset[key];
+    else el.value = preset[key];
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
+function buildSettingsForm(values) {
+  const body = document.getElementById('advanced-body');
+  body.innerHTML = '';
+  const groupOf = {};
+  for (const [name, group] of Object.entries(SETTING_GROUPS)) {
+    for (const key of groupKeys(group)) groupOf[key] = name;
+  }
+  const placed = new Set();
+  for (const [key, [label, hint]] of Object.entries(SETTING_LABELS)) {
+    if (!(key in settingsMeta.defaults)) continue;   // knob has been removed
+    const name = groupOf[key];
+    if (!name) {
+      body.appendChild(settingElement(key, label, hint, values));
+    } else if (!placed.has(name)) {
+      // The card goes where the first of its keys would have.
+      placed.add(name);
+      body.appendChild(settingGroup(name, SETTING_GROUPS[name], values));
+    }
+  }
+  fx.wireSettings(body);
+  runListSearch('advanced-body');
 }
 
 function readSettings() {
@@ -2926,12 +3035,19 @@ function runListSearch(boxId) {
         !head.querySelector(`${found.item}:not(.out-of-search)`));
     }
   }
+  // A match inside a closed Advanced panel opens it, or it would be found
+  // and not seen.
+  if (found.query) {
+    for (const panel of box.querySelectorAll('details.setting-group-advanced')) {
+      if (panel.querySelector(`${found.item}:not(.out-of-search)`)) panel.open = true;
+    }
+  }
   found.input.classList.toggle('found-nothing', Boolean(words.length) && !shown);
 }
 
 // Every list in the window long enough to be worth searching. The last number
 // is how many things it has to hold before the box is worth showing at all.
-searchableList('settingFind', 'advanced-body', '.setting', null, 8);
+searchableList('settingFind', 'advanced-body', '.setting', '.setting-group', 8);
 searchableList('sketchFind', 'sketchPalette', '.sketch-pick', '.palette-group', 12);
 searchableList('boardFind', 'boardPalette', '.sketch-pick', '.palette-group', 12);
 searchableList('zoneFind', 'zoneList', 'li', null, 6);
