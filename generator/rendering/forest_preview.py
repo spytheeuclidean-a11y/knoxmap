@@ -38,6 +38,9 @@ CROWN = {C.TREES: 0.9, C.TREES_DARK_GRASS: 0.5, C.SPARSE_TREES: 0.15,
          C.BUSHES_TREES_DARK_GRASS: 0.5}
 CROWN_RGB = np.array([(34, 66, 28), (44, 82, 34), (28, 56, 24)], dtype=np.uint8)
 YOUNG_RGB = (96, 142, 62)
+YOUNG_CHANCE = 0.5
+SHRUB_RGB = (150, 112, 58)       # hedge and scrub bushes, warmer than the wood
+SHRUB_CHANCE = 0.8
 BUSH_RGB = (70, 104, 44)
 BIG_RGB = (30, 60, 26)
 ROOF_RGB, ROOF_EDGE = (150, 92, 72), (90, 52, 40)
@@ -56,6 +59,8 @@ def _wood_mask() -> np.ndarray:
     wood |= (yy - 73) ** 2 + (xx - 113) ** 2 < 42 ** 2          # round the house in it
     wood |= (yy - 205) ** 2 + (xx - 175) ** 2 < 40 ** 2         # behind the road's houses
     wood &= ~((yy - 225) ** 2 + (xx - 60) ** 2 < 28 ** 2)       # a meadow
+    r0, r1, c0, c1 = SHRUB
+    wood[r0:r1, c0:c1] = False                                  # the shrubland's open ground
     wood[:, FIELD_X - 5:] = False
     return wood
 
@@ -70,9 +75,7 @@ def _sample():
     grid = np.full((SIZE, SIZE), 30, dtype=np.uint8)        # grassland
     grid[wood] = 10                                          # tree cover
     r0, r1, c0, c1 = SHRUB
-    strip = np.zeros_like(wood)
-    strip[r0:r1, c0:c1] = True
-    grid[strip & ~wood] = 20                                 # shrubland
+    grid[r0:r1, c0:c1] = 20                                  # shrubland (the wood leaves it open)
     grid[:, FIELD_X:] = 40                                   # cropland
     land[ROAD[0]:ROAD[1], :] = C.MEDIUM_ASPHALT
     x0, x1, end = LANE
@@ -99,20 +102,19 @@ def preview_layers(tree_density: float, forest_density: float,
     from .forest_shape import shape_forest
     from .homesteads import clear_homesteads
     from .landcover_veg import plant_landcover
-    from .vegetation import _clear_road_vegetation, _plant_big_trees
+    from .vegetation import _plant_big_trees
 
-    land0, wood, grid, rings, roads = _sample()
+    land0, _, grid, rings, roads = _sample()
     land_img = Image.fromarray(land0.copy(), "RGB")
     veg_img = Image.new("RGB", (SIZE, SIZE), C.VEG_NOTHING)
     proj = _projector()
-    owned = np.ones((SIZE, SIZE), dtype=bool)
-    paved = np.all(land0 == C.MEDIUM_ASPHALT, axis=2)
-    owned &= ~paved
+    owned = ~np.all(land0 == C.MEDIUM_ASPHALT, axis=2)
     forest, _ = plant_landcover(veg_img, land_img, grid, owned, proj,
                                 density=tree_density * params.shrubland)
     # The woodland pass, as the renderer runs it before the shaping: every
     # wood tile a tree on dark grass.
-    v = np.array(veg_img); g = np.array(land_img)
+    v = np.array(veg_img)
+    g = np.array(land_img)
     v[forest] = C.TREES
     g[forest] = C.DARK_GRASS
     veg_img, land_img = Image.fromarray(v, "RGB"), Image.fromarray(g, "RGB")
@@ -122,11 +124,21 @@ def preview_layers(tree_density: float, forest_density: float,
                      clear_max_m=params.house_clearing_m)
     _plant_big_trees(veg_img, land_img, [], [], [], proj, density=tree_density,
                      wood_mult=params.big_trees)
-    _clear_road_vegetation(veg_img, land_img)
+    # The renderer's road clearing (vegetation._clear_road_vegetation) scans
+    # every road colour in 256-row bands, 200 ms here; the sample's paving is
+    # only these two, so the same job is one scan.
+    g = np.array(land_img)
     v = np.array(veg_img)
+    v[np.all((g == C.MEDIUM_ASPHALT) | (g == C.DARK_ASPHALT), axis=2)] = C.VEG_NOTHING
     for (a, b), (c, d) in HOUSES:
         v[b:d, a:c] = C.VEG_NOTHING
-    return np.array(land_img), v, rings
+    return g, v, rings
+
+
+def _key(a: np.ndarray) -> np.ndarray:
+    """One integer per colour, so a colour is one comparison, not three."""
+    a = a.astype(np.uint32)
+    return (a[..., 0] << 16) | (a[..., 1] << 8) | a[..., 2]
 
 
 def _from_above(land: np.ndarray, veg: np.ndarray, rings: list) -> Image.Image:
@@ -134,22 +146,26 @@ def _from_above(land: np.ndarray, veg: np.ndarray, rings: list) -> Image.Image:
     grade, young trees and bushes as dots, big trees as big crowns, houses as
     roofs - scaled up so a crown is a dot."""
     h, w = land.shape[:2]
+    lk, vk = _key(land), _key(veg)
     out = np.zeros((h, w, 3), dtype=np.uint8)
     out[:] = GROUND_RGB[C.MEDIUM_GRASS]
     for colour, rgb in GROUND_RGB.items():
-        out[np.all(land == colour, axis=2)] = rgb
+        out[lk == _key(np.array(colour, dtype=np.uint8))] = rgb
     rng = np.random.default_rng(7)
     roll = rng.random((h, w))
     pick = rng.integers(0, len(CROWN_RGB), (h, w))
     for colour, chance in CROWN.items():
-        crown = np.all(veg == colour, axis=2) & (roll < chance)
+        crown = (vk == _key(np.array(colour, dtype=np.uint8))) & (roll < chance)
         out[crown] = CROWN_RGB[pick[crown]]
-    out[np.all(veg == C.BUSHES_TREES_DARK_GRASS, axis=2) & (roll >= 0.5)] = BUSH_RGB
-    out[np.all(veg == C.TREE_SMALL, axis=2)] = YOUNG_RGB
+    out[(vk == _key(np.array(C.BUSHES_TREES_DARK_GRASS, dtype=np.uint8))) & (roll >= 0.5)] = BUSH_RGB
+    for colour in (C.BUSHES, C.DENSE_BUSHES_GRASS):
+        out[(vk == _key(np.array(colour, dtype=np.uint8))) & (roll < SHRUB_CHANCE)] = SHRUB_RGB
+    # Young trees are small light crowns among the dark ground, not a lawn.
+    out[(vk == _key(np.array(C.TREE_SMALL, dtype=np.uint8))) & (roll < YOUNG_CHANCE)] = YOUNG_RGB
     img = Image.fromarray(out, "RGB").resize((SCALE * w, SCALE * h), Image.NEAREST)
     draw = ImageDraw.Draw(img)
     for colour, side in C.BIG_TREE_ROOM.items():
-        ys, xs = np.nonzero(np.all(veg == colour, axis=2))
+        ys, xs = np.nonzero(vk == _key(np.array(colour, dtype=np.uint8)))
         r = SCALE * side / 2
         for x, y in zip(xs.tolist(), ys.tolist()):
             cx, cy = SCALE * (x + 0.5), SCALE * (y + 0.5)

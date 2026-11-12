@@ -70,3 +70,35 @@ class SampleLand(unittest.TestCase):
         for colour in (C.TREE_SMALL, C.BUSHES_TREES_DARK_GRASS, C.TREES_DARK_GRASS):
             with self.subTest(colour=colour):
                 self.assertTrue(np.all(self.veg == colour, axis=2).any())
+
+
+class BigTreesAndDrives(unittest.TestCase):
+    def layers(self, params):
+        from unittest import mock
+        # The game's tree rules are not installed everywhere; pretend they are.
+        with mock.patch("generator.rendering.vegetation.tree_rules_ready",
+                        return_value=True):
+            return P.preview_layers(1.0, 1.0, params)
+
+    def big(self, veg):
+        return sum(int(np.all(veg == colour, axis=2).sum()) for colour in C.BIG_TREE_ROOM)
+
+    def test_big_trees_appear_and_the_knob_turns_them_off(self):
+        _, veg, _ = self.layers(ForestParams())
+        self.assertGreater(self.big(veg), 0)
+        _, veg, _ = self.layers(ForestParams(big_trees=0))
+        self.assertEqual(self.big(veg), 0)
+
+    def test_the_house_in_the_wood_gets_a_drive(self):
+        land, _, _ = P.preview_layers(1.0, 1.0, ForestParams())
+        (x0, y0), (x1, y1) = P.WOOD_HOUSE
+        near = land[y0 - 12:y1 + 12, x0 - 12:x1 + 12]
+        self.assertTrue(np.all(near == C.DARK_ASPHALT, axis=2).any())
+
+    def test_young_trees_leave_dark_ground_between_them(self):
+        land, veg, _ = P.preview_layers(1.0, 1.0, ForestParams())
+        img = np.asarray(P._from_above(land, veg, []).convert("RGB"))[::2, ::2]
+        young = np.all(veg == C.TREE_SMALL, axis=2)
+        self.assertGreater(young.sum(), 50)
+        share = np.all(img[young] == P.YOUNG_RGB, axis=1).mean()
+        self.assertLess(share, 0.7)
