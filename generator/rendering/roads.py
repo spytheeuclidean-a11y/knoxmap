@@ -281,7 +281,7 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
         # pieces follow the diagonal, so a street at 45 degrees gets a kerb
         # running along it instead of a staircase of square ones.
         if diag_kerb:
-            road_r, pave_r = road[rows], pave[rows]
+            pave_r = pave[rows]
             # The pieces are 2x tiles - 128x256, two squares wide and two tall -
             # so one of them covers the square beside it as well. Painting every
             # pavement square drew each one twice, overlapping by half, which is
@@ -292,7 +292,7 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
             even = (y_idx % 2 == 0) & (x_idx % 2 == 0)
             for name, (dy, dx) in (("NW", (-1, -1)), ("NE", (-1, 1)),
                                    ("SW", (1, -1)), ("SE", (1, 1))):
-                beside_diag = _shifted(road_r, dy, dx)
+                beside_diag = _shifted(road, dy, dx)[rows]
                 pick = (sides == 0) & beside_diag & pave_r & free & even
                 if not pick.any():
                     continue

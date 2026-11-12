@@ -243,17 +243,40 @@ def api_iso_info(name: str):
         except Exception:
             pass
 
+    w_tiles = int(info.get("width_tiles") or 0)
+    h_tiles = int(info.get("height_tiles") or 0)
+    picture_boxes = {}
+    if w_tiles > 0 and h_tiles > 0:
+        from knoxbuild.picture import SIZE, _scale_for, _within_budget
+
+        def _box_for(bx: int, by: int, bw: int, bh: int) -> dict[str, int]:
+            sc = _scale_for(bw, bh, SIZE)
+            rx, ry, rw, rh = _within_budget(bx, by, bw, bh, sc)
+            return {"x": rx, "y": ry, "w": rw, "h": rh}
+
+        close = min(320, max(120, min(w_tiles, h_tiles) // 3))
+        mx = max(0, w_tiles // 2 - close // 2)
+        my = max(0, h_tiles // 2 - close // 2)
+        town_box = _box_for(0, 0, w_tiles, h_tiles)
+        middle_box = _box_for(mx, my, close, close)
+        picture_boxes["town"] = town_box
+        picture_boxes["close"] = middle_box
+        picture_boxes["inside"] = (
+            town_box if (pics_dir / "inside_town.png").is_file() else middle_box
+        )
+
     return jsonify({
         "name": map_dir.name,
         "compiled": compiled,
-        "width_tiles": int(info.get("width_tiles") or 0),
-        "height_tiles": int(info.get("height_tiles") or 0),
+        "width_tiles": w_tiles,
+        "height_tiles": h_tiles,
         "cells_x": int(info.get("cells_x") or 0),
         "cells_y": int(info.get("cells_y") or 0),
         "building_count": int(info.get("building_count") or 0),
         "focus_x": focus_x,
         "focus_y": focus_y,
         "pictures": pictures,
+        "picture_boxes": picture_boxes,
         "cells": cells_list,
     })
 

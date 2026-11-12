@@ -222,6 +222,7 @@ body.ws-loading > * { visibility: hidden; }
 .iso-zoom-badge { padding: 3px 8px; font-size: 11px; font-weight: 600; min-width: 44px; text-align: center; color: var(--text); user-select: none; }
 .iso-viewport { flex: 1; position: relative; overflow: hidden; cursor: grab; background: #14180f; outline: none; touch-action: none; }
 .iso-viewport.is-dragging { cursor: grabbing; }
+.iso-viewport.is-dragging .iso-stage { transition: none; }
 .iso-viewport.is-drawing-tool { cursor: crosshair !important; }
 .iso-stage { position: absolute; top: 0; left: 0; transform-origin: 0 0; will-change: transform; transition: transform 0.04s ease-out; }
 .iso-img { display: block; max-width: none; user-select: none; pointer-events: none; -webkit-user-drag: none;

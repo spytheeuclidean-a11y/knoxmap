@@ -14,6 +14,8 @@
   let startY = 0;
   let touchStartDist = 0;
   let touchStartScale = 1.0;
+  let userTransformed = false;
+  let viewportObserver = null;
 
   let el = null;
   let stage = null;
@@ -312,7 +314,11 @@
     if (currentMode === 'sector' && currentSector) {
       return { x: currentSector.x, y: currentSector.y, w: currentSector.w, h: currentSector.h };
     }
-    if (currentMode === 'close') {
+    const serverBox = mapInfo?.picture_boxes?.[currentMode];
+    if (serverBox && serverBox.w > 0 && serverBox.h > 0) {
+      return serverBox;
+    }
+    if (currentMode === 'close' || (currentMode === 'inside' && !mapInfo?.pictures?.inside_town)) {
       const close = Math.min(320, Math.max(120, Math.floor(Math.min(W, H) / 3)));
       return {
         x: Math.max(0, Math.floor(W / 2 - close / 2)),
@@ -345,7 +351,8 @@
 
     const cx = iw / 2;
     const cy = ih / 2;
-    const half = iw / (box.w + box.h);
+    const diamondW = currentMode === 'sector' ? iw : Math.min(iw, ih * 2);
+    const half = diamondW / (box.w + box.h);
     const quarter = half / 2;
 
     const dx = imgX - cx;
@@ -566,6 +573,7 @@
         return;
       }
       if (!isDragging) return;
+      userTransformed = true;
       panX = e.clientX - startX;
       panY = e.clientY - startY;
       applyTransform();
@@ -592,6 +600,7 @@
       const newScale = Math.max(0.08, Math.min(8.0, scale * factor));
       if (newScale === scale) return;
 
+      userTransformed = true;
       panX = cx - (cx - panX) * (newScale / scale);
       panY = cy - (cy - panY) * (newScale / scale);
       scale = newScale;
@@ -685,6 +694,15 @@
       const startY = Math.max(0, y - Math.round(h / 2));
       renderSectorBox(startX, startY, w, h, roofs);
     });
+
+    if (typeof ResizeObserver !== 'undefined' && !viewportObserver) {
+      viewportObserver = new ResizeObserver(() => {
+        if (!userTransformed && img && img.naturalWidth) {
+          fitToScreen();
+        }
+      });
+      viewportObserver.observe(viewport);
+    }
 
     // Back to full town overview button
     backOverviewBtn?.addEventListener('click', () => setMode('town'));
@@ -800,6 +818,7 @@
     const cx = viewport.clientWidth / 2;
     const cy = viewport.clientHeight / 2;
     const newScale = Math.max(0.08, Math.min(8.0, scale * factor));
+    userTransformed = true;
     panX = cx - (cx - panX) * (newScale / scale);
     panY = cy - (cy - panY) * (newScale / scale);
     scale = newScale;
@@ -812,6 +831,7 @@
     const cx = viewport.clientWidth / 2;
     const cy = viewport.clientHeight / 2;
     const newScale = Math.max(0.08, Math.min(8.0, targetScale));
+    userTransformed = true;
     panX = cx - (cx - panX) * (newScale / scale);
     panY = cy - (cy - panY) * (newScale / scale);
     scale = newScale;
@@ -823,6 +843,10 @@
     if (!viewport || !img || !img.naturalWidth) return;
     const vw = viewport.clientWidth;
     const vh = viewport.clientHeight;
+    if (vw <= 32 || vh <= 32) {
+      requestAnimationFrame(fitToScreen);
+      return;
+    }
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
 
@@ -830,6 +854,7 @@
     scale = Math.max(0.08, fitScale);
     panX = (vw - iw * scale) / 2;
     panY = (vh - ih * scale) / 2;
+    userTransformed = false;
     applyTransform();
   }
 
