@@ -66,3 +66,38 @@ class OutdoorProps(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TileNames(unittest.TestCase):
+    """The tile names the prop lists carry have to be the names the game has.
+
+    `location_military_generic_01_8` and `..._008` are two different strings,
+    and a tbx that names a tile the pack does not have loses it without a
+    word - a cemetery of empty grass. BuildingFurniture.txt is the editor's own
+    list of what can be placed, and it spells every one of these sheets with
+    three digits, so that is how ours are spelled and how they are checked.
+    """
+
+    @staticmethod
+    def _names() -> list[str]:
+        from knoxbuild import props
+
+        return sorted(set(props.HEADSTONES) | set(props.CROSSES) | set(props.ANGELS)
+                      | set(props.CRATES) | set(props.DRUMS)
+                      | set(props.BARRICADE_X) | set(props.BARRICADE_Y))
+
+    def test_three_digit_names(self):
+        names = self._names()
+        self.assertTrue(names)
+        for name in names:
+            self.assertRegex(name, r"^[a-z0-9_]+_[0-9]{3}$")
+
+    def test_and_the_editor_lists_every_one_of_them(self):
+        path = os.path.join(os.path.dirname(os.path.dirname(__file__)),
+                            "vendor", "PZMappingTools", "config",
+                            "BuildingFurniture.txt")
+        if not os.path.exists(path):
+            self.skipTest("no tile definitions on this machine")
+        with open(path, encoding="utf-8", errors="ignore") as handle:
+            defined = handle.read()
+        missing = [name for name in self._names() if f"= {name}" not in defined]
+        self.assertEqual(missing, [], f"not a piece the editor can place: {missing}")

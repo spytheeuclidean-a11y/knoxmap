@@ -34,14 +34,20 @@ from .world import Placement
 # location_community_cemetary_01: headstones, wooden crosses and the angel on
 # her plinth. Several shapes, because a churchyard where every stone is the
 # same reads as a car park.
-HEADSTONES = ["location_community_cemetary_01_8", "location_community_cemetary_01_9",
-              "location_community_cemetary_01_11", "location_community_cemetary_01_12",
-              "location_community_cemetary_01_13", "location_community_cemetary_01_16",
-              "location_community_cemetary_01_17"]
-CROSSES = ["location_community_cemetary_01_30", "location_community_cemetary_01_31",
-           "location_community_cemetary_01_44", "location_community_cemetary_01_46"]
-ANGELS = ["location_community_cemetary_01_19", "location_community_cemetary_01_20",
-          "location_community_cemetary_01_21", "location_community_cemetary_01_22"]
+# Tile names are spelled the way BuildingEd's own config spells them, three
+# digits: BuildingFurniture.txt carries every one of these sheets that way and
+# never a short form, and a tbx that names a tile the pack does not have is
+# dropped without a word.
+HEADSTONES = ["location_community_cemetary_01_008", "location_community_cemetary_01_009",
+              "location_community_cemetary_01_011", "location_community_cemetary_01_012",
+              "location_community_cemetary_01_013", "location_community_cemetary_01_016",
+              "location_community_cemetary_01_017"]
+# 030 and 031 are the wooden crosses BuildingEd offers; 044 and 046 have
+# artwork on the sheet but are in none of its furniture entries, so a lot that
+# named them would come out with two graves missing.
+CROSSES = ["location_community_cemetary_01_030", "location_community_cemetary_01_031"]
+ANGELS = ["location_community_cemetary_01_019", "location_community_cemetary_01_020",
+          "location_community_cemetary_01_021", "location_community_cemetary_01_022"]
 CROSS_SHARE = 0.12         # of the graves, a wooden cross instead of a stone
 ANGEL_SHARE = 0.006        # and once in a while a monument
 GRAVE_SPACING_M = 2.0      # along a row
@@ -49,14 +55,16 @@ GRAVE_ROW_M = 3.0          # between rows
 PATH_EVERY_ROWS = 8        # a way through, so it is not one solid block
 MAX_GRAVES = 40000         # a whole county of churchyards, and no more
 
-# location_military_generic_01: ammunition crates, fuel drums and lockers.
-# Nothing with English writing on it - the same base has to read as a base in
-# any country the map is of.
-CRATES = ["location_military_generic_01_8", "location_military_generic_01_9",
-          "location_military_generic_01_16", "location_military_generic_01_17",
-          "location_military_generic_01_0", "location_military_generic_01_1"]
-DRUMS = ["location_military_generic_01_14", "location_military_generic_01_15",
-         "location_military_generic_01_22", "location_military_generic_01_23"]
+# location_military_generic_01: ammunition crates and fuel drums, and nothing
+# with English writing on it - the same base has to read as a base in any
+# country the map is of. 000-005 and 008-013 are the crates and 006-007 and
+# 014-015 the drums; 016-021 are ARMY PROPERTY and KEEP OUT placards, which
+# stand on a wall rather than a yard, and 022-023 are two-tile lockers.
+CRATES = ["location_military_generic_01_000", "location_military_generic_01_001",
+          "location_military_generic_01_002", "location_military_generic_01_008",
+          "location_military_generic_01_009", "location_military_generic_01_011"]
+DRUMS = ["location_military_generic_01_006", "location_military_generic_01_007",
+         "location_military_generic_01_014", "location_military_generic_01_015"]
 DUMP_EVERY_M = 26.0        # a stack of stores about this often across the site
 DUMP_MIN_M2 = 400          # sites smaller than this get nothing
 MAX_DUMPS = 600
