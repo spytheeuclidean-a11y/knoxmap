@@ -43,7 +43,9 @@ class RoadRulesTests(unittest.TestCase):
             txt = rules_file.read_text(encoding="utf-8")
             self.assertNotIn("trash_01_13", txt)
             self.assertIn("KnoxMap road Yard bed_soil", txt)
-            self.assertIn("floors_exterior_natural_01_16", txt)
+            self.assertIn("floors_exterior_natural_01_016", txt)
+            # And never the short form: Build 42 has no tile called _18.
+            self.assertNotIn("floors_exterior_natural_01_18 ", txt)
             self.assertTrue(knoxpaths.road_rules_ok(root))
 
     def parse_rules(self, text):
@@ -92,7 +94,6 @@ class RoadRulesTests(unittest.TestCase):
                 "KnoxMap road Parking block Y2": ("street_decoration_01_035", "0_Furniture"),
                 "KnoxMap road Utility pole": ("street_decoration_01_024", "0_Furniture"),
                 "KnoxMap road Dog house": ("constructedobjects_01_004", "0_Furniture"),
-                "KnoxMap road Swing": ("location_community_park_01_010", "0_Furniture"),
                 # Ground detail, not furniture: it goes on the overlay layer.
                 "KnoxMap road Manhole cover": ("street_decoration_01_015", "0_FloorOverlay6"),
             }
@@ -105,7 +106,7 @@ class RoadRulesTests(unittest.TestCase):
             # Our props are keyed by colour, so no two of them may share one:
             # the tools would paint whichever rule came last everywhere.
             prop_prefixes = ("Bench", "Kiosk", "Postbox", "Parking block",
-                             "Manhole cover", "Utility pole", "Dog house", "Swing")
+                             "Manhole cover", "Utility pole", "Dog house")
             prop_colours = [values[0].split()[0:3] for label, values in rules.items()
                             if label.removeprefix("KnoxMap road ").startswith(prop_prefixes)]
             self.assertGreater(len(prop_colours), 20, "the prop rules are missing")

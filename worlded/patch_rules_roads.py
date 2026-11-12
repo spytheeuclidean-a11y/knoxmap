@@ -113,7 +113,6 @@ RULES = [
     ("Parking block Y2", (12, 41, 235), "street_decoration_01_035", "0_Furniture"),
     # The swing is one hanging seat from the park's swing set: the catalogue
     # does not list it on its own, so the tile is taken from the sheet itself.
-    ("Swing", (12, 41, 222), "location_community_park_01_010", "0_Furniture"),
     # The line of poles along a county road. The game has no wire to string
     # between them, so the pole carries the line on its own.
     # The bare pole in the street decoration sheet, between the letterboxes and
@@ -145,9 +144,11 @@ RULES = [
     ("Yard bed_ne", (12, 37, 220), "carpentry_03_055", "0_Furniture"),
     ("Yard bed_e", (12, 37, 221), "carpentry_03_043", "0_Furniture"),
     ("Yard bed_se", (12, 37, 222), "carpentry_03_052", "0_Furniture"),
+    # Three digits, and only what Build 42 actually defines: it has 16 and 17,
+    # 18 is gone from the pack, and the short form _18 was never a tile name at
+    # all - a rule naming it paints a square the game cannot draw.
     ("Yard bed_soil", (12, 37, 223),
-     ["floors_exterior_natural_01_16", "floors_exterior_natural_01_17",
-      "floors_exterior_natural_01_18", "floors_exterior_natural_01_018"],
+     ["floors_exterior_natural_01_016", "floors_exterior_natural_01_017"],
      "0_FloorOverlay6"),
     # Works yards (knoxbuild/works.py): pallets, drums, barrels, crates and
     # tyres along the walls, a list picked from for each square.

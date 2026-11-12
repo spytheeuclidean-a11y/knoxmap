@@ -136,7 +136,6 @@ POSTBOX_W = (12, 41, 219)
 MANHOLE = (12, 41, 220)
 # A dog house and a swing in a back yard (knoxbuild/yards.py).
 DOG_HOUSE = (12, 41, 221)
-SWING = (12, 41, 222)
 # Concrete wheel stops across the mouth of a kerbside bay (knoxbuild/build.py).
 # Three squares each, across the bay: PARKING_BLOCK_X runs along x (for a bay
 # on a north-south road), PARKING_BLOCK_Y along y.

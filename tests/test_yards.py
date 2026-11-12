@@ -145,7 +145,6 @@ class BackYards(unittest.TestCase):
         with mock.patch.object(yards_module, "_rule_ready", return_value=True):
             veg = _paint(80, 40, houses, veg=True)
         self.assertTrue(self.pieces(veg, C.DOG_HOUSE), "no dog house")
-        self.assertTrue(self.pieces(veg, C.SWING), "no swing")
 
     def test_a_blocked_square_moves_the_dog_house_rather_than_dropping_it(self):
         """The props used to be tried on one fixed square each and silently
@@ -167,7 +166,6 @@ class BackYards(unittest.TestCase):
         with mock.patch.object(yards_module, "_rule_ready", return_value=False):
             veg = _paint(80, 40, houses, veg=True)
         self.assertEqual(self.pieces(veg, C.DOG_HOUSE), set())
-        self.assertEqual(self.pieces(veg, C.SWING), set())
 
     def test_a_blocked_half_takes_the_whole_deck_chair_with_it(self):
         """With water where the second half would go, the first half is not

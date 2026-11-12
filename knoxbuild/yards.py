@@ -57,7 +57,6 @@ FENCED_SHARE = 0.85
 # The dog's house and the kids' swing: not every yard, but enough of them that
 # a street reads as lived in rather than laid out.
 DOG_HOUSE_SHARE = 0.45
-SWING_SHARE = 0.35
 
 
 def _rule_ready(label: str) -> bool:
@@ -616,12 +615,12 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             # fences are the fallback. The swing wants open lawn to run up to.
             against_a_fence = [(u, v) for u, v in lawn if v == depth - 2]
             against_a_fence += [(u, v) for u, v in lawn if u in (1, width - 2)]
-            open_lawn = [(u, v) for u, v in lawn
-                         if 1 <= u <= width - 2 and 1 <= v <= depth - 3]
             if _rule_ready("Dog house") and yrng.random() < DOG_HOUSE_SHARE:
                 place_first(C.DOG_HOUSE, against_a_fence + lawn)
-            if _rule_ready("Swing") and yrng.random() < SWING_SHARE:
-                place_first(C.SWING, open_lawn + lawn)
+            # No swing: location_community_park_01_010 is the top crossbar of
+            # a three-tile set that stands on two levels (011/012/013 under it,
+            # 014 above), and a yard colours a single ground bitmap. Placed
+            # alone the crossbar hangs in the air, which is worse than no swing.
 
             # Claimed only now: the furniture stands on the patio, and `place`
             # refuses a claimed tile.
