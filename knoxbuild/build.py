@@ -952,17 +952,21 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
                 fx, fy = (x, y + sh) if along_y else (x + sw, y)
                 if (fx, fy) in starts:
                     continue                # another bay continues the run
-                bx, by = (x, fy) if along_y else (fx, y)
-                tiles = C.PARKING_BLOCK_X if along_y else C.PARKING_BLOCK_Y
-                for k, colour in enumerate(tiles):
-                    sx_, sy_ = (bx + k, by) if along_y else (bx, by + k)
-                    # Only across the tarmac: the block spans the mouth of the
-                    # bay, and never reaches the pavement.
-                    if not (0 <= sx_ < veg_w and 0 <= sy_ < veg_h and is_asphalt(sx_, sy_)):
-                        continue
-                    # Never over another prop or a marking that is already there.
-                    if tuple(veg[sy_, sx_]) != C.VEG_NOTHING:
-                        continue
+                # The block lies along the road at the bay's end, down the
+                # middle of the bay: across the mouth it would run into the
+                # pavement, since a kerbside stall straddles the kerb.
+                bx, by = (x + sw // 2, fy) if along_y else (fx, y + sh // 2)
+                tiles = C.PARKING_BLOCK_Y if along_y else C.PARKING_BLOCK_X
+                cells = [(bx, by + k) if along_y else (bx + k, by)
+                         for k in range(len(tiles))]
+                # All three squares or none: half a block of concrete reads as
+                # a mistake, and nothing may already stand there.
+                if not all(0 <= sx_ < veg_w and 0 <= sy_ < veg_h
+                           and is_asphalt(sx_, sy_)
+                           and tuple(veg[sy_, sx_]) == C.VEG_NOTHING
+                           for sx_, sy_ in cells):
+                    continue
+                for (sx_, sy_), colour in zip(cells, tiles):
                     veg[sy_, sx_] = colour
             Image.fromarray(veg).save(veg_path, format="BMP")
 

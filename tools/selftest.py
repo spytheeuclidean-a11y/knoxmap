@@ -458,6 +458,54 @@ def main(argv: list[str]) -> int:
               f"the building step reports its stages, in order ({len(said)} reports)")
         rows = open(os.path.join(out, "selftest_placements.csv"), encoding="utf-8").read().splitlines()
         check(len(rows) - 1 >= 60, f"buildings placed ({len(rows) - 1})")
+
+        print("street props")
+        # Painted into the vegetation bitmap, and placed by rules the map tools
+        # read. Both halves have to be checked: a colour whose rule the tools
+        # dropped - a blank cell in the sheet, as the utility pole once was -
+        # is thrown away by WorldEd, and the prop silently disappears from the
+        # map while the bitmap still looks right.
+        #
+        # A fresh clone ships the tools' Rules.txt without any of our rules, and
+        # the generator gates every prop on that: until Setup has run there is
+        # nothing to check, only the gate itself to prove. The rules are asked
+        # for only once the file is one Setup has written.
+        import knoxpaths
+        from worlded import patch_rules_roads
+        tools = knoxpaths.mapping_tools_dir()
+        rules_text = knoxpaths.rules_text(tools) if tools else ""
+        set_up = f"label = {patch_rules_roads.MARKER} " in rules_text
+        prop_prefixes = ("Bench", "Kiosk", "Postbox", "Parking block",
+                         "Manhole cover", "Utility pole", "Dog house", "Swing")
+        prop_rules = [(label, colour) for label, colour, _tile, _layer
+                      in patch_rules_roads.RULES if label.startswith(prop_prefixes)]
+        with Image.open(os.path.join(out, "selftest_veg.bmp")) as veg_out:
+            drawn = set(veg_out.convert("RGB").getdata())
+        if set_up:
+            for label, _colour in prop_rules:
+                check(f"label = KnoxMap road {label}\n" in rules_text,
+                      f"the map tools carry the {label} rule")
+            for name, colours in (
+                    ("utility poles", (C.UTILITY_POLE,)),
+                    ("benches", C.BENCH_Y + C.BENCH_X),
+                    ("kiosks", (C.KIOSK_N, C.KIOSK_E, C.KIOSK_S, C.KIOSK_W)),
+                    ("collection boxes", (C.POSTBOX_N, C.POSTBOX_E,
+                                          C.POSTBOX_S, C.POSTBOX_W)),
+                    ("wheel stops", C.PARKING_BLOCK_X + C.PARKING_BLOCK_Y),
+                    ("manhole covers", (C.MANHOLE,))):
+                check(any(colour in drawn for colour in colours),
+                      f"{name} reach the built map")
+            # The tools drop a rule whose tile is blank, so a prop whose colour
+            # is painted but whose rule is gone is the failure to catch, not
+            # one or the other on its own.
+            painted_without_rule = [label for label, colour in prop_rules
+                                    if colour in drawn
+                                    and f"label = KnoxMap road {label}\n" not in rules_text]
+            check(not painted_without_rule,
+                  "no prop is painted without a rule to place it")
+        else:
+            check(not any(colour in drawn for _label, colour in prop_rules),
+                  "without the map tools' rules, no props are painted")
         # Building again reuses what is unchanged, and what it lays out afresh
         # comes out the same: the cache is only worth having if it cannot
         # change the map.
@@ -584,8 +632,14 @@ def main(argv: list[str]) -> int:
                   "a shop gets Erika's glass shop front")
             check('<tiles layer="WallFurniture">' in shop, "a sign hangs over it")
             check(not validate_tbx.check(shop_path), "and still passes the editor's rules")
+            # Signs need the rule as well as the tiles, and a fresh clone has
+            # the tiles' catalogue but none of our rules until Setup runs.
+            from generator.rendering import furniture
             speed = sum(1 for c in pixels if c in C.SPEED_SIGNS.values())
-            check(speed > 0, f"speed limit signs on the streets ({speed})")
+            if furniture._mod_tiles_ready():
+                check(speed > 0, f"speed limit signs on the streets ({speed})")
+            else:
+                check(speed == 0, "no speed limit signs until Setup writes their rule")
         else:
             check(not any("_erika_" in t for t in texts), "no mod tiles without Erika's Tiles")
 

@@ -224,9 +224,17 @@ class RoadHierarchyTests(unittest.TestCase):
         self.assertTrue(stops, "no wheel stop was laid")
         # A block is one sprite in three squares, so a whole one is all three
         # colours of its group: never a lone square of concrete.
-        groups = (renderer.C.PARKING_BLOCK_X, renderer.C.PARKING_BLOCK_Y)
-        self.assertTrue(any(set(group) <= painted for group in groups),
-                        "every stop was laid half-finished")
+        groups = ((renderer.C.PARKING_BLOCK_X, 1), (renderer.C.PARKING_BLOCK_Y, 0))
+        self.assertTrue(any(set(group) <= painted for group, _axis in groups),
+                        "no stop was laid whole")
+        # And every stop that starts is finished: the block is one sprite.
+        for group, axis in groups:
+            for y, x in np.argwhere(np.all(veg == group[0], axis=2)):
+                rest = [(x + k * axis, y + k * (1 - axis)) for k in (1, 2)]
+                with self.subTest(block=(int(x), int(y))):
+                    self.assertTrue(all(np.all(veg[cy, cx] == group[k + 1])
+                                        for k, (cx, cy) in enumerate(rest)),
+                                    "a wheel stop was laid half-finished")
 
     def test_commercial_frontage_prefers_higher_order_road_at_equal_distance(self):
         with TemporaryDirectory() as directory:
