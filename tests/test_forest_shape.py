@@ -58,7 +58,8 @@ class ShapeForest(unittest.TestCase):
     def test_shares_come_out_as_asked(self):
         for density in (0.5, 1.0, 2.0):
             land, veg, mask = forest()
-            F.shape_forest(veg, land, mask, density, 60, 0, 1.0)
+            with patch.object(F, "UNDERGROWTH_SHARE", 0.0):   # bushes are not a grade
+                F.shape_forest(veg, land, mask, density, 60, 0, 1.0)
             g = grade_of(veg)[mask]
             want = F.shares(density)
             for i in range(4):
@@ -326,6 +327,53 @@ class KeepMeadowsOpen(unittest.TestCase):
     def test_zero_grows_no_spill(self):
         trees, mask, _ = self.grown(0.0)
         self.assertFalse((trees & ~mask).any())
+
+
+TREE_GRADES = (C.SPARSE_TREES, C.TREES_DARK_GRASS, C.TREES)
+
+
+def is_colour(veg, *colours):
+    arr = np.asarray(veg)
+    out = np.zeros(arr.shape[:2], dtype=bool)
+    for c in colours:
+        out |= np.all(arr == c, axis=2)
+    return out
+
+
+class YoungGrowthAndUndergrowth(unittest.TestCase):
+    def grown(self, young_trees=True):
+        land, veg, mask = forest(edge=40)
+        counts = F.shape_forest(veg, land, mask, 1.0, 60, 20, 1.0, young_trees=young_trees)
+        return veg, mask, counts
+
+    def test_young_trees_are_a_share_of_the_trees(self):
+        veg, mask, counts = self.grown()
+        young = is_colour(veg, C.TREE_SMALL)
+        trees = is_colour(veg, C.TREE_SMALL, C.BUSHES_TREES_DARK_GRASS, *TREE_GRADES)
+        self.assertAlmostEqual(young[mask].sum() / trees[mask].sum(), F.YOUNG_SHARE, delta=0.02)
+        self.assertEqual(counts["young"], int(young.sum()))
+
+    def test_undergrowth_is_a_share_of_the_thin_wood(self):
+        veg, mask, counts = self.grown()
+        under = is_colour(veg, C.BUSHES_TREES_DARK_GRASS)
+        thin = is_colour(veg, C.BUSHES_TREES_DARK_GRASS, C.SPARSE_TREES, C.TREES_DARK_GRASS)
+        self.assertAlmostEqual(under[mask].sum() / thin[mask].sum(), F.UNDERGROWTH_SHARE, delta=0.02)
+        self.assertEqual(counts["undergrowth"], int(under.sum()))
+
+    def test_only_inside_the_wood(self):
+        veg, mask, _ = self.grown()
+        self.assertFalse((is_colour(veg, C.TREE_SMALL, C.BUSHES_TREES_DARK_GRASS) & ~mask).any())
+
+    def test_young_growth_keeps_the_tiles_with_a_tree(self):
+        def with_a_tree(young):
+            veg, mask, _ = self.grown(young)
+            return is_colour(veg, C.TREE_SMALL, C.BUSHES_TREES_DARK_GRASS, *TREE_GRADES)[mask].sum()
+        self.assertEqual(with_a_tree(True), with_a_tree(False))
+
+    def test_no_young_trees_without_their_rules(self):
+        veg, _, counts = self.grown(young_trees=False)
+        self.assertFalse(is_colour(veg, C.TREE_SMALL).any())
+        self.assertEqual(counts["young"], 0)
 
 
 if __name__ == "__main__":

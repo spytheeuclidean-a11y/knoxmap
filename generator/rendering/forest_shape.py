@@ -87,6 +87,60 @@ def shares(density: float, thickets: float = 1.0) -> tuple[float, float, float, 
 
 VARIETY_SCALE = 2.5       # Stand variety's stands, times Stand size
 
+# A wood is not all grown trees on grass. Some of its trees are young - in
+# patches, where a stand came up together - and its thinner parts have bushes
+# under the trees. Not where it is a wall (dense): that is full. Neither goes
+# in the spill, which is the wood thinning out, not the wood.
+YOUNG_SHARE = 0.08             # of a wood's tree tiles
+UNDERGROWTH_SHARE = 0.12       # of its sparse and trees-in-grass tiles
+UNDERGROWTH_CLUMP_M = 10.0
+
+
+def _pick(mask: np.ndarray, lat, share: float) -> np.ndarray:
+    """The `share` of `mask` where the noise `lat` is highest, read off a
+    thin sample and applied in strips."""
+    from .noise import smooth_noise
+
+    h, w = mask.shape
+    out = np.zeros_like(mask)
+    sy = np.arange(0, h, SAMPLE_EVERY, dtype=np.float32)
+    sx = np.arange(0, w, SAMPLE_EVERY, dtype=np.float32)
+    sample = smooth_noise(sy, sx, lat)[mask[::SAMPLE_EVERY, ::SAMPLE_EVERY]]
+    if sample.size == 0 or share <= 0:
+        return out
+    cut = float(np.quantile(sample, 1.0 - share))
+    xs = np.arange(w, dtype=np.float32)
+    for top in range(0, h, STRIP_ROWS):
+        bottom = min(h, top + STRIP_ROWS)
+        m = mask[top:bottom]
+        if m.any():
+            v = smooth_noise(np.arange(top, bottom, dtype=np.float32), xs, lat)
+            out[top:bottom] = m & (v > cut)
+    return out
+
+
+def _young_and_undergrowth(vegp, todo, cell: int, metres_per_tile: float, seed: int,
+                           young_trees: bool) -> tuple[int, int]:
+    """Young trees and undergrowth in the wood's tiles `todo` of `vegp` (RGB
+    array, changed in place). Returns how many of each."""
+    from .noise import lattices
+
+    h, w = todo.shape
+    key = _keys(vegp)
+    trees = todo & np.isin(key, [_key(c) for c in GRADES[1:]])
+    young = np.zeros_like(todo)
+    if young_trees and YOUNG_SHARE > 0 and trees.any():
+        young = _pick(trees, lattices(h, w, [(max(2, cell // 4), 1.0)], seed + 2),
+                      YOUNG_SHARE)
+        vegp[young] = C.TREE_SMALL
+    thin = trees & ~young & (key != _key(C.TREES))
+    under = np.zeros_like(todo)
+    if UNDERGROWTH_SHARE > 0 and thin.any():
+        clump = max(2, int(round(UNDERGROWTH_CLUMP_M / metres_per_tile)))
+        under = _pick(thin, lattices(h, w, [(clump, 1.0)], seed + 3), UNDERGROWTH_SHARE)
+        vegp[under] = C.BUSHES_TREES_DARK_GRASS
+    return int(young.sum()), int(under.sum())
+
 
 def stand_lattices(h: int, w: int, cell: int, variety: float, raggedness: float,
                    seed: int) -> list:
@@ -163,7 +217,7 @@ def _spill_out(ys, xs, edge, reach, wobble_share, keep=1.0):
     there (0 beside it, 1 and over past the spill), the spill's reach moved
     by noise, no wider than the wood beside it and - Keep meadows open - no
     more than `keep` of the way across the open space it spills into. Inside
-    the wood, 0."""
+    the wood, 0; where no spill reaches, inf."""
     from .noise import smooth_noise
 
     signed, half, jitter, open_half = edge
@@ -269,7 +323,7 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
             & (lkey != _key(C.WATER)))
     del vkey
     if not todo.any():
-        return {**{n: 0 for n in NAMES}, "fringe": 0}
+        return {**{n: 0 for n in NAMES}, "fringe": 0, "young": 0, "undergrowth": 0}
 
     cell = max(2, int(round(stand_m / metres_per_tile)))
     lats = stand_lattices(h, w, cell, p.stand_variety, p.raggedness, p.seed)
@@ -343,8 +397,12 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
         lp[t & ~dark & (lk == dark_k)] = C.MEDIUM_GRASS
         counts += np.bincount(grade[t], minlength=4)
         fringe += int(grown.sum())
+    young_n, under_n = _young_and_undergrowth(vegp, todo, cell, metres_per_tile,
+                                              p.seed, young_trees)
     veg.paste(Image.fromarray(vegp, "RGB"))
     landscape.paste(Image.fromarray(land, "RGB"))
     out = dict(zip(NAMES, counts.tolist()))
     out["fringe"] = fringe
+    out["young"] = young_n
+    out["undergrowth"] = under_n
     return out
