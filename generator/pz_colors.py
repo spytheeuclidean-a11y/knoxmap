@@ -94,6 +94,18 @@ KERB_NW = (12, 34, 204)
 KERB_SW = (12, 34, 205)
 KERB_NE = (12, 34, 206)
 KERB_SE = (12, 34, 207)
+# A kerb on a diagonal edge, which the four square kerbs above cannot draw: on a
+# street that crosses the tile grid at an angle the tarmac is diagonal to the
+# square, not beside it. Two per direction - the pair the game's own sheet gives
+# for that 45-degree edge (tools/preview_diag_kerbs.py lists them all).
+KERB_DNW_0 = (12, 34, 208)
+KERB_DNW_1 = (12, 34, 209)
+KERB_DNE_0 = (12, 34, 210)
+KERB_DNE_1 = (12, 34, 211)
+KERB_DSW_0 = (12, 34, 212)
+KERB_DSW_1 = (12, 34, 213)
+KERB_DSE_0 = (12, 34, 214)
+KERB_DSE_1 = (12, 34, 215)
 LINE_YELLOW_N = (12, 35, 200)
 LINE_YELLOW_W = (12, 35, 201)
 LINE_WHITE_N = (12, 35, 202)

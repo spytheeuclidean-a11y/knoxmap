@@ -8,7 +8,6 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, road_hierarchy
-from .crossings import paint_crossings
 from .geometry import _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
 from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES, MAX_PAVED_BLOCK
 from .projection import Projector
@@ -74,6 +73,18 @@ def _real_kerbs(sides):
     return np.where(keep, sides, 0).astype(sides.dtype)
 
 
+def _shifted(mask, dy, dx) -> "object":
+    """`mask` moved by (dy, dx), zero-filled at the edge."""
+    out = mask.copy()
+    out[:] = False
+    ys = slice(max(0, dy), mask.shape[0] + min(0, dy))
+    xs = slice(max(0, dx), mask.shape[1] + min(0, dx))
+    yt = slice(max(0, -dy), mask.shape[0] + min(0, -dy))
+    xt = slice(max(0, -dx), mask.shape[1] + min(0, -dx))
+    out[ys, xs] = mask[yt, xt]
+    return out
+
+
 def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
     """Fill one-tile notches along the edge of the road, and shave one-tile bumps.
 
@@ -94,8 +105,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         for _ in range(2):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
-            verge_colours = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
-            verge = is_colour(ground, verge_colours)
+            verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
             road_border = pave | verge
             notch = np.zeros_like(road)
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
@@ -127,29 +137,25 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             near_road[:, :-1] |= road[:, 1:]
             near_road[1:, :] |= road[:-1, :]
             near_road[:-1, :] |= road[1:, :]
-            lonep = pave & (~near | ((ortho_count == 1) & diag_pave & ~near_road))
-            # The pavement's own edge against grass, which had the same teeth
-            # one boundary out: a verge square with pavement on both sides
-            # along a line becomes pavement, and a pavement square with grass on
-            # both sides becomes grass. Those squares are what a street crossing
-            # the tile grid at an angle leaves behind, and in the game they read
-            # as spikes of grass standing in the kerb.
-            # Between the road and the pavement the square belongs to the kerb
-            # line, not to the verge: whichever side it is closed off by.
-            hard = pave | road
-            both = np.zeros_like(pave)
-            both[1:-1, :] |= hard[:-2, :] & hard[2:, :]
-            both[:, 1:-1] |= hard[:, :-2] & hard[:, 2:]
-            met = np.zeros_like(pave)
-            met[1:-1, :] |= (pave[:-2, :] & hard[2:, :]) | (hard[:-2, :] & pave[2:, :])
-            met[:, 1:-1] |= (pave[:, :-2] & hard[:, 2:]) | (hard[:, :-2] & pave[:, 2:])
-            gap = verge & both & met
-            tooth = np.zeros_like(pave)
-            tooth[1:-1, :] |= verge[:-2, :] & verge[2:, :]
-            tooth[:, 1:-1] |= verge[:, :-2] & verge[:, 2:]
-            tooth &= pave
+            # Only a pavement tile with no pavement beside it at all is a lip
+            # standing in the grass. A single step with a diagonal neighbour is
+            # part of the band, and removing it is what stopped a sidewalk that
+            # should have run on.
+            lonep = pave & ~near & ~diag_pave
+            # A break of a tile or two in a pavement run closes up, so a kerb
+            # line reads as one line rather than stopping and starting. Only
+            # beside a road: a gap out in the lawn is not a pavement.
+            breaks_h = (_shifted(pave, 0, 1) | _shifted(pave, 0, 2)) & \
+                       (_shifted(pave, 0, -1) | _shifted(pave, 0, -2))
+            breaks_v = (_shifted(pave, 1, 0) | _shifted(pave, 2, 0)) & \
+                       (_shifted(pave, -1, 0) | _shifted(pave, -2, 0))
+            near_road2 = (_shifted(road, 1, 0) | _shifted(road, -1, 0) |
+                          _shifted(road, 0, 1) | _shifted(road, 0, -1) |
+                          _shifted(road, 2, 0) | _shifted(road, -2, 0) |
+                          _shifted(road, 0, 2) | _shifted(road, 0, -2))
+            mend = verge & (breaks_h | breaks_v) & near_road2
             if not notch.any() and not bump.any() and not lonep.any() \
-                    and not gap.any() and not tooth.any():
+                    and not mend.any():
                 break
             # A filled notch takes the tarmac of the road beside it.
             ys, xs = np.nonzero(notch)
@@ -173,22 +179,6 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
                             break
                         if verge[yy, xx]:
                             ground[y, x] = ground[yy, xx]
-            if gap.any() or tooth.any():
-                gys, gxs = np.nonzero(gap)
-                for y, x in zip(gys, gxs):
-                    ground[y, x] = C.PALE_CONCRETE
-                tys, txs = np.nonzero(tooth)
-                for y, x in zip(tys, txs):
-                    ground[y, x] = C.MEDIUM_GRASS
-                    for dy, dx in ((0, 1), (1, 0), (0, -1), (-1, 0)):
-                        yy, xx = y + dy, x + dx
-                        if 0 <= yy < ground.shape[0] and 0 <= xx < ground.shape[1]:
-                            # The grass this pavement stood in, so the verge
-                            # keeps its own shade rather than going to one.
-                            beside = tuple(ground[yy, xx])
-                            if beside in verge_colours:
-                                ground[y, x] = beside
-                                break
             if lonep.any():
                 paved = {C.PALE_CONCRETE} | set(asphalt)
                 lys, lxs = np.nonzero(lonep)
@@ -201,6 +191,10 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
                             if beside not in paved:
                                 ground[y, x] = beside
                                 break
+            if mend.any():
+                mys, mxs = np.nonzero(mend)
+                for y, x in zip(mys, mxs):
+                    ground[y, x] = C.PALE_CONCRETE
         rows = slice(y0 - top, y0 - top + (y1 - y0))
         landscape.paste(Image.fromarray(ground[rows]), (0, y0))
 
@@ -249,6 +243,16 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
     # tiles either side of a seam still see their neighbours.
     kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
                 3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
+    # The diagonal pair, only where the rules their colours need are written: a
+    # colour with no rule behind it is dropped with a warning, and an install
+    # that has not been set up since they were added has neither.
+    from .furniture import _rule_ready
+    diag_kerb = {
+        "NW": (C.KERB_DNW_0, C.KERB_DNW_1),
+        "NE": (C.KERB_DNE_0, C.KERB_DNE_1),
+        "SW": (C.KERB_DSW_0, C.KERB_DSW_1),
+        "SE": (C.KERB_DSE_0, C.KERB_DSE_1),
+    } if _rule_ready("Kerb diag NW 0") else None
     strip = 1024
     for y0 in range(0, h, strip):
         y1 = min(h, y0 + strip)
@@ -270,12 +274,34 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
         out = existing.copy()
         for bits, colour in kerb_for.items():
             out[(sides == bits) & free] = colour
-        veg.paste(Image.fromarray(out), (0, y0))
+        # A kerb on a diagonal edge. `sides` is zero on a pavement square whose
+        # tarmac is diagonal to it rather than beside it, and the square kerbs
+        # cannot draw that edge - they step with the tarmac. The game's own 2x
+        # pieces follow the diagonal, so a street at 45 degrees gets a kerb
+        # running along it instead of a staircase of square ones.
+        if diag_kerb:
+            road_r, pave_r = road[rows], pave[rows]
+            # The pieces are 2x tiles - 128x256, two squares wide and two tall -
+            # so one of them covers the square beside it as well. Painting every
+            # pavement square drew each one twice, overlapping by half, which is
+            # what a doubled, angled mess of white lines is in game.
 
-    # Crossings go down before the lane lines, which only paint on squares
-    # nothing else has taken: a centre line drawn through a crossing is a line
-    # nobody paints in a real street.
-    paint_crossings(veg, landscape, buckets, proj)
+            y_idx = np.arange(sides.shape[0])[:, None]
+            x_idx = np.arange(sides.shape[1])[None, :]
+            even = (y_idx % 2 == 0) & (x_idx % 2 == 0)
+            for name, (dy, dx) in (("NW", (-1, -1)), ("NE", (-1, 1)),
+                                   ("SW", (1, -1)), ("SE", (1, 1))):
+                beside_diag = _shifted(road_r, dy, dx)
+                pick = (sides == 0) & beside_diag & pave_r & free & even
+                if not pick.any():
+                    continue
+                first, second = diag_kerb[name]
+                ys_, xs_ = np.nonzero(pick)
+                for y, x in zip(ys_, xs_):
+                    # two pieces per direction: they take turns along the edge,
+                    # which is how the 2x art lines up with the tile grid.
+                    out[y, x] = first if (x // 2 + y // 2) % 2 == 0 else second
+        veg.paste(Image.fromarray(out), (0, y0))
 
     # Lane markings follow direction and lane count. Two-way traffic gets a
     # yellow separator; one-way and same-direction lanes use white dividers.

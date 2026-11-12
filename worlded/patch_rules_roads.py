@@ -40,6 +40,19 @@ RULES = [
     ("Kerb SW", (12, 34, 205), "street_curbs_01_45", "0_Curbs"),
     ("Kerb NE", (12, 34, 206), "street_curbs_01_46", "0_Curbs"),
     ("Kerb SE", (12, 34, 207), "street_curbs_01_2", "0_Curbs"),
+    # Kerbs on a diagonal edge, from the game's own 2x sheets: on a street that
+    # crosses the tile grid at an angle the tarmac is diagonal to the square, so
+    # a square kerb steps with it. Two pieces per direction, picked by the fit
+    # in tools/preview_diag_kerbs.py - 16 and 26 follow a west-to-east diagonal,
+    # 56 and 66 the other way.
+    ("Kerb diag NW 0", (12, 34, 208), "street_curbs_01_diag_16", "0_Curbs"),
+    ("Kerb diag NW 1", (12, 34, 209), "street_curbs_01_diag_26", "0_Curbs"),
+    ("Kerb diag NE 0", (12, 34, 210), "street_curbs_01_diag_56", "0_Curbs"),
+    ("Kerb diag NE 1", (12, 34, 211), "street_curbs_01_diag_66", "0_Curbs"),
+    ("Kerb diag SW 0", (12, 34, 212), "street_curbs_01_diag_56", "0_Curbs"),
+    ("Kerb diag SW 1", (12, 34, 213), "street_curbs_01_diag_66", "0_Curbs"),
+    ("Kerb diag SE 0", (12, 34, 214), "street_curbs_01_diag_16", "0_Curbs"),
+    ("Kerb diag SE 1", (12, 34, 215), "street_curbs_01_diag_26", "0_Curbs"),
     # The faded paint (0-7 white, 16-23 yellow), which is what Knox County's
     # own streets use almost everywhere; the fresh set (8-15, 24-31) looked
     # newly painted beside them.

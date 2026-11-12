@@ -40,9 +40,10 @@ class RoadEdges(unittest.TestCase):
         self.assertEqual(im.getpixel((19, 30)), PALE_CONCRETE)
         self.assertEqual(im.getpixel((31, 30)), PALE_CONCRETE)
 
-    def test_a_stepped_pavement_is_taken_back_to_grass(self):
-        # One tile a step down a diagonal edge: every tile of it stands alone
-        # orthogonally, which is the spike the player sees.
+    def test_a_stepped_pavement_runs_on(self):
+        # One tile a step down a diagonal edge is what a sidewalk beside a
+        # diagonal street is made of. It stays, so the line runs on instead of
+        # stopping and starting.
         im = Image.new('RGB', (60, 60), MEDIUM_GRASS)
         for i in range(10, 40):
             for x in range(i, i + 8):
@@ -50,8 +51,18 @@ class RoadEdges(unittest.TestCase):
             im.putpixel((i - 1, i), PALE_CONCRETE)
         tidy(im)
         left = [im.getpixel((i - 1, i)) for i in range(10, 40)]
-        self.assertEqual(left.count(PALE_CONCRETE), 0,
-                         "no step of the diagonal stays behind as a slab")
+        self.assertGreaterEqual(left.count(PALE_CONCRETE), 28,
+                                "the sidewalk keeps its steps")
+
+    def test_a_lone_slab_is_taken_back_to_grass(self):
+        # A slab with no pavement beside it in any direction is a stub standing
+        # in the lawn, and goes.
+        im = Image.new('RGB', (60, 60), MEDIUM_GRASS)
+        for x in range(20, 30):
+            im.putpixel((x, 10), MEDIUM_ASPHALT)
+        im.putpixel((25, 20), PALE_CONCRETE)
+        tidy(im)
+        self.assertEqual(im.getpixel((25, 20)), MEDIUM_GRASS)
 
 
 if __name__ == "__main__":
