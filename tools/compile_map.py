@@ -526,7 +526,15 @@ def clear_stale(project: Path) -> None:
         return max((p.stat().st_mtime for p in paths), default=0.0)
 
     lots, tmx = project / "lots", project / "tmx"
-    terrain = newest(project.glob("*.bmp"))
+    # Only the two pictures the compile turns into tiles: the ground and the
+    # vegetation drawn over it. The project also holds debug and working copies
+    # (_ground_base, _veg_base, _road_hierarchy, _ZombieSpawnMap), all written in
+    # the same second as the real pair - a tie that glob() broke at random, so a
+    # compile could convert the hierarchy or the empty vegetation base instead
+    # and the lots came out with no ground under them.
+    name = project.name
+    terrain = newest(p for p in project.glob("*.bmp")
+                     if p.stem in (name, f"{name}_veg"))
     # The rules are baked in when a bitmap is converted, so new rules (Setup
     # adding street furniture, say) need the conversion done again too.
     settings_time = 0.0
