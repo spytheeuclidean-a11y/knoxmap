@@ -43,7 +43,7 @@ class ClearingTest(unittest.TestCase):
         self.v = np.asarray(self.veg)
         self.g = np.asarray(self.land)
 
-    def test_a_clearing_10_to_30_m_out(self):
+    def test_a_clearing_clear_m_out(self):
         self.assertEqual(self.counts["clearings"], 1)
         bare = ~is_(self.v, *H.WOODS)
         lo = H.CLEAR_M[0] * (1 - H.WOBBLE) - 1
@@ -71,7 +71,9 @@ class ClearingTest(unittest.TestCase):
         self.assertGreater(max(reach) - min(reach), 4, reach)
 
     def test_lawn_in_the_clearing(self):
-        self.assertTrue(np.all(self.g[145, 125] == C.MEDIUM_GRASS))
+        # Inside the smallest the clearing ever is, west of the house.
+        x = 140 - int(H.CLEAR_M[0] * (1 - H.WOBBLE)) + 1
+        self.assertTrue(np.all(self.g[145, x] == C.MEDIUM_GRASS))
 
     def test_drive_reaches_the_road(self):
         self.assertEqual(self.counts["drives"], 1)

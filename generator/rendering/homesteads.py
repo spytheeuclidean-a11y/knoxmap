@@ -24,11 +24,16 @@ from .fields import _hash01
 
 YARD_M = 6.0                   # no field or water this near a building
 YARD_CLASSES = (40, 80)        # WorldCover cropland and water
-CLEAR_M = (10.0, 30.0)         # how far a clearing runs out from the walls
+# How far a clearing runs out from the walls. It was 10-30 m, which in a town
+# took the belts of trees between the houses: they are narrow, and every house
+# beside one got a clearing as wide as the belt.
+CLEAR_M = (8.0, 20.0)
 WOBBLE = 0.35                  # ...varying this much round the building
 EDGE_M = 4.0                   # the thinned fringe past it
 EDGE_THIN = 0.5                # of the fringe's trees, the share stepped down
-IN_WOODS = 0.15                # of a clearing's ground, the woods it needs to get one
+# Of a clearing's ground, the woods it needs to get one: a house in the woods,
+# not a house in town with a tree belt along one side of its yard.
+IN_WOODS = 0.5
 DRIVE_MIN_M2 = 40.0            # sheds and garages get no drive of their own
 DRIVE_MAX_M = 400.0
 DRIVE_MIN_TILES = 3            # a road this close is the drive already

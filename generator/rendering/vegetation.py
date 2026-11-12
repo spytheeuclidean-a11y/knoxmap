@@ -18,7 +18,7 @@ def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
                       density: float = 1.0, should_stop=None,
                       extra_forest=None, stand_m: float = 60.0,
-                      edge_m: float = 6.0) -> None:
+                      edge_m: float = 30.0) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
@@ -30,7 +30,7 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
                     density: float = 1.0, should_stop=None,
                     extra_forest=None, stand_m: float = 60.0,
-                    edge_m: float = 6.0) -> None:
+                    edge_m: float = 30.0) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,

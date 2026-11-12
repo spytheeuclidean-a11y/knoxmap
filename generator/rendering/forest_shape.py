@@ -23,18 +23,47 @@ FOREST_SEED = 2207
 GRADES = (C.VEG_NOTHING, C.SPARSE_TREES, C.TREES_DARK_GRASS, C.TREES)
 NAMES = ("open", "sparse", "grass", "dense")
 # (density, (open, sparse, grass, dense)), linear in between.
+#
+# Dense is a wall: the game's rules put a tree on every one of its tiles,
+# where trees in grass has one on about half and sparse on a fifth. A forest
+# that was half wall could not be walked through, so at the default only a
+# tenth of it is - small thickets where the noise peaks - and even the
+# thickest setting leaves most of a wood passable.
+#
+# And a wood is a wood: it is never given a clearing it does not have. Where
+# the map or the land cover data says trees, every tile keeps some - the
+# density only decides how many, from sparse to a wall. Bare ground in a wood
+# is for turning the density below a half, which asks for the woods to go.
 SHARE_TABLE = (
     (0.0, (1.0, 0.0, 0.0, 0.0)),
-    (0.5, (0.40, 0.25, 0.20, 0.15)),
-    (1.0, (0.10, 0.15, 0.25, 0.50)),
-    (2.0, (0.03, 0.07, 0.20, 0.70)),
-    (3.0, (0.0, 0.0, 0.10, 0.90)),
+    (0.5, (0.0, 0.65, 0.33, 0.02)),
+    (1.0, (0.0, 0.28, 0.62, 0.10)),
+    (2.0, (0.0, 0.12, 0.63, 0.25)),
+    (3.0, (0.0, 0.05, 0.55, 0.40)),
 )
-EDGE_FLOOR = 0.35          # the edge's own tiles rank this low against the middle
+# A wood is never thinned from its edge in: every tile inside it keeps its
+# full value, as far out as the map says it reaches. It spills out instead -
+# outside it, a tile's value is scaled from 1 on the edge down to 0 at Edge
+# softness out, so trees run on over the open grass beside it, thinning as they
+# go. Thinning it inwards carved a bare band inside every wood, and its narrow
+# arms, all edge, went first.
+#
+# How far it spills is moved in and out by smooth noise, up to JITTER of Edge
+# softness, so the spill keeps to neither WorldCover's 10 m staircase nor a
+# mapper's straight line. Beside a narrow arm it spills no further than the arm
+# is wide.
+JITTER = 0.4
+# The spill is not graded against the wood's own cuts: those are set for the
+# middle of a wood, and nothing scaled much below it got past them, so a 12 m
+# spill reached 3 m. Its trees cover all of the grass beside the wood, falling
+# in a straight line to none at Edge softness out; where the stand noise is
+# high they stand thicker, the top SPILL_THICK of what grows trees in grass.
+SPILL_THICK = 0.4
 FINE = 0.25                # weight of the small lattice that roughens the stands
 SAMPLE_EVERY = 4           # the quantiles are read off every fourth tile
 EDGE_STEPS = 8             # a wide edge is measured in about this many steps
 STRIP_ROWS = 512
+FRINGE_CLEAR = 2           # tiles kept clear of anything that is not grass
 
 
 def shares(density: float) -> tuple[float, float, float, float]:
@@ -92,21 +121,93 @@ def _key(colour) -> int:
     return (colour[0] << 16) | (colour[1] << 8) | colour[2]
 
 
-def _value(ys, xs, lats, depth, reach):
+def _value(ys, xs, lats):
+    """The stand noise at rows `ys`, columns `xs`."""
     from .noise import smooth_noise
 
-    v = smooth_noise(ys.astype(np.float32), xs.astype(np.float32), lats)
-    if reach:
-        d = depth[np.ix_(ys, xs)].astype(np.float32)
-        v = v * (EDGE_FLOOR + (1 - EDGE_FLOOR) * np.minimum(1.0, d / reach))
-    return v
+    return smooth_noise(ys.astype(np.float32), xs.astype(np.float32), lats)
+
+
+def _spill_out(ys, xs, edge, reach):
+    """How far out of the wood each tile is, as a share of how far it spills
+    there (0 beside it, 1 and over past the spill), the spill's reach moved
+    by noise and no wider than the wood beside it. Inside the wood, 0."""
+    from .noise import smooth_noise
+
+    signed, half, jitter = edge
+    at = np.ix_(ys, xs)
+    r = np.clip(half[at].astype(np.float32), 1.0, float(reach))
+    d = np.maximum(-signed[at].astype(np.float32) / 2 - 0.5, 0.0)
+    wobble = (smooth_noise(ys.astype(np.float32), xs.astype(np.float32), jitter)
+              - 0.5) * (2 * JITTER)
+    return d / (r * (1 + wobble))
+
+
+def _spread_max(a: np.ndarray, r: int) -> np.ndarray:
+    """Each tile's maximum over the square `r` tiles round it, in log(r) steps."""
+    out = a.copy()
+    for axis in (0, 1):
+        done = 0
+        while done < r:
+            k = min(done + 1, r - done)
+            src = out.copy()
+            if axis == 0:
+                out[k:] = np.maximum(out[k:], src[:-k])
+                out[:-k] = np.maximum(out[:-k], src[k:])
+            else:
+                out[:, k:] = np.maximum(out[:, k:], src[:, :-k])
+                out[:, :-k] = np.maximum(out[:, :-k], src[:, k:])
+            done += k
+    return out
+
+
+def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int):
+    """What `_value` needs to know about the edge, or None with no Edge
+    softness: the signed distance from it (int16 half tiles, + inside: a tile
+    beside the edge on either side is 1 or -1), the half width of the wood
+    round each tile (up to `reach`), and the lattice that moves the spill."""
+    from .noise import lattices
+
+    if not reach:
+        return None
+    depth = edge_depth(forest, reach)
+    # Twice the reach: a tile at the far end of the spill has to see the full
+    # depth of the wood it came from, or the spill shrinks as it goes.
+    half = _spread_max(depth, 2 * reach)
+    outside = edge_depth(~forest, reach).astype(np.int16)
+    signed = np.where(forest, 2 * depth.astype(np.int16) + 1,
+                      -(2 * outside + 1)).astype(np.int16)
+    jitter = lattices(h, w, [(max(3, reach), 1.0)], FOREST_SEED + 1)
+    return signed, half, jitter
+
+
+def _free_grass(land: np.ndarray, vegp: np.ndarray, forest: np.ndarray) -> np.ndarray:
+    """Open grass outside the wood a fringe may grow on: dark or medium grass
+    (not a field's light grass), nothing on it, two tiles clear of anything
+    that is not grass - the verge of a road or a drive is the road details
+    pass's, not the wood's."""
+    lkey = _keys(land)
+    grass = (lkey == _key(C.DARK_GRASS)) | (lkey == _key(C.MEDIUM_GRASS))
+    near_other = ~grass
+    for _ in range(FRINGE_CLEAR):
+        near_other = ~_erode((~near_other).astype(np.uint8)).astype(bool)
+    return ~forest & grass & ~near_other & np.all(vegp == 0, axis=2)
 
 
 def shape_forest(veg, landscape, forest, density: float, stand_m: float,
                  edge_m: float, metres_per_tile: float) -> dict:
     """Re-grade the `forest` tiles (bool, h x w) of `veg` that the woodland
-    pass gave a tree grade or left empty, on ground that is not water.
-    Returns tiles per grade name."""
+    pass gave a tree grade or left empty, on ground that is not water, and
+    grow its fringe on the open grass outside it. Returns tiles per grade name,
+    and the fringe's under "fringe".
+
+    Nothing inside the wood is thinned for being near its edge. It spills out
+    over the open grass beside it instead, thinning to nothing at Edge softness
+    out, that distance moved in and out by noise so the wood keeps to neither
+    WorldCover's 10 m staircase nor a mapper's straight line.
+    The ground follows the trees: dark grass under them, the medium grass of a
+    meadow where a clearing opens, and between the two in sparse woods - not
+    the dark block the wood was painted on."""
     from .noise import lattices
 
     vegp = np.array(veg)
@@ -118,44 +219,81 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
             & (lkey != _key(C.WATER)))
     del vkey
     if not todo.any():
-        return {n: 0 for n in NAMES}
+        return {**{n: 0 for n in NAMES}, "fringe": 0}
 
     cell = max(2, int(round(stand_m / metres_per_tile)))
     lats = lattices(h, w, [(cell, 1.0 - FINE), (max(2, cell // 4), FINE)], FOREST_SEED)
     reach = int(round(edge_m / metres_per_tile))
-    depth = edge_depth(forest, reach) if reach else None
+    edge = _edge_fields(forest, reach, h, w)
+    # The fringe reaches as far out as the wood beside it is soft: a thin arm's
+    # fringe is as thin as its own edge.
+    near = (_free_grass(land, vegp, forest)
+            & (edge[0] > -2 * np.clip(edge[1].astype(np.int16), 1, reach))
+            if reach else np.zeros_like(forest))
 
     # The cuts: quantiles of the value over the forest, so each grade gets
     # exactly its share. A share of nothing or everything is an infinite cut.
     sy = np.arange(0, h, SAMPLE_EVERY)
     sx = np.arange(0, w, SAMPLE_EVERY)
-    sample = _value(sy, sx, lats, depth, reach)[todo[np.ix_(sy, sx)]]
+    sample = _value(sy, sx, lats)[todo[np.ix_(sy, sx)]]
     if sample.size == 0:
-        sample = _value(np.arange(h), np.arange(w), lats, depth, reach)[todo]
+        sample = _value(np.arange(h), np.arange(w), lats)[todo]
     cuts, total = [], 0.0
     for share in shares(density)[:3]:
         total += share
         cuts.append(-np.inf if total <= 0 else np.inf if total >= 1
                     else float(np.quantile(sample, total)))
     cuts = np.array(cuts)
+    # The spill reads the noise as a rank, 0 to 1 over the wood's own spread
+    # of it, so a share of its tiles can be had by a line through that rank.
+    lo, hi = (np.quantile(sample, (0.02, 0.98)) if sample.size else (0.0, 1.0))
+    spill_on = shares(density)[0] < 1
 
     counts = np.zeros(4, dtype=np.int64)
+    fringe = 0
     colours = np.array(GRADES, dtype=np.uint8)
     xs = np.arange(w)
+    dark_k, med_k, light_k = (_key(C.DARK_GRASS), _key(C.MEDIUM_GRASS),
+                              _key(C.LIGHT_GRASS))
     for top in range(0, h, STRIP_ROWS):
         bottom = min(h, top + STRIP_ROWS)
-        t = todo[top:bottom]
-        if not t.any():
+        t, n = todo[top:bottom], near[top:bottom]
+        if not (t.any() or n.any()):
             continue
-        v = _value(np.arange(top, bottom), xs, lats, depth, reach)
+        ys = np.arange(top, bottom)
+        v = _value(ys, xs, lats)
         grade = np.searchsorted(cuts, v, side="right")
+        if n.any():
+            # Outside: trees where the noise's rank beats the distance out, so
+            # cover falls from all to none; the thickest of them in grass. It
+            # never closes into a wall.
+            if spill_on:
+                u = np.clip((v - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+                t_out = _spill_out(ys, xs, edge, reach)
+                out_grade = np.where(u > t_out + (1 - t_out) * (1 - SPILL_THICK), 2,
+                                     np.where(u > t_out, 1, 0))
+                grade[n] = out_grade[n]
+            else:
+                grade[n] = 0
         vp = vegp[top:bottom]
         vp[t] = colours[grade[t]]
+        grown = n & (grade > 0)
+        vp[grown] = colours[grade[grown]]
         lk = lkey[top:bottom]
-        trees = t & (grade > 0)
-        land[top:bottom][trees & ((lk == _key(C.MEDIUM_GRASS))
-                                  | (lk == _key(C.LIGHT_GRASS)))] = C.DARK_GRASS
+        lp = land[top:bottom]
+        # Inside the wood every tree stands on the wood's dark floor - a
+        # thin patch of it is still the wood, not a clearing. Out in its spill
+        # only the thick trees do, so the spill fades into the meadow.
+        dark = np.where(n, grade >= 2, grade >= 1)
+        grassy = (lk == dark_k) | (lk == med_k) | (lk == light_k)
+        lp[(t | grown) & grassy & dark] = C.DARK_GRASS
+        # A clearing in the wood is a meadow, not the wood's dark floor; a
+        # field it was painted over stays the field.
+        lp[t & ~dark & (lk == dark_k)] = C.MEDIUM_GRASS
         counts += np.bincount(grade[t], minlength=4)
+        fringe += int(grown.sum())
     veg.paste(Image.fromarray(vegp, "RGB"))
     landscape.paste(Image.fromarray(land, "RGB"))
-    return dict(zip(NAMES, counts.tolist()))
+    out = dict(zip(NAMES, counts.tolist()))
+    out["fringe"] = fringe
+    return out

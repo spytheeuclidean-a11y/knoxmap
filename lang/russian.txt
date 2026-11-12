@@ -571,6 +571,6 @@ The map would not download. The public Overpass servers are shared and go busy; 
 Stand size = Размер рощ
 How big the clumps of forest and the clearings between them are, in metres. = Насколько велики рощи и поляны между ними, в метрах.
 Edge softness = Мягкость опушки
-How far in from its edge a wood thins out, in metres. 0 is a hard edge. = Насколько вглубь от опушки лес редеет, в метрах. 0 - резкая граница.
+How far a wood spills out past its edge, in metres, thinning as it goes. 0 is a hard edge. = Насколько лес выходит за свою опушку, в метрах, редея по мере удаления. 0 - резкая граница.
 300 m of forest with a road and a field, as these settings draw it. = 300 м леса с дорогой и полем, как их нарисуют эти настройки.
 A sample of forest with these settings = Образец леса с этими настройками

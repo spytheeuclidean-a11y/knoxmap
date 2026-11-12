@@ -959,7 +959,7 @@ const SETTING_LABELS = {
   tree_density:        ['Woodland', 'Scales tree cover everywhere: the woods, the gardens and the scrub over open ground. Trees are cover to hide in.'],
   forest_density:      ['Forests', 'Scales every wood, on top of Woodland: the ones the mapper drew and the tree cover WorldCover finds. Thick forest round a thinly planted town, or the other way about.'],
   forest_stand_m:      ['Stand size', 'How big the clumps of forest and the clearings between them are, in metres.'],
-  forest_edge_m:       ['Edge softness', 'How far in from its edge a wood thins out, in metres. 0 is a hard edge.'],
+  forest_edge_m:       ['Edge softness', 'How far a wood spills out past its edge, in metres, thinning as it goes. 0 is a hard edge.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
   fill_gaps:           ['Fill gaps from Microsoft footprints', 'On adds the buildings OpenStreetMap has not got, from Microsoft’s machine-detected building footprints, same licence. Downloads about 30 MB per tile on the first run, nothing to install. Worth it where your town is half missing from OSM; elsewhere it adds sheds. Falls back to Overture (needs DuckDB) if Microsoft cannot be reached.'],
   fill_frontage:       ['Fill gaps in streets', 'On builds the buildings missing from a street that has buildings either side of the gap: the shop missing from a row of shops, the houses from a run of houses. They are made like their neighbours, same width, depth, set-back and storeys, and only where there is room: never across a road, on water, in a park or a wood. Uses nothing but the map itself, so it costs no download. Off leaves the gaps as OpenStreetMap has them.'],
