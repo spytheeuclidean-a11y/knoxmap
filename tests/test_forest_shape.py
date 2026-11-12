@@ -235,7 +235,7 @@ class Knobs(unittest.TestCase):
         land, veg, mask = forest(edge=40)
         p = ForestParams(**{"keep_meadows": 1.0, **params})
         # Undergrowth (Task 4) is new on purpose; the fingerprint predates it.
-        with patch.object(F, "UNDERGROWTH_SHARE", 0.0, create=True):
+        with patch.object(F, "UNDERGROWTH_SHARE", 0.0):
             F.shape_forest(veg, land, mask, 1.0, 60, 20, 1.0, p)
         return land, veg, mask
 
@@ -245,11 +245,11 @@ class Knobs(unittest.TestCase):
 
     def test_no_params_is_the_defaults(self):
         land, veg, mask = forest(edge=40)
-        with patch.object(F, "UNDERGROWTH_SHARE", 0.0, create=True):
+        with patch.object(F, "UNDERGROWTH_SHARE", 0.0):
             F.shape_forest(veg, land, mask, 1.0, 60, 20, 1.0)
         a = fingerprint(veg, land)
         land, veg, mask = forest(edge=40)
-        with patch.object(F, "UNDERGROWTH_SHARE", 0.0, create=True):
+        with patch.object(F, "UNDERGROWTH_SHARE", 0.0):
             F.shape_forest(veg, land, mask, 1.0, 60, 20, 1.0, ForestParams())
         self.assertEqual(a, fingerprint(veg, land))
 

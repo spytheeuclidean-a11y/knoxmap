@@ -1057,6 +1057,11 @@ function settingElement(key, label, hint, values) {
   // A seed is an identifier, not a quantity: nobody wants to drag a slider
   // across a million values to find one, so it gets a box and a dice.
   const isSeed = key === 'seed' || key === 'forest_seed';
+  // A slider whose whole range is 1 or less steps by 0.01, so a default such
+  // as 0.33 is a position it can hold; at 0.05 the browser snapped it to 0.35
+  // and the page sent that. Wider ranges keep 0.05. The same rule is checked
+  // against every default in tests/test_forest_card.py.
+  const floatStep = hi - lo <= 1 ? 0.01 : 0.05;
   const wrap = document.createElement('div');
   wrap.className = isSwitch ? 'setting setting-switch' : 'setting';
   const control = isSeed
@@ -1069,7 +1074,7 @@ function settingElement(key, label, hint, values) {
     : isSwitch
     ? ''
     : `<input type="range" data-key="${key}" min="${lo}" max="${hi}"
-         step="${isInt ? 1 : 0.05}" value="${values[key]}">`;
+         step="${isInt ? 1 : floatStep}" value="${values[key]}">`;
   // The switch sits in the heading, where the number used to be: the name
   // on the left, what it is set to on the right, the hint underneath.
   const head = isSwitch

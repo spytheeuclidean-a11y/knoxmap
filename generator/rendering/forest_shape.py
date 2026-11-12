@@ -19,7 +19,6 @@ from PIL import Image
 from .. import pz_colors as C
 from .forest_params import ForestParams
 
-FOREST_SEED = 2207            # ForestParams().seed; kept for callers that name it
 # Thinnest first: the grade is an index into this.
 GRADES = (C.VEG_NOTHING, C.SPARSE_TREES, C.TREES_DARK_GRASS, C.TREES)
 NAMES = ("open", "sparse", "grass", "dense")
@@ -275,7 +274,11 @@ def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int, seed: int,
                       -(2 * outside + 1)).astype(np.int16)
     jitter = lattices(h, w, [(max(3, reach), 1.0)], seed + 1)
     open_half = None
-    if keep < 1:
+    if keep <= 0:
+        # No spill at all: the cap gives reach 0 whatever the open width is,
+        # so skip measuring it.
+        open_half = np.zeros((h, w), dtype=np.uint8)
+    elif keep < 1:
         deep = int(min(255, max(reach, np.ceil(reach / max(2 * keep, 1e-3)))))
         open_half = _spread_max(edge_depth(~forest, deep), deep)
     return signed, half, jitter, open_half

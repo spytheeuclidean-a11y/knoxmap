@@ -157,7 +157,8 @@ def _from_above(land: np.ndarray, veg: np.ndarray, rings: list) -> Image.Image:
     for colour, chance in CROWN.items():
         crown = (vk == _key(np.array(colour, dtype=np.uint8))) & (roll < chance)
         out[crown] = CROWN_RGB[pick[crown]]
-    out[(vk == _key(np.array(C.BUSHES_TREES_DARK_GRASS, dtype=np.uint8))) & (roll >= 0.5)] = BUSH_RGB
+    dark_bushes = vk == _key(np.array(C.BUSHES_TREES_DARK_GRASS, dtype=np.uint8))
+    out[dark_bushes & (roll >= 0.5)] = BUSH_RGB
     for colour in (C.BUSHES, C.DENSE_BUSHES_GRASS):
         out[(vk == _key(np.array(colour, dtype=np.uint8))) & (roll < SHRUB_CHANCE)] = SHRUB_RGB
     # Young trees are small light crowns among the dark ground, not a lawn.

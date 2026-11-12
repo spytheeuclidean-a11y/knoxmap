@@ -3,7 +3,9 @@ import re
 import unittest
 from pathlib import Path
 
-from knoxbuild.settings import Settings
+from dataclasses import fields
+
+from knoxbuild.settings import LIMITS, Settings
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
@@ -61,3 +63,20 @@ class ForestCard(unittest.TestCase):
     def test_old_preview_wiring_gone(self):
         self.assertNotIn("FOREST_PREVIEW_KEYS", APP)
         self.assertNotIn("addForestPreview", APP)
+
+
+class SliderSteps(unittest.TestCase):
+    def test_every_float_default_is_a_position_the_slider_can_hold(self):
+        # The same rule as floatStep in settingElement: a browser snaps a value
+        # to the nearest step, so a default off the grid is changed on load.
+        defaults = Settings()
+        for f in fields(Settings):
+            value = getattr(defaults, f.name)
+            if f.name not in LIMITS or isinstance(value, (bool, int, str)):
+                continue
+            lo, hi = LIMITS[f.name]
+            step = 0.01 if hi - lo <= 1 else 0.05
+            with self.subTest(setting=f.name):
+                n = (value - lo) / step
+                self.assertLess(abs(n - round(n)) * step, 1e-9)
+        self.assertIn("hi - lo <= 1 ? 0.01 : 0.05", APP)
