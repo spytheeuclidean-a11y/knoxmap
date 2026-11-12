@@ -1148,6 +1148,8 @@ function settingGroup(name, group, values) {
   const remember = `knoxmap.${name}.advanced`;
   try { advanced.open = localStorage.getItem(remember) === '1'; } catch (e) { /* no storage */ }
   advanced.addEventListener('toggle', () => {
+    // A search that opened the panel is not the user choosing it open.
+    if (advanced.dataset.searchOpened) { delete advanced.dataset.searchOpened; return; }
     try { localStorage.setItem(remember, advanced.open ? '1' : '0'); } catch (e) { /* no storage */ }
   });
   card.appendChild(advanced);
@@ -3035,11 +3037,24 @@ function runListSearch(boxId) {
         !head.querySelector(`${found.item}:not(.out-of-search)`));
     }
   }
+  // A subhead with nothing left under it before the next subhead goes too.
+  for (const head of box.querySelectorAll('.setting-subhead')) {
+    let any = false;
+    for (let n = head.nextElementSibling; n && !n.matches('.setting-subhead'); n = n.nextElementSibling) {
+      if (n.matches(`${found.item}:not(.out-of-search)`)
+          || n.querySelector(`${found.item}:not(.out-of-search)`)) { any = true; break; }
+    }
+    head.classList.toggle('out-of-search', !any);
+  }
   // A match inside a closed Advanced panel opens it, or it would be found
-  // and not seen.
+  // and not seen. The panel is marked so its toggle handler does not save
+  // the search's opening as the user's own choice.
   if (found.query) {
     for (const panel of box.querySelectorAll('details.setting-group-advanced')) {
-      if (panel.querySelector(`${found.item}:not(.out-of-search)`)) panel.open = true;
+      if (!panel.open && panel.querySelector(`${found.item}:not(.out-of-search)`)) {
+        panel.dataset.searchOpened = '1';
+        panel.open = true;
+      }
     }
   }
   found.input.classList.toggle('found-nothing', Boolean(words.length) && !shown);
