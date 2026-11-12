@@ -47,15 +47,16 @@ class RoadRulesTests(unittest.TestCase):
             self.assertTrue(knoxpaths.road_rules_ok(root))
 
     def parse_rules(self, text):
-        """label -> (colour, tile, layer) for every rule block in the file."""
+        """label -> (colour, tile, layer, bitmap) for every rule block."""
         rules = {}
         for body in re.findall(r"rule\s*\{(.*?)\}", text, re.S):
             label = re.search(r"label = (.+)", body).group(1).strip()
             colour = re.search(r"color = ([^\n]+)", body).group(1).strip()
             tile = re.search(r"tiles = ([^\n\[]+)", body)
             layer = re.search(r"layer = (.+)", body).group(1).strip()
+            bitmap = re.search(r"bitmap = (\d)", body).group(1)
             self.assertNotIn(label, rules, f"{label} is written twice")
-            rules[label] = (colour, tile.group(1).strip() if tile else "", layer)
+            rules[label] = (colour, tile.group(1).strip() if tile else "", layer, bitmap)
         return rules
 
     def test_the_prop_rules_are_written_once_each_and_cleanly(self):
@@ -89,7 +90,7 @@ class RoadRulesTests(unittest.TestCase):
                 "KnoxMap road Postbox N": ("street_decoration_01_008", "0_Furniture"),
                 "KnoxMap road Parking block X0": ("street_decoration_01_032", "0_Furniture"),
                 "KnoxMap road Parking block Y2": ("street_decoration_01_035", "0_Furniture"),
-                "KnoxMap road Utility pole": ("street_decoration_01_017", "0_Furniture"),
+                "KnoxMap road Utility pole": ("street_decoration_01_024", "0_Furniture"),
                 "KnoxMap road Dog house": ("constructedobjects_01_004", "0_Furniture"),
                 "KnoxMap road Swing": ("location_community_park_01_010", "0_Furniture"),
                 # Ground detail, not furniture: it goes on the overlay layer.
@@ -105,19 +106,60 @@ class RoadRulesTests(unittest.TestCase):
             # the tools would paint whichever rule came last everywhere.
             prop_prefixes = ("Bench", "Kiosk", "Postbox", "Parking block",
                              "Manhole cover", "Utility pole", "Dog house", "Swing")
-            prop_colours = [colour.split()[0:3] for label, (colour, _t, _l)
-                            in rules.items()
+            prop_colours = [values[0].split()[0:3] for label, values in rules.items()
                             if label.removeprefix("KnoxMap road ").startswith(prop_prefixes)]
             self.assertGreater(len(prop_colours), 20, "the prop rules are missing")
             self.assertEqual(len(prop_colours), len({tuple(c) for c in prop_colours}),
                              "two props share a colour")
-            layers = {layer for _c, _t, layer in rules.values()}
+            layers = {values[2] for values in rules.values()}
             self.assertTrue(all(layer.startswith("0_") for layer in layers),
                             f"a rule went onto a layer the tools do not use: {layers}")
 
             # Running Setup again must not grow the file or reorder it.
             self.assertEqual(patch_rules_roads.main(["patch_rules_roads.py", str(root)]), 0)
             self.assertEqual(rules_file.read_text(encoding="utf-8"), text)
+
+    def test_each_rail_colour_lays_a_bed_and_a_track(self):
+        """One colour, two rules, two layers - on purpose.
+
+        The tools match every rule against the pixel and place its tile on that
+        rule's layer, so a rail's colour lays the lightgravel bed on 0_Floor and
+        the track piece on 0_FloorOverlay6. One square of a bitmap holds one
+        colour, so giving the two rules different colours would mean one of the
+        tiles is never painted at all.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg = root / "config"
+            cfg.mkdir()
+            (cfg / "Rules.txt").write_text("version = 1\n", encoding="utf-8")
+            (root / "Tiles" / "2x").mkdir(parents=True)
+            self.assertEqual(patch_rules_roads.main(["patch_rules_roads.py", str(root)]), 0)
+            rules = self.parse_rules((cfg / "Rules.txt").read_text(encoding="utf-8"))
+
+        rails: dict[str, list[tuple[str, str, str]]] = {}
+        for label, (colour, tile, layer, bitmap) in rules.items():
+            if " Rail " in label:
+                rails.setdefault(colour, []).append((tile, layer, bitmap))
+        self.assertTrue(rails, "no rail rules were written")
+        for colour, uses in rails.items():
+            with self.subTest(colour=colour):
+                self.assertEqual(len(uses), 2,
+                                 "a rail colour must lay its bed and its track")
+                self.assertEqual({layer for _t, layer, _b in uses},
+                                 {"0_Floor", "0_FloorOverlay6"})
+                self.assertEqual({bitmap for _t, _l, bitmap in uses}, {"0"})
+                bed = [tile for tile, layer, _b in uses if layer == "0_Floor"]
+                track = [tile for tile, layer, _b in uses if layer == "0_FloorOverlay6"]
+                self.assertEqual(bed, ["lightgravel"])
+                self.assertTrue(track[0].startswith("industry_railroad_"))
+
+        # No two different rails may share a colour, or one would lay the other's
+        # track, and no prop may collide with a rail either.
+        self.assertEqual(len(rails), len({label for label in rules if " Rail " in label}) // 2)
+        prop_colours = {values[0] for label, values in rules.items()
+                        if not label.removeprefix("KnoxMap road ").startswith("Rail ")}
+        self.assertEqual(set(rails) & prop_colours, set())
 
     def test_ensure_road_catalogue(self):
         """Verify ensure_road_catalogue adds curb and marking sheets to empty catalogue."""
