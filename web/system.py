@@ -527,8 +527,14 @@ def api_forest_preview():
         lo, hi = LIMITS[key]
         return min(max(v, lo), hi)
 
-    density = round(value("tree_density") * value("forest_density"), 2)
-    png = preview_png(density, round(value("forest_stand_m")), round(value("forest_edge_m")))
+    from generator.rendering.forest_params import FIELD_FOR_SETTING, ForestParams
+
+    whole = {"forest_seed", "forest_stand_m", "forest_edge_m", "forest_house_clearing_m"}
+    params = ForestParams(**{
+        field: (int(round(value(key))) if key in whole else round(value(key), 2))
+        for key, field in FIELD_FOR_SETTING.items()})
+    png = preview_png(round(value("tree_density"), 2), round(value("forest_density"), 2),
+                      params)
     return send_file(io.BytesIO(png), mimetype="image/png", max_age=3600)
 
 @bp.route("/api/install", methods=["POST"])

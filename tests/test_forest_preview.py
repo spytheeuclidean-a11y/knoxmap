@@ -1,11 +1,15 @@
-"""The forest sliders' live preview."""
+"""The Forest card's live preview."""
 import io
+import time
 import unittest
 
+import numpy as np
 from PIL import Image
 
 from app import app
+from generator import pz_colors as C
 from generator.rendering import forest_preview as P
+from generator.rendering.forest_params import ForestParams
 
 
 class Preview(unittest.TestCase):
@@ -19,17 +23,50 @@ class Preview(unittest.TestCase):
         return Image.open(io.BytesIO(res.data))
 
     def test_a_picture(self):
-        self.assertEqual(self.picture("?forest_density=1&forest_stand_m=60&forest_edge_m=6").size,
-                         (2 * P.SIZE, 2 * P.SIZE))
+        self.assertEqual(self.picture("?forest_density=1").size, (2 * P.SIZE, 2 * P.SIZE))
 
     def test_bad_and_missing_values_still_draw(self):
         self.picture()
-        self.picture("?forest_density=banana&forest_stand_m=-5&forest_edge_m=nan&tree_density=99")
+        self.picture("?forest_density=banana&forest_stand_m=-5&forest_edge_m=nan"
+                     "&tree_density=99&forest_seed=x&forest_keep_meadows=7")
 
-    def test_settings_change_the_picture(self):
-        a = self.picture("?forest_density=0.5").tobytes()
-        b = self.picture("?forest_density=2").tobytes()
-        self.assertNotEqual(a, b)
+    def test_every_knob_in_the_card_reaches_it(self):
+        base = self.picture().tobytes()
+        for query in ("forest_density=2", "forest_thickets=3", "forest_stand_m=150",
+                      "forest_stand_variety=1", "forest_edge_m=0", "forest_raggedness=1",
+                      "forest_edge_wobble=0", "forest_spill_thick=1", "forest_keep_meadows=1",
+                      "forest_seed=5", "forest_house_clearing_m=40", "forest_shrubland=3",
+                      "tree_density=0.5"):
+            with self.subTest(query=query):
+                self.assertNotEqual(self.picture(f"?{query}").tobytes(), base)
 
     def test_cached(self):
-        self.assertIs(P.preview_png(1.0, 60, 6), P.preview_png(1.0, 60, 6))
+        p = ForestParams()
+        self.assertIs(P.preview_png(1.0, 1.0, p), P.preview_png(1.0, 1.0, p))
+
+    def test_quick(self):
+        t = time.perf_counter()
+        P.preview_png(1.0, 1.0, ForestParams(seed=12345))
+        self.assertLess(time.perf_counter() - t, 1.0)
+
+
+class SampleLand(unittest.TestCase):
+    def setUp(self):
+        self.land, self.veg, self.rings = P.preview_layers(1.0, 1.0, ForestParams())
+
+    def test_the_house_in_the_wood_is_in_a_clearing(self):
+        (x0, y0), (x1, y1) = P.WOOD_HOUSE
+        ring = np.zeros(self.veg.shape[:2], dtype=bool)
+        # Inside the smallest clearing: 8 m less its wobble is about 5 m.
+        ring[y0 - 4:y1 + 4, x0 - 4:x1 + 4] = True
+        ring[y0:y1, x0:x1] = False
+        trees = np.any(self.veg != 0, axis=2)
+        self.assertLess(trees[ring].mean(), 0.1)
+
+    def test_no_tree_on_the_road(self):
+        self.assertFalse(np.any(self.veg[P.ROAD[0]:P.ROAD[1]] != 0))
+
+    def test_woods_with_young_trees_and_undergrowth(self):
+        for colour in (C.TREE_SMALL, C.BUSHES_TREES_DARK_GRASS, C.TREES_DARK_GRASS):
+            with self.subTest(colour=colour):
+                self.assertTrue(np.all(self.veg == colour, axis=2).any())
