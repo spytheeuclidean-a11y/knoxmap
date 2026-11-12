@@ -5,7 +5,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from ..osm import OSMFeature
-from .geometry import _draw_line, _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
+from .geometry import _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
 from .projection import Projector
 from .widths import _sidewalk_width_m, _way_width_m
 

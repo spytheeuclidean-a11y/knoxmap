@@ -40,6 +40,19 @@ RULES = [
     ("Kerb SW", (12, 34, 205), "street_curbs_01_45", "0_Curbs"),
     ("Kerb NE", (12, 34, 206), "street_curbs_01_46", "0_Curbs"),
     ("Kerb SE", (12, 34, 207), "street_curbs_01_2", "0_Curbs"),
+    # Kerbs on a diagonal edge, from the game's own 2x sheets: on a street that
+    # crosses the tile grid at an angle the tarmac is diagonal to the square, so
+    # a square kerb steps with it. Two pieces per direction, picked by the fit
+    # in tools/preview_diag_kerbs.py - 16 and 26 follow a west-to-east diagonal,
+    # 56 and 66 the other way.
+    ("Kerb diag NW 0", (12, 34, 208), "street_curbs_01_diag_16", "0_Curbs"),
+    ("Kerb diag NW 1", (12, 34, 209), "street_curbs_01_diag_26", "0_Curbs"),
+    ("Kerb diag NE 0", (12, 34, 210), "street_curbs_01_diag_56", "0_Curbs"),
+    ("Kerb diag NE 1", (12, 34, 211), "street_curbs_01_diag_66", "0_Curbs"),
+    ("Kerb diag SW 0", (12, 34, 212), "street_curbs_01_diag_56", "0_Curbs"),
+    ("Kerb diag SW 1", (12, 34, 213), "street_curbs_01_diag_66", "0_Curbs"),
+    ("Kerb diag SE 0", (12, 34, 214), "street_curbs_01_diag_16", "0_Curbs"),
+    ("Kerb diag SE 1", (12, 34, 215), "street_curbs_01_diag_26", "0_Curbs"),
     # The faded paint (0-7 white, 16-23 yellow), which is what Knox County's
     # own streets use almost everywhere; the fresh set (8-15, 24-31) looked
     # newly painted beside them.
@@ -85,6 +98,41 @@ RULES = [
     ("Mailbox", (12, 36, 209), ["street_decoration_01_18",
                                 "street_decoration_01_19"], "0_Furniture"),
     ("Dustbin", (12, 36, 210), "trashcontainers_01_16", "0_Furniture"),
+    # The park bench, two squares long. The catalogue's orient W runs it along
+    # y (0,0 then 0,1) and orient N along x (0,0 then 1,0), which is all the
+    # orientations a backless bench has.
+    ("Bench Y0", (12, 41, 200), "furniture_seating_outdoor_01_023", "0_Furniture"),
+    ("Bench Y1", (12, 41, 201), "furniture_seating_outdoor_01_022", "0_Furniture"),
+    ("Bench X0", (12, 41, 202), "furniture_seating_outdoor_01_020", "0_Furniture"),
+    ("Bench X1", (12, 41, 203), "furniture_seating_outdoor_01_021", "0_Furniture"),
+    # The Knox Kiosk and the blue collection box, one square each, facing out
+    # from the pavement (orient = the way the front points).
+    ("Kiosk N", (12, 41, 212), "street_decoration_01_081", "0_Furniture"),
+    ("Kiosk E", (12, 41, 213), "street_decoration_01_082", "0_Furniture"),
+    ("Kiosk S", (12, 41, 214), "street_decoration_01_083", "0_Furniture"),
+    ("Kiosk W", (12, 41, 215), "street_decoration_01_080", "0_Furniture"),
+    ("Postbox N", (12, 41, 216), "street_decoration_01_008", "0_Furniture"),
+    ("Postbox E", (12, 41, 217), "street_decoration_01_011", "0_Furniture"),
+    ("Postbox S", (12, 41, 218), "street_decoration_01_010", "0_Furniture"),
+    ("Postbox W", (12, 41, 219), "street_decoration_01_009", "0_Furniture"),
+    ("Manhole cover", (12, 41, 220), "street_decoration_01_015", "0_FloorOverlay6"),
+    ("Dog house", (12, 41, 221), "constructedobjects_01_004", "0_Furniture"),
+    # Wheel stops across the ends of the kerbside bays (knoxbuild/build.py).
+    ("Parking block X0", (12, 41, 230), "street_decoration_01_032", "0_Furniture"),
+    ("Parking block X1", (12, 41, 231), "street_decoration_01_033", "0_Furniture"),
+    ("Parking block X2", (12, 41, 232), "street_decoration_01_034", "0_Furniture"),
+    ("Parking block Y0", (12, 41, 233), "street_decoration_01_037", "0_Furniture"),
+    ("Parking block Y1", (12, 41, 234), "street_decoration_01_036", "0_Furniture"),
+    ("Parking block Y2", (12, 41, 235), "street_decoration_01_035", "0_Furniture"),
+    # The swing is one hanging seat from the park's swing set: the catalogue
+    # does not list it on its own, so the tile is taken from the sheet itself.
+    # The line of poles along a county road. The game has no wire to string
+    # between them, so the pole carries the line on its own.
+    # The bare pole in the street decoration sheet, between the letterboxes and
+    # the street-name sign; it is not a catalogue furniture, so the tile is
+    # taken from the sheet itself. Not _017, which is an empty cell there and
+    # gets dropped as blank - which left the poles with no rule at all.
+    ("Utility pole", (12, 36, 211), "street_decoration_01_024", "0_Furniture"),
     # Back yards: patio grill, table and chairs, a clothesline, a raised bed.
     ("Yard grill", (12, 37, 200), "appliances_cooking_01_035", "0_Furniture"),
     ("Yard chair_w", (12, 37, 201), "furniture_seating_outdoor_01_016", "0_Furniture"),
@@ -109,9 +157,11 @@ RULES = [
     ("Yard bed_ne", (12, 37, 220), "carpentry_03_055", "0_Furniture"),
     ("Yard bed_e", (12, 37, 221), "carpentry_03_043", "0_Furniture"),
     ("Yard bed_se", (12, 37, 222), "carpentry_03_052", "0_Furniture"),
+    # Three digits, and only what Build 42 actually defines: it has 16 and 17,
+    # 18 is gone from the pack, and the short form _18 was never a tile name at
+    # all - a rule naming it paints a square the game cannot draw.
     ("Yard bed_soil", (12, 37, 223),
-     ["floors_exterior_natural_01_16", "floors_exterior_natural_01_17",
-      "floors_exterior_natural_01_18", "floors_exterior_natural_01_018"],
+     ["floors_exterior_natural_01_016", "floors_exterior_natural_01_017"],
      "0_FloorOverlay6"),
     # Works yards (knoxbuild/works.py): pallets, drums, barrels, crates and
     # tyres along the walls, a list picked from for each square.
@@ -211,6 +261,14 @@ def main(argv: list[str]) -> int:
                   "\n", text, flags=re.S)
     blocks = []
     rail_blocks = []
+    # Two rules per rail, one colour. That is not a duplicate to be tidied
+    # away: the tools match every rule against the pixel and place its tiles on
+    # that rule's own layer (see the BMP Tools page: "When a BMP image has a
+    # pixel with the same color as the rule, one of the rule's tiles will be
+    # ... placed in the map"), so a rail's colour lays the lightgravel bed on
+    # 0_Floor and its track piece on 0_FloorOverlay6. One square of a bitmap
+    # holds one colour, so two colours could not both be painted there and the
+    # track would lose either its bed or itself.
     for label, (r, g, b), rail in RAIL_RULES:
         for tile, layer in (("lightgravel", "0_Floor"), (rail, "0_FloorOverlay6")):
             rail_blocks.append(

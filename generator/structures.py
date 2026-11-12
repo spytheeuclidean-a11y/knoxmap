@@ -493,28 +493,48 @@ MAX_MONUMENT_M2 = 900
 # ordinary housing - thinned like a house, grown like a house and furnished
 # with a sofa and two bedrooms. They are built as what they are instead, and
 # taken off the building list the way an obelisk already is.
-TOWER_MAN_MADE = {"water_tower", "lighthouse", "windmill", "tower"}
+TOWER_MAN_MADE = {"water_tower", "lighthouse", "windmill", "tower", "silo",
+                 "grain_elevator"}
 # man_made=tower is also every phone mast and floodlight there is, and a
 # hundred concrete blocks up the hillside is not a landmark. Only the towers
 # somebody would give directions by.
 TOWER_TYPES = {"clock", "bell_tower", "observation", "watchtower", "defensive",
-               "campanile", "cooling", "water_tower"}
+               "campanile", "cooling", "water_tower", "spire"}
+# A bell tower is a church's, and is called what it is: a steeple, so that it
+# gets a spire and not the flat top every other man_made=tower gets.
+STEEPLE_TYPES = {"bell_tower", "campanile", "spire"}
 # How tall each stands when OpenStreetMap does not say, in storeys.
-TOWER_LEVELS = {"water_tower": 6, "lighthouse": 7, "windmill": 4, "tower": 5}
+TOWER_LEVELS = {"water_tower": 6, "lighthouse": 7, "windmill": 4, "tower": 5,
+                "steeple": 6, "silo": 6, "pylon": 5}
 # A tower is tall, not broad: past this the footprint is the base it stands on
 # and the shaft rises from the middle of it.
 TOWER_SHAFT = 3
 
 
 def tower_kind(tags: dict) -> str | None:
-    """water_tower, lighthouse, windmill or tower; None for anything else."""
+    """water_tower, lighthouse, windmill, tower, steeple, silo or pylon; None else.
+
+    The last two are not towers of a town but landmarks all the same: a grain
+    silo stands over the yard it is on, and a transmission tower is one of the
+    few things seen over a county line, so they are built as their own
+    silhouettes rather than left out of the map (an untagged silo is on
+    knoxbuild/build.py's list of things that are not buildings).
+    """
+    if (tags.get("power") or "").lower() == "tower":
+        return "pylon"                     # a transmission tower, power=tower
     made = (tags.get("man_made") or "").lower()
     if made not in TOWER_MAN_MADE:
         made = (tags.get("building") or "").lower()
         if made not in TOWER_MAN_MADE:
             return None
-    if made == "tower" and (tags.get("tower:type") or "").lower() not in TOWER_TYPES:
-        return None
+    if made in {"silo", "grain_elevator"}:
+        return "silo"
+    if made == "tower":
+        kind = (tags.get("tower:type") or "").lower()
+        if kind in STEEPLE_TYPES:
+            return "steeple"
+        if kind not in TOWER_TYPES:
+            return None
     return made
 
 
@@ -614,7 +634,10 @@ def plan_monuments(feats: list, proj, meters_per_tile: float, plan: Plan) -> Non
             continue
         if "building" in feat.tags:
             plan.not_buildings.add(id(feat))
-        plan.paving.append(shape.buffer(1.0, join_style=2))
+        if kind == "tower" and tower_kind(feat.tags) not in ("silo", "pylon"):
+            # A silo stands on the yard it serves and a mast on the verge: a
+            # paved square round either would be a plaza in a wheat field.
+            plan.paving.append(shape.buffer(1.0, join_style=2))
         {"arch": _arch, "column": _column, "statue": _statue,
          "fountain": _fountain, "stone": _stone, "tower": _tower}[kind](plan, shape, feat.tags)
         plan.monuments += 1
@@ -664,11 +687,12 @@ def _column(plan: Plan, shape, tags: dict) -> None:
 def _tower(plan: Plan, shape, tags: dict) -> None:
     """A shaft rising from its footprint, topped the way its kind is known by.
 
-    A water tower is a tank on legs, so the shaft is narrow all the way and the
-    last two storeys spread back out to the whole footprint. The rest stand on
-    their base: the shaft rises from the middle and what is left of the
-    footprint is a low plinth around it, which is a lighthouse or a mill seen
-    from across a town.
+    Seen from the far side of town - which is how these are seen, since nobody
+    walks into one - the silhouette is the whole of it: a tank on legs, a lamp
+    room on a shaft, a mill under its cap, a spire, a domed silo, a lattice
+    mast with its arms out. The same shaft is drawn for all of them with a
+    different top, so what a tower reads as is decided by its kind and nothing
+    else.
     """
     kind = tower_kind(tags) or "tower"
     cells = _cells(shape)
@@ -677,18 +701,53 @@ def _tower(plan: Plan, shape, tags: dict) -> None:
     shaft = [(x, y) for x, y in cells
              if abs(x - cx) <= half and abs(y - cy) <= half] or [(cx, cy)]
     height = max(2, min(8, _storeys(tags, TOWER_LEVELS.get(kind, 5))))
-    for z in range(height):
+    if kind == "pylon":
+        # A transmission tower is a mast, not a building: one square from the
+        # ground to the top, and two pairs of arms out along both axes below
+        # the highest wire, which is what makes it a pylon and not a flagpole.
+        for z in range(height):
+            plan.put(cx, cy, z, "Floor", BLOCK)
+        for z in (height - 3, height - 2):
+            if z < 0:
+                continue
+            for x in range(cx - half, cx + half + 1):
+                if x != cx:
+                    plan.put(x, cy, z, "Furniture", RAIL_W)
+            for y in range(cy - half, cy + half + 1):
+                if y != cy:
+                    plan.put(cx, y, z, "Furniture", RAIL_N)
+        return
+    # A spire narrows above the shaft, so the shaft itself stops short and the
+    # needle is drawn on top of nothing.
+    body = height - 2 if kind == "steeple" else height
+    for z in range(body):
         for x, y in shaft:
             plan.put(x, y, z, "Floor", BLOCK)
-    if kind == "water_tower":
+    if kind == "silo":
+        # A cylinder with a domed cap: wider than the shaft all the way up, so
+        # it stands as a drum over the farmyard rather than a needle.
+        for z in range(height):
+            for x, y in cells:
+                plan.put(x, y, z, "Floor", BLOCK)
+        plan.put(cx, cy, height, "Floor", PLINTH)
+    elif kind == "steeple":
+        # A spire: the shaft, then one square that rises to a point over the
+        # roof it stands beside.
+        for z in range(body, height):
+            plan.put(cx, cy, z, "Floor", BLOCK)
+        plan.put(cx, cy, height, "Floor", PLINTH)
+    elif kind == "water_tower":
         # The tank, wider than the legs it stands on.
         for z in range(max(0, height - 2), height):
             for x, y in cells:
                 plan.put(x, y, z, "Floor", BLOCK)
     else:
+        # A lighthouse or a mill: a shaft on its base, and a cap on top that a
+        # sawmill or a lamp room sits under.
         for x, y in cells:
             if (x, y) not in shaft:
                 plan.put(x, y, 0, "Floor", PLINTH)
+        plan.put(cx, cy, height, "Floor", PLINTH)
 
 
 def _statue(plan: Plan, shape, tags: dict) -> None:

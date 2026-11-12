@@ -126,6 +126,14 @@ CLIMATE_TINT = {
 _WINTER_GROUND = (210, 214, 218)
 
 
+def _colour_mask(ground, colours) -> "np.ndarray":
+    """Which pixels of `ground` are one of `colours`."""
+    mask = np.zeros(ground.shape[:2], dtype=bool)
+    for colour in colours:
+        mask |= np.all(ground == np.array(colour, dtype=ground.dtype), axis=2)
+    return mask
+
+
 def _paint_climate(landscape: Image.Image, climate: dict,
                    winter_look: str = "auto") -> None:
     """Tint the ground for its real climate: dry, cold, lush or default."""
@@ -321,7 +329,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     if road_layout in (1, 4):
         # Every road in straight runs at 45-degree steps (octilinear.py).
         from .octilinear import straighten_roads
-        straighten_roads(features, proj, classify, _is_polygon, clean=(road_layout == 4))
+        straighten_roads(features, proj, classify, _is_polygon, clean=True)
     elif road_layout in ROAD_LAYOUTS:
         # Routed on vanilla's lattice (roadgraph/route.py), and saved: Build and
         # the paper map read the roads back rather than routing them again.
@@ -637,7 +645,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _clear_building_vegetation(vegetation, building_feats, proj)
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)
-    road_hierarchy = _road_hierarchy_image(buckets, proj)
+    hierarchy_image = _road_hierarchy_image(buckets, proj)
     # Where the buildings are, so a hydrant, a bin or a mailbox only stands
     # where it has something to serve.
     building_mask = Image.new("L", (proj.width, proj.height), 0)
@@ -646,7 +654,14 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         for ring in _feature_coords_px(feat, proj):
             if len(ring) >= 3:
                 mask_draw.polygon(ring, fill=255)
-    _paint_street_furniture(vegetation, landscape, road_hierarchy, building_mask)
+    _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask)
+    # The last word on the ground edge belongs to the smoother: a lamp's square
+    # and the passes after the road details can leave a verge square standing
+    # between two pavements, which in the game is a lawn in the sidewalk.
+    _smooth_road_edges(landscape, (C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
+                                   C.DARKEST_ASPHALT, C.DARK_POTHOLE,
+                                   C.LIGHT_POTHOLE),
+                       _colour_mask)
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:
@@ -701,7 +716,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # that the build then read as the map.
     knoxfiles.save(landscape, landscape_path, format="BMP")
     knoxfiles.save(vegetation, veg_path, format="BMP")
-    knoxfiles.save(road_hierarchy, road_hierarchy_path, format="BMP")
+    knoxfiles.save(hierarchy_image, road_hierarchy_path, format="BMP")
     # The ground as drawn, before knoxbuild paints front paths into it
     # (knoxbuild/yards.py), so building again starts from clean ground.
     knoxfiles.save(landscape, os.path.join(output_dir, f"{map_name}_ground_base.bmp"),
