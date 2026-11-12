@@ -133,13 +133,14 @@ def rules_text(tools: Path | None) -> str:
 def road_rules_ok(tools: Path | None) -> bool:
     """Kerbs, road markings and street furniture, in their newest form.
 
-    The newest rule, so tools patched before street furniture existed are sent
-    back through Setup - and no blank litter tile, so are the ones patched
-    while the litter rule still named trash_01_13 and 14, which the game draws
-    as a question mark.
+    The newest rule, so tools patched before street furniture - or before the
+    utility poles - are sent back through Setup, and no blank litter tile, so
+    are the ones patched while the litter rule still named trash_01_13 and 14,
+    which the game draws as a question mark.
     """
     text = rules_text(tools)
-    return ("KnoxMap road Yard bed_soil" in text or "KnoxMap road Kerb W" in text) and "trash_01_13" not in text
+    return (("KnoxMap road Utility pole" in text and "KnoxMap road Kerb W" in text)
+            and "trash_01_13" not in text)
 
 
 def tree_rules_ok(tools: Path | None) -> bool:

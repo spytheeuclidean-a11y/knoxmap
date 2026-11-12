@@ -39,8 +39,8 @@ class RoadFurniturePlacement(unittest.TestCase):
 
 
 class RoadsideProps(unittest.TestCase):
-    """Benches are gone, and hydrants, bins and mailboxes only stand beside a
-    sidewalk where there is a building to serve."""
+    """Hydrants, bins, mailboxes, benches, kiosks and collection boxes only
+    stand beside a sidewalk where there is a building to serve."""
 
     def long_road(self, length=180):
         ground = Image.new("RGB", (length, 24), C.DARK_GRASS)
@@ -60,7 +60,29 @@ class RoadsideProps(unittest.TestCase):
         mask.paste(255, box)
         return mask
 
-    def test_no_benches_on_the_roadside(self):
+    def test_utility_poles_line_a_street_once_the_rules_carry_them(self):
+        vegetation, ground = self.long_road()
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=True):
+            counts = renderer._paint_street_furniture(vegetation, ground)
+        self.assertGreater(counts.get("pole", 0), 0)
+        colours = {vegetation.getpixel((x, y)) for x in range(ground.width)
+                   for y in range(ground.height)}
+        self.assertIn(C.UTILITY_POLE, colours)
+
+    def test_without_the_pole_rule_no_poles_are_painted(self):
+        # A colour with no rule behind it is dropped with a warning, so an
+        # install set up before the poles must not get the colour at all.
+        vegetation, ground = self.long_road()
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=False):
+            counts = renderer._paint_street_furniture(vegetation, ground)
+        self.assertEqual(counts.get("pole", 0), 0)
+        colours = {vegetation.getpixel((x, y)) for x in range(ground.width)
+                   for y in range(ground.height)}
+        self.assertNotIn(C.UTILITY_POLE, colours)
+
+    def test_no_patio_tables_on_the_roadside(self):
         vegetation, ground = self.long_road()
         with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False):
             renderer._paint_street_furniture(
@@ -70,6 +92,72 @@ class RoadsideProps(unittest.TestCase):
                    for y in range(ground.height)}
         for tile in (C.TABLE_X0, C.TABLE_X1, C.TABLE_Y0, C.TABLE_Y1):
             self.assertNotIn(tile, colours, "a bench is still being laid")
+
+    def test_benches_stand_along_the_kerb_once_the_rules_carry_them(self):
+        vegetation, ground = self.long_road()
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=True):
+            counts = renderer._paint_street_furniture(
+                vegetation, ground, None,
+                self.buildings_near(ground.size, (10, 0, 60, 24)))
+        self.assertGreater(counts.get("bench", 0), 0)
+        # The road runs north-south, so the bench lies along y: two squares,
+        # the catalogue's orient W pair (0,0 then 0,1).
+        heads = [(x, y) for x in range(ground.width) for y in range(ground.height - 1)
+                 if vegetation.getpixel((x, y)) == C.BENCH_Y[0]]
+        self.assertTrue(heads, "no bench was laid")
+        for x, y in heads:
+            with self.subTest(at=(x, y)):
+                self.assertEqual(vegetation.getpixel((x, y + 1)), C.BENCH_Y[1])
+
+    def test_the_kiosk_and_the_collection_box_stand_by_the_sidewalk(self):
+        vegetation, ground = self.long_road()
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=True):
+            counts = renderer._paint_street_furniture(
+                vegetation, ground, None,
+                self.buildings_near(ground.size, (10, 0, 60, 24)))
+        self.assertGreater(counts.get("kiosk", 0), 0)
+        self.assertGreater(counts.get("postbox", 0), 0)
+        self.assertIn(C.KIOSK_W, {vegetation.getpixel((x, y))
+                                  for x in range(ground.width)
+                                  for y in range(ground.height)})
+
+    def test_without_the_rules_none_of_the_new_props_are_painted(self):
+        vegetation, ground = self.long_road()
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=False):
+            counts = renderer._paint_street_furniture(vegetation, ground)
+        for what in ("bench", "kiosk", "postbox"):
+            self.assertEqual(counts.get(what, 0), 0)
+
+    def test_a_bench_never_stands_half_on_the_kerb(self):
+        vegetation, ground = self.long_road()
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=True):
+            renderer._paint_street_furniture(
+                vegetation, ground, None,
+                self.buildings_near(ground.size, (10, 0, 60, 24)))
+        bench = {*C.BENCH_Y, *C.BENCH_X}
+        for x in range(ground.width):
+            for y in range(ground.height - 1):
+                if vegetation.getpixel((x, y)) in bench:
+                    with self.subTest(at=(x, y)):
+                        self.assertNotEqual(ground.getpixel((x, y)), C.MEDIUM_ASPHALT)
+                        self.assertNotEqual(ground.getpixel((x, y + 1)), C.MEDIUM_ASPHALT)
+
+    def test_manhole_covers_lie_on_the_pavement(self):
+        vegetation, ground = self.long_road()
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False), \
+                mock.patch.object(furniture, "_rule_ready", return_value=True), \
+                mock.patch.object(furniture, "MANHOLE_SHARE", 0.2):
+            renderer._paint_street_furniture(vegetation, ground)
+        covers = [(x, y) for x in range(ground.width) for y in range(ground.height)
+                  if vegetation.getpixel((x, y)) == C.MANHOLE]
+        self.assertTrue(covers, "no manhole cover was laid")
+        for x, y in covers:
+            with self.subTest(at=(x, y)):
+                self.assertEqual(ground.getpixel((x, y)), C.PALE_CONCRETE)
 
     def test_props_only_stand_where_a_building_is(self):
         vegetation, ground = self.long_road()

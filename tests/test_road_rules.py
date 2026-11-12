@@ -1,4 +1,5 @@
 """Tests for road detail rules patching, curb catalogues, and B42 compatibility."""
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -44,6 +45,79 @@ class RoadRulesTests(unittest.TestCase):
             self.assertIn("KnoxMap road Yard bed_soil", txt)
             self.assertIn("floors_exterior_natural_01_16", txt)
             self.assertTrue(knoxpaths.road_rules_ok(root))
+
+    def parse_rules(self, text):
+        """label -> (colour, tile, layer) for every rule block in the file."""
+        rules = {}
+        for body in re.findall(r"rule\s*\{(.*?)\}", text, re.S):
+            label = re.search(r"label = (.+)", body).group(1).strip()
+            colour = re.search(r"color = ([^\n]+)", body).group(1).strip()
+            tile = re.search(r"tiles = ([^\n\[]+)", body)
+            layer = re.search(r"layer = (.+)", body).group(1).strip()
+            self.assertNotIn(label, rules, f"{label} is written twice")
+            rules[label] = (colour, tile.group(1).strip() if tile else "", layer)
+        return rules
+
+    def test_the_prop_rules_are_written_once_each_and_cleanly(self):
+        """Every street and yard prop reaches Rules.txt once, with its own
+        colour and the layer it belongs on - including a rule an older install
+        already has, which must be rewritten in place rather than duplicated."""
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            cfg = root / "config"
+            cfg.mkdir()
+            rules_file = cfg / "Rules.txt"
+            # An install set up by an older build: the bench rule still names
+            # the concrete wheel-stop tile it was first written with.
+            rules_file.write_text(
+                "rule\r\n{\r\n    label = KnoxMap road Bench Y0\r\n    bitmap = 1\r\n"
+                "    color = 12 41 200\r\n    tiles = street_decoration_032\r\n"
+                "    layer = 0_Furniture\r\n}\r\n",
+                encoding="utf-8",
+            )
+            (root / "Tiles" / "2x").mkdir(parents=True)
+
+            self.assertEqual(patch_rules_roads.main(["patch_rules_roads.py", str(root)]), 0)
+            text = rules_file.read_text(encoding="utf-8")
+            rules = self.parse_rules(text)
+
+            expected = {
+                "KnoxMap road Bench Y0": ("furniture_seating_outdoor_01_023", "0_Furniture"),
+                "KnoxMap road Bench Y1": ("furniture_seating_outdoor_01_022", "0_Furniture"),
+                "KnoxMap road Bench X1": ("furniture_seating_outdoor_01_021", "0_Furniture"),
+                "KnoxMap road Kiosk W": ("street_decoration_01_080", "0_Furniture"),
+                "KnoxMap road Postbox N": ("street_decoration_01_008", "0_Furniture"),
+                "KnoxMap road Parking block X0": ("street_decoration_01_032", "0_Furniture"),
+                "KnoxMap road Parking block Y2": ("street_decoration_01_035", "0_Furniture"),
+                "KnoxMap road Utility pole": ("street_decoration_01_017", "0_Furniture"),
+                "KnoxMap road Dog house": ("constructedobjects_01_004", "0_Furniture"),
+                "KnoxMap road Swing": ("location_community_park_01_010", "0_Furniture"),
+                # Ground detail, not furniture: it goes on the overlay layer.
+                "KnoxMap road Manhole cover": ("street_decoration_01_015", "0_FloorOverlay6"),
+            }
+            for label, (tile, layer) in expected.items():
+                with self.subTest(rule=label):
+                    self.assertIn(label, rules)
+                    self.assertEqual(rules[label][1], tile)
+                    self.assertEqual(rules[label][2], layer)
+
+            # Our props are keyed by colour, so no two of them may share one:
+            # the tools would paint whichever rule came last everywhere.
+            prop_prefixes = ("Bench", "Kiosk", "Postbox", "Parking block",
+                             "Manhole cover", "Utility pole", "Dog house", "Swing")
+            prop_colours = [colour.split()[0:3] for label, (colour, _t, _l)
+                            in rules.items()
+                            if label.removeprefix("KnoxMap road ").startswith(prop_prefixes)]
+            self.assertGreater(len(prop_colours), 20, "the prop rules are missing")
+            self.assertEqual(len(prop_colours), len({tuple(c) for c in prop_colours}),
+                             "two props share a colour")
+            layers = {layer for _c, _t, layer in rules.values()}
+            self.assertTrue(all(layer.startswith("0_") for layer in layers),
+                            f"a rule went onto a layer the tools do not use: {layers}")
+
+            # Running Setup again must not grow the file or reorder it.
+            self.assertEqual(patch_rules_roads.main(["patch_rules_roads.py", str(root)]), 0)
+            self.assertEqual(rules_file.read_text(encoding="utf-8"), text)
 
     def test_ensure_road_catalogue(self):
         """Verify ensure_road_catalogue adds curb and marking sheets to empty catalogue."""

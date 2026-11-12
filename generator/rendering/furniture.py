@@ -31,6 +31,30 @@ SPEED_SIGN_EVERY = 80
 SPEED_BY_WIDTH = ((12, 45), (8, 35), (0, 25))
 BIN_EVERY = 28
 MAILBOX_EVERY = 34
+# Street furniture besides the essentials: a bench, the news kiosk, the blue
+# collection box. A bench is two squares long and needs both free.
+BENCH_EVERY = 110
+KIOSK_EVERY = 150
+POSTBOX_EVERY = 190
+# A manhole cover on the pavement, one square in a few hundred.
+MANHOLE_SHARE = 0.003
+# Which way a prop on each kerb faces. The tools' orient is the direction an
+# object points - the kerbs say so, since roads.py puts KERB_W on the strip
+# whose road is to its west - so a prop stands with its back to the pavement
+# and its face across the carriageway.
+FACES_THE_ROAD = {C.EDGE_LINE_W: "E", C.EDGE_LINE_E: "W",
+                  C.EDGE_LINE_N: "S", C.EDGE_LINE_S: "N"}
+# A bench is backless, so it has no facing: the catalogue draws it in two axes
+# (orient W along y, orient N along x) and a bench lies along its kerb.
+BENCH_RUNS = {C.EDGE_LINE_W: (C.BENCH_Y, True), C.EDGE_LINE_E: (C.BENCH_Y, True),
+              C.EDGE_LINE_N: (C.BENCH_X, False), C.EDGE_LINE_S: (C.BENCH_X, False)}
+# A utility pole every so many tiles of kerb. Trunk roads and motorways carry
+# their cables on pylons, which are structures of their own.
+UTILITY_POLE_EVERY = {
+    "motorway": 1 << 30, "trunk": 1 << 30, "primary": 60,
+    "secondary": 50, "tertiary": 45, "residential": 40,
+    "service": 90, "footway": 1 << 30,
+}
 ROAD_FURNITURE_INTERVALS = {
     "motorway": {"lamp": 55, "hydrant": 1 << 30, "speed": 55, "drain": 40, "bin": 1 << 30, "mailbox": 1 << 30},
     "trunk": {"lamp": 36, "hydrant": 80, "speed": 65, "drain": 32, "bin": 1 << 30, "mailbox": 1 << 30},
@@ -41,6 +65,23 @@ ROAD_FURNITURE_INTERVALS = {
     "service": {"lamp": 30, "hydrant": 75, "speed": 1 << 30, "drain": 34, "bin": 36, "mailbox": 1 << 30},
     "footway": {"lamp": 22, "hydrant": 1 << 30, "speed": 1 << 30, "drain": 1 << 30, "bin": 28, "mailbox": 1 << 30},
 }
+
+
+def _rule_ready(label: str) -> bool:
+    """Whether the map tools' Rules.txt carries one of our rules yet.
+
+    A colour with no rule behind it is dropped with a warning, so this is what
+    keeps a pole off the verge on an install that Setup has not been run on
+    since the poles were added.
+    """
+    if os.environ.get("KNOXMAP_NO_POLES") == "1":
+        return False
+    try:
+        import knoxpaths
+        rules = knoxpaths.mapping_tools_dir() / "config" / "Rules.txt"
+        return f"KnoxMap road {label}" in rules.read_text(encoding="utf-8", errors="replace")
+    except Exception:      # noqa: BLE001 - no tools, no pole
+        return False
 
 
 def _mod_tiles_ready() -> bool:
@@ -161,8 +202,16 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                 (C.EDGE_LINE_N, (0, -1), C.LAMP_S), (C.EDGE_LINE_S, (0, 1), C.LAMP_N)]
     taken: dict[str, set] = {
         "lamp": set(), "hydrant": set(), "drain": set(), "speed": set(),
-        "bin": set(), "mailbox": set(),
+        "bin": set(), "mailbox": set(), "pole": set(), "bench": set(),
+        "kiosk": set(), "postbox": set(),
     }
+    pole = C.UTILITY_POLE if _rule_ready("Utility pole") else None
+    # The kiosk and the collection box face out from the pavement, across the
+    # road they stand beside.
+    kiosk = None if not _rule_ready("Kiosk N") else {
+        "N": C.KIOSK_N, "E": C.KIOSK_E, "S": C.KIOSK_S, "W": C.KIOSK_W}
+    postbox = None if not _rule_ready("Postbox N") else {
+        "N": C.POSTBOX_N, "E": C.POSTBOX_E, "S": C.POSTBOX_S, "W": C.POSTBOX_W}
     out = vp.copy()
     # Speed signs stand where drivers keeping right see their faces: on the
     # east kerb of a north-south road facing south, the north kerb of an
@@ -224,11 +273,19 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     ("hydrant", spacing.get("hydrant", HYDRANT_EVERY), C.HYDRANT, (bx, by), None),
                     ("bin", spacing.get("bin", BIN_EVERY), C.BIN, (bx, by), None),
                     ("mailbox", spacing.get("mailbox", MAILBOX_EVERY), C.MAILBOX, (bx, by), None),
+                    ("kiosk", KIOSK_EVERY,
+                     kiosk.get(FACES_THE_ROAD[edge]) if kiosk else None, (bx, by), None),
+                    ("postbox", POSTBOX_EVERY,
+                     postbox.get(FACES_THE_ROAD[edge]) if postbox else None, (bx, by), None),
+                    # Last of the verge props, so a lamp or a hydrant that is
+                    # due on the same square keeps it: the poles fall in the
+                    # gaps between them, as they do along a real street.
+                    ("pole", UTILITY_POLE_EVERY.get(hierarchy, 55), pole, (bx, by), None),
                     ("drain", spacing.get("drain", DRAIN_EVERY), C.STORM_DRAIN, (gx, gy), None)):
                 if every >= (1 << 29):
                     continue
                 px, py = at
-                if what in ("hydrant", "bin", "mailbox"):
+                if what in ("hydrant", "bin", "mailbox", "kiosk", "postbox"):
                     spot = beside_the_pavement(gx, gy, sx, sy)
                     if spot is None:
                         continue
@@ -278,14 +335,45 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     # Scattered things: each square rolls once, and each kind has its own band
     # of the roll, so no square gets two.
     roll = rng.random((h, w))
+    scattered = [(asphalt, CRACK_SHARE, C.ASPHALT_CRACKS, "cracks"),
+                 (pavement, LITTER_SHARE, C.LITTER, "litter")]
+    if _rule_ready("Manhole cover"):
+        scattered.append((pavement, MANHOLE_SHARE, C.MANHOLE, "manholes"))
     lo = 0.0
-    for mask, share, colour, name in (
-            (asphalt, CRACK_SHARE, C.ASPHALT_CRACKS, "cracks"),
-            (pavement, LITTER_SHARE, C.LITTER, "litter")):
+    for mask, share, colour, name in scattered:
         pick = mask & empty & (roll >= lo) & (roll < lo + share)
         lo += share
         out[pick] = colour
         empty &= ~pick
         counts[name] = int(pick.sum())
+    # Benches: three squares along the kerb with the seat facing the road. They
+    # need the whole run free, so they take a pass of their own rather than a
+    # square in the props loop.
+    if _rule_ready("Bench Y0"):
+        for edge, (sx, sy), _lamp in straight:
+            tiles, along_y = BENCH_RUNS[edge]
+            dx, dy = (0, 1) if along_y else (1, 0)
+            kerb_mask = np.all(vp == edge, axis=2) | diag_kerbs[edge]
+            ys, xs = np.nonzero(kerb_mask)
+            for i in rng.permutation(len(xs)).tolist():
+                gx, gy = int(xs[i]), int(ys[i])
+                spot = beside_the_pavement(gx, gy, sx, sy)
+                if spot is None:
+                    continue
+                px, py = spot
+                if near_buildings is not None and not near_buildings[py, px]:
+                    continue
+                cell = (px // BENCH_EVERY, py // BENCH_EVERY)
+                if cell in taken["bench"]:
+                    continue
+                run = [(px + k * dx, py + k * dy) for k in range(len(tiles))]
+                if not all(0 <= x < w and 0 <= y < h and empty[y, x]
+                           and not driveable[y, x] and roadside[y, x] for x, y in run):
+                    continue
+                for (x, y), colour in zip(run, tiles):
+                    out[y, x] = colour
+                    empty[y, x] = False
+                taken["bench"].add(cell)
+                counts["bench"] = counts.get("bench", 0) + 1
     veg.paste(Image.fromarray(out), (0, 0))
     return counts
