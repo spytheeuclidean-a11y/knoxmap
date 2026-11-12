@@ -69,7 +69,8 @@ def read_header(path: str) -> tuple[list[str], int, int]:
 def read_squares(pack: str, names: list[str], lo: int, hi: int,
                  want: tuple[int, int, int, int]) -> dict:
     """{(cell-local x, y, z): [tile names]} for squares inside `want` (x0, y0, x1, y1)."""
-    data = open(pack, "rb").read()
+    with open(pack, "rb") as fh:
+        data = fh.read()
     pos = 4 if data[:4] == b"LOTP" else 0
     pos += 4
     (n,) = struct.unpack_from("<i", data, pos); pos += 4
@@ -158,13 +159,16 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     if max_level is not None:
         top = min(top, max_level)
 
-    tiles_dir = knoxpaths.mapping_tools_dir() / "Tiles" / "2x"
+    import numpy as np
 
-    def image(name: str):
+    tiles_dir = knoxpaths.mapping_tools_dir() / "Tiles" / "2x"
+    resample = Image.BILINEAR if max(4, round(64 * scale)) <= 16 else Image.LANCZOS
+
+    def sprite_for(name: str):
         key = (name, TW)
         if key in _SPRITE_CACHE:
             return _SPRITE_CACHE[key]
-        img = None
+        entry = None
         m = re.match(r"^(.*)_(\d+)$", name)
         if m:
             sheet_name, idx = m.group(1), int(m.group(2))
@@ -181,11 +185,17 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
                 cols = max(1, sheet.width // 128)
                 cx, cy = (idx % cols) * 128, (idx // cols) * 256
                 if cy + 256 <= sheet.height:
-                    img = sheet.crop((cx, cy, cx + 128, cy + 256)).resize((TW, TW * 2), Image.LANCZOS)
+                    im = sheet.crop((cx, cy, cx + 128, cy + 256)).resize((TW, TW * 2), resample)
+                    bbox = im.getbbox()
+                    if bbox is not None:
+                        ox, oy, x1, y1 = bbox
+                        arr = np.asarray(im.crop(bbox), dtype=np.uint16)
+                        a = arr[:, :, 3:4]
+                        entry = (ox, oy, x1 - ox, y1 - oy, arr[:, :, :3] * a, 255 - a)
         if len(_SPRITE_CACHE) >= _MAX_SPRITE_CACHE:
             _SPRITE_CACHE.clear()
-        _SPRITE_CACHE[key] = img
-        return img
+        _SPRITE_CACHE[key] = entry
+        return entry
 
     # Sprites are shrunk before they are stacked, so a whole district can be
     # drawn: at full size two square kilometres is a 96,000-pixel-wide image.
@@ -193,22 +203,42 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     half, quarter, level_px = TW // 2, TW // 4, round(LEVEL_PX * TW / 64)
     width = (W + H) * half + TW
     height = (W + H) * quarter + 2 * TW + (top + 1) * level_px
-    canvas = Image.new("RGBA", (width, height), (24, 26, 28, 255))
+    canvas = np.empty((height, width, 3), dtype=np.uint8)
+    canvas[:] = (24, 26, 28)
     lift = (top + 1) * level_px
 
     # Iterating sorted populated squares directly is mathematically equivalent
     # to the (z, s, dx) triple loop while skipping millions of empty coordinates.
-    ordered = sorted(squares.items(), key=lambda item: (item[0][2], item[0][0] + item[0][1], item[0][0]))
-    for (dx, dy, z), tile_names in ordered:
-        if max_level is not None and z > max_level:
-            continue
+    ordered = sorted(
+        (z, dx + dy, dx, dy, tile_names)
+        for (dx, dy, z), tile_names in squares.items()
+        if max_level is None or z <= max_level
+    )
+    for z, _diag, dx, dy, tile_names in ordered:
         px = (dx - dy) * half + H * half
         py = (dx + dy) * quarter + lift - z * level_px - TW * 3 // 2
         for name in tile_names:
-            img = image(name)
-            if img is not None:
-                canvas.alpha_composite(img, (px, py))
-    return canvas
+            sp = sprite_for(name)
+            if sp is None:
+                continue
+            ox, oy, sw, sh, pre_rgb, inv_a = sp
+            x0, y0 = px + ox, py + oy
+            x1, y1 = x0 + sw, y0 + sh
+            if x1 <= 0 or y1 <= 0 or x0 >= width or y0 >= height:
+                continue
+            sx0 = max(0, -x0)
+            sy0 = max(0, -y0)
+            sx1 = sw - max(0, x1 - width)
+            sy1 = sh - max(0, y1 - height)
+            cx0, cy0 = x0 + sx0, y0 + sy0
+            cx1, cy1 = x0 + sx1, y0 + sy1
+            dst = canvas[cy0:cy1, cx0:cx1]
+            if sx0 == 0 and sy0 == 0 and sx1 == sw and sy1 == sh:
+                t = pre_rgb + dst * inv_a
+            else:
+                t = pre_rgb[sy0:sy1, sx0:sx1] + dst * inv_a[sy0:sy1, sx0:sx1]
+            dst[:] = (t + (t >> 8) + 1) >> 8
+    return Image.fromarray(canvas, "RGB").convert("RGBA")
 
 
 def main(argv: list[str]) -> int:
