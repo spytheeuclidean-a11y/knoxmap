@@ -18,7 +18,6 @@ from .widths import (ROAD_WIDTHS_M, _road_markings, _sidewalk_width_m,
 def _road_hierarchy_image(buckets: dict[str, list[OSMFeature]], proj: Projector) -> Image.Image:
     """Rasterize road class over the right-of-way for downstream map passes."""
     image = Image.new("L", (proj.width, proj.height), 0)
-    draw = ImageDraw.Draw(image)
     road_buckets = ("road_service", "road_minor", "road_medium", "road_major",
                     "paved_path", "dirt_path")
     for hierarchy, code in sorted(ROAD_HIERARCHY_CODES.items(), key=lambda item: item[1]):

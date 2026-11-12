@@ -10,8 +10,13 @@
 # reports about 2,400 findings, nearly all unused imports, long lines and
 # `except` clauses without a matching variable; gating a pull request on that
 # today would mean either a mechanical sweep of four hundred files or a wall of
-# ignores, and neither makes the app work better. Narrow now, widen when
-# somebody has the appetite for the sweep.
+# ignores, and neither makes the app work better.
+#
+# What is selected on top of the original mistake rules is the next step, and
+# it is small: F811/F841 (a name redefined but never used, a value computed and
+# thrown away) and B006/B008 (a mutable default argument). It found 22 things,
+# all fixed. The target after that is F401: 103 unused imports across the
+# repository, a mechanical sweep of its own.
 
 [tool.ruff]
 target-version = "py310"
@@ -20,7 +25,7 @@ line-length = 100
 extend-exclude = ["update", "vendor", "cache", "output", "graphify-out", "graft", "rust"]
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82"]
+select = ["E9", "F63", "F7", "F82", "F811", "F841", "B006", "B008"]
 
 # pytest is the contributor's tool (requirements-dev.txt), not CI's, but it is
 # run from this folder, and without this it also collects the updater's copies

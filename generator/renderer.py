@@ -637,7 +637,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _clear_building_vegetation(vegetation, building_feats, proj)
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)
-    road_hierarchy = _road_hierarchy_image(buckets, proj)
+    hierarchy_image = _road_hierarchy_image(buckets, proj)
     # Where the buildings are, so a hydrant, a bin or a mailbox only stands
     # where it has something to serve.
     building_mask = Image.new("L", (proj.width, proj.height), 0)
@@ -646,7 +646,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         for ring in _feature_coords_px(feat, proj):
             if len(ring) >= 3:
                 mask_draw.polygon(ring, fill=255)
-    _paint_street_furniture(vegetation, landscape, road_hierarchy, building_mask)
+    _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask)
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:
@@ -701,7 +701,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # that the build then read as the map.
     knoxfiles.save(landscape, landscape_path, format="BMP")
     knoxfiles.save(vegetation, veg_path, format="BMP")
-    knoxfiles.save(road_hierarchy, road_hierarchy_path, format="BMP")
+    knoxfiles.save(hierarchy_image, road_hierarchy_path, format="BMP")
     # The ground as drawn, before knoxbuild paints front paths into it
     # (knoxbuild/yards.py), so building again starts from clean ground.
     knoxfiles.save(landscape, os.path.join(output_dir, f"{map_name}_ground_base.bmp"),
