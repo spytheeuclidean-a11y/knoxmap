@@ -143,7 +143,12 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
             local = (wx0 - base_x, wy0 - base_y, wx0 + W - base_x, wy0 + H - base_y)
             for (sx, sy, z), tiles in read_squares(pack, names, lo, hi, local).items():
                 if skip_blends:
-                    tiles = [t for t in tiles if not t.startswith("blends_")]
+                    # Keep the base terrain tile (tiles[0] on z == 0, which is
+                    # itself a blends_natural / blends_street tile) and only
+                    # skip extra blend overlays stacked on top of it.
+                    head = tiles[:1] if z == 0 else []
+                    tail = [t for t in tiles[len(head):] if not t.startswith("blends_")]
+                    tiles = head + tail
                     if not tiles:
                         continue
                 squares[(base_x + sx - wx0, base_y + sy - wy0, z)] = tiles
