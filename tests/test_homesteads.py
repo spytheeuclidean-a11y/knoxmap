@@ -243,3 +243,24 @@ class ClearingSize(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EveryHouse(unittest.TestCase):
+    """Every house in the woods gets its clearing, not only the first.
+
+    The drive pass reused the name of the clearing's near end, so the first
+    house's drive turned it into an array and every house after it failed -
+    and the renderer, which never loses a map to this pass, logged it and
+    left the whole map without clearings."""
+
+    def test_every_house_cleared_after_one_shares_a_drive(self):
+        land, veg = woods()
+        # The biggest goes first and lays its drive south to the road; the
+        # next stands beside that drive and shares it; the third, done after
+        # them, must still get its clearing.
+        beside = [(161, 190), (169, 190), (169, 198), (161, 198)]
+        apart = [(40, 60), (46, 60), (46, 66), (40, 66)]
+        done, counts = H.clear_homesteads(veg, land, [HOUSE, beside, apart], [ROAD], 1.0)
+        self.assertEqual(counts["clearings"], 3)
+        bare = ~is_(np.asarray(veg), *H.WOODS)
+        self.assertTrue(bare[63, 36])            # west of the third house

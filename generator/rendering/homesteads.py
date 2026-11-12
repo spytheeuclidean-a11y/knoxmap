@@ -167,7 +167,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
     counts = {"clearings": 0, "drives": 0}
     if clear_max_m <= 0:
         return done, counts
-    near = clear_max_m * CLEAR_M[0] / CLEAR_M[1]
+    clear_min_m = clear_max_m * CLEAR_M[0] / CLEAR_M[1]
     mpt = meters_per_tile
     # Only the stretches on the map: a road running off its edge would send a
     # drive off it too.
@@ -212,7 +212,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         seed = int((int(poly.centroid.x) * 73856093) ^ (int(poly.centroid.y) * 19349663)
                    ^ HOME_SEED) & 0xFFFFFFFF
         roll = float(_hash01(np.array([seed]), HOME_SEED)[0])
-        radius = (near + roll * (clear_max_m - near)) / mpt
+        radius = (clear_min_m + roll * (clear_max_m - clear_min_m)) / mpt
         clearing = _wobbly(poly, radius, seed)
         fringe = _wobbly(poly, radius, seed, extra=EDGE_M / mpt)
         bw, bh = x1 - x0, y1 - y0
