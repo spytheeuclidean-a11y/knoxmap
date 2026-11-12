@@ -1,6 +1,10 @@
 """Run the whole generator on a made-up town, offline, and check the result.
 
-    python tools/selftest.py [--keep]
+    python tools/selftest.py [--keep] [--fast]
+
+--fast (or -x) skips the checks that build a whole map a second time - the
+giant outline and the knoxlots basement compile - which are most of a full
+run's seventeen minutes. CI and a release still run them.
 
 No internet, no game and no map tools needed: the town is invented here - a
 street grid turned 30 degrees, a main road, a coast with the sea beyond, a
@@ -233,6 +237,9 @@ def town() -> list[OSMFeature]:
 class Checks:
     def __init__(self):
         self.failed = 0
+        # --fast: the checks that render and build a whole town again look at
+        # this and leave early. The cheap checks always run.
+        self.fast = False
 
     def __call__(self, ok: bool, what: str) -> None:
         print(("  ok    " if ok else "  FAIL  ") + what)
@@ -345,7 +352,11 @@ def main(argv: list[str]) -> int:
     # The compile checks drive a stand-in for WorldEd; they are about WorldEd's failures.
     os.environ["KNOXMAP_BACKEND"] = "worlded"
     keep = "--keep" in argv
+    fast = "--fast" in argv or "-x" in argv
     check = Checks()
+    check.fast = fast
+    if fast:
+        print("fast: skipping the whole-map rebuilds (--fast)")
     work = tempfile.mkdtemp(prefix="knoxmap-selftest-")
     os.environ["KNOXMAP_LOG_DIR"] = os.path.join(work, "logs")
     # The fake servers assume the shipped list, irrespective of the user's

@@ -327,7 +327,6 @@ def check_mapped_rooms(check) -> None:
     mapped = [([(2, 2), (9, 2), (9, 7), (2, 7), (2, 2)], "classroom"),
               ([(13, 3), (18, 3), (18, 7), (13, 7), (13, 3)], "bathroom")]
     plan = build_plan(40, 24, kind="civic", seed=5, mapped=mapped)
-    found = {(r.x0, r.y0, r.x1, r.y1): r.kind for r in plan.rooms}
     covered = all(all(row) for row in plan.grid)
     upper = build_plan(40, 24, kind="civic", seed=5, ground=False,
                        mapped=mapped)
@@ -359,17 +358,20 @@ def check_giant_outline(check, work: str) -> None:
     Placed first (largest first), the giant outline claimed every tile in it and
     the house standing inside came out "taken"; where 1.5.2 left the outline out
     and kept the house. Outlines past max_size are placed after the rest."""
+    if check.fast:
+        print("  skip  the giant outline, a whole map built again (--fast)")
+        return
     import csv
 
     from generator import renderer
     from knoxbuild.build import MAX_OVERSIZE_TILES, build
     from knoxbuild.settings import Settings
 
-    def box(s, w, n, e):
+    def corners(s, w, n, e):
         return [(s, w), (s, e), (n, e), (n, w), (s, w)]
 
-    giant = box(SOUTH + 0.0004, WEST + 0.0004, SOUTH + 0.0044, WEST + 0.0064)    # ~440 x 480 m
-    house = box(SOUTH + 0.0022, WEST + 0.0030, SOUTH + 0.00245, WEST + 0.00335)  # ~28 x 21 m
+    giant = corners(SOUTH + 0.0004, WEST + 0.0004, SOUTH + 0.0044, WEST + 0.0064)    # ~440 x 480 m
+    house = corners(SOUTH + 0.0022, WEST + 0.0030, SOUTH + 0.00245, WEST + 0.00335)  # ~28 x 21 m
     feats = [OSMFeature(next(_ids), "way", {"building": "yes"}, giant),
              OSMFeature(next(_ids), "way", {"building": "house"}, house)]
     out = os.path.join(work, "giant")
@@ -1166,7 +1168,10 @@ def check_compile_failures(check, work: str) -> None:
         compiler.clear_stale = lambda p: None
         compiler.assign_converted_maps = lambda p: None
         compiler.world_size = lambda p: (4, 4)
-        _repair.repair_project = lambda p: {"changed": False, "moved": 0, "dropped": []}
+        # Same keyword arguments compile_map passes (knoxlots, should_stop,
+        # on_progress): a bare `lambda p` here raised TypeError instead.
+        _repair.repair_project = lambda p, **kwargs: {"changed": False, "moved": 0,
+                                                      "dropped": []}
         knoxlog.save_tool_output = lambda *a, **k: Path("batch.log")
 
         # One bad batch out of four, good on the second attempt.
@@ -1394,17 +1399,17 @@ def check_overture(check, work: str) -> None:
           "and where OSM has nothing at all, all of them are kept")
 
     # What is cached is only reused for the same box and the same release.
-    box = (38.60, 34.90, 38.64, 34.94)
+    bounds = (38.60, 34.90, 38.64, 34.94)
     path = overture.cache_path(work, "ovtest")
-    overture.save_cache(path, box, rows)
-    check(overture.load_cache(path, box) is not None,
+    overture.save_cache(path, bounds, rows)
+    check(overture.load_cache(path, bounds) is not None,
           "a fetch is kept beside the map, so the minutes are paid once")
     check(overture.load_cache(path, (38.60, 34.90, 38.64, 34.95)) is None,
           "a different area is not answered from it")
     was = os.environ.get("KNOXMAP_OVERTURE_RELEASE")
     os.environ["KNOXMAP_OVERTURE_RELEASE"] = "1999-01-01.0"
     try:
-        stale = overture.load_cache(path, box)
+        stale = overture.load_cache(path, bounds)
     finally:
         if was is None:
             os.environ.pop("KNOXMAP_OVERTURE_RELEASE", None)
@@ -1413,7 +1418,7 @@ def check_overture(check, work: str) -> None:
     check(stale is None, "nor is a newer release answered from an older one")
 
     # Without DuckDB the map is still made, from OSM alone.
-    out, stats = overture.add_missing([], box, work, "ovtest2")
+    out, stats = overture.add_missing([], bounds, work, "ovtest2")
     if overture.available():
         check(True, "DuckDB is here, so gap filling would run (not fetched in a check)")
     else:
@@ -1426,8 +1431,8 @@ def check_overture(check, work: str) -> None:
     # minutes for.
     seeded = os.path.join(work, "ovseed")
     os.makedirs(seeded, exist_ok=True)
-    overture.save_cache(overture.cache_path(seeded, "m"), box, rows)
-    out, stats = overture.add_missing([], box, seeded, "m")
+    overture.save_cache(overture.cache_path(seeded, "m"), bounds, rows)
+    out, stats = overture.add_missing([], bounds, seeded, "m")
     check(stats["cached"] and stats["added"] == len(feats)
           and len(out) == len(feats),
           f"a map already fetched fills its gaps again with no DuckDB at all "
@@ -1441,7 +1446,7 @@ def check_overture(check, work: str) -> None:
     os.makedirs(proj, exist_ok=True)
     os.makedirs(mod, exist_ok=True)
     with open(os.path.join(proj, "t_info.json"), "w", encoding="utf-8") as f:
-        _json.dump({"osm_bbox": list(box)}, f)
+        _json.dump({"osm_bbox": list(bounds)}, f)
     _mod.write_attribution(proj, mod, "Test Town")
     plain = open(os.path.join(mod, "ATTRIBUTION.txt"), encoding="utf-8").read()
     open(os.path.join(proj, "t_overture.json.gz"), "wb").write(b"x")
@@ -1557,9 +1562,9 @@ def check_standing(check) -> None:
     check("prisoncells" in set(_L.SPECIAL_MIXES["police"][0]) and "cells" not in names,
           "a police station has prisoncells, the name the game knows")
 
-    box = C.FURNITURE["crate"]["W"]["0,0"]
-    check(box.endswith(("_016", "_017", "_018", "_019")),
-          f"a box on the floor is the one drawn on the floor ({box})")
+    crate_tile = C.FURNITURE["crate"]["W"]["0,0"]
+    check(crate_tile.endswith(("_016", "_017", "_018", "_019")),
+          f"a box on the floor is the one drawn on the floor ({crate_tile})")
 
     # And a school is walked round, not through: only houses had circulation.
     from knoxbuild.settings import Settings as _S
@@ -1816,6 +1821,9 @@ def check_basements(check, out: str) -> None:
     town built for WorldEd above has none; built again for knoxlots, some of its
     houses and its school and barracks get one, compiled to levels below 0,
     each part of the building over it, its stairs coming up through that floor."""
+    if check.fast:
+        print("  skip  basements and the knoxlots compile (--fast)")
+        return
     import glob
     import shutil
     from knoxbuild.build import build
