@@ -1,10 +1,15 @@
 """The forest knobs: settings, limits, and the params the renderer gets."""
 import dataclasses
 import inspect
+import tempfile
 import unittest
+from unittest.mock import patch
+
+import numpy as np
 
 import app
 from generator import renderer
+from generator.osm import OSMFeature
 from generator.rendering.forest_params import FIELD_FOR_SETTING, ForestParams
 from knoxbuild.settings import LIMITS, Settings
 
@@ -60,6 +65,45 @@ class ForestSettings(unittest.TestCase):
 
     def test_render_takes_them(self):
         self.assertIn("forest_params", inspect.signature(renderer.render).parameters)
+
+
+class AroundTheWoods(unittest.TestCase):
+    """render() hands each pass its knob."""
+
+    def test_each_pass_gets_its_knob(self):
+        seen = {}
+
+        def spy(name, real):
+            def call(*args, **kwargs):
+                seen[name] = kwargs
+                return real(*args, **kwargs)
+            return call
+
+        lat0, lon0, m = 40.0, 20.0, 1 / 111320
+        house = [(lat0 + y * m, lon0 + x * m * 1.31) for x, y in
+                 ((60, 60), (75, 60), (75, 72), (60, 72), (60, 60))]
+        feats = [OSMFeature(1, "way", {"building": "house"}, house)]
+        grid = lambda w, h, bounds=None: np.full((h, w), 10, np.uint8)
+        fp = ForestParams(house_clearing_m=31, big_trees=2.5, groves=0.5,
+                          wild_growth=1.5, shrubland=2.0)
+        names = ("clear_homesteads", "_plant_big_trees", "_paint_groves",
+                 "_paint_wild_growth", "plant_landcover")
+        patches = [patch.object(renderer, n, spy(n, getattr(renderer, n))) for n in names]
+        for p in patches:
+            p.start()
+        try:
+            with tempfile.TemporaryDirectory() as out:
+                renderer.render(feats, lat0, lon0, lat0 + 150 * m, lon0 + 150 * m * 1.31,
+                                1.0, out, "t", tree_density=1.0, forest_density=1.0,
+                                forest_params=fp, landcover_for=grid)
+        finally:
+            for p in patches:
+                p.stop()
+        self.assertEqual(seen["clear_homesteads"]["clear_max_m"], 31)
+        self.assertEqual(seen["_plant_big_trees"]["wood_mult"], 2.5)
+        self.assertAlmostEqual(seen["_paint_groves"]["density"], 0.5)
+        self.assertAlmostEqual(seen["_paint_wild_growth"]["density"], 1.5)
+        self.assertAlmostEqual(seen["plant_landcover"]["density"], 2.0)
 
 
 if __name__ == "__main__":

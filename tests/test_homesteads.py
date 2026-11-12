@@ -219,5 +219,27 @@ class YardTest(unittest.TestCase):
         self.assertGreater(furrow.mean(), 0.3)
 
 
+class ClearingSize(unittest.TestCase):
+    def bare(self, clear_max_m):
+        land, veg = woods()
+        done, counts = H.clear_homesteads(veg, land, [HOUSE], [ROAD], 1.0,
+                                          clear_max_m=clear_max_m)
+        return int((~is_(np.asarray(veg), *H.WOODS)).sum()), counts
+
+    def test_the_default_is_today(self):
+        land, veg = woods()
+        H.clear_homesteads(veg, land, [HOUSE], [ROAD], 1.0)
+        land2, veg2 = woods()
+        H.clear_homesteads(veg2, land2, [HOUSE], [ROAD], 1.0, clear_max_m=20)
+        self.assertEqual(np.asarray(veg).tobytes(), np.asarray(veg2).tobytes())
+
+    def test_zero_is_no_clearing(self):
+        _, counts = self.bare(0)
+        self.assertEqual(counts["clearings"], 0)
+
+    def test_bigger_is_bigger(self):
+        self.assertGreater(self.bare(40)[0], self.bare(20)[0])
+
+
 if __name__ == "__main__":
     unittest.main()

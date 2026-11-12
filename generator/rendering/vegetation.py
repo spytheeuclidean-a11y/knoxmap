@@ -764,7 +764,7 @@ class _Canopy:
 def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
                      wood_feats: list[OSMFeature], park_feats: list[OSMFeature],
                      building_feats: list[OSMFeature], proj: Projector,
-                     density: float = 1.0) -> dict:
+                     density: float = 1.0, wood_mult: float = 1.0) -> dict:
     """Grow some of the trees already planted into big ones.
 
     Every tree on the vegetation bitmap is one tile, and so was every tree in
@@ -772,6 +772,10 @@ def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
     across and need a square kept clear around them, so they are chosen here,
     out of the trees the passes above planted, once all of them are down and it
     can be seen what stands next to what.
+
+    wood_mult multiplies the chances in woods and on wild ground (Big trees):
+    woods from land cover are not OSM forest features and get the wild mix.
+    Parks and gardens keep theirs.
 
     Returns how many of each kind went in."""
     import numpy as np
@@ -815,26 +819,27 @@ def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
     if parks is not None:
         deep = max(1, int(round(PARK_EDGE_M / proj.meters_per_tile)))
         belt = parks & _box_any(~parks, deep)
-        rounds.append((belt, PARK_BELT_BIG_TREES))
-        rounds.append((parks & ~belt, PARK_BIG_TREES))
+        rounds.append((belt, PARK_BELT_BIG_TREES, 1.0))
+        rounds.append((parks & ~belt, PARK_BIG_TREES, 1.0))
         rest &= ~parks
     if woods is not None:
-        rounds.append((woods & rest, WOOD_BIG_TREES))
+        rounds.append((woods & rest, WOOD_BIG_TREES, wood_mult))
         rest &= ~woods
     if gardens is not None:
-        rounds.append((gardens & rest, GARDEN_BIG_TREES))
+        rounds.append((gardens & rest, GARDEN_BIG_TREES, 1.0))
         rest &= ~gardens
-    rounds.append((rest, WILD_BIG_TREES))
+    rounds.append((rest, WILD_BIG_TREES, wood_mult))
 
     rng = np.random.default_rng(0x7E3E5)
     px = veg.load()
-    for where, mix in rounds:
+    for where, mix, mult in rounds:
         here = tree & where
         if not here.any():
             continue
         for colour, every, chance in mix:
             side = C.BIG_TREE_ROOM[colour]
-            for x, y in _block_picks(here, every, rng, min(1.0, chance * density)):
+            for x, y in _block_picks(here, every, rng,
+                                    min(1.0, chance * density * mult)):
                 box = canopy.room(x, y, side)
                 if box is None:
                     continue

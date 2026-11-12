@@ -8,7 +8,9 @@ from PIL import Image
 
 from generator import pz_colors as C
 from generator.rendering import forest_shape as F
+from generator.rendering import vegetation as V
 from generator.rendering.forest_params import ForestParams
+from generator.rendering.projection import Projector
 
 N = 400
 
@@ -374,6 +376,21 @@ class YoungGrowthAndUndergrowth(unittest.TestCase):
         veg, _, counts = self.grown(young_trees=False)
         self.assertFalse(is_colour(veg, C.TREE_SMALL).any())
         self.assertEqual(counts["young"], 0)
+
+
+class BigTrees(unittest.TestCase):
+    def planted(self, mult):
+        veg = Image.new("RGB", (200, 200), C.TREES_DARK_GRASS)
+        land = Image.new("RGB", (200, 200), C.DARK_GRASS)
+        proj = Projector.build(40.0, 20.0, 40.0018, 20.0024, 1.0, 0.0)
+        with patch.object(V, "tree_rules_ready", return_value=True):
+            counts = V._plant_big_trees(veg, land, [], [], [], proj, density=1.0,
+                                        wood_mult=mult)
+        return sum(counts.values())
+
+    def test_the_multiplier(self):
+        self.assertEqual(self.planted(0), 0)
+        self.assertGreater(self.planted(2), self.planted(1))
 
 
 if __name__ == "__main__":

@@ -591,7 +591,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     if owned is not None:
         try:
             forest, _counts = plant_landcover(vegetation, landscape, landcover_grid,
-                                              owned, proj, density=tree_density)
+                                              owned, proj,
+                                              density=tree_density * fp.shrubland)
         except Exception as exc:        # noqa: BLE001 - optional, never fatal
             _log.warning("worldcover planting skipped: %s: %s", type(exc).__name__, exc)
             owned = None
@@ -610,7 +611,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                        for f in buckets.get(road, []) if not _is_polygon(f)
                        for line in _feature_coords_px(f, proj) if len(line) >= 2]
         homes, _home_counts = clear_homesteads(vegetation, landscape, footprints,
-                                               drive_roads, proj.meters_per_tile)
+                                               drive_roads, proj.meters_per_tile,
+                                               clear_max_m=fp.house_clearing_m)
     except Exception as exc:            # noqa: BLE001 - never lose a map to it
         _log.warning("clearings skipped: %s: %s", type(exc).__name__, exc)
     # Pools in the marsh, after its reeds (generator/rendering/fields.py).
@@ -628,19 +630,20 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                  density=tree_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
     # Where WorldCover has a class, it says what grows; elsewhere, a guess.
-    _paint_wild_growth(vegetation, landscape, proj, density=tree_density,
+    _paint_wild_growth(vegetation, landscape, proj,
+                       density=tree_density * fp.wild_growth,
                        exclude=_either(owned, homes))
     # Made-up woods only stand in for land cover data: with WorldCover the
     # woods are the real ones, and a random one would only add woods where
     # the data says there are none. They still grow where it has no data.
-    _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density,
+    _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density * fp.groves,
                   exclude=_either(None if owned is None else landcover_grid > 0, homes))
     # Last of the planting: some of the trees now down become the big ones,
     # which need a square of their own and so can only be chosen once it is
     # settled what stands where.
     _plant_big_trees(vegetation, landscape, vegetation_feats,
                      buckets.get("park", []), building_feats, proj,
-                     density=tree_density)
+                     density=tree_density, wood_mult=fp.big_trees)
     _clear_building_vegetation(vegetation, building_feats, proj)
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)
