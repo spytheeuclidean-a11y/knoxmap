@@ -342,7 +342,6 @@ class BuildingWithBasements(unittest.TestCase):
         shutil.rmtree(cls.work, ignore_errors=True)
 
     def _build(self, name, compile_lots=True, **settings):
-        import os
         from tests.basement_town import build_town
         return build_town(os.path.join(self.work, name), Settings(seed=1, **settings),
                           compile_lots=compile_lots)
@@ -385,7 +384,6 @@ class BuildingWithBasements(unittest.TestCase):
 
     def test_a_cache_entry_from_before_basements_is_laid_out_again(self):
         import json
-        import os
         out = self._build("oldcache", basement_share=1.0)
         path = os.path.join(out, "build_cache.json")
         with open(path, encoding="utf-8") as f:
@@ -401,7 +399,6 @@ class BuildingWithBasements(unittest.TestCase):
 
     def test_no_basements_same_bytes(self):
         import json
-        import os
         from tests.basement_town import digest
         from tools.compile_map import knoxlots_exe
         out = self._build(os.path.join("none", "bsmttown"), basement_share=0.0)   # the baseline's name
@@ -427,7 +424,6 @@ class PresetsAndSolver(unittest.TestCase):
         self.assertEqual(got, [None])
 
     def test_the_room_solver_never_sees_the_basement(self):
-        import os
         import tempfile
         from unittest import mock
         from knoxbuild import build as B, room_solver
@@ -454,7 +450,6 @@ class OnlyKnoxlotsReadsThem(unittest.TestCase):
     knoxlots reads both (knoxbuild/buildtiles.py). A basement is for knoxlots."""
 
     def _files(self, d):
-        import os
         parent = build_building(12, 10, seed=3)
         b = plan_basement(parent, house_spec(parent), 3, Settings())
         from knoxbuild.tbx import render_tbx
@@ -478,7 +473,6 @@ class OnlyKnoxlotsReadsThem(unittest.TestCase):
 
     @NEEDS_KNOXLOTS
     def test_worlded_refuses_a_map_with_basements(self):
-        import os
         from tools.compile_map import compile_map
         out = BuildingWithBasements._build(self._town, "worlded", basement_share=1.0)
         with self.assertRaises(RuntimeError) as got:
@@ -486,7 +480,6 @@ class OnlyKnoxlotsReadsThem(unittest.TestCase):
         self.assertIn("basement", str(got.exception))
 
     def test_no_basements_when_worlded_would_compile(self):
-        import os
         from unittest import mock
         with mock.patch.dict(os.environ, {"KNOXMAP_BACKEND": "worlded"}):
             out = BuildingWithBasements._build(self._town, "plain", basement_share=1.0,

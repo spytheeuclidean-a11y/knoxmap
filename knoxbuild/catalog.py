@@ -542,6 +542,8 @@ FURNITURE = {'bed': {'W': {'0,0': 'furniture_bedding_01_002', '1,0': 'furniture_
                'E': {'0,0': 'appliances_cooking_01_071'},
                'S': {'0,0': 'appliances_cooking_01_070'}},
  'roof_ac': {'W': {'0,0': 'rooftop_furniture_001'}, 'N': {'0,0': 'rooftop_furniture_000'}},
+ 'roof_chimney': {'W': {'0,0': 'rooftop_furniture_024'},
+                  'N': {'0,0': 'rooftop_furniture_025'}},
  'dining_table': {'W': {'0,0': 'furniture_tables_high_01_000',
                         '1,0': 'furniture_tables_high_01_001'},
                   'N': {'0,0': 'furniture_tables_high_01_003',
@@ -1631,6 +1633,7 @@ FURNITURE_LAYERS = {'armchair': 'Furniture',
  'plant': 'Furniture',
  'register': 'Furniture',
  'roof_ac': 'Furniture',
+ 'roof_chimney': 'Roof',
  'round_table': 'Furniture',
  'rug': 'FloorFurniture',
  'rug_small': 'FloorFurniture',
@@ -7173,6 +7176,51 @@ ERIKA_SIGNS = {'N': [['signs_erika_01_000',
  'W': [['signs_erika_01_058', 'signs_erika_01_057', 'signs_erika_01_056'],
        ['signs_erika_02_019', 'signs_erika_02_018', 'signs_erika_02_017', 'signs_erika_02_016'],
        ['signs_erika_02_027', 'signs_erika_02_026', 'signs_erika_02_025', 'signs_erika_02_024']]}
+
+# The game's own shop signs: four tiles wide, hung on the wall above the glass
+# (BuildingFurniture.txt, "Signs - Advertising - Wall"). The strips read west
+# to east on a north wall and north to south on a west one, which is the order
+# they are listed in - and the W strip runs the other way along the wall from
+# the N one, so the letters come out the right way round.
+GAME_SIGNS = {
+    'N': [['walls_decoration_03_000', 'walls_decoration_03_001',
+           'walls_decoration_03_002', 'walls_decoration_03_003'],
+          ['walls_decoration_03_032', 'walls_decoration_03_033',
+           'walls_decoration_03_034', 'walls_decoration_03_035'],
+          ['walls_decoration_03_064', 'walls_decoration_03_065',
+           'walls_decoration_03_066', 'walls_decoration_03_067'],
+          ['walls_decoration_03_096', 'walls_decoration_03_097',
+           'walls_decoration_03_098', 'walls_decoration_03_099'],
+          ['walls_decoration_03_128', 'walls_decoration_03_129',
+           'walls_decoration_03_130', 'walls_decoration_03_131'],
+          ['walls_decoration_03_160', 'walls_decoration_03_161',
+           'walls_decoration_03_162', 'walls_decoration_03_163'],
+          ['walls_decoration_04_000', 'walls_decoration_04_001',
+           'walls_decoration_04_002', 'walls_decoration_04_003']],
+    'W': [['walls_decoration_03_011', 'walls_decoration_03_010',
+           'walls_decoration_03_009', 'walls_decoration_03_008'],
+          ['walls_decoration_03_043', 'walls_decoration_03_042',
+           'walls_decoration_03_041', 'walls_decoration_03_040'],
+          ['walls_decoration_03_075', 'walls_decoration_03_074',
+           'walls_decoration_03_073', 'walls_decoration_03_072'],
+          ['walls_decoration_03_107', 'walls_decoration_03_106',
+           'walls_decoration_03_105', 'walls_decoration_03_104'],
+          ['walls_decoration_03_139', 'walls_decoration_03_138',
+           'walls_decoration_03_137', 'walls_decoration_03_136'],
+          ['walls_decoration_03_171', 'walls_decoration_03_170',
+           'walls_decoration_03_169', 'walls_decoration_03_168'],
+          ['walls_decoration_04_011', 'walls_decoration_04_010',
+           'walls_decoration_04_009', 'walls_decoration_04_008']],
+}
+
+# Awnings over the shop glass, from the tools' "Walls - Decoration - Awnings":
+# one tile per square of shop front, in the facing that square's wall runs.
+AWNINGS = [{'W': 'walls_decoration_01_069', 'N': 'walls_decoration_01_068'},
+           {'W': 'walls_decoration_01_071', 'N': 'walls_decoration_01_070'},
+           {'W': 'walls_decoration_01_113', 'N': 'walls_decoration_01_112'},
+           {'W': 'walls_decoration_01_115', 'N': 'walls_decoration_01_114'},
+           {'W': 'walls_decoration_01_121', 'N': 'walls_decoration_01_120'},
+           {'W': 'walls_decoration_01_123', 'N': 'walls_decoration_01_122'}]
 
 # Official room colours, straight from the tools' RoomNames.txt.
 ROOM_COLORS = {
