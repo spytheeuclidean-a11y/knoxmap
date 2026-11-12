@@ -94,7 +94,8 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         for _ in range(2):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
-            verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
+            verge_colours = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
+            verge = is_colour(ground, verge_colours)
             road_border = pave | verge
             notch = np.zeros_like(road)
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
@@ -127,7 +128,28 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             near_road[1:, :] |= road[:-1, :]
             near_road[:-1, :] |= road[1:, :]
             lonep = pave & (~near | ((ortho_count == 1) & diag_pave & ~near_road))
-            if not notch.any() and not bump.any() and not lonep.any():
+            # The pavement's own edge against grass, which had the same teeth
+            # one boundary out: a verge square with pavement on both sides
+            # along a line becomes pavement, and a pavement square with grass on
+            # both sides becomes grass. Those squares are what a street crossing
+            # the tile grid at an angle leaves behind, and in the game they read
+            # as spikes of grass standing in the kerb.
+            # Between the road and the pavement the square belongs to the kerb
+            # line, not to the verge: whichever side it is closed off by.
+            hard = pave | road
+            both = np.zeros_like(pave)
+            both[1:-1, :] |= hard[:-2, :] & hard[2:, :]
+            both[:, 1:-1] |= hard[:, :-2] & hard[:, 2:]
+            met = np.zeros_like(pave)
+            met[1:-1, :] |= (pave[:-2, :] & hard[2:, :]) | (hard[:-2, :] & pave[2:, :])
+            met[:, 1:-1] |= (pave[:, :-2] & hard[:, 2:]) | (hard[:, :-2] & pave[:, 2:])
+            gap = verge & both & met
+            tooth = np.zeros_like(pave)
+            tooth[1:-1, :] |= verge[:-2, :] & verge[2:, :]
+            tooth[:, 1:-1] |= verge[:, :-2] & verge[:, 2:]
+            tooth &= pave
+            if not notch.any() and not bump.any() and not lonep.any() \
+                    and not gap.any() and not tooth.any():
                 break
             # A filled notch takes the tarmac of the road beside it.
             ys, xs = np.nonzero(notch)
@@ -151,6 +173,22 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
                             break
                         if verge[yy, xx]:
                             ground[y, x] = ground[yy, xx]
+            if gap.any() or tooth.any():
+                gys, gxs = np.nonzero(gap)
+                for y, x in zip(gys, gxs):
+                    ground[y, x] = C.PALE_CONCRETE
+                tys, txs = np.nonzero(tooth)
+                for y, x in zip(tys, txs):
+                    ground[y, x] = C.MEDIUM_GRASS
+                    for dy, dx in ((0, 1), (1, 0), (0, -1), (-1, 0)):
+                        yy, xx = y + dy, x + dx
+                        if 0 <= yy < ground.shape[0] and 0 <= xx < ground.shape[1]:
+                            # The grass this pavement stood in, so the verge
+                            # keeps its own shade rather than going to one.
+                            beside = tuple(ground[yy, xx])
+                            if beside in verge_colours:
+                                ground[y, x] = beside
+                                break
             if lonep.any():
                 paved = {C.PALE_CONCRETE} | set(asphalt)
                 lys, lxs = np.nonzero(lonep)

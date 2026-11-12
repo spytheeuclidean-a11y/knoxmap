@@ -56,3 +56,29 @@ class RoadEdges(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class PavementAgainstGrass(unittest.TestCase):
+    """The edge the pavement makes on grass had the same teeth as the road's
+    edge on pavement, one boundary out."""
+
+    def band(self):
+        im = Image.new("RGB", (24, 24), MEDIUM_GRASS)
+        for y in range(8, 16):
+            for x in range(4, 20):
+                im.putpixel((x, y), PALE_CONCRETE)
+        for y in range(4, 8):
+            for x in range(4, 20):
+                im.putpixel((x, y), MEDIUM_ASPHALT)
+        return im
+
+    def test_a_tooth_of_grass_in_the_kerb_goes(self):
+        im = self.band()
+        im.putpixel((10, 7), MEDIUM_GRASS)      # grass between road and pavement
+        tidy(im)
+        self.assertNotEqual(im.getpixel((10, 7)), MEDIUM_GRASS)
+
+    def test_a_slab_standing_in_the_grass_goes(self):
+        im = self.band()
+        im.putpixel((10, 18), PALE_CONCRETE)    # one square of pavement in lawn
+        tidy(im)
+        self.assertNotEqual(im.getpixel((10, 18)), PALE_CONCRETE)
