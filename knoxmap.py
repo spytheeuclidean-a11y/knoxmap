@@ -136,7 +136,10 @@ def end_jobs(grace: float = 15.0) -> None:
         child.terminate()
     knoxlog.log.info("window closed: running jobs stopped")
     import logging
-    logging.shutdown()
+    try:
+        logging.shutdown()
+    except Exception:  # noqa: BLE001 - pythonw has None stdout/stderr under colorama
+        pass
     os._exit(0)
 
 
