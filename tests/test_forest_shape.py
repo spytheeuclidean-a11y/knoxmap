@@ -1,11 +1,14 @@
 """Forests with stands, thin patches and clearings, thinning to their edge."""
+import hashlib
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 from PIL import Image
 
 from generator import pz_colors as C
 from generator.rendering import forest_shape as F
+from generator.rendering.forest_params import ForestParams
 
 N = 400
 
@@ -213,6 +216,79 @@ class ShapeForest(unittest.TestCase):
         F.shape_forest(a[1], a[0], a[2], 1.0, 60, 6, 1.0)
         F.shape_forest(b[1], b[0], b[2], 1.0, 60, 6, 1.0)
         self.assertEqual(a[1].tobytes(), b[1].tobytes())
+
+
+# What shape_forest drew for forest(edge=40) at density 1, stand 60 m, edge
+# 20 m before any of its constants were knobs. The defaults have to keep it.
+TODAY = "c07f5ea5a5c98cf9d708f69c6a91ee9ba393fc83fc835c8b27f38e79a07ee589"
+
+
+def fingerprint(veg, land):
+    return hashlib.sha256(np.asarray(veg).tobytes() + np.asarray(land).tobytes()).hexdigest()
+
+
+class Knobs(unittest.TestCase):
+    def shaped(self, **params):
+        land, veg, mask = forest(edge=40)
+        p = ForestParams(**{"keep_meadows": 1.0, **params})
+        # Undergrowth (Task 4) is new on purpose; the fingerprint predates it.
+        with patch.object(F, "UNDERGROWTH_SHARE", 0.0, create=True):
+            F.shape_forest(veg, land, mask, 1.0, 60, 20, 1.0, p)
+        return land, veg, mask
+
+    def test_defaults_reproduce_todays_woods(self):
+        land, veg, _ = self.shaped()
+        self.assertEqual(fingerprint(veg, land), TODAY)
+
+    def test_no_params_is_the_defaults(self):
+        land, veg, mask = forest(edge=40)
+        with patch.object(F, "UNDERGROWTH_SHARE", 0.0, create=True):
+            F.shape_forest(veg, land, mask, 1.0, 60, 20, 1.0)
+        a = fingerprint(veg, land)
+        land, veg, mask = forest(edge=40)
+        with patch.object(F, "UNDERGROWTH_SHARE", 0.0, create=True):
+            F.shape_forest(veg, land, mask, 1.0, 60, 20, 1.0, ForestParams())
+        self.assertEqual(a, fingerprint(veg, land))
+
+    def test_thickets_scale_the_dense_share(self):
+        self.assertEqual(F.shares(1, 1.0), F.shares(1))
+        self.assertEqual(F.shares(1, 2.0), (0.0, 0.28, 0.52, 0.20))
+        self.assertEqual(F.shares(1, 0.0), (0.0, 0.28, 0.72, 0.0))
+        self.assertEqual(F.shares(3, 3.0), (0.0, 0.05, 0.05, 0.9))
+        for d in (0.5, 1, 2, 3):
+            for t in (0, 0.5, 1, 2, 3):
+                self.assertAlmostEqual(sum(F.shares(d, t)), 1.0)
+
+    def test_thickets_reach_the_wood(self):
+        _, veg, mask = self.shaped(thickets=2.0)
+        self.assertAlmostEqual((grade_of(veg)[mask] == 3).mean(), 0.20, delta=0.02)
+
+    def test_stand_variety_mixes_stand_sizes(self):
+        def spread(variety):
+            land, veg, mask = forest()
+            F.shape_forest(veg, land, mask, 1.0, 30, 0, 1.0,
+                           ForestParams(stand_variety=variety, keep_meadows=1.0))
+            dense = (grade_of(veg) == 3).astype(float)
+            # Dense share in 40-tile blocks: big stands make some blocks
+            # mostly dense and others empty.
+            blocks = dense.reshape(10, 40, 10, 40).mean(axis=(1, 3))
+            return blocks.std()
+        self.assertGreater(spread(1.0), spread(0.0) * 1.3)
+
+    def test_the_other_knobs_change_the_woods(self):
+        land, veg, _ = self.shaped()
+        base = fingerprint(veg, land)
+        for knob, value in (("raggedness", 0.8), ("edge_wobble", 0.0),
+                            ("spill_thick", 0.9), ("seed", 1)):
+            with self.subTest(knob=knob):
+                land, veg, _ = self.shaped(**{knob: value})
+                self.assertNotEqual(fingerprint(veg, land), base)
+
+    def test_no_spill_thickness_means_single_trees(self):
+        land, veg, mask = forest(edge=60)
+        F.shape_forest(veg, land, mask, 1.0, 20, 12, 1.0,
+                       ForestParams(spill_thick=0.0, keep_meadows=1.0))
+        self.assertFalse((~mask & (grade_of(veg) >= 2)).any())
 
 
 if __name__ == "__main__":

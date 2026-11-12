@@ -601,7 +601,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # over open ground take the overall one only.
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
                       density=tree_density * forest_density, should_stop=should_stop,
-                      extra_forest=forest, stand_m=fp.stand_m, edge_m=fp.edge_m)
+                      extra_forest=forest, stand_m=fp.stand_m, edge_m=fp.edge_m, params=fp)
     # A building in the woods gets a clearing and a drive to the road.
     homes = None
     try:

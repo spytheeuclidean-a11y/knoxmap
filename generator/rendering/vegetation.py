@@ -18,19 +18,20 @@ def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
                       density: float = 1.0, should_stop=None,
                       extra_forest=None, stand_m: float = 60.0,
-                      edge_m: float = 30.0) -> None:
+                      edge_m: float = 30.0, params=None) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
                      {"forest", "scrub", "tree_single"}], proj, density, should_stop,
-                    extra_forest=extra_forest, stand_m=stand_m, edge_m=edge_m)
+                    extra_forest=extra_forest, stand_m=stand_m, edge_m=edge_m,
+                    params=params)
 
 
 def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
                     density: float = 1.0, should_stop=None,
                     extra_forest=None, stand_m: float = 60.0,
-                    edge_m: float = 30.0) -> None:
+                    edge_m: float = 30.0, params=None) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,
@@ -113,7 +114,7 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
     forest = np.asarray(forest_only) > 0
     if forest.any():
         shape_forest(veg, landscape, forest, density, stand_m, edge_m,
-                     proj.meters_per_tile)
+                     proj.meters_per_tile, params, young_trees=tree_rules_ready())
 
 
 def _paint_woodland_tiles(veg_px, mask_px, eroded_px, scrub_px, land_px, w, h,

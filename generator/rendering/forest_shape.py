@@ -17,8 +17,9 @@ import numpy as np
 from PIL import Image
 
 from .. import pz_colors as C
+from .forest_params import ForestParams
 
-FOREST_SEED = 2207
+FOREST_SEED = 2207            # ForestParams().seed; kept for callers that name it
 # Thinnest first: the grade is an index into this.
 GRADES = (C.VEG_NOTHING, C.SPARSE_TREES, C.TREES_DARK_GRASS, C.TREES)
 NAMES = ("open", "sparse", "grass", "dense")
@@ -52,28 +53,57 @@ SHARE_TABLE = (
 # softness, so the spill keeps to neither WorldCover's 10 m staircase nor a
 # mapper's straight line. Beside a narrow arm it spills no further than the arm
 # is wide.
-JITTER = 0.4
 # The spill is not graded against the wood's own cuts: those are set for the
 # middle of a wood, and nothing scaled much below it got past them, so a 12 m
 # spill reached 3 m. Its trees cover all of the grass beside the wood, falling
 # in a straight line to none at Edge softness out; where the stand noise is
 # high they stand thicker, the top SPILL_THICK of what grows trees in grass.
-SPILL_THICK = 0.4
-FINE = 0.25                # weight of the small lattice that roughens the stands
 SAMPLE_EVERY = 4           # the quantiles are read off every fourth tile
 EDGE_STEPS = 8             # a wide edge is measured in about this many steps
 STRIP_ROWS = 512
 FRINGE_CLEAR = 2           # tiles kept clear of anything that is not grass
 
 
-def shares(density: float) -> tuple[float, float, float, float]:
-    """(open, sparse, grass, dense) for a density, from SHARE_TABLE."""
+DENSE_CAP = 0.9           # Thickets never makes more of a wood than this a wall
+
+
+def shares(density: float, thickets: float = 1.0) -> tuple[float, float, float, float]:
+    """(open, sparse, grass, dense) for a density, from SHARE_TABLE, the dense
+    share times `thickets`: what that adds is taken from trees in grass, what
+    it frees goes to it, so the wood keeps its open and sparse shares."""
     d = min(max(float(density), SHARE_TABLE[0][0]), SHARE_TABLE[-1][0])
+    base = SHARE_TABLE[-1][1]
     for (d0, s0), (d1, s1) in zip(SHARE_TABLE, SHARE_TABLE[1:]):
         if d <= d1:
             t = (d - d0) / (d1 - d0)
-            return tuple(round(a + (b - a) * t, 6) for a, b in zip(s0, s1))
-    return SHARE_TABLE[-1][1]
+            base = tuple(round(a + (b - a) * t, 6) for a, b in zip(s0, s1))
+            break
+    if thickets == 1.0:
+        return base
+    o, s, g, dense = base
+    new = min(DENSE_CAP, dense * max(0.0, thickets), dense + g)
+    return (o, s, round(g - (new - dense), 6), round(new, 6))
+
+
+VARIETY_SCALE = 2.5       # Stand variety's stands, times Stand size
+
+
+def stand_lattices(h: int, w: int, cell: int, variety: float, raggedness: float,
+                   seed: int) -> list:
+    """The stand noise: stands 2.5 times as big weighted 0.5 x variety, Stand
+    size and a quarter of it sharing the rest by raggedness. A weight of 0
+    builds no lattice, so variety 0 and raggedness 0.25 draw today's two."""
+    from .noise import lattices
+
+    specs = []
+    if variety > 0:
+        specs.append((max(2, int(round(cell * VARIETY_SCALE))), 0.5 * variety))
+    rest = 1.0 - 0.5 * variety
+    if raggedness < 1:
+        specs.append((cell, (1.0 - raggedness) * rest))
+    if raggedness > 0:
+        specs.append((max(2, cell // 4), raggedness * rest))
+    return lattices(h, w, specs, seed)
 
 
 def _erode(cur: np.ndarray) -> np.ndarray:
@@ -128,7 +158,7 @@ def _value(ys, xs, lats):
     return smooth_noise(ys.astype(np.float32), xs.astype(np.float32), lats)
 
 
-def _spill_out(ys, xs, edge, reach):
+def _spill_out(ys, xs, edge, reach, wobble_share):
     """How far out of the wood each tile is, as a share of how far it spills
     there (0 beside it, 1 and over past the spill), the spill's reach moved
     by noise and no wider than the wood beside it. Inside the wood, 0."""
@@ -139,7 +169,7 @@ def _spill_out(ys, xs, edge, reach):
     r = np.clip(half[at].astype(np.float32), 1.0, float(reach))
     d = np.maximum(-signed[at].astype(np.float32) / 2 - 0.5, 0.0)
     wobble = (smooth_noise(ys.astype(np.float32), xs.astype(np.float32), jitter)
-              - 0.5) * (2 * JITTER)
+              - 0.5) * (2 * wobble_share)
     return d / (r * (1 + wobble))
 
 
@@ -161,7 +191,7 @@ def _spread_max(a: np.ndarray, r: int) -> np.ndarray:
     return out
 
 
-def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int):
+def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int, seed: int):
     """What `_value` needs to know about the edge, or None with no Edge
     softness: the signed distance from it (int16 half tiles, + inside: a tile
     beside the edge on either side is 1 or -1), the half width of the wood
@@ -177,7 +207,7 @@ def _edge_fields(forest: np.ndarray, reach: int, h: int, w: int):
     outside = edge_depth(~forest, reach).astype(np.int16)
     signed = np.where(forest, 2 * depth.astype(np.int16) + 1,
                       -(2 * outside + 1)).astype(np.int16)
-    jitter = lattices(h, w, [(max(3, reach), 1.0)], FOREST_SEED + 1)
+    jitter = lattices(h, w, [(max(3, reach), 1.0)], seed + 1)
     return signed, half, jitter
 
 
@@ -195,7 +225,8 @@ def _free_grass(land: np.ndarray, vegp: np.ndarray, forest: np.ndarray) -> np.nd
 
 
 def shape_forest(veg, landscape, forest, density: float, stand_m: float,
-                 edge_m: float, metres_per_tile: float) -> dict:
+                 edge_m: float, metres_per_tile: float, params: ForestParams | None = None,
+                 young_trees: bool = False) -> dict:
     """Re-grade the `forest` tiles (bool, h x w) of `veg` that the woodland
     pass gave a tree grade or left empty, on ground that is not water, and
     grow its fringe on the open grass outside it. Returns tiles per grade name,
@@ -207,9 +238,12 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
     WorldCover's 10 m staircase nor a mapper's straight line.
     The ground follows the trees: dark grass under them, the medium grass of a
     meadow where a clearing opens, and between the two in sparse woods - not
-    the dark block the wood was painted on."""
-    from .noise import lattices
+    the dark block the wood was painted on.
 
+    params: the Forest card's knobs (generator/rendering/forest_params.py);
+    stand_m and edge_m always come from the arguments. young_trees: whether
+    the tree rules for young trees are installed."""
+    p = params or ForestParams()
     vegp = np.array(veg)
     land = np.array(landscape)
     h, w = forest.shape
@@ -222,9 +256,9 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
         return {**{n: 0 for n in NAMES}, "fringe": 0}
 
     cell = max(2, int(round(stand_m / metres_per_tile)))
-    lats = lattices(h, w, [(cell, 1.0 - FINE), (max(2, cell // 4), FINE)], FOREST_SEED)
+    lats = stand_lattices(h, w, cell, p.stand_variety, p.raggedness, p.seed)
     reach = int(round(edge_m / metres_per_tile))
-    edge = _edge_fields(forest, reach, h, w)
+    edge = _edge_fields(forest, reach, h, w, p.seed)
     # The fringe reaches as far out as the wood beside it is soft: a thin arm's
     # fringe is as thin as its own edge.
     near = (_free_grass(land, vegp, forest)
@@ -239,7 +273,7 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
     if sample.size == 0:
         sample = _value(np.arange(h), np.arange(w), lats)[todo]
     cuts, total = [], 0.0
-    for share in shares(density)[:3]:
+    for share in shares(density, p.thickets)[:3]:
         total += share
         cuts.append(-np.inf if total <= 0 else np.inf if total >= 1
                     else float(np.quantile(sample, total)))
@@ -247,7 +281,7 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
     # The spill reads the noise as a rank, 0 to 1 over the wood's own spread
     # of it, so a share of its tiles can be had by a line through that rank.
     lo, hi = (np.quantile(sample, (0.02, 0.98)) if sample.size else (0.0, 1.0))
-    spill_on = shares(density)[0] < 1
+    spill_on = shares(density, p.thickets)[0] < 1
 
     counts = np.zeros(4, dtype=np.int64)
     fringe = 0
@@ -269,8 +303,8 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
             # never closes into a wall.
             if spill_on:
                 u = np.clip((v - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
-                t_out = _spill_out(ys, xs, edge, reach)
-                out_grade = np.where(u > t_out + (1 - t_out) * (1 - SPILL_THICK), 2,
+                t_out = _spill_out(ys, xs, edge, reach, p.edge_wobble)
+                out_grade = np.where(u > t_out + (1 - t_out) * (1 - p.spill_thick), 2,
                                      np.where(u > t_out, 1, 0))
                 grade[n] = out_grade[n]
             else:
