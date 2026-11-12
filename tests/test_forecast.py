@@ -7,7 +7,6 @@ worse than none, because somebody plans an evening around it.
 """
 import json
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest import mock

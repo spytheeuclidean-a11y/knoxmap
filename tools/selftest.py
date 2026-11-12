@@ -1,6 +1,10 @@
 """Run the whole generator on a made-up town, offline, and check the result.
 
-    python tools/selftest.py [--keep]
+    python tools/selftest.py [--keep] [--fast]
+
+--fast (or -x) skips the checks that build a whole map a second time - the
+giant outline and the knoxlots basement compile - which are most of a full
+run's seventeen minutes. CI and a release still run them.
 
 No internet, no game and no map tools needed: the town is invented here - a
 street grid turned 30 degrees, a main road, a coast with the sea beyond, a
@@ -210,6 +214,23 @@ def town() -> list[OSMFeature]:
     # come out as a bungalow with a sofa in it.
     feats.append(way({"man_made": "water_tower", "building": "yes",
                       "name": "Selftest Water Tower"}, box(392, 420, 400, 428)))
+    # The rest of the skyline: a silo over the farmyard, a transmission tower
+    # on the ridge, and the two businesses that put a board up by the road.
+    # The steeple is not here - a church does not carry its tower as its own
+    # feature, and knoxbuild/landmarks.py puts one beside it.
+    feats.append(way({"man_made": "silo", "building": "silo", "name": "Selftest Silo"},
+                     box(340, 435, 346, 441)))
+    feats.append(OSMFeature(next(_ids), "node", {"power": "tower",
+                                                 "name": "Selftest Pylon"}, [_ll(470, 430)]))
+    feats.append(way({"building": "yes", "tourism": "motel", "name": "Selftest Motel"},
+                     box(168, 510, 190, 524)))
+    # The same motel as a point inside its own outline, which is how a third of
+    # them are mapped: one business, two targets, and only one board in front
+    # of it (knoxbuild/landmarks.py).
+    feats.append(OSMFeature(next(_ids), "node", {"tourism": "motel",
+                                                 "name": "Selftest Motel"}, [_ll(179, 517)]))
+    feats.append(way({"building": "yes", "amenity": "cinema", "drive_in": "yes",
+                      "name": "Selftest Drive-In"}, box(248, 510, 272, 524)))
     # A coast along the south: land on the left of the line, sea to the right.
     # Deliberately short: a real download often holds only part of a shore.
     feats.append(way({"natural": "coastline"}, [(0, 30), (600, 30)]))
@@ -230,9 +251,51 @@ def town() -> list[OSMFeature]:
 
 
 
+def _lot_tiles(path: str) -> list[tuple[int, int, int, str, str]]:
+    """(x, y, level, layer, tile) from a tile-only lot, as the editor reads it."""
+    text = open(path, encoding="utf-8").read()
+    names = re.findall(r'<tile tile="([^"]+)"',
+                       text.split("<user_tiles>")[1].split("</user_tiles>")[0])
+    out = []
+    for z, floor in enumerate(re.findall(r"<floor>(.*?)</floor>", text, re.S)):
+        for layer, body in re.findall(r'<tiles layer="([^"]+)">(.*?)</tiles>', floor, re.S):
+            for y, row in enumerate(body.strip().splitlines()):
+                for x, value in enumerate(row.strip().rstrip(",").split(",")):
+                    if value.strip() not in ("", "0"):
+                        out.append((x, y, z, layer, names[int(value) - 1]))
+    return out
+
+
+def _project_lots(pzw_path: str, tag: str) -> list[tuple[int, int, str]]:
+    """(x, y, tile) in map tiles for every lot of one kind, via the project.
+
+    A lot's tbx is written in its own coordinates, so where it ended up is only
+    answered by the .pzw: cell origin plus the lot's offset in the cell.
+    """
+    from knoxbuild.structures import CELL
+
+    text = open(pzw_path, encoding="utf-8").read()
+    out = []
+    for cell in re.finditer(r'<cell x="(\d+)" y="(\d+)"[^>]*>(.*?)</cell>', text, re.S):
+        cx, cy = int(cell.group(1)), int(cell.group(2))
+        for lot in re.finditer(r'<lot x="(\d+)" y="(\d+)"[^>]*map="([^"]+)"',
+                               cell.group(3)):
+            if tag not in lot.group(3):
+                continue
+            path = os.path.join(os.path.dirname(pzw_path),
+                                lot.group(3).replace("/", os.sep))
+            for x, y, _z, _layer, tile in _lot_tiles(path):
+                out.append((cx * CELL + int(lot.group(1)) + x,
+                            cy * CELL + int(lot.group(2)) + y, tile))
+    return out
+
+
 class Checks:
     def __init__(self):
         self.failed = 0
+        # --fast: the checks that render and build a whole town again look at
+        # this and leave early. The cheap checks always run.
+        self.fast = False
 
     def __call__(self, ok: bool, what: str) -> None:
         print(("  ok    " if ok else "  FAIL  ") + what)
@@ -271,6 +334,9 @@ def dense_town() -> list:
 
 
 def _dense(check, work, renderer, build, Settings) -> None:
+    if check.fast:
+        print("  skip  the dense town, rendered and built twice (--fast)")
+        return
     import csv as _csv
 
     feats = dense_town()
@@ -345,7 +411,11 @@ def main(argv: list[str]) -> int:
     # The compile checks drive a stand-in for WorldEd; they are about WorldEd's failures.
     os.environ["KNOXMAP_BACKEND"] = "worlded"
     keep = "--keep" in argv
+    fast = "--fast" in argv or "-x" in argv
     check = Checks()
+    check.fast = fast
+    if fast:
+        print("fast: skipping the whole-map rebuilds (--fast)")
     work = tempfile.mkdtemp(prefix="knoxmap-selftest-")
     os.environ["KNOXMAP_LOG_DIR"] = os.path.join(work, "logs")
     # The fake servers assume the shipped list, irrespective of the user's
@@ -385,7 +455,6 @@ def main(argv: list[str]) -> int:
         check(colours.get(C.PALE_CONCRETE, 0) > 0, "streets have pavements")
         print("bridges and monuments")
         import json as _json
-        from generator import structures
         raised = _json.load(open(os.path.join(out, "selftest_structures.json"), encoding="utf-8"))
         tiles = raised["tiles"]
         check(any(t[3] == "Floor" and t[4].startswith("ramps_01") and t[2] == 0 for t in tiles)
@@ -421,6 +490,26 @@ def main(argv: list[str]) -> int:
               and "Selftest Water Tower" not in names,
               f"the water tower is a tank on legs, not a house ({top + 1} storeys, "
               f"{len(by_level.get(top, ()))} tiles on top over {len(by_level.get(0, ()))})")
+        # The same path, two more shapes: a silo is a drum with a cap, and a
+        # transmission tower a mast with its arms out.
+        sx, sy = proj.to_px(*_ll(343, 438))
+        silo = [(x, y, z) for x, y, z, _l, _t in tiles
+                if abs(x - sx) <= 5 and abs(y - sy) <= 5]
+        silo_top = max((z for _x, _y, z in silo), default=0)
+        drum = len({(x, y) for x, y, z in silo if z == silo_top - 1})
+        cap = len({(x, y) for x, y, z in silo if z == silo_top})
+        check(silo_top + 1 >= 5 and drum > 3 and cap == 1,
+              f"the silo is a drum under a domed cap ({silo_top + 1} storeys, "
+              f"{drum} squares wide, {cap} under the dome)")
+        px_, py_ = proj.to_px(*_ll(470, 430))
+        pylon = [(x, y, z, layer) for x, y, z, layer, _t in tiles
+                 if abs(x - px_) <= 4 and abs(y - py_) <= 4]
+        mast = {(x, y) for x, y, z, layer in pylon if layer == "Floor"}
+        arms = {z for _x, _y, z, layer in pylon if layer == "Furniture"}
+        check(len(mast) == 1 and len(arms) == 2
+              and max((z for _x, _y, z, _l in pylon), default=0) >= 3,
+              f"and the transmission tower is a mast with its arms out "
+              f"({len(mast)} square up, {len(arms)} pairs of arms)")
         veg = Image.open(os.path.join(out, "selftest_veg.bmp")).convert("RGB")
         pixels = veg.get_flattened_data() if hasattr(veg, "get_flattened_data") else veg.getdata()
         kerbs = sum(1 for c in pixels if c[0] == 12 and c[1] == 34)
@@ -445,6 +534,164 @@ def main(argv: list[str]) -> int:
               f"the building step reports its stages, in order ({len(said)} reports)")
         rows = open(os.path.join(out, "selftest_placements.csv"), encoding="utf-8").read().splitlines()
         check(len(rows) - 1 >= 60, f"buildings placed ({len(rows) - 1})")
+
+        # The steeple and the boards by the road are put beside the buildings
+        # (knoxbuild/landmarks.py): a tower on a church is not a feature of its
+        # own on the map, and a motel's sign is a detail of the motel. Read
+        # back from their lots, as the editor reads them.
+        steeples = boards = 0
+        landmark_lots = [n for n in os.listdir(os.path.join(out, "buildings"))
+                         if n.endswith(".tbx") and "_landmarks_" in n]
+        for name_ in landmark_lots:
+            text = open(os.path.join(out, "buildings", name_), encoding="utf-8").read()
+            boards += len(re.findall(r'layer="WallFurniture"', text))
+            filled = [sum(value.strip() not in ("", "0")
+                          for value in body.replace("\n", ",").split(","))
+                      for body in re.findall(r'<tiles layer="Floor">(.*?)</tiles>',
+                                             text, re.S)]
+            steeples = max(steeples, len([f for f in filled if f]))
+        check(steeples >= 5, f"the church has a steeple beside it ({steeples} storeys)")
+        # Exactly one board each: the motel is mapped as an outline and a point
+        # inside it, and two boards in front of one motel is the failure this
+        # count catches.
+        check(boards == 2,
+              f"one board each for the motel and the drive-in ({boards})")
+        # A board hangs on the WallFurniture layer with no wall on its square:
+        # the tiles are furniture in BuildingFurniture.txt, not wall pieces, so
+        # the editor has to accept the lot as it stands.
+        import validate_tbx
+        check(all(not validate_tbx.check(os.path.join(out, "buildings", n))
+                  for n in landmark_lots),
+              f"and a board with no wall behind it passes the editor "
+              f"({len(landmark_lots)} landmark lots)")
+        # A board hangs on its post. Every panel in a landmark lot must have a
+        # column of post tiles on one of the squares the board covers, running
+        # from the ground to the storey the board is on - otherwise the board
+        # is a poster floating in the air, which is what the preview showed.
+        from knoxbuild.landmarks import SIGN_POLE
+        boards_seen = held = 0
+        for name_ in landmark_lots:
+            tiles_ = _lot_tiles(os.path.join(out, "buildings", name_))
+            panels: dict[int, set] = {}
+            columns: dict[tuple[int, int], set] = {}
+            for x, y, z, layer, tile in tiles_:
+                if layer == "WallFurniture":
+                    panels.setdefault(z, set()).add((x, y))
+                elif layer == "Furniture" and tile == SIGN_POLE:
+                    columns.setdefault((x, y), set()).add(z)
+            for z, cells in panels.items():
+                boards_seen += 1
+                if any(set(range(z + 1)) <= columns.get(cell, set())
+                       for cell in cells):
+                    held += 1
+        check(boards_seen and held == boards_seen,
+              f"every board stands on its post ({held} of {boards_seen} boards)")
+
+        print("story vignettes")
+        # The same props as the bases and the churchyards, put where the story
+        # is: the way out of town held, the school turned into a refuge, a main
+        # road stopped. Read back out of the project, so a checkpoint has to be
+        # near the map's edge and a school's supplies near the school.
+        import numpy as _np
+
+        from knoxbuild.props import BARRICADE_X, BARRICADE_Y, CARRIAGEWAY, CRATES, DRUMS
+        vignettes = _project_lots(os.path.join(out, "selftest.pzw"), "_vignettes")
+        barriers = [(x, y) for x, y, tile in vignettes
+                    if tile in BARRICADE_X + BARRICADE_Y]
+        check(barriers, "the scenes are stamped from their props "
+                        f"({len(vignettes)} props, {len(barriers)} barrier segments)")
+        # A barrier across a road has to stand on the road: it is the one prop
+        # here that goes onto the carriageway rather than beside it.
+        on_road = [(x, y) for x, y in barriers
+                   if tuple(ground.getpixel((x, y))) in CARRIAGEWAY]
+        check(barriers and len(on_road) == len(barriers),
+              f"and every barrier stands on the carriageway "
+              f"({len(on_road)} of {len(barriers)} segments)")
+        gw, gh = ground.width, ground.height
+        # The checkpoint holds the way out of town, which is the outermost
+        # tarmac there is - the border on a tight map, the edge of the built
+        # area on one padded to a minimum size.
+        ground_pixels = _np.asarray(ground)
+        tarmac = _np.zeros((gh, gw), dtype=bool)
+        for colour in CARRIAGEWAY:
+            tarmac |= _np.all(ground_pixels == _np.array(colour), axis=2)
+        ys, xs = _np.nonzero(tarmac)
+        nearest = int(_np.minimum.reduce([xs, ys, gw - 1 - xs, gh - 1 - ys]).min())
+        outer = min(min(x, y, gw - 1 - x, gh - 1 - y) for x, y in barriers) if barriers else -1
+        check(barriers and outer <= nearest + 2,
+              f"and a checkpoint holds the way out of town "
+              f"({outer} tiles from the border, the outermost road)")
+        places: list = []
+        for x, y in barriers:
+            for place in places:
+                if abs(x - place[0]) < 20 and abs(y - place[1]) < 20:
+                    break
+            else:
+                places.append((x, y))
+        check(len(places) >= 2,
+              f"and a main road away from the end is stopped too "
+              f"({len(barriers)} segments in {len(places)} places)")
+        import csv as _csv
+        with open(os.path.join(out, "selftest_placements.csv"),
+                  newline="", encoding="utf-8") as handle:
+            school = next(row_ for row_ in _csv.DictReader(handle)
+                          if row_["kind"] == "school")
+        sx, sy = int(school["tile_x"]), int(school["tile_y"])
+        sw, sh = int(school["width"]), int(school["height"])
+        supplies = [(x, y) for x, y, tile in vignettes
+                    if tile in CRATES + DRUMS
+                    and sx - 6 <= x <= sx + sw + 6 and sy - 6 <= y <= sy + sh + 6]
+        check(len(supplies) >= 3,
+              f"and the school yard is an evacuation centre "
+              f"({len(supplies)} crates and drums beside the school)")
+
+        print("street props")
+        # Painted into the vegetation bitmap, and placed by rules the map tools
+        # read. Both halves have to be checked: a colour whose rule the tools
+        # dropped - a blank cell in the sheet, as the utility pole once was -
+        # is thrown away by WorldEd, and the prop silently disappears from the
+        # map while the bitmap still looks right.
+        #
+        # A fresh clone ships the tools' Rules.txt without any of our rules, and
+        # the generator gates every prop on that: until Setup has run there is
+        # nothing to check, only the gate itself to prove. The rules are asked
+        # for only once the file is one Setup has written.
+        import knoxpaths
+        from worlded import patch_rules_roads
+        tools = knoxpaths.mapping_tools_dir()
+        rules_text = knoxpaths.rules_text(tools) if tools else ""
+        set_up = f"label = {patch_rules_roads.MARKER} " in rules_text
+        prop_prefixes = ("Bench", "Kiosk", "Postbox", "Parking block",
+                         "Manhole cover", "Utility pole", "Dog house", "Swing")
+        prop_rules = [(label, colour) for label, colour, _tile, _layer
+                      in patch_rules_roads.RULES if label.startswith(prop_prefixes)]
+        with Image.open(os.path.join(out, "selftest_veg.bmp")) as veg_out:
+            drawn = set(veg_out.convert("RGB").getdata())
+        if set_up:
+            for label, _colour in prop_rules:
+                check(f"label = KnoxMap road {label}\n" in rules_text,
+                      f"the map tools carry the {label} rule")
+            for name, colours in (
+                    ("utility poles", (C.UTILITY_POLE,)),
+                    ("benches", C.BENCH_Y + C.BENCH_X),
+                    ("kiosks", (C.KIOSK_N, C.KIOSK_E, C.KIOSK_S, C.KIOSK_W)),
+                    ("collection boxes", (C.POSTBOX_N, C.POSTBOX_E,
+                                          C.POSTBOX_S, C.POSTBOX_W)),
+                    ("wheel stops", C.PARKING_BLOCK_X + C.PARKING_BLOCK_Y),
+                    ("manhole covers", (C.MANHOLE,))):
+                check(any(colour in drawn for colour in colours),
+                      f"{name} reach the built map")
+            # The tools drop a rule whose tile is blank, so a prop whose colour
+            # is painted but whose rule is gone is the failure to catch, not
+            # one or the other on its own.
+            painted_without_rule = [label for label, colour in prop_rules
+                                    if colour in drawn
+                                    and f"label = KnoxMap road {label}\n" not in rules_text]
+            check(not painted_without_rule,
+                  "no prop is painted without a rule to place it")
+        else:
+            check(not any(colour in drawn for _label, colour in prop_rules),
+                  "without the map tools' rules, no props are painted")
         # Building again reuses what is unchanged, and what it lays out afresh
         # comes out the same: the cache is only worth having if it cannot
         # change the map.
@@ -571,8 +818,14 @@ def main(argv: list[str]) -> int:
                   "a shop gets Erika's glass shop front")
             check('<tiles layer="WallFurniture">' in shop, "a sign hangs over it")
             check(not validate_tbx.check(shop_path), "and still passes the editor's rules")
+            # Signs need the rule as well as the tiles, and a fresh clone has
+            # the tiles' catalogue but none of our rules until Setup runs.
+            from generator.rendering import furniture
             speed = sum(1 for c in pixels if c in C.SPEED_SIGNS.values())
-            check(speed > 0, f"speed limit signs on the streets ({speed})")
+            if furniture._mod_tiles_ready():
+                check(speed > 0, f"speed limit signs on the streets ({speed})")
+            else:
+                check(speed == 0, "no speed limit signs until Setup writes their rule")
         else:
             check(not any("_erika_" in t for t in texts), "no mod tiles without Erika's Tiles")
 
@@ -1054,12 +1307,55 @@ sys.modules.setdefault("selftest", sys.modules[__name__])
 # package, while the tests import this as tools.selftest. __package__ says
 # which one this is, without a try/except that would also swallow a real
 # ImportError from inside a check module.
+# The check functions are imported by name, not with `*`: a star import hides
+# every one of them from the linter (F405), so a renamed check only failed at
+# run time, and it left the checks modules themselves unlintable.
 if __package__:                      # imported as tools.selftest
-    from .selftest_checks_a import *  # noqa: E402,F401,F403
-    from .selftest_checks_b import *  # noqa: E402,F401,F403
+    from .selftest_checks_a import (  # noqa: E402
+        check_1_3_6, check_basements, check_compile_failures, check_dwellings,
+        check_facing, check_garage_door, check_giant_outline, check_house_plan,
+        check_kitchen_fit, check_long_streets, check_lots_apart, check_mapped_rooms,
+        check_memory_guard, check_overpass_retry, check_overture, check_porch_lights,
+        check_portable, check_procedural, check_qt_env, check_repair, check_rifle,
+        check_rpath, check_split_large, check_squares, check_standing, check_stop,
+        check_street_zombies, check_wall_corners, check_wall_styles,
+    )
+    from .selftest_checks_b import (  # noqa: E402
+        check_big_bitmaps, check_box_any, check_build_audits, check_car_park_stalls,
+        check_compile_records, check_compile_state, check_config_file,
+        check_degenerate_footprints, check_flat_selection, check_ground_shares,
+        check_health, check_install_clears, check_install_folder, check_mapstate,
+        check_missing_drive, check_no_size_wall, check_odd_requests, check_odd_tags,
+        check_osm_cache, check_osm_parse_tolerant, check_other_websites,
+        check_overpass_blank, check_overpass_setting, check_portable_presets,
+        check_prop_lattice, check_repeatable_seeds, check_saved_areas,
+        check_shared_buildings, check_straight_roads, check_street_angle,
+        check_throttle, check_trees_are_trees, check_updater, check_windows_open,
+        check_workshop, check_worlded_size,
+    )
 else:                                # run as a script
-    from selftest_checks_a import *  # noqa: E402,F401,F403
-    from selftest_checks_b import *  # noqa: E402,F401,F403
+    from selftest_checks_a import (  # noqa: E402
+        check_1_3_6, check_basements, check_compile_failures, check_dwellings,
+        check_facing, check_garage_door, check_giant_outline, check_house_plan,
+        check_kitchen_fit, check_long_streets, check_lots_apart, check_mapped_rooms,
+        check_memory_guard, check_overpass_retry, check_overture, check_porch_lights,
+        check_portable, check_procedural, check_qt_env, check_repair, check_rifle,
+        check_rpath, check_split_large, check_squares, check_standing, check_stop,
+        check_street_zombies, check_wall_corners, check_wall_styles,
+    )
+    from selftest_checks_b import (  # noqa: E402
+        check_big_bitmaps, check_box_any, check_build_audits, check_car_park_stalls,
+        check_compile_records, check_compile_state, check_config_file,
+        check_degenerate_footprints, check_flat_selection, check_ground_shares,
+        check_health, check_install_clears, check_install_folder, check_mapstate,
+        check_missing_drive, check_no_size_wall, check_odd_requests, check_odd_tags,
+        check_osm_cache, check_osm_parse_tolerant, check_other_websites,
+        check_overpass_blank, check_overpass_setting, check_portable_presets,
+        check_prop_lattice, check_repeatable_seeds, check_saved_areas,
+        check_shared_buildings, check_straight_roads, check_street_angle,
+        check_throttle, check_trees_are_trees, check_updater, check_windows_open,
+        check_workshop, check_worlded_size,
+    )
 
 
 

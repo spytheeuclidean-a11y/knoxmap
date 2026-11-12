@@ -3,7 +3,7 @@ import unittest
 from unittest import mock
 
 from generator import osm
-from generator import extract, places
+from generator import places
 
 
 class Endpoints(unittest.TestCase):

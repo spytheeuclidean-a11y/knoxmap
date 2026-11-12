@@ -18,7 +18,6 @@ from selftest import (
     contextlib,
     io,
     json,
-    main,
     math,
     os,
     shutil,
@@ -181,7 +180,6 @@ def check_overpass_blank(check) -> None:
         replies = {down.split("/")[2]: Reply({}, status=504)}
         asked.clear()
         _osm.fetch_features(50.0, 5.0, 50.1, 5.1, timeout=10, first=0)
-        paid = list(asked)
         asked.clear()
         _osm.fetch_features(50.0, 5.0, 50.1, 5.1, timeout=10, first=0)
         check(down.split("/")[2] not in asked and asked,
@@ -818,7 +816,6 @@ def check_odd_tags(check) -> None:
                 except Exception as exc:  # noqa: BLE001
                     bad.append(f"{key}={value!r}: {type(exc).__name__}")
     from generator import renderer, structures
-    from generator.osm import OSMFeature
 
     for value in worst:
         try:
@@ -1129,7 +1126,6 @@ def check_portable_presets(check, work: str) -> None:
     """Portable presets survive export/import and refuse unusable map geometry."""
     import app as knoxapp
     import json as _json
-    import os as _os
     from unittest.mock import patch
 
     from web import presets as webpresets
@@ -1842,7 +1838,6 @@ def check_missing_drive(check) -> None:
           "a Steam library on a missing drive is skipped")
 
     # A drive or folder the player names finds the library in it or above it.
-    import tempfile
     with tempfile.TemporaryDirectory() as drive:
         lib = Path(drive) / "SteamLibrary"
         game = lib / "steamapps" / "common" / "ProjectZomboid"

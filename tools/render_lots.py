@@ -28,7 +28,6 @@ Cells are 256 tiles; the map's tile 0,0 is world tile (world origin cell x 300).
 """
 from __future__ import annotations
 
-import json
 import os
 import re
 import struct
