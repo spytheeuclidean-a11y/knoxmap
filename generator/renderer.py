@@ -302,6 +302,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            forest_density: float = 1.0,
            forest_stand_m: float = 60,
            forest_edge_m: float = 30,
+           forest_params=None,
            rotation: float = 0.0,
            osm_cache: str | None = None,
            osm_bbox: tuple[float, float, float, float] | None = None,
@@ -316,6 +317,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            elevation_span=None,
            should_stop=None, progress=None) -> RenderResult:
     proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
+    from .rendering.forest_params import ForestParams
+    # The Forest card's knobs. Callers that only know Stand size and Edge
+    # softness (tools/regression_maps.py, the tests) get the rest at default.
+    fp = forest_params or ForestParams(stand_m=forest_stand_m, edge_m=forest_edge_m)
     # Read more than once below - the buildings pass goes back over the
     # address points - so never leave this as a generator.
     features = list(features)
@@ -596,7 +601,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # over open ground take the overall one only.
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
                       density=tree_density * forest_density, should_stop=should_stop,
-                      extra_forest=forest, stand_m=forest_stand_m, edge_m=forest_edge_m)
+                      extra_forest=forest, stand_m=fp.stand_m, edge_m=fp.edge_m)
     # A building in the woods gets a clearing and a drive to the road.
     homes = None
     try:

@@ -66,6 +66,21 @@ class Settings:
     # stands and clearings are, and how far in from its edge it thins out.
     forest_stand_m: int = 60
     forest_edge_m: int = 30
+    # The rest of the Forest card (generator/rendering/forest_params.py says
+    # what each does). Each default is the value the code had before it was a
+    # knob, so the defaults draw the map they always did.
+    forest_thickets: float = 1.0
+    forest_stand_variety: float = 0.0
+    forest_raggedness: float = 0.25
+    forest_edge_wobble: float = 0.4
+    forest_spill_thick: float = 0.4
+    forest_keep_meadows: float = 0.33
+    forest_seed: int = 2207
+    forest_house_clearing_m: int = 20
+    forest_big_trees: float = 1.0
+    forest_groves: float = 1.0
+    forest_wild_growth: float = 1.0
+    forest_shrubland: float = 1.0
 
     # --- buildings -------------------------------------------------------
     seed: int = 1
@@ -267,6 +282,18 @@ LIMITS = {
     "forest_density": (0.0, 3.0),
     "forest_stand_m": (20, 200),
     "forest_edge_m": (0, 60),
+    "forest_thickets": (0.0, 3.0),
+    "forest_stand_variety": (0.0, 1.0),
+    "forest_raggedness": (0.0, 1.0),
+    "forest_edge_wobble": (0.0, 1.0),
+    "forest_spill_thick": (0.0, 1.0),
+    "forest_keep_meadows": (0.0, 1.0),
+    "forest_seed": (0, 999999),
+    "forest_house_clearing_m": (0, 40),
+    "forest_big_trees": (0.0, 3.0),
+    "forest_groves": (0.0, 3.0),
+    "forest_wild_growth": (0.0, 3.0),
+    "forest_shrubland": (0.0, 3.0),
     "seed": (0, 2 ** 31 - 1),
     "true_map": (0, 1),
     "fill_gaps": (0, 1),
