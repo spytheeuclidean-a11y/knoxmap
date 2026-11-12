@@ -8,6 +8,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, road_hierarchy
+from .crossings import paint_crossings
 from .geometry import _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
 from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES, MAX_PAVED_BLOCK
 from .projection import Projector
@@ -232,6 +233,11 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
         for bits, colour in kerb_for.items():
             out[(sides == bits) & free] = colour
         veg.paste(Image.fromarray(out), (0, y0))
+
+    # Crossings go down before the lane lines, which only paint on squares
+    # nothing else has taken: a centre line drawn through a crossing is a line
+    # nobody paints in a real street.
+    paint_crossings(veg, landscape, buckets, proj)
 
     # Lane markings follow direction and lane count. Two-way traffic gets a
     # yellow separator; one-way and same-direction lanes use white dividers.
