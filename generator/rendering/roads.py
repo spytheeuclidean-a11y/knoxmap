@@ -8,7 +8,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, road_hierarchy
-from .geometry import _draw_line, _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
+from .geometry import _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
 from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES, MAX_PAVED_BLOCK
 from .projection import Projector
 from .widths import (ROAD_WIDTHS_M, _road_markings, _sidewalk_width_m,

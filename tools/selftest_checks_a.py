@@ -18,7 +18,6 @@ from selftest import (
     _dense,
     _ids,
     _sides_for,
-    box,
     contextlib,
     io,
     json,
@@ -1674,7 +1673,6 @@ def check_house_plan(check) -> None:
     hall. Rooms open onto circulation now, bar the pairs a real house has -
     a bathroom off a bedroom, and the kitchen, dining and living rooms.
     """
-    import collections as _c
 
     from knoxbuild import layout as L
     from knoxbuild.settings import Settings as _S

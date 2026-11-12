@@ -976,7 +976,6 @@ def _street_finder(out_dir: str, map_name: str,
     """A function giving the side ("N", "S", "W" or "E") of a footprint that
     faces the nearest pavement or road, or None if none is near."""
     import numpy as np
-    from PIL import Image
 
     from generator import pz_colors as PC
 
@@ -1033,7 +1032,6 @@ def _street_finder(out_dir: str, map_name: str,
 
 
 def _load_road_hierarchy(out_dir: str, map_name: str, proj) -> np.ndarray | None:
-    from PIL import Image
 
     path = os.path.join(out_dir, f"{map_name}_road_hierarchy.bmp")
     if not os.path.exists(path):
@@ -1061,7 +1059,6 @@ def _road_weight(out_dir: str, map_name: str, proj,
     is what made the ground look like that, and no real road runs over it, it
     is ground a building may stand on.
     """
-    from PIL import Image
 
     from generator import pz_colors as C
 

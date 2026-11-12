@@ -278,6 +278,9 @@ def dense_town() -> list:
 
 
 def _dense(check, work, renderer, build, Settings) -> None:
+    if check.fast:
+        print("  skip  the dense town, rendered and built twice (--fast)")
+        return
     import csv as _csv
 
     feats = dense_town()
@@ -396,7 +399,6 @@ def main(argv: list[str]) -> int:
         check(colours.get(C.PALE_CONCRETE, 0) > 0, "streets have pavements")
         print("bridges and monuments")
         import json as _json
-        from generator import structures
         raised = _json.load(open(os.path.join(out, "selftest_structures.json"), encoding="utf-8"))
         tiles = raised["tiles"]
         check(any(t[3] == "Floor" and t[4].startswith("ramps_01") and t[2] == 0 for t in tiles)
@@ -1065,12 +1067,55 @@ sys.modules.setdefault("selftest", sys.modules[__name__])
 # package, while the tests import this as tools.selftest. __package__ says
 # which one this is, without a try/except that would also swallow a real
 # ImportError from inside a check module.
+# The check functions are imported by name, not with `*`: a star import hides
+# every one of them from the linter (F405), so a renamed check only failed at
+# run time, and it left the checks modules themselves unlintable.
 if __package__:                      # imported as tools.selftest
-    from .selftest_checks_a import *  # noqa: E402,F401,F403
-    from .selftest_checks_b import *  # noqa: E402,F401,F403
+    from .selftest_checks_a import (  # noqa: E402
+        check_1_3_6, check_basements, check_compile_failures, check_dwellings,
+        check_facing, check_garage_door, check_giant_outline, check_house_plan,
+        check_kitchen_fit, check_long_streets, check_lots_apart, check_mapped_rooms,
+        check_memory_guard, check_overpass_retry, check_overture, check_porch_lights,
+        check_portable, check_procedural, check_qt_env, check_repair, check_rifle,
+        check_rpath, check_split_large, check_squares, check_standing, check_stop,
+        check_street_zombies, check_wall_corners, check_wall_styles,
+    )
+    from .selftest_checks_b import (  # noqa: E402
+        check_big_bitmaps, check_box_any, check_build_audits, check_car_park_stalls,
+        check_compile_records, check_compile_state, check_config_file,
+        check_degenerate_footprints, check_flat_selection, check_ground_shares,
+        check_health, check_install_clears, check_install_folder, check_mapstate,
+        check_missing_drive, check_no_size_wall, check_odd_requests, check_odd_tags,
+        check_osm_cache, check_osm_parse_tolerant, check_other_websites,
+        check_overpass_blank, check_overpass_setting, check_portable_presets,
+        check_prop_lattice, check_repeatable_seeds, check_saved_areas,
+        check_shared_buildings, check_straight_roads, check_street_angle,
+        check_throttle, check_trees_are_trees, check_updater, check_windows_open,
+        check_workshop, check_worlded_size,
+    )
 else:                                # run as a script
-    from selftest_checks_a import *  # noqa: E402,F401,F403
-    from selftest_checks_b import *  # noqa: E402,F401,F403
+    from selftest_checks_a import (  # noqa: E402
+        check_1_3_6, check_basements, check_compile_failures, check_dwellings,
+        check_facing, check_garage_door, check_giant_outline, check_house_plan,
+        check_kitchen_fit, check_long_streets, check_lots_apart, check_mapped_rooms,
+        check_memory_guard, check_overpass_retry, check_overture, check_porch_lights,
+        check_portable, check_procedural, check_qt_env, check_repair, check_rifle,
+        check_rpath, check_split_large, check_squares, check_standing, check_stop,
+        check_street_zombies, check_wall_corners, check_wall_styles,
+    )
+    from selftest_checks_b import (  # noqa: E402
+        check_big_bitmaps, check_box_any, check_build_audits, check_car_park_stalls,
+        check_compile_records, check_compile_state, check_config_file,
+        check_degenerate_footprints, check_flat_selection, check_ground_shares,
+        check_health, check_install_clears, check_install_folder, check_mapstate,
+        check_missing_drive, check_no_size_wall, check_odd_requests, check_odd_tags,
+        check_osm_cache, check_osm_parse_tolerant, check_other_websites,
+        check_overpass_blank, check_overpass_setting, check_portable_presets,
+        check_prop_lattice, check_repeatable_seeds, check_saved_areas,
+        check_shared_buildings, check_straight_roads, check_street_angle,
+        check_throttle, check_trees_are_trees, check_updater, check_windows_open,
+        check_workshop, check_worlded_size,
+    )
 
 
 

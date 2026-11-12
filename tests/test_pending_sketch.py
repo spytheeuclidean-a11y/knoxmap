@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from flask import Flask
-from web import common, generation, zones
+from web import generation, zones
 
 
 EMPTY = {"type": "FeatureCollection", "features": []}

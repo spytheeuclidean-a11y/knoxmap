@@ -5,7 +5,7 @@ import os
 import re
 import threading
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify
 
 from web.common import _json_body, failed, log
 

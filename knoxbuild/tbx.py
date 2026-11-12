@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import random
 import zlib
-from xml.sax.saxutils import escape, quoteattr
+from xml.sax.saxutils import quoteattr
 
 from . import catalog as C
 from .layout import ROOM_STYLE, Building, Plan, _erika_ready, roof_rects
@@ -426,7 +426,7 @@ def render_tbx(plan: Plan | Building, name: str,
     # again. A style's own floor still overrides the lot. This has to happen
     # before the tile entries are written out below, and before used_tiles is
     # counted, or the new entries never reach the file.
-    from .layout import FLOOR_CHOICES, KIND_FLOOR_CHOICES
+    from .layout import KIND_FLOOR_CHOICES
 
     # What sort of building this is, for the rooms it floors differently: a
     # station's corridor is not somebody's hallway.

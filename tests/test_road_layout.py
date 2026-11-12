@@ -5,7 +5,6 @@ to the gap in its frontage, a road keeps off a building on its line); the numpy 
 for scipy; the routed roads saved by Generate and read back the same by Build."""
 import json
 import math
-import os
 import tempfile
 import unittest
 from types import SimpleNamespace

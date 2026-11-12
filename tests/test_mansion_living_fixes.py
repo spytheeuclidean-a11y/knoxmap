@@ -1,8 +1,7 @@
-import random
 import unittest
 from unittest import mock
 
-from knoxbuild import catalog, layout
+from knoxbuild import layout
 
 
 class MansionLivingFixes(unittest.TestCase):

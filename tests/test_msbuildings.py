@@ -4,7 +4,6 @@ import unittest
 from unittest import mock
 
 from generator import msbuildings
-from generator.osm import OSMFeature
 
 BOX = (35.955, -83.925, 35.965, -83.915)
 SQUARE = [[-83.92, 35.96], [-83.9199, 35.96], [-83.9199, 35.9601],

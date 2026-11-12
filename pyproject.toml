@@ -12,11 +12,13 @@
 # today would mean either a mechanical sweep of four hundred files or a wall of
 # ignores, and neither makes the app work better.
 #
-# What is selected on top of the original mistake rules is the next step, and
-# it is small: F811/F841 (a name redefined but never used, a value computed and
-# thrown away) and B006/B008 (a mutable default argument). It found 22 things,
-# all fixed. The target after that is F401: 103 unused imports across the
-# repository, a mechanical sweep of its own.
+# What is selected on top of the original mistake rules is the next step:
+# F811/F841 (a name redefined but never used, a value computed and thrown
+# away), B006/B008 (a mutable default argument), and then the import rules
+# F401/F405 (an unused import, a name taken from a star import). Together they
+# found 22 + 96 + 66 things; all are fixed, and the one deliberate re-export
+# surface is named below. The next step is B905 (`zip()` without `strict=`,
+# 124 findings): a real correctness class, but one that needs each site read.
 
 [tool.ruff]
 target-version = "py310"
@@ -25,7 +27,14 @@ line-length = 100
 extend-exclude = ["update", "vendor", "cache", "output", "graphify-out", "graft", "rust"]
 
 [tool.ruff.lint]
-select = ["E9", "F63", "F7", "F82", "F811", "F841", "B006", "B008"]
+select = ["E9", "F63", "F7", "F82", "F401", "F405", "F811", "F841",
+          "B006", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Everything that moved out of renderer.py is still importable from it on
+# purpose: the tests, the tools and knoxbuild reach into this module by name.
+# That is its public surface, not a pile of unused imports.
+"generator/renderer.py" = ["F401"]
 
 # pytest is the contributor's tool (requirements-dev.txt), not CI's, but it is
 # run from this folder, and without this it also collects the updater's copies

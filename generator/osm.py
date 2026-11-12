@@ -18,7 +18,7 @@ import zlib
 from urllib.parse import urlsplit, urlunsplit
 from concurrent import futures
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
+from typing import Sequence
 
 import requests
 

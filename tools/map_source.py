@@ -30,7 +30,7 @@ from knoxbuild.buildtiles import compose_lots, parse_tbx, parse_tbx_rooms, tile_
 from knoxbuild.kcell import SIDE, cell_source  # noqa: E402
 from knoxbuild.rules import load_rules  # noqa: E402
 from knoxbuild.terrain import Palette, ground_layers, stack_order  # noqa: E402
-from tools.terrain_source import ORIGIN_X, project_origin, rules_path  # noqa: E402
+from tools.terrain_source import project_origin, rules_path  # noqa: E402
 
 
 def _read_text(path: str) -> str:
