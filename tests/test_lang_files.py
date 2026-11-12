@@ -130,11 +130,20 @@ class TheTemplateGenerator(unittest.TestCase):
                          f"{len(missing)} committed key(s) would be deleted: {missing[:5]}")
 
     def test_a_template_literal_with_a_placeholder_is_found(self):
-        # `${takes}` in app.js is the sentence a translator reads; before the
-        # extractor allowed braces and backticks it was invisible.
+        # `${placeRoad}` in draw.js is a sentence a translator reads; before
+        # the extractor allowed braces and backticks it was invisible.
         found = make_lang_template.messages()
-        self.assertTrue(any("Generate map will take {takes}" in line for line in found),
+        self.assertTrue(any(line.startswith("A road of {placeRoad}") for line in found),
                         found[:5])
+
+    def test_a_curated_placeholder_message_keeps_its_braces(self):
+        # The CODE regex used to reject anything with {} - including every
+        # EXTRA_MESSAGES line with a live number in it.
+        self.assertIn("Map data source set to {source}", make_lang_template.messages())
+
+    def test_the_committed_template_is_up_to_date(self):
+        # What CI runs: every whole message the code says is in the file.
+        self.assertEqual(make_lang_template.main(["--check"]), 0)
 
     def test_a_line_the_code_no_longer_says_is_kept_unless_pruned(self):
         previous = ["Only in the old template"]

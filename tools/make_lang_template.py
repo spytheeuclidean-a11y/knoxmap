@@ -9,18 +9,27 @@ lang/english.txt to lang/<their language>.txt, translate the right-hand side
 of each line, and pick the language at the top of the window. The name of the
 file is the name in the menu, so russian.txt appears as "Russian".
 
-The English side is what the window actually says, so this is generated rather
-than typed: the text of every element in templates/index.html, its
-placeholders and titles, the messages in static/js (quoted and in template
-literals, whose `${...}` becomes `{name}`), and the ones web/presets.py and
-the runtime add. A line whose translation is left as the English is simply
-not translated, which is what an untouched template does.
+english.txt is the source of truth for the wording, and it is hand-edited: a
+line is a translation key, so its English side is not allowed to change
+under a translation. This script adds wholesale messages it can read
+confidently - the text and attributes of templates/index.html, quoted script
+strings, and a template literal that is one message (its `${...}` becomes
+`{name}`) - plus the ones web/presets.py and the runtime add. A line whose
+translation is left as the English is simply not translated, which is what an
+untouched template does.
+
+A template literal holding HTML is skipped: it is several messages at once,
+and splitting it would invent keys the window never says. So is a fragment
+that is only part of a line already in the file. That is the deliberate
+half-way house - the wording is maintained by hand, and the script's job is
+to notice whole new messages and never to lose an old one.
 
 Regenerating is additive on purpose. A translation is found by its English
 side, so deleting a line silently deletes every translation of it - and an
 extractor that reads source text by pattern will never see everything a
 hand-edited file has. Lines the code no longer mentions are kept and listed;
---prune is the one explicit way to let them go.
+--prune is the one explicit way to let them go. Reword a line in the code
+and the old key stays; delete it by hand once its translation has moved.
 """
 from __future__ import annotations
 
@@ -161,6 +170,58 @@ METHODS = {"Math", "Number", "String", "Boolean", "Array", "Object", "round",
 
 PLACEHOLDER = re.compile(r"\{([A-Za-z_]\w*)\}")
 
+# A string that is not a whole message: it starts or ends mid-sentence, is a
+# list of css classes, or carries javascript rather than words. The window
+# builds long sentences out of several template pieces, and each piece would
+# otherwise become a key no translator will ever see.
+BAD_END = re.compile(r"[\s,;(\[{\-–—/|+=:]$")
+CSS_CLASSES = re.compile(r"^[a-z0-9][a-z0-9 \-:]*$")
+FUNCTION_WORD_END = (
+    " the", " a", " an", " and", " or", " but", " are", " is", " was", " were",
+    " to", " of", " in", " on", " for", " with", " at", " from", " that",
+    " this", " it", " be", " as", " by", " if", " not", " you", " your",
+    " we", " they", " its", " their", " has", " have", " can", " will",
+    " would", " should", " whether",
+)
+CODE_MARKERS = ("${", "\\", "toast(", "return ", "=>", "function",
+                "typeof", "} else", "catch (", ");", "}{")
+# A message may also begin with a placeholder, a quote or a symbol.
+GOOD_START = set('{"“‘⌂⚡⚙📦🔲🪑✕—~©·')
+
+
+def balanced(text: str) -> bool:
+    """Whether every bracket in it closes: an unclosed one is a cut sentence."""
+    pairs = {')': '(', ']': '[', '}': '{'}
+    stack: list[str] = []
+    for char in text:
+        if char in "([{":
+            stack.append(char)
+        elif char in ")]}":
+            if not stack or stack.pop() != pairs[char]:
+                return False
+    return not stack
+
+
+def is_whole_message(text: str) -> bool:
+    """Whether a script string is a message, not a piece of one."""
+    if not text or "=" in text or not balanced(text):
+        return False
+    if not (text[0].isupper() or text[0].isdigit() or text[0] in GOOD_START):
+        return False
+    if BAD_END.search(text) or text.endswith("..."):
+        return False
+    if CSS_CLASSES.match(text) or any(marker in text for marker in CODE_MARKERS):
+        return False
+    if not is_words(text):
+        return False
+    # The old rule: at least two words, so a stray class or key is not a line.
+    if not re.search(r"[A-Za-z]{2,}\s+[A-Za-z]", text):
+        return False
+    ends = text[-1] in '.!?…:’"”)}°'
+    if not ends and (len(text.split()) > 6 or text.lower().endswith(FUNCTION_WORD_END)):
+        return False
+    return True
+
 
 def placeholder_name(expression: str) -> str:
     """`takes` for ${takes}, `area` for ${area.toFixed(1)}, `widthM` for ${Math.round(widthM)}."""
@@ -187,7 +248,7 @@ def is_words(text: str) -> bool:
 
 
 def page_strings(path: str) -> list[str]:
-    text = open(path, encoding="utf-8").read()
+    text = Path(path).read_text(encoding="utf-8")
     body = re.sub(r"<script.*?</script>|<style.*?</style>|<!--.*?-->", "", text, flags=re.S)
     found = []
     for piece in re.split(r"<[^>]+>", body):
@@ -198,34 +259,38 @@ def page_strings(path: str) -> list[str]:
     # shows a scale or a cell name without any text of its own.
     for attr in re.findall(r'(?:placeholder|title|aria-label|label)="([^"]+)"', text):
         attr = html_mod.unescape(attr)
-        if "{{" not in attr and is_words(attr):
+        # A path shown as an example (C:\maps\...) is not a message.
+        if "\\" in attr or "{{" in attr:
+            continue
+        if is_words(attr):
             found.append(attr)
     return found
 
 
 def script_strings(paths) -> list[str]:
-    """Sentences the scripts put on the page.
+    """Whole messages the scripts put on the page.
 
-    Only plain quoted text of a few words: enough to catch the notes, the
-    buttons and the settings, without dragging in every css class and key.
-    Template literals are read too, with their `${...}` turned into `{name}`,
-    because that is how the messages carrying live numbers are written.
+    Quoted strings, and a template literal only when it is one message: its
+    `${...}` becomes `{name}`, because that is how the lines carrying live
+    numbers are written. A literal that contains HTML is a run of page markup
+    rather than a sentence - splitting it invents fragments, and taking it
+    whole invents a paragraph nobody reads - so it is left to the page itself.
     """
     found = []
     for path in paths:
-        text = open(path, encoding="utf-8").read()
+        text = Path(path).read_text(encoding="utf-8")
         for match in QUOTED.finditer(text):
             template = match.group("template")
-            piece = template if template is not None else (
-                match.group("single") if match.group("single") is not None
-                else match.group("double"))
-            if piece is None:
-                continue
-            piece = piece.replace("\\'", "'").replace('\\"', '"')
             if template is not None:
-                piece = as_placeholder(piece)
+                if "<" in template or ">" in template:
+                    continue
+                piece = as_placeholder(template)
+            else:
+                piece = (match.group("single") if match.group("single") is not None
+                         else match.group("double"))
+            piece = piece.replace("\\'", "'").replace('\\"', '"')
             piece = " ".join(piece.split())
-            if is_words(piece) and re.search(r"[A-Za-z]{2,}\s+[A-Za-z]", piece):
+            if is_whole_message(piece):
                 found.append(piece)
     return found
 
@@ -252,28 +317,41 @@ def skeleton(text: str) -> str:
 
 
 def messages() -> list[str]:
-    """Every line the code says, with the wording already in english.txt kept.
+    """Every whole message the code says, with the committed wording kept.
 
     A template literal names its own placeholders (`${Math.round(widthM)}`
     becomes {widthM}); where english.txt already holds the same sentence as
     {w}, the committed key wins, so a rename in the code cannot orphan the
-    translation keyed by it.
+    translation keyed by it. A candidate that is only part of a committed
+    line - or of a longer new one - is a fragment of a message that is
+    already read whole, and is dropped. The curated lists are never trimmed:
+    "{area} km²" is a message of its own even though bounded by a longer one.
     """
-    found = (page_strings(str(PAGE)) + script_strings(SCRIPTS)
-             + list(PRESET_ERRORS) + list(EXTRA_MESSAGES))
     known: dict[str, str] = {}
-    for key in read_keys():
+    committed = read_keys()
+    for key in committed:
         known.setdefault(skeleton(key), key)
     seen: set[str] = set()
-    lines: list[str] = []
-    for text in found:
+    found: list[str] = []
+    for text in page_strings(str(PAGE)) + script_strings(SCRIPTS):
         if text in SKIP or "=" in text:
             continue                   # "=" is the separator; skip those
         text = known.get(skeleton(text), text)
         if text not in seen:
             seen.add(text)
-            lines.append(text)
-    return lines
+            found.append(text)
+    # A fragment of a line the file already has, or of a longer new message.
+    lowered = [key.lower() for key in committed]
+    kept = [text for text in found
+            if not any(text.lower() in key and len(key) > len(text) + 4 for key in lowered)]
+    kept = [text for text in kept
+            if not any(text != other and text in other and len(other) > len(text) + 4
+                       for other in kept)]
+    for text in list(PRESET_ERRORS) + list(EXTRA_MESSAGES):
+        if text not in seen:
+            seen.add(text)
+            kept.append(text)
+    return kept
 
 
 def template_lines(previous: list[str] | None = None, *, prune: bool = False
