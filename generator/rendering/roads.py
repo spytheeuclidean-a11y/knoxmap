@@ -103,7 +103,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         y1 = min(h, y0 + strip)
         top, bottom = max(0, y0 - 1), min(h, y1 + 1)
         ground = np.asarray(landscape.crop((0, top, w, bottom))).copy()
-        for _ in range(2):
+        for _ in range(6):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
             verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
@@ -112,9 +112,15 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
             notch[:, 1:-1] |= road[:, :-2] & road[:, 2:]
             notch &= road_border
+            border_count = np.zeros(road.shape, dtype=np.uint8)
+            border_count[:, 1:] += road_border[:, :-1]
+            border_count[:, :-1] += road_border[:, 1:]
+            border_count[1:, :] += road_border[:-1, :]
+            border_count[:-1, :] += road_border[1:, :]
             bump = np.zeros_like(road)
             bump[1:-1, :] |= road_border[:-2, :] & road_border[2:, :]
             bump[:, 1:-1] |= road_border[:, :-2] & road_border[:, 2:]
+            bump |= border_count >= 3
             bump &= road
             # A pavement tile with no pavement beside it orthogonally is one
             # step of a diagonal edge, and on its own it draws as a lip that

@@ -34,7 +34,7 @@ const SETTING_LABELS = {
   min_size:            ['Smallest building', 'Buildings narrower than this many tiles are left out.'],
   align_streets:       ['Straighten streets', 'On turns the map so the main street grid runs along the tiles - no staircase roads. Off keeps north up.'],
   rotate_degrees:      ['Turn the map', 'Degrees to turn the whole area before it is built, on top of Straighten streets. Use it when the automatic angle picks the wrong grid.'],
-  straight_roads:      ['Road layout', 'As mapped draws roads as they are. Knox County straight lays every road in straight runs along the tiles and on 45-degree diagonals, squaring off the short kinks between runs so a street stays on one grid line or one diagonal - the default. Vanilla curves routes them the way the game’s own B42 map draws its streets: along the tiles, 45 degrees and the 2:1 slopes, with its curves and street shapes. Built-up streets square keeps streets lined with buildings on the grid, as the buildings are, and off them. The vanilla choices take a few minutes on a town.'],
+  straight_roads:      ['Road layout', 'As mapped draws roads as they are mapped on OpenStreetMap, smoothed to remove jagged tile edges - the default. Knox County straight lays every road in straight runs along the tiles and on 45-degree diagonals, squaring off the short kinks between runs so a street stays on one grid line or one diagonal. Vanilla curves routes them the way the game’s own B42 map draws its streets: along the tiles, 45 degrees and the 2:1 slopes, with its curves and street shapes. Built-up streets square keeps streets lined with buildings on the grid, as the buildings are, and off them. The vanilla choices take a few minutes on a town.'],
   include_proposed_roads: ['Proposed roads', 'On includes roads marked as proposed in OpenStreetMap, even though they may not exist yet. Off leaves them out.'],
   max_size:            ['Largest building', 'Footprints above this are skipped.'],
   building_mix:        ['Mix of buildings', 'How Most buildings is shared out by kind, as percentages: house=40,shop=15,industrial=13 and so on. Leave it empty and the map keeps its own mix, whatever OpenStreetMap has there. Write “preset” for a typical town’s shares. A share the map cannot fill - 15% shops where there are twenty of them - goes to the kinds that can, so the number you asked for is still built; the log says what was asked for against what the ground could give. Names: house, apartment, shop, industrial, garage, farm, school, medical, police, church, civic, other.'],
@@ -110,7 +110,8 @@ const SETTING_GROUPS = {
     main: ['max_buildings', 'fill_gaps', 'height_mix', 'max_levels', 'arch_style',
            'vanilla_tiles'],
     advanced: [
-      ['Which footprints', ['min_size', 'max_size', 'fill_frontage', 'building_alignment']],
+      ['Which footprints', ['min_size', 'max_size', 'fill_frontage', 'building_alignment',
+                            'building_mix', 'spread_buildings']],
       ['Flats', ['apartment_footprint', 'apartment_chance']],
       ['Look', ['neighbourhood_tiles', 'style_oddity']],
       ['Rooms', ['room_solver', 'room_size']],
@@ -186,7 +187,8 @@ function wireSettingInfo(wrap) {
 document.querySelectorAll('.tab-part .setting-compact, #sketch .setting-compact').forEach(wireSettingInfo);
 
 function settingElement(key, label, hint, values, compact = false) {
-  const [lo, hi] = settingsMeta.limits[key];
+  const [lo, hi] = settingsMeta.limits?.[key] || [0, 0];
+  const isText = settingsMeta.types?.[key] === 'text';
   const isInt = settingsMeta.types
     ? settingsMeta.types[key] === 'int'
     : Number.isInteger(settingsMeta.defaults[key]);
@@ -195,7 +197,7 @@ function settingElement(key, label, hint, values, compact = false) {
   // A setting that is only ever 0 or 1 is a switch, not a quantity. As a
   // slider it was two positions wide, read "1" or "0" rather than on or
   // off, and could be left halfway on a touchscreen.
-  const isSwitch = !isChoice && isInt && lo === 0 && hi === 1;
+  const isSwitch = !isText && !isChoice && isInt && lo === 0 && hi === 1;
   // A seed is an identifier, not a quantity: nobody wants to drag a slider
   // across a million values to find one, so it gets a box and a dice.
   const isSeed = key === 'seed' || key === 'forest_seed';
@@ -206,7 +208,9 @@ function settingElement(key, label, hint, values, compact = false) {
   const floatStep = hi - lo <= 1 ? 0.01 : 0.05;
   const wrap = document.createElement('div');
   wrap.className = isSwitch ? 'setting setting-switch' : 'setting';
-  const control = isSeed
+  const control = isText
+    ? `<input type="text" data-key="${key}" value="${String(values[key] ?? '').replace(/"/g, '&quot;')}">`
+    : isSeed
     ? `<div class="seed-row"><input type="number" data-key="${key}" min="${lo}"
          max="${hi}" step="1" value="${values[key]}"><button type="button"
          class="dice" title="Random seed">random</button></div>`
@@ -223,7 +227,7 @@ function settingElement(key, label, hint, values, compact = false) {
     ? `<label class="switch"><input type="checkbox" role="switch"
          data-key="${key}" aria-label="${label}"${values[key] ? ' checked' : ''}>
        <span class="switch-track" aria-hidden="true"><span class="sw-on">On</span><span class="sw-off">Off</span></span></label>`
-    : isSeed || isChoice ? ''
+    : isText || isSeed || isChoice ? ''
     : `<output class="setting-val">${values[key]}</output>`;
   if (compact) {
     // A card's settings are one line each - name, slider, number - so the
@@ -231,7 +235,7 @@ function settingElement(key, label, hint, values, compact = false) {
     // does is behind the (i), shown on hover, focus or a tap; it stays in
     // the page so the settings search still finds a setting by it.
     wrap.classList.add('setting-compact');
-    if (isSeed || isChoice) wrap.classList.add('setting-wide');
+    if (isText || isSeed || isChoice) wrap.classList.add('setting-wide');
     wrap.innerHTML = `
       <span class="setting-name">${label}<button type="button" class="setting-info"
         aria-label="About ${label}" aria-expanded="false">i</button></span>
@@ -510,7 +514,7 @@ function readSettings() {
     }
     // Blank means "whatever the preset says" rather than zero.
     if (el.value.trim() !== '') {
-      out[el.dataset.key] = el.tagName === 'SELECT' ? el.value : parseFloat(el.value);
+      out[el.dataset.key] = (el.tagName === 'SELECT' || el.type === 'text') ? el.value : parseFloat(el.value);
     }
   }
   return out;

@@ -106,6 +106,7 @@ def _draw_line(draw: ImageDraw.ImageDraw, rings: list[list[tuple[float, float]]]
 
 def _draw_roads(image: Image.Image, strokes, fill) -> None:
     """Constant-width road strokes, joined across OSM ways with 45-degree bevels."""
+    import numpy as np
     from shapely.geometry import LineString
     from shapely.ops import linemerge, unary_union
 
@@ -116,17 +117,18 @@ def _draw_roads(image: Image.Image, strokes, fill) -> None:
             points = [(round(x, 6), round(y, 6)) for x, y in ring]
             if len(set(points)) > 1:
                 groups.setdefault(width, []).append(points)
+    scale = 4
+    strip_h = 512
     for width, rings in groups.items():
         if width == 1:
             _draw_line(ImageDraw.Draw(image), rings, fill, width)
             continue
-        # Pillow includes both polygon boundaries: subtract one to keep even widths exact.
         shift = 0.5 if width % 2 == 0 else 0.0
         lines = [LineString([(x + shift, y + shift) for x, y in ring]) for ring in rings]
         network = unary_union(lines)
         if network.geom_type == "MultiLineString":
             network = linemerge(network)
-        surface = network.buffer((width - 1) / 2, cap_style="round", join_style="bevel")
+        surface = network.buffer(width / 2, cap_style="round", join_style="bevel")
         if surface.is_empty:
             continue
         x0, y0, x1, y1 = surface.bounds
@@ -134,10 +136,32 @@ def _draw_roads(image: Image.Image, strokes, fill) -> None:
         right, bottom = min(image.width, math.ceil(x1) + 1), min(image.height, math.ceil(y1) + 1)
         if right <= left or bottom <= top:
             continue
-        mask = Image.new("L", (right - left, bottom - top), 0)
-        draw = ImageDraw.Draw(mask)
-        for poly in getattr(surface, "geoms", None) or [surface]:
-            draw.polygon([(round(x - left), round(y - top)) for x, y in poly.exterior.coords], fill=255)
-            for hole in poly.interiors:
-                draw.polygon([(round(x - left), round(y - top)) for x, y in hole.coords], fill=0)
-        image.paste(fill, (left, top, right, bottom), mask)
+        polys = list(getattr(surface, "geoms", None) or [surface])
+        span_w = right - left
+        for sy0 in range(top, bottom, strip_h):
+            sy1 = min(bottom, sy0 + strip_h)
+            sh = sy1 - sy0
+            hi = Image.new("L", (span_w * scale, sh * scale), 0)
+            draw = ImageDraw.Draw(hi)
+            drew = False
+            for poly in polys:
+                _, py0, _, py1 = poly.bounds
+                if py1 < sy0 - 1 or py0 > sy1 + 1:
+                    continue
+                drew = True
+                draw.polygon(
+                    [(round((x - left + 0.5) * scale), round((y - sy0 + 0.5) * scale))
+                     for x, y in poly.exterior.coords],
+                    fill=255,
+                )
+                for hole in poly.interiors:
+                    draw.polygon(
+                        [(round((x - left + 0.5) * scale), round((y - sy0 + 0.5) * scale))
+                         for x, y in hole.coords],
+                        fill=0,
+                    )
+            if not drew:
+                continue
+            cov = np.asarray(hi.resize((span_w, sh), Image.Resampling.BOX))
+            mask = Image.fromarray(np.where(cov >= 128, np.uint8(255), np.uint8(0)), mode="L")
+            image.paste(fill, (left, sy0, right, sy1), mask)

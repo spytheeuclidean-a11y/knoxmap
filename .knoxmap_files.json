@@ -43,6 +43,7 @@
     "generator/__init__.py",
     "generator/edits.py",
     "generator/extract.py",
+    "generator/mapped_roads.py",
     "generator/msbuildings.py",
     "generator/octilinear.py",
     "generator/osm.py",

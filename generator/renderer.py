@@ -315,7 +315,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            osm_cache: str | None = None,
            osm_bbox: tuple[float, float, float, float] | None = None,
            shape: dict | None = None,
-           straight_roads: int = 4,
+           straight_roads: int = 0,
            include_proposed_roads: int = 0,
            fill_frontage: int = 0,
            terrain_only: int = 0,
@@ -334,7 +334,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # address points - so never leave this as a generator.
     features = list(features)
     road_layout = int(straight_roads or 0)
-    if road_layout in (1, 4):
+    if road_layout == 0:
+        from .mapped_roads import clean_mapped_roads
+        clean_mapped_roads(features, proj, classify, _is_polygon)
+    elif road_layout in (1, 4):
         # Every road in straight runs at 45-degree steps (octilinear.py).
         from .octilinear import straighten_roads
         straighten_roads(features, proj, classify, _is_polygon, clean=True)
