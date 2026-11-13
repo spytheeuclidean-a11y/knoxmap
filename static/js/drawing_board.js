@@ -60,7 +60,9 @@ function sketchLabel(kind) {
 
 // Under headings, in the server's order. Thirty-four tools in one run is a
 // wall to read, and nobody hunting for "Hedge" wants to scan past "Motorway".
-function paletteMarkup() {
+// Folded, each heading is a section that starts closed (the Add tab); the
+// search opens the ones it finds something in.
+function paletteMarkup(folded = false) {
   const groups = [];
   for (const entry of sketchPalette) {
     const name = entry.group || 'Other';
@@ -68,14 +70,21 @@ function paletteMarkup() {
     if (!last || last.name !== name) groups.push({ name, items: [entry] });
     else last.items.push(entry);
   }
-  return groups.map(g => `<div class="palette-group">
-      <span class="palette-head">${escapeHtml(g.name)}</span>
-      ${g.items.map(e => `<button type="button" class="sketch-pick"
+  const picks = g => g.items.map(e => `<button type="button" class="sketch-pick"
         data-kind="${e.id}" data-geometry="${e.geometry}"
         title="${escapeHtml(Object.entries(e.tags)
           .map(([k, v]) => k + '=' + v).join(', '))}">
         <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#3d8bfd'}"></span>
-        ${escapeHtml(e.label)}</button>`).join('')}
+        ${escapeHtml(e.label)}</button>`).join('');
+  if (folded) {
+    return groups.map(g => `<details class="palette-group palette-fold">
+        <summary><span>${escapeHtml(g.name)}</span><span class="count">${g.items.length}</span></summary>
+        <div class="palette-items">${picks(g)}</div>
+      </details>`).join('');
+  }
+  return groups.map(g => `<div class="palette-group">
+      <span class="palette-head">${escapeHtml(g.name)}</span>
+      ${picks(g)}
     </div>`).join('');
 }
 
@@ -90,7 +99,7 @@ async function loadSketchPalette() {
     e => ({ ...e, category: (data.categories || {})[e.id] }));
   const box = document.getElementById('sketchPalette');
   if (!box) return;
-  box.innerHTML = paletteMarkup();
+  box.innerHTML = paletteMarkup(true);
   runListSearch('sketchPalette');
 }
 

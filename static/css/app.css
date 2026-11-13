@@ -853,6 +853,17 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .palette-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .palette-head { flex: 0 0 100%; font-size: 11px; letter-spacing: .04em;
   text-transform: uppercase; color: var(--muted); margin-bottom: 1px; }
+/* Folded (the Add tab): each heading a section that opens on a click. */
+.palette-group.palette-fold { display: block; border: 1px solid var(--line); border-radius: 6px; }
+.palette-fold > summary { list-style: none; display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  cursor: pointer; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.palette-fold > summary::-webkit-details-marker { display: none; }
+.palette-fold > summary::before { content: '▸'; color: var(--accent); transition: transform .15s; }
+.palette-fold[open] > summary::before { transform: rotate(90deg); }
+.palette-fold > summary:hover { color: var(--text); }
+.palette-fold > summary .count { margin-left: auto; font-family: var(--mono); color: var(--faint);
+  text-transform: none; letter-spacing: 0; }
+.palette-fold > .palette-items { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px; }
 
 /* ---- zones with settings of their own -------------------------------- */
 .zone-list { list-style: none; margin: 8px 0 0; padding: 0; }

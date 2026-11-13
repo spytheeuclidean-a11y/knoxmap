@@ -2613,11 +2613,17 @@ function runListSearch(boxId) {
   // and not seen. The panel is marked so its toggle handler does not save
   // the search's opening as the user's own choice.
   if (found.query) {
-    for (const panel of box.querySelectorAll('details.setting-group-advanced')) {
+    for (const panel of box.querySelectorAll('details.setting-group-advanced, details.palette-fold')) {
       if (!panel.open && panel.querySelector(`${found.item}:not(.out-of-search)`)) {
         panel.dataset.searchOpened = '1';
         panel.open = true;
       }
+    }
+  } else {
+    // A folded palette section the search opened folds again when it ends.
+    for (const panel of box.querySelectorAll('details.palette-fold[data-search-opened]')) {
+      delete panel.dataset.searchOpened;
+      panel.open = false;
     }
   }
   found.input.classList.toggle('found-nothing', Boolean(words.length) && !shown);
