@@ -2016,7 +2016,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
   // say so, rather than switching it off behind the user's back.
   if (document.getElementById('drawnOnly').checked
       && typeof sketchCount === 'function' && !sketchCount()
-      && !window.confirm('Only what I draw is on, but nothing is drawn under Add: '
+      && !window.confirm('Only what I draw is on, but nothing is drawn under Features: '
         + 'the map will be bare ground.\n\nGenerate it anyway?')) return;
 
   // A big map ties the app up for a long while, so say how big and how long

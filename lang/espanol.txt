@@ -1076,7 +1076,6 @@ Draw the area to make. Reshape to move its corners or turn it by the handle abov
 Finish = Terminar
 No selection = Nada seleccionado
 About Only what I draw = Acerca de Solo lo que dibujo
-Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Add. = No se descarga nada, así que se puede construir un lugar que no está en OpenStreetMap con lo dibujado en Añadir.
 Draw areas as boxes = Dibujar áreas como cajas
 About Draw areas as boxes = Acerca de Dibujar áreas como cajas
 On, a house, a park or a field is drawn by dragging out a box. Off, by clicking each of its corners. Roads and paths are always clicked point by point. = Activado, una casa, un parque o un campo se dibuja arrastrando una caja. Desactivado, pulsando cada una de sus esquinas. Las calles y caminos siempre se dibujan punto a punto.
@@ -1091,3 +1090,9 @@ As the map is (Off) = Como el mapa (Desactivado)
 One zone changes settings in part of the map = Una zona cambia la configuración en parte del mapa
 {n} zones change settings in parts of the map = {n} zonas cambian la configuración en partes del mapa
 Open it under Tools, Zones = Ábrela en Herramientas, Zonas
+Extent = Extensión
+Features = Elementos
+The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners = La extensión del mapa: dibújala como rectángulo, polígono, círculo o a mano alzada, o escribe sus esquinas
+Features to add to the map: a street, a house, a park… built like a real one = Elementos para añadir al mapa: una calle, una casa, un parque… construidos como uno real
+Something here changes the map = Algo aquí cambia el mapa
+Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Features. = No se descarga nada, así que se puede construir un lugar que no está en OpenStreetMap con lo dibujado en Elementos.

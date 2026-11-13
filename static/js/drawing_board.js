@@ -36,7 +36,11 @@ const sketchEd = KnoxDraw.create(map, {
 });
 refreshSketchTools = KnoxDraw.toolbar(document.getElementById('sketchTools'), sketchEd, { rect: false });
 // Draw areas as boxes: the Add tab's switch for the editor's rectangle mode.
-document.getElementById('sketchRect').addEventListener('change', ev => sketchEd.setRect(ev.target.checked));
+document.getElementById('sketchRect').addEventListener('change', ev => {
+  sketchEd.setRect(ev.target.checked);
+  // Off unless asked for: on is a change, yellow like one.
+  ev.target.closest('.setting').classList.toggle('is-changed', ev.target.checked);
+});
 
 // What each category looks like while it is being drawn. Close enough to the
 // finished map to recognise, not so close it is mistaken for it.
@@ -1091,6 +1095,8 @@ function drawZoneList() {
   }
   zoneList.forEach((z, i) => {
     const li = box.children[i];
+    // A zone that sets anything is a change from the map, so yellow like one.
+    li.classList.toggle('is-changed', zoneSets(z).length > 0);
     li.querySelector('.zone-name').textContent = z.name || 'Zone ' + (i + 1);
     li.querySelector('.zone-what').textContent = zoneSummary(z);
     li.classList.toggle('on', i === zonePicked);
@@ -1148,6 +1154,22 @@ document.getElementById('preset').addEventListener('change', () => setTimeout(re
 function zoneSwitchable(setting) {
   return setting.int && setting.min === 0 && setting.max === 1;
 }
+
+// In the open zone, what it sets is yellow: the setting's name and its box,
+// its walls, the hand-built buildings ticked - as a setting moved off its
+// default is in Properties.
+function markZoneEditor() {
+  const box = document.getElementById('zoneEditor');
+  for (const row of box.querySelectorAll('label')) {
+    const field = row.querySelector('[data-zone-key], #zoneStyle, [data-building-preset]');
+    if (!field) continue;
+    const set = field.matches('[data-building-preset]') ? field.checked
+      : field.matches('#zoneStyle') ? !!field.value : field.classList.contains('zone-set');
+    row.classList.toggle('is-changed', set);
+  }
+}
+document.getElementById('zoneEditor').addEventListener('input', () => setTimeout(markZoneEditor, 0));
+document.getElementById('zoneEditor').addEventListener('change', () => setTimeout(markZoneEditor, 0));
 
 function drawZoneEditor() {
   const box = document.getElementById('zoneEditor');
@@ -1219,6 +1241,7 @@ function drawZoneEditor() {
       drawZoneList();
     });
   }
+  markZoneEditor();
   for (const input of box.querySelectorAll('[data-zone-key]')) {
     input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', ev => {
       const key = ev.target.dataset.zoneKey;

@@ -928,7 +928,12 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
   width: 7em; padding: 2px 4px; color: var(--text); background: transparent;
   border: 1px solid var(--line-strong); border-radius: 3px; }
 .zone-editor input[type="text"] { width: 10em; }
-.zone-editor .zone-set { border-color: var(--accent); }
+.zone-editor .zone-set { border-color: var(--changed); color: var(--changed); }
+/* What a zone sets, yellow as a changed setting is in Properties. */
+.zone-editor label.is-changed > span { color: var(--changed); font-weight: 700; }
+.zone-editor label.is-changed select { border-color: var(--changed); color: var(--changed); }
+.zone-editor label.is-changed input[type="checkbox"] { accent-color: var(--changed); }
+.zone-list li.is-changed .zone-name { color: var(--changed); }
 .zone-preset { display: flex; align-items: center; gap: 6px; font-size: 12px;
   margin-bottom: 3px; }
 .zone-preset span { flex: 1 1 auto; color: var(--text); }

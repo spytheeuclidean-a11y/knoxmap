@@ -6,7 +6,7 @@
 //   menu bar   File Edit View Map Build Help, the place search, the credit
 //   options    what the chosen tool can do
 //   tools      a panel on the left, a tab for each way of working on the map:
-//              Area, Add to this area, Zones, Change what is here, Build
+//              Extent, Features, Zones, Change what is here, Build
 //   tabs       Home, the maps open in this window, a new one being drawn
 //   steps      Generate > Buildings > Compile > Install > Publish check, and one
 //              button that does whatever comes next
@@ -278,7 +278,8 @@
         + '<hr>' + item('Save everything as a zip', () => $('downloadAll').click(), { off: !open })
         + item('Single files…', () => openPop('generate'), { off: !open }),
       Edit: () => label('Draw on the map')
-        + item('Add to this area', () => setTool('draw'), { key: 'D' })
+        + item('Extent', () => setTool('area'), { key: 'X' })
+        + item('Features', () => setTool('draw'), { key: 'F' })
         + item('Zones of their own', () => setTool('zone'), { key: 'Z' })
         + item('Change what is already here', () => setTool('change'), { key: 'E' })
         + '<hr>' + label('Hand-built buildings')
@@ -392,8 +393,8 @@
   // controls. The map's drawing buttons, and what a drawing in progress
   // shows (Finish, Cancel, Save), are pressed from the Area tab.
   const TOOLS = [
-    { id: 'area', icon: '📐', key: 'A', label: 'Area', title: 'Draw what to make, as a rectangle, a polygon, a circle or freehand' },
-    { id: 'draw', icon: '✏️', key: 'D', label: 'Add', title: 'Add to this area: a street, a house, a park… built like a real one',
+    { id: 'area', icon: '📐', key: 'X', label: 'Extent', title: 'The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners' },
+    { id: 'draw', icon: '✏️', key: 'F', label: 'Features', title: 'Features to add to the map: a street, a house, a park… built like a real one',
       panel: 'sketch' },
     { id: 'zone', icon: '🧩', key: 'Z', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
       panel: 'zonesPanel' },
@@ -425,7 +426,8 @@
   };
   for (const t of TOOLS) {
     const tab = make('button', 'setting-tab',
-      `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span><span>${esc(t.label)}</span>`);
+      `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span><span>${esc(t.label)}</span>`
+      + '<span class="setting-tab-dot" title="Something here changes the map" hidden></span>');
     tab.type = 'button';
     tab.dataset.tool = t.id;
     tab.title = `${t.title} (${t.key})`;
@@ -496,6 +498,18 @@
     const next = all[(to + all.length) % all.length];
     next.focus(); next.click();
   });
+  // A yellow dot on a tool's tab while it holds something that changes the
+  // map, as Properties dots a tab with a setting off its default.
+  const TOOL_CHANGED = {
+    draw: () => !!($('sketchCount') && $('sketchCount').textContent.trim()) || !!($('sketchRect') && $('sketchRect').checked),
+    zone: () => !!$('zoneList') && !!$('zoneList').querySelector('li.is-changed'),
+    change: () => !!($('editCount') && $('editCount').textContent.trim()),
+  };
+  for (const id of ['sketchCount', 'zoneList', 'editCount']) {
+    if ($(id)) new MutationObserver(() => render()).observe($(id),
+      { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  }
+  $('sketchRect')?.addEventListener('change', () => render());
   function renderTools() {
     // Nothing to work on at Home: the panel steps aside for it.
     const atHome = !!ws.home;
@@ -504,6 +518,8 @@
       requestAnimationFrame(() => map.invalidateSize());
     }
     for (const tab of toolTabs.children) {
+      const dot = tab.querySelector('.setting-tab-dot');
+      if (dot) dot.hidden = !(TOOL_CHANGED[tab.dataset.tool] && TOOL_CHANGED[tab.dataset.tool]());
       const on = tab.dataset.tool === ws.tool;
       tab.classList.toggle('is-on', on);
       tab.setAttribute('aria-selected', String(on));
@@ -528,8 +544,8 @@
       + 'Click to put it somewhere else; Standalone plays it on its own.</span>';
     else if (ws.view === 'iso') h = '<b>In-game 2.5D</b><span>2.5D isometric view of your town and furnished buildings. Pan and zoom with the mouse.</span>';
     else h = {
-      area: '<b>Area</b><span>Draw it with the buttons under Tools on the left: rectangle, polygon, circle or freehand. Reshape to move its corners or turn it.</span>',
-      draw: '<b>Add to this area</b><span>Pick what to draw under Tools on the left, then draw it on the map.</span>',
+      area: '<b>Extent</b><span>Draw it with the buttons under Tools on the left: rectangle, polygon, circle or freehand. Reshape to move its corners or turn it.</span>',
+      draw: '<b>Features</b><span>Pick what to draw under Tools on the left, then draw it on the map.</span>',
       zone: '<b>Zones</b><span>Press Draw a zone under Tools on the left, draw it on the map, then give it its own settings.</span>',
       make: '<b>Build</b><span>Build a building by hand, or draw a map from scratch on a blank sheet.</span>',
       change: '<b>Change what is here</b><span>Load what the map was built from, then click a building to see whether it was built and why not - or anything at all to remove it or say what it really is.</span>',
