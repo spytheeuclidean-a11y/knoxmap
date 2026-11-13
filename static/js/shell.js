@@ -694,11 +694,55 @@
   };
 
   // Home: where a new user starts, and where every map is.
-  // A real place: a new map, with the place search at the top ready to type
-  // into - or the Extent tools, to draw it instead.
+  // Find a place: a box asking for a name, Nominatim's answers under it, and
+  // the one picked opened as a new map with its extent drawn (goToPlace in
+  // app.js). On the map: a new map to look round and draw on.
+  const findBox = make('div', 'ws-find', `<div class="ws-find-row">
+      <input type="search" id="wsFindInput" autocomplete="off"
+        placeholder="A town, a city, a park, a coastline…" aria-label="Find a place">
+      <button type="button" class="btn btn-primary" id="wsFindGo">Find</button></div>
+    <ul class="ws-find-results" id="wsFindResults"></ul>`);
+  holder.append(findBox);
+  let findResults = [];
   function startRealPlace() {
+    dialog('Find a place', [findBox]);
+    setTimeout(() => $('wsFindInput').focus(), 0);
+  }
+  async function findPlace() {
+    const q = $('wsFindInput').value.trim();
+    const list = $('wsFindResults');
+    if (!q) return;
+    list.innerHTML = '<li class="empty">Searching…</li>';
+    try {
+      const res = await fetch('/api/search?' + new URLSearchParams({ q }));
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || res.statusText);
+      findResults = data.results || [];
+      list.innerHTML = findResults.length ? findResults.map((r, i) => {
+        const where = r.display_name.split(',').slice(1).join(',').trim();
+        return `<li><button type="button" data-find="${i}"><b>${esc(r.name)}</b>
+          <span>${esc(where)}</span></button>${r.outline ? `<button type="button" class="btn btn-small"
+          data-find-outline="${i}" title="Its real boundary instead of a box">outline</button>` : ''}</li>`;
+      }).join('') : '<li class="empty">No matches.</li>';
+    } catch (err) {
+      list.innerHTML = `<li class="empty">${esc(err.message)}</li>`;
+    }
+  }
+  findBox.addEventListener('click', e => {
+    if (e.target.closest('#wsFindGo')) return findPlace();
+    const pick = e.target.closest('[data-find], [data-find-outline]');
+    if (!pick) return;
+    const outline = pick.hasAttribute('data-find-outline');
+    const r = findResults[+(outline ? pick.dataset.findOutline : pick.dataset.find)];
+    closeDialog();
     newMap();
-    setTimeout(() => $('searchInput').focus(), 50);
+    // The map has only just been shown: let it take its size first.
+    setTimeout(() => { map.invalidateSize(); if (outline) goToOutline(r); else goToPlace(r); }, 60);
+  });
+  findBox.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'wsFindInput') findPlace(); });
+  function startOnMap() {
+    newMap();
+    $('searchInput').blur();
   }
 
   function renderHome() {
@@ -709,13 +753,19 @@
         <p>Any town, city or stretch of country in the world. KnoxMap builds its streets, houses, loot and zombies.</p>
         <!-- Three ways to start, each a picture of what it does. -->
         <div class="ws-starts">
-          <button type="button" class="ws-start primary" id="wsHomeDraw">
+          <button type="button" class="ws-start primary" id="wsHomeFind">
+            <svg viewBox="0 0 96 64" aria-hidden="true"><circle cx="40" cy="28" r="17"/><path d="M52 40l18 18"/>
+              <path d="M40 18c-5 0-8.5 3.8-8.5 8.5 0 6.5 8.5 13.5 8.5 13.5s8.5-7 8.5-13.5C48.5 21.8 45 18 40 18z"/>
+              <circle cx="40" cy="26.5" r="2.8"/></svg>
+            <b>Find a place</b>
+            <span>Type the name of a town, a city or anywhere in the world, and go straight there.</span>
+          </button>
+          <button type="button" class="ws-start" id="wsHomeDraw">
             <svg viewBox="0 0 96 64" aria-hidden="true"><path d="M8 14l22-6 22 6 22-6v42l-22 6-22-6-22 6z"/>
               <path d="M30 8v42M52 14v42"/><path d="M14 36c8-2 12 4 20 0s12-10 18-6"/>
-              <path d="M68 30c0-6.5 4.5-11 10-11s10 4.5 10 11c0 8-10 17-10 17s-10-9-10-17z"/>
-              <circle cx="78" cy="30" r="3.5"/></svg>
-            <b>A real place</b>
-            <span>Find a town, a city or any stretch of the world by name, or draw its outline on the map.</span>
+              <rect x="60" y="24" width="24" height="18" stroke-dasharray="4 3"/></svg>
+            <b>On the map</b>
+            <span>Pan and zoom the world map to your place yourself, then draw its outline.</span>
           </button>
           <button type="button" class="ws-start" id="wsHomeBoard">
             <svg viewBox="0 0 96 64" aria-hidden="true"><rect x="16" y="6" width="54" height="52" rx="3"/>
@@ -748,7 +798,8 @@
     if (!$('mapList').children.length) mapsBox.insertAdjacentHTML('afterbegin', '<p class="hint" id="wsNoMaps" style="margin:0">None yet. Start from a real place above to make your first.</p>');
     presets.open = true;
     $('wsHomePresets').append(presets);
-    $('wsHomeDraw').addEventListener('click', startRealPlace);
+    $('wsHomeFind').addEventListener('click', startRealPlace);
+    $('wsHomeDraw').addEventListener('click', startOnMap);
     $('wsHomeBoard').addEventListener('click', () => click('boardOpen'));
     $('wsHomeBuilder').addEventListener('click', () => click('builderOpen'));
     $('wsHomeSetup').addEventListener('click', () => { dialog('Check my setup', [$('healthCard')]); click('healthBtn'); });

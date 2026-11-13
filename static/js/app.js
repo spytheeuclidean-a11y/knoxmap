@@ -2427,6 +2427,26 @@ function hideSearchResults() {
   searchResults.innerHTML = '';
 }
 
+// A found place on the map: there, with a box round it as the extent - or
+// its real boundary, when it has one and that is asked for. The search box
+// at the top and Home's Find a place both end here.
+function goToPlace(r) {
+  const bounds = boundsForResult(r);
+  map.fitBounds(bounds, { padding: [30, 30] });
+  setRectFromBounds(bounds);
+  if (searchMarker) map.removeLayer(searchMarker);
+  searchMarker = L.marker([r.lat, r.lon]).addTo(map)
+    .bindPopup(escapeHtml(r.name)).openPopup();
+  hideSearchResults();
+  searchInput.value = r.name;
+}
+function goToOutline(r) {
+  const bounds = setOutline(r.outline);
+  map.fitBounds(bounds, { padding: [30, 30] });
+  hideSearchResults();
+  searchInput.value = r.name;
+}
+
 function renderSearchResults(results) {
   if (!results.length) {
     searchResults.innerHTML = '<li class="empty">No matches.</li>';
@@ -2449,26 +2469,12 @@ function renderSearchResults(results) {
   searchResults.querySelectorAll('button[data-outline]').forEach(btn => {
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      const r = results[parseInt(btn.dataset.outline, 10)];
-      const bounds = setOutline(r.outline);
-      map.fitBounds(bounds, { padding: [30, 30] });
-      hideSearchResults();
-      searchInput.value = r.name;
+      goToOutline(results[parseInt(btn.dataset.outline, 10)]);
     });
   });
 
   searchResults.querySelectorAll('li[data-i]').forEach(li => {
-    li.addEventListener('click', () => {
-      const r = results[parseInt(li.dataset.i, 10)];
-      const bounds = boundsForResult(r);
-      map.fitBounds(bounds, { padding: [30, 30] });
-      setRectFromBounds(bounds);
-      if (searchMarker) map.removeLayer(searchMarker);
-      searchMarker = L.marker([r.lat, r.lon]).addTo(map)
-        .bindPopup(escapeHtml(r.name)).openPopup();
-      hideSearchResults();
-      searchInput.value = r.name;
-    });
+    li.addEventListener('click', () => goToPlace(results[parseInt(li.dataset.i, 10)]));
   });
 }
 
