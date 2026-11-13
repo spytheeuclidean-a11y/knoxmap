@@ -38,9 +38,16 @@ import knoxpaths  # noqa: E402
 # The exact PZ Mapping Tools release the patched compiler was built from. The
 # compiler links against this release's Qt and editor libraries, so the two
 # are pinned together rather than following "latest".
-TOOLS_RELEASE = "43.00B260909"
+# The map tools are somebody else's release, and they retag rather than add:
+# the build KnoxMap was pinned to (43.00B260909) stopped existing, so Setup
+# 404ed for everybody installing KnoxMap, the tools never arrived, and the
+# compile then fell over on their absence. The latest release is asked for
+# first and this is only the fallback for a machine that cannot reach the
+# API - so a retag upstream costs nobody an install again.
+TOOLS_REPO = "Unjammer/PZ_Mapping_Tools"
+TOOLS_RELEASE = "43.00B261111"
 TOOLS_URL = ("https://github.com/Unjammer/PZ_Mapping_Tools/releases/download/"
-             "43.00B260909/PZ_Mapping_Tools_build20260909f.zip")
+             "43.00B261111/PZ_Mapping_Tools_build20261111d.zip")
 
 REPO = "spytheeuclidean-a11y/knoxmap"
 CLI_URL = (f"https://github.com/{REPO}/releases/download/"
@@ -80,6 +87,29 @@ def step(n: int, title: str) -> None:
     say(f"[{n}/5] {title}")
 
 
+def latest_tools() -> tuple[str, str]:
+    """(url, release name) of the newest map tools, or the pinned ones.
+
+    Anything at all going wrong here - offline, rate limited, the release
+    with no zip in it - falls back to the pinned build rather than stopping
+    Setup, because a version that is merely old still installs.
+    """
+    import requests
+
+    try:
+        r = requests.get(f"https://api.github.com/repos/{TOOLS_REPO}/releases/latest",
+                         headers={"User-Agent": USER_AGENT}, timeout=30)
+        r.raise_for_status()
+        release = r.json()
+        for asset in release.get("assets", []):
+            name = asset.get("name") or ""
+            if name.lower().endswith(".zip") and asset.get("browser_download_url"):
+                return asset["browser_download_url"], release.get("tag_name") or name
+    except Exception:                                   # noqa: BLE001
+        pass
+    return TOOLS_URL, TOOLS_RELEASE
+
+
 def download(url: str, what: str) -> bytes:
     import requests
 
@@ -110,7 +140,8 @@ def ensure_mapping_tools() -> Path:
         say(f"      found at {existing}")
         return existing
 
-    data = download(TOOLS_URL, f"PZ Mapping Tools {TOOLS_RELEASE} (~40 MB)")
+    url, release = latest_tools()
+    data = download(url, f"PZ Mapping Tools {release} (~40 MB)")
     target = knoxpaths.VENDOR_DIR / "PZMappingTools"
     with tempfile.TemporaryDirectory() as tmp:
         zipfile.ZipFile(io.BytesIO(data)).extractall(tmp)
