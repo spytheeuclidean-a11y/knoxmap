@@ -31,6 +31,7 @@ from .bitmaps import read_rgb, same_colour
 # that far. The path stops at the drive when it meets it first. On Piqua 383
 # houses were a median 61 tiles from the pavement with no straight drive.
 PATH_MAX_TILES = 120
+WALK_MAX_TILES = 20
 GARAGE_DRIVE_MAX_TILES = 40
 # A house the terrain already gave a drive to (generator/rendering/homesteads.py:
 # a house in the woods) gets no second one beside it: tarmac this near its walls.
@@ -384,7 +385,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             if paved_at[y * w + x]:
                 end = (x, y)
                 break
-            if n >= PATH_MAX_TILES:
+            if n >= WALK_MAX_TILES:
                 continue
             for ddx, ddy in order:
                 nx, ny = x + ddx, y + ddy
@@ -404,7 +405,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         if walk and end not in drive_tiles:
             straight_walk = []
             for t in range(max(len(walk) + 4, 1)):
-                if t >= PATH_MAX_TILES:
+                if t >= WALK_MAX_TILES:
                     break
                 tx, ty = sx + dx * t, sy + dy * t
                 if not (0 <= tx < w and 0 <= ty < h):

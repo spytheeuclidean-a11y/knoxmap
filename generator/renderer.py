@@ -315,6 +315,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            straight_roads: int = 4,
            include_proposed_roads: int = 0,
            fill_frontage: int = 0,
+           terrain_only: int = 0,
            landcover_for=None,
            climate=None,
            winter_look: str = "auto",
@@ -432,28 +433,33 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                                if id(f) not in lifted.not_buildings]
 
     # Streets where every home is an address point and not a drawn building.
-    addressed = _houses_from_addresses(features, building_feats, proj)
-    if addressed:
-        building_feats = building_feats + addressed
-        buckets["building"] = buckets.get("building", []) + addressed
-
-    # Buildings for the gaps in a row, from the ones beside them
-    # (generator/rendering/infill.py). After the addresses, so a numbered
-    # house that was just put down is a neighbour like any other.
     infilled: list[OSMFeature] = []
     sheds: list[OSMFeature] = []
-    if fill_frontage:
-        infilled = _infill_frontage(buckets, vegetation_feats, building_feats,
-                                    proj, clip)
-        if infilled:
-            building_feats = building_feats + infilled
-            buckets["building"] = buckets.get("building", []) + infilled
-    # A shed or garage behind some of the houses, whether or not the gaps are
-    # filled: a yard has one either way.
-    sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
-    if sheds:
-        building_feats = building_feats + sheds
-        buckets["building"] = buckets.get("building", []) + sheds
+    if terrain_only:
+        building_feats = []
+        buckets["building"] = []
+    else:
+        addressed = _houses_from_addresses(features, building_feats, proj)
+        if addressed:
+            building_feats = building_feats + addressed
+            buckets["building"] = buckets.get("building", []) + addressed
+
+        # Buildings for the gaps in a row, from the ones beside them
+        # (generator/rendering/infill.py). After the addresses, so a numbered
+        # house that was just put down is a neighbour like any other.
+        if fill_frontage:
+            infilled = _infill_frontage(
+                buckets, vegetation_feats, building_feats,
+                proj, clip, extend_ends=(int(fill_frontage) != 2))
+            if infilled:
+                building_feats = building_feats + infilled
+                buckets["building"] = buckets.get("building", []) + infilled
+        # A shed or garage behind some of the houses, whether or not the gaps are
+        # filled: a yard has one either way.
+        sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
+        if sheds:
+            building_feats = building_feats + sheds
+            buckets["building"] = buckets.get("building", []) + sheds
 
     def ground_rings(feat: OSMFeature) -> list[list[tuple[float, float]]]:
         rings = _feature_coords_px(feat, proj)

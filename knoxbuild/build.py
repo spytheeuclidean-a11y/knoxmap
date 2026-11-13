@@ -859,8 +859,6 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
     STALL_W, STALL_H = 3, 5
     step = 14           # how often to consider a spot
     taken: set[tuple[int, int]] = set()
-    # Kerbside stalls, for the wheel stops across the ends of their bays.
-    bays: list[tuple[int, int, int, int]] = []
 
     # A car on most drives, as in Knox County.
     for x, y, sw, sh in drives:
@@ -935,40 +933,6 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
                 continue
             taken.add(key)
             zones.append(Zone("ParkingStall", x, y, sw, sh))
-            if not car_park:
-                bays.append((x, y, sw, sh))
-
-    # A concrete wheel stop closes each end of a run of kerbside bays, as the
-    # blocks do on the vanilla streets. A bay that runs straight on into the
-    # next has no end there, so only the last stall of a run takes one.
-    if bays and veg_path and os.path.exists(veg_path):
-        from .yards import _rule_ready
-        if _rule_ready("Parking block X0"):
-            starts = {(x, y) for x, y, _sw, _sh in bays}
-            veg = read_rgb(veg_path)
-            veg_h, veg_w = veg.shape[:2]
-            for x, y, sw, sh in bays:
-                along_y = sh > sw          # the bay runs along the road's length
-                fx, fy = (x, y + sh) if along_y else (x + sw, y)
-                if (fx, fy) in starts:
-                    continue                # another bay continues the run
-                # The block lies along the road at the bay's end, down the
-                # middle of the bay: across the mouth it would run into the
-                # pavement, since a kerbside stall straddles the kerb.
-                bx, by = (x + sw // 2, fy) if along_y else (fx, y + sh // 2)
-                tiles = C.PARKING_BLOCK_Y if along_y else C.PARKING_BLOCK_X
-                cells = [(bx, by + k) if along_y else (bx + k, by)
-                         for k in range(len(tiles))]
-                # All three squares or none: half a block of concrete reads as
-                # a mistake, and nothing may already stand there.
-                if not all(0 <= sx_ < veg_w and 0 <= sy_ < veg_h
-                           and is_asphalt(sx_, sy_)
-                           and tuple(veg[sy_, sx_]) == C.VEG_NOTHING
-                           for sx_, sy_ in cells):
-                    continue
-                for (sx_, sy_), colour in zip(cells, tiles):
-                    veg[sy_, sx_] = colour
-            Image.fromarray(veg).save(veg_path, format="BMP")
 
     # One town zone per cell that holds buildings, covering their extent with a
     # margin so gardens and the street frontage count as town too.
@@ -1688,6 +1652,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         print(f"{out_dir} is missing what the map is or its buildings - "
               f"generate the map again", file=sys.stderr)
         return 2
+    if settings.terrain_only:
+        geo = {**geo, "features": []}
 
     bbox = info["bbox"]
     proj = Projector.build(bbox["south"], bbox["west"], bbox["north"],
