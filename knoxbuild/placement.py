@@ -478,7 +478,6 @@ def layout(out_dir: str, map_name: str, cache_dir: str | None = None) -> dict:
     world is drawn as the shape of its cells and nothing else.
     """
     from . import mapstate
-    from .world import choose_origin
 
     here = where_is(out_dir, map_name)
     inst = mapstate.installed(out_dir)

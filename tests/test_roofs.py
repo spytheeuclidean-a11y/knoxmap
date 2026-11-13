@@ -63,6 +63,24 @@ class RoofLayouts(unittest.TestCase):
                  for tile in orients.values()}
         self.assertEqual(tiles, {"rooftop_furniture_000", "rooftop_furniture_001"})
 
+    def test_a_pitched_roof_gets_a_chimney(self):
+        from knoxbuild import catalog as C
+
+        grid = [[1] * 12 for _ in range(12)]
+        placed = tbx._chimneys(grid, 12, 12, "house-a")
+        self.assertTrue(1 <= len(placed) <= 2, placed)
+        self.assertEqual({role for role, *_rest in placed}, {"roof_chimney"})
+        self.assertEqual(C.FURNITURE_LAYERS["roof_chimney"], "Roof")
+        for _role, x, y, _orientation in placed:
+            self.assertTrue(grid[y][x])
+        for index, (_role, x, y, _orientation) in enumerate(placed):
+            for _other, other_x, other_y, _other_orientation in placed[index + 1:]:
+                self.assertTrue(abs(x - other_x) > 1 or abs(y - other_y) > 1)
+
+    def test_a_shed_is_too_small_for_a_chimney(self):
+        grid = [[1] * 4 for _ in range(4)]
+        self.assertEqual(tbx._chimneys(grid, 4, 4, "shed"), [])
+
     def test_a_wide_block_among_many_wings_is_not_given_the_steep_roof(self):
         # An 11-wide block with two narrow wings: three pieces, so the block takes the
         # 45-degree roof (three levels at most), not a 30-degree one six levels high.

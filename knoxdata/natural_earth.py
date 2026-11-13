@@ -10,7 +10,6 @@ it at the bbox edge, and names for the paper map where OSM has no place tag.
 """
 from __future__ import annotations
 
-import json
 import logging
 
 from . import DatasetSource, Layer

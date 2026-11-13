@@ -26,6 +26,7 @@ not have; this one needs no data from anywhere.
 """
 from __future__ import annotations
 
+import random
 import statistics
 from collections import Counter
 
@@ -70,8 +71,10 @@ FILL_KINDS = {"yes", "house", "detached", "semidetached_house", "terrace",
 BLOCKING_AREAS = {"water", "pool", "park", "sports", "playground", "cemetery",
                   "wetland", "track", "parking", "plaza", "sand", "orchard",
                   "farmland", "pier", "military", "schoolyard", "worship_grounds",
-                  "hospital_grounds", "pedestrian"}
+                  "hospital_grounds", "pedestrian", "industrial", "railway"}
 BLOCKING_VEGETATION = {"forest", "scrub"}
+PATH_AVOID_CATS = {"railway", "footway", "cycleway", "path", "bridleway",
+                   "steps", "pedestrian"}
 
 
 def _polys(feat: OSMFeature, proj: Projector, scale: float):
@@ -287,8 +290,23 @@ def _levels(near):
     return str(int(round(statistics.median(vals)))) if vals else None
 
 
+def _neighbour_gap(left, right) -> float:
+    """Median side gap between adjacent neighbours on the same street."""
+    gaps: list[float] = []
+    for side in (left, right):
+        ordered = sorted((n for n in side if "s_lo" in n and "s_hi" in n),
+                         key=lambda n: n["s_lo"])
+        for a, b in zip(ordered, ordered[1:]):
+            g = b["s_lo"] - a["s_hi"]
+            if 0.5 < g <= 20.0:
+                gaps.append(g)
+    if not gaps:
+        return SIDE_GAP_M
+    return min(max(statistics.median(gaps), SIDE_GAP_M), 14.0)
+
+
 def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
-                  lo=None, hi=None):
+                  lo=None, hi=None, extend_ends=True):
     """Footprints (as lists of four metre corners) for the free frontage
     between stations i0 and i1, built like the buildings beside it.
 
@@ -298,7 +316,7 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     near = left + right
     # One side only is a row carried on, and a row is two buildings at least;
     # a lone house in the country does not found a street.
-    if not near or (not (left and right) and len(near) < 2):
+    if not near or (not (left and right) and (not extend_ends or len(near) < 2)):
         return []
     kinds = {n["kind"] for n in near}
     if not kinds <= FILL_KINDS:
@@ -309,7 +327,7 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     # Close to the pavement is not enough: detached houses can stand there
     # too, and a hole in their row gets their side gaps, not a terrace.
     wall = setback <= STREET_WALL_M and joined
-    gap = 0.0 if wall else SIDE_GAP_M
+    gap = 0.0 if wall else _neighbour_gap(left, right)
 
     length = (i1 - i0 + 1) * STEP_M
     both = bool(left and right)
@@ -318,6 +336,8 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     if length < MIN_LOT_M:
         return []
     if length > limit:
+        if not extend_ends:
+            return []
         # Too long to fill whole: carry the row on from each neighbour as far
         # as a row is carried (half the limit from each end when both stand),
         # and leave the middle as it is.
@@ -328,7 +348,7 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
             if part is None or reach < 1:
                 continue
             got = _lots_for_gap(scan, part[0], part[1], part[2], part[3],
-                                hard_free, joined, part[4], part[5])
+                                hard_free, joined, part[4], part[5], extend_ends)
             if got:
                 done.append(got)
         if not done:
@@ -337,8 +357,8 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
 
     # The pavement edge of the gap; ends against a neighbour keep a garden's
     # width from it, ends against a road or nothing keep a little less.
-    inset_l = 0.4 if wall else (SIDE_GAP_M + EDGE_SLACK_M if left else 1.5)
-    inset_r = 0.4 if wall else (SIDE_GAP_M + EDGE_SLACK_M if right else 1.5)
+    inset_l = 0.4 if wall else (gap + EDGE_SLACK_M if left else 1.5)
+    inset_r = 0.4 if wall else (gap + EDGE_SLACK_M if right else 1.5)
     # A neighbour's wall is trusted only within a station of the gap's end:
     # that is the rounding it is there to settle. Further off, the building
     # meets the street at a corner - a bend, a slanted outline - and its wall
@@ -377,19 +397,30 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
         k0 = min(max(i0, int(a // STEP_M)), i1)
         k1 = max(min(i1, int(b // STEP_M)), k0)
         room = min(hard_free[k0:k1 + 1])
-        d = min(depth, room - setback - REAR_CLEAR_M)
+        lot_w = bw
+        lot_setback = setback
+        lot_shift = 0.0
+        d = min(depth, room - lot_setback - REAR_CLEAR_M)
+        if not wall:
+            rng = random.Random(
+                f"{round(scan['ax'][i0], 1)}:{round(scan['ay'][i0], 1)}:{k}")
+            lot_w = max(MIN_LOT_M, bw * rng.uniform(0.88, 1.0))
+            lot_setback = max(0.3, setback + rng.uniform(-0.7, 0.7))
+            d = min(depth * rng.uniform(0.90, 1.08),
+                    room - lot_setback - REAR_CLEAR_M)
+            lot_shift = (bw - lot_w) * rng.uniform(-0.4, 0.4)
         if d < MIN_DEPTH_M:
             continue
         mid = min(max(int(((a + b) / 2) // STEP_M), i0), i1)
         tx, ty = scan["tx"][mid], scan["ty"][mid]
         nx, ny = scan["nx"][mid], scan["ny"][mid]
         # the pavement point opposite the lot's middle
-        off = (a + b) / 2 - scan["s"][mid]
+        off = (a + b) / 2 + lot_shift - scan["s"][mid]
         cx = scan["ax"][mid] + tx * off
         cy = scan["ay"][mid] + ty * off
-        cx += nx * (max(setback, 0.3) + d / 2)
-        cy += ny * (max(setback, 0.3) + d / 2)
-        hw, hd = bw / 2, d / 2
+        cx += nx * (max(lot_setback, 0.3) + d / 2)
+        cy += ny * (max(lot_setback, 0.3) + d / 2)
+        hw, hd = lot_w / 2, d / 2
         out.append([(cx - tx * hw - nx * hd, cy - ty * hw - ny * hd),
                     (cx + tx * hw - nx * hd, cy + ty * hw - ny * hd),
                     (cx + tx * hw + nx * hd, cy + ty * hw + ny * hd),
@@ -402,11 +433,9 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
     """What stands, what cannot be built on and which streets are looked along,
     or None when there is nothing to look at."""
     import numpy as np
-    import shapely
-    from shapely.geometry import LineString, Polygon
+    from shapely.geometry import LineString
     from shapely.strtree import STRtree
 
-    from .projection import _inside
 
     k = proj.meters_per_tile
 
@@ -426,7 +455,7 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
     # parks and woods.
     hard: list = []
     fronts = []
-    for cat in ADDRESS_AVOIDS_ROADS | {"railway"}:
+    for cat in ADDRESS_AVOIDS_ROADS | PATH_AVOID_CATS:
         for f in buckets.get(cat, []):
             if _is_polygon(f):
                 continue
@@ -463,7 +492,8 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
 
 
 def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list,
-                     proj: Projector, clip=None) -> list[OSMFeature]:
+                     proj: Projector, clip=None,
+                     extend_ends: bool = True) -> list[OSMFeature]:
     """New buildings for the gaps along streets. See the module docstring."""
     from shapely.geometry import Polygon
 
@@ -517,7 +547,7 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                 if not (left or right):
                     continue
                 got = _lots_for_gap(scan, run[0], run[1], left, right, free,
-                                    joined_l or joined_r, lo, hi)
+                                    joined_l or joined_r, lo, hi, extend_ends)
                 if not got:
                     continue
                 lots, kind, levels = got
@@ -572,7 +602,7 @@ def _back_sheds(buckets: dict, vegetation_feats: list, building_feats: list,
     one is a function of where they stand, so the same map comes out the same.
     """
     import numpy as np
-    from shapely.geometry import Point, Polygon
+    from shapely.geometry import Polygon
     from shapely.strtree import STRtree
 
     from .projection import _inside

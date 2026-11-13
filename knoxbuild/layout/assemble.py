@@ -124,12 +124,6 @@ def build_building(width: int, height: int, levels: int = 1,
         above = bool(setback_at) and lvl >= setback_at
         return seed + 977 * (1 + int(above))
 
-    foot = (sum(1 for row in mask for cell in row if cell) if mask else width * height)
-    # A mansion is a big house, not a tall one: 12x11 over two storeys is a
-    # house that happens to have an upstairs, and dressing every one of those
-    # as a mansion put a piano and a gallery in half the town.
-    mansion = kind in (None, "house") and foot >= _houses.MANSION_FLOOR_TILES
-
     def _storey(lvl: int):
         return build_plan(width, height, commercial=commercial or (shops and lvl == 0),
                           seed=_plan_seed(lvl),

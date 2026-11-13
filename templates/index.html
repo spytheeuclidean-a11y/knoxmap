@@ -258,6 +258,16 @@
         <option value="rural">Rural</option>
       </select>
 
+      <div class="setting setting-switch" style="margin: 8px 0;">
+        <div class="setting-head">
+          <span class="setting-name">Terrain only (no buildings)</span>
+          <label class="switch"><input type="checkbox" role="switch"
+            id="terrainOnlyToggle" aria-label="Terrain only (no buildings)">
+            <span class="switch-track"></span></label>
+        </div>
+        <span class="setting-hint">Generates terrain, roads, railways, water and vegetation without placing any buildings.</span>
+      </div>
+
       <details id="advanced">
         <summary>More settings</summary>
         <input type="search" id="settingFind" class="list-search" hidden
@@ -514,6 +524,7 @@
               <option value="secondary">Through road</option>
               <option value="residential">Street</option>
               <option value="track">Dirt track</option>
+              <option value="railway">Railway</option>
             </select>
             <button type="button" id="placeRoadUndo" class="btn btn-small"
                     disabled>Undo point</button>
@@ -699,8 +710,13 @@
 <script src="/static/vendor/leaflet-draw/leaflet.draw.js"></script>
 <script src="/static/js/fx.js"></script>
 <script src="/static/js/draw.js"></script>
+<script src="/static/js/settings.js"></script>
 <script src="/static/js/app.js"></script>
+<script src="/static/js/drawing_board.js"></script>
+<script src="/static/js/building_editor.js"></script>
+<script src="/static/js/placement.js"></script>
 <script src="/static/js/iso_view.js"></script>
+<script src="/static/js/road_inspector.js"></script>
 <script src="/static/js/shell.js"></script>
 <script src="/static/js/i18n.js"></script>
 </body>

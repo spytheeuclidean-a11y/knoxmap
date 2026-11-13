@@ -282,7 +282,7 @@ def _generate(data):
     # so the street angle, the ground, the gardens and the .tbx all see them
     # exactly as they see a mapped one (generator/overture.py).
     gaps = {"added": 0}
-    if settings.fill_gaps:
+    if settings.fill_gaps and not settings.terrain_only:
         from generator import msbuildings, overture
         _set_progress(map_name, stage="overture", done=0, total=1)
         # Microsoft's files first: plain downloads, nothing to install. Overture
@@ -452,6 +452,7 @@ def _generate(data):
             straight_roads=int(settings.straight_roads),
             include_proposed_roads=int(settings.include_proposed_roads),
             fill_frontage=int(settings.fill_frontage),
+            terrain_only=int(settings.terrain_only),
             landcover_for=landcover_for,
             climate=(layers.climate if layers else None),
             winter_look=settings.winter_look,
@@ -487,6 +488,7 @@ def _generate(data):
         from_addresses = applied.get("houses_from_addresses", 0)
         applied["sketch_hash"] = _sketch_signature(drawn)
         applied["drawn_only"] = drawn_only
+        applied["houses_infilled"] = int(gaps.get("added", 0))
         knoxfiles.write(str(map_dir / f"{map_name}_info.json"), applied)
     except (OSError, ValueError):
         pass
@@ -516,6 +518,7 @@ def _generate(data):
         # footprints or Overture, whichever answered - and when it added
         # nothing, why not, in a sentence the window can show as it stands.
         "fromGapFill": gaps.get("added", 0),
+        "fromStreetInfill": int(gaps.get("added", 0)),
         "gapFillWhy": gaps.get("error") or gaps.get("why") or "",
         # What the optional data layers did (knoxdata/): which applied, the
         # suggested preset from real land cover, and the region/climate read.

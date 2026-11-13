@@ -73,7 +73,7 @@ class Palette(unittest.TestCase):
     def test_the_palette_comes_out_under_one_heading_each(self):
         # The window starts a heading wherever the group changes, so a group
         # that appears twice draws two headings with other tools between them.
-        seen, runs = set(), []
+        runs = []
         for entry in sketch.palette():
             if not runs or runs[-1] != entry["group"]:
                 runs.append(entry["group"])

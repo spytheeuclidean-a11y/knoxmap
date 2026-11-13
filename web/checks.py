@@ -192,6 +192,7 @@ RENDER_SETTINGS = ["align_streets", "rotate_degrees", "straight_roads", "include
                    "forest_seed", "forest_house_clearing_m", "forest_big_trees",
                    "forest_groves", "forest_wild_growth", "forest_shrubland",
                    "fill_gaps", "fill_frontage",
+                   "terrain_only",
                    # Enrichment layers (knoxdata/): they colour the ground and
                    # tag buildings, so changing one redraws the map.
                    "landcover", "elevation", "max_relief", "ne_context",

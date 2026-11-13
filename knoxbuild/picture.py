@@ -18,7 +18,6 @@ background at the size asked for.
 from __future__ import annotations
 
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -112,7 +111,7 @@ def _on_background(picture: Image.Image, size: tuple[int, int]) -> Image.Image:
 def picture(map_dir: str | Path, out_png: str | Path | None = None,
             box: tuple[int, int, int, int] | None = None,
             roofs: bool = True, size: tuple[int, int] = SIZE,
-            scale: float | None = None) -> Image.Image:
+            scale: float | None = None, progress=None) -> Image.Image:
     """A picture of the map, or of `box` (x, y, width, height) of it.
 
     `roofs=False` takes the top off, which is how every room and everything
@@ -139,12 +138,17 @@ def picture(map_dir: str | Path, out_png: str | Path | None = None,
     x, y, w, h = _within_budget(x, y, w, h, scale)
 
     drawn = render_lots.render(str(map_dir), x, y, w, h,
-                               max_level=None if roofs else 0, scale=scale)
+                               max_level=None if roofs else 0, scale=scale,
+                               progress=progress)
     if drawn is None:
         raise FileNotFoundError(
             f"nothing of {map_dir.name} is compiled at {x},{y} {w}x{h}.")
+    if progress:
+        progress(96, "Trimming & framing image…")
     out = _on_background(_trim(drawn), size)
     if out_png:
+        if progress:
+            progress(98, "Saving PNG file…")
         Path(out_png).parent.mkdir(parents=True, exist_ok=True)
         out.save(out_png)
     return out

@@ -8,7 +8,6 @@ map: "big trees seem to almost never generate, leading to very disappointing
 results. in areas such as parks more big trees should probably generate,
 especially around the edges".
 """
-import os
 import subprocess
 import sys
 import tempfile

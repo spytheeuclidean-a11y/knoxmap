@@ -1,4 +1,4 @@
-"""The Forest card: its table in app.js, its labels and their translations."""
+"""The Forest card: its table in settings.js, its labels and their translations."""
 import re
 import unittest
 from pathlib import Path
@@ -8,7 +8,10 @@ from dataclasses import fields
 from knoxbuild.settings import LIMITS, Settings
 
 ROOT = Path(__file__).resolve().parent.parent
-APP = (ROOT / "static" / "js" / "app.js").read_text(encoding="utf-8")
+# The page's scripts, split across static/js/ (the settings tables are in
+# settings.js), read as one.
+APP = "\n".join(p.read_text(encoding="utf-8")
+                for p in sorted((ROOT / "static" / "js").glob("*.js")))
 MAIN = ["forest_density", "forest_thickets", "forest_stand_m", "forest_stand_variety",
         "forest_edge_m"]
 ADVANCED = [
@@ -24,7 +27,7 @@ UI_LINES = ["Forest", "Reset", "Advanced", "Shape", "Around the woods", "Everywh
 
 def block(name):
     m = re.search(rf"const {name} = \{{(.*?)\n\}};", APP, re.S)
-    assert m, f"{name} not found in app.js"
+    assert m, f"{name} not found in static/js/"
     return m.group(1)
 
 

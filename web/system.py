@@ -484,9 +484,11 @@ def api_settings():
                 [value, value.capitalize()]
                 for value in BUILDING_ALIGNMENT_OPTIONS],
             "arch_style": [["auto", "Auto"], ["cn", "Chinese"], ["off", "Default"]],
-            "straight_roads": [[0, "As mapped"], [1, "Knox County straight"],
-                               [4, "Knox County straight (clean)"],
+            "straight_roads": [[0, "As mapped"], [4, "Knox County straight"],
                                [2, "Vanilla curves"], [3, "Vanilla curves, built-up streets square"]],
+            "fill_frontage": [[0, "Off"],
+                              [1, "Fill gaps and extend row ends"],
+                              [2, "Fill gaps between buildings only"]],
             "height_mix": [["auto", "As the place is"],
                            ["low", "Mostly low, a few taller"],
                            ["middle", "Mostly middling"],

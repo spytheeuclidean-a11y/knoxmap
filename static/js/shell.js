@@ -319,7 +319,9 @@
         + ' read by every map in place of the regional file KnoxMap would download.'
         + ' Check reports whether it is whole, what it covers, and whether there are'
         + ' roads and buildings in it. The same check runs as tools/verify_pbf.py.</div>'
-        + '<hr>' + item('Map data server…', () => dialog('Map data server', [$('overpassCard')])),
+        + '<hr>' + item('Map data server…', () => dialog('Map data server', [$('overpassCard')]))
+        + '<hr>' + item('Road & sidewalk inspector…',
+          () => window.openRoadInspector && window.openRoadInspector(currentMap), { off: !open }),
       Help: () => item('Check my setup…', () => { dialog('Check my setup', [$('healthCard')]); click('healthBtn'); })
         + item('Discord', () => { const a = top.querySelector('.byline a[href*="discord"]'); if (a) a.click(); })
         + item('Report a problem', () => click('reportLink'))

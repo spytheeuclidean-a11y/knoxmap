@@ -140,6 +140,7 @@ def _map_summary(map_dir: Path) -> dict:
         "cellsX": info.get("cells_x", 0),
         "cellsY": info.get("cells_y", 0),
         "featureCount": info.get("feature_count") or info.get("building_count", 0),
+        "fromStreetInfill": int(info.get("houses_infilled", 0)),
         "rotation": round(info.get("rotation", 0.0), 1),
         "updated": int(map_dir.stat().st_mtime),
         # What it was made from, so the window can run the steps again

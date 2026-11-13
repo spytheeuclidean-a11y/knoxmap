@@ -14,6 +14,8 @@
   let startY = 0;
   let touchStartDist = 0;
   let touchStartScale = 1.0;
+  let userTransformed = false;
+  let viewportObserver = null;
 
   let el = null;
   let stage = null;
@@ -120,6 +122,7 @@
               <button type="button" class="btn btn-small" id="isoZoom100" title="Real in-game 1:1 scale">1:1</button>
             </div>
             <button type="button" class="btn btn-small" id="isoDownload" title="Save current image">Save picture</button>
+            <button type="button" class="btn btn-small" id="isoDelete" title="Delete cached image so it can be regenerated">Delete image</button>
           </div>
         </header>
 
@@ -213,10 +216,13 @@
     bindEvents();
   }
 
+  let progressPollTimer = null;
+
   function startProgress(title, sub, estimatedSecs = 4) {
     ensureElements();
     isCancelled = false;
     if (progressTimer) clearInterval(progressTimer);
+    if (progressPollTimer) clearInterval(progressPollTimer);
 
     if (progressTitle) progressTitle.textContent = title || 'Loading isometric view…';
     if (progressSub) progressSub.textContent = sub || 'Reading map data…';
@@ -231,6 +237,27 @@
 
     progressStartTime = Date.now();
     const durationMs = Math.max(1000, estimatedSecs * 1000);
+    let hasServerProgress = false;
+
+    if (activeMap) {
+      progressPollTimer = setInterval(async () => {
+        if (isCancelled || !activeMap) return;
+        try {
+          const res = await fetch(`/api/iso-progress/${encodeURIComponent(activeMap)}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.stage) {
+            hasServerProgress = true;
+            const p = Math.max(1, Math.min(99, Number(data.pct) || 1));
+            if (progressBar) progressBar.style.width = `${p}%`;
+            if (progressPercent) progressPercent.textContent = `${p}%`;
+            if (progressSub) progressSub.textContent = data.stage;
+          }
+        } catch (_) {
+          // Ignore transient poll errors while rendering.
+        }
+      }, 400);
+    }
 
     progressTimer = setInterval(() => {
       const elapsed = Date.now() - progressStartTime;
@@ -238,6 +265,7 @@
       const min = Math.floor(sec / 60);
       const remSec = String(sec % 60).padStart(2, '0');
       if (progressClock) progressClock.textContent = `⏱️ ${min}:${remSec}`;
+      if (hasServerProgress) return;
 
       let p = 0;
       if (elapsed < durationMs * 0.4) {
@@ -271,6 +299,10 @@
     if (progressTimer) {
       clearInterval(progressTimer);
       progressTimer = null;
+    }
+    if (progressPollTimer) {
+      clearInterval(progressPollTimer);
+      progressPollTimer = null;
     }
 
     if (isError) {
@@ -312,7 +344,11 @@
     if (currentMode === 'sector' && currentSector) {
       return { x: currentSector.x, y: currentSector.y, w: currentSector.w, h: currentSector.h };
     }
-    if (currentMode === 'close') {
+    const serverBox = mapInfo?.picture_boxes?.[currentMode];
+    if (serverBox && serverBox.w > 0 && serverBox.h > 0) {
+      return serverBox;
+    }
+    if (currentMode === 'close' || (currentMode === 'inside' && !mapInfo?.pictures?.inside_town)) {
       const close = Math.min(320, Math.max(120, Math.floor(Math.min(W, H) / 3)));
       return {
         x: Math.max(0, Math.floor(W / 2 - close / 2)),
@@ -345,7 +381,8 @@
 
     const cx = iw / 2;
     const cy = ih / 2;
-    const half = iw / (box.w + box.h);
+    const diamondW = currentMode === 'sector' ? iw : Math.min(iw, ih * 2);
+    const half = diamondW / (box.w + box.h);
     const quarter = half / 2;
 
     const dx = imgX - cx;
@@ -566,6 +603,7 @@
         return;
       }
       if (!isDragging) return;
+      userTransformed = true;
       panX = e.clientX - startX;
       panY = e.clientY - startY;
       applyTransform();
@@ -592,6 +630,7 @@
       const newScale = Math.max(0.08, Math.min(8.0, scale * factor));
       if (newScale === scale) return;
 
+      userTransformed = true;
       panX = cx - (cx - panX) * (newScale / scale);
       panY = cy - (cy - panY) * (newScale / scale);
       scale = newScale;
@@ -686,6 +725,15 @@
       renderSectorBox(startX, startY, w, h, roofs);
     });
 
+    if (typeof ResizeObserver !== 'undefined' && !viewportObserver) {
+      viewportObserver = new ResizeObserver(() => {
+        if (!userTransformed && img && img.naturalWidth) {
+          fitToScreen();
+        }
+      });
+      viewportObserver.observe(viewport);
+    }
+
     // Back to full town overview button
     backOverviewBtn?.addEventListener('click', () => setMode('town'));
 
@@ -719,6 +767,49 @@
       a.href = img.src;
       a.download = `${activeMap || 'map'}_isometric_${currentMode}.png`;
       a.click();
+    });
+
+    // Delete cached image so it can be regenerated
+    const deleteBtn = document.getElementById('isoDelete');
+    deleteBtn?.addEventListener('click', async () => {
+      if (!activeMap) return;
+      let box = null;
+      if (currentMode === 'sector') {
+        const sx = parseInt(document.getElementById('isoSectorX')?.value || '0', 10);
+        const sy = parseInt(document.getElementById('isoSectorY')?.value || '0', 10);
+        const sw = parseInt(document.getElementById('isoSectorW')?.value || '0', 10);
+        const sh = parseInt(document.getElementById('isoSectorH')?.value || '0', 10);
+        box = currentSector
+          ? [currentSector.x, currentSector.y, currentSector.w, currentSector.h]
+          : [sx, sy, sw, sh];
+      } else if (currentMode === 'close' && mapInfo?.picture_boxes?.close) {
+        const b = mapInfo.picture_boxes.close;
+        box = [b.x, b.y, b.w, b.h];
+      }
+      deleteBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/iso-delete/${encodeURIComponent(activeMap)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: currentMode, box }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (mapInfo && mapInfo.pictures && currentMode !== 'sector') {
+          delete mapInfo.pictures[currentMode];
+        }
+        img.removeAttribute('src');
+        if (currentMode === 'sector' && box) {
+          renderSectorBox(box[0], box[1], box[2], box[3], currentSector ? currentSector.roofs : 1, true);
+        } else {
+          setMode(currentMode);
+        }
+      } catch (err) {
+        if (typeof window.setStatus === 'function') {
+          window.setStatus(`Could not delete image: ${err.message}`);
+        }
+      } finally {
+        deleteBtn.disabled = false;
+      }
     });
 
     // Mode buttons
@@ -800,6 +891,7 @@
     const cx = viewport.clientWidth / 2;
     const cy = viewport.clientHeight / 2;
     const newScale = Math.max(0.08, Math.min(8.0, scale * factor));
+    userTransformed = true;
     panX = cx - (cx - panX) * (newScale / scale);
     panY = cy - (cy - panY) * (newScale / scale);
     scale = newScale;
@@ -812,6 +904,7 @@
     const cx = viewport.clientWidth / 2;
     const cy = viewport.clientHeight / 2;
     const newScale = Math.max(0.08, Math.min(8.0, targetScale));
+    userTransformed = true;
     panX = cx - (cx - panX) * (newScale / scale);
     panY = cy - (cy - panY) * (newScale / scale);
     scale = newScale;
@@ -823,6 +916,10 @@
     if (!viewport || !img || !img.naturalWidth) return;
     const vw = viewport.clientWidth;
     const vh = viewport.clientHeight;
+    if (vw <= 32 || vh <= 32) {
+      requestAnimationFrame(fitToScreen);
+      return;
+    }
     const iw = img.naturalWidth;
     const ih = img.naturalHeight;
 
@@ -830,6 +927,7 @@
     scale = Math.max(0.08, fitScale);
     panX = (vw - iw * scale) / 2;
     panY = (vh - ih * scale) / 2;
+    userTransformed = false;
     applyTransform();
   }
 
@@ -906,9 +1004,14 @@
 
     if (src) {
       loadImage(src, title, 'Reading generated town picture', 2);
+    } else if (mode === 'close' && mapInfo.picture_boxes && mapInfo.picture_boxes.close) {
+      const b = mapInfo.picture_boxes.close;
+      const scale = Math.min(1, 412 / Math.max(10, b.w + b.h));
+      const fallbackUrl = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${b.x},${b.y},${b.w},${b.h}&scale=${scale.toFixed(2)}&roofs=1&t=${Date.now()}`;
+      loadImage(fallbackUrl, title, 'Rendering town center on demand…', 5);
     } else {
       const roofs = mode !== 'inside';
-      const fallbackUrl = `/api/iso-render/${encodeURIComponent(activeMap)}?roofs=${roofs ? 1 : 0}&scale=0.5`;
+      const fallbackUrl = `/api/iso-render/${encodeURIComponent(activeMap)}?roofs=${roofs ? 1 : 0}&scale=0.5&t=${Date.now()}`;
       loadImage(fallbackUrl, title, 'Rendering preview on demand…', 5);
     }
   }

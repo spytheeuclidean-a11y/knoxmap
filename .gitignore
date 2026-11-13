@@ -19,6 +19,9 @@ __pycache__/
 venv/
 .ruff_cache/
 .pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
 
 # Generated maps, OpenStreetMap downloads and compiled lots. Large, and built
 # from OSM data rather than source. The folder itself is kept.
@@ -79,5 +82,12 @@ rust/*/target/
 # ESLint and node:test for static/js; installed by CI, never shipped.
 node_modules/
 
+# Local scan output (graphify, graft), never source.
+/graft/
+/graphify-out/
+
 # A snapshot of the tree taken before 0.87: kept locally, not source.
 .pre87_backup/
+
+# Local WorldEd regression fixtures (set KNOXLOTS_FIXTURES to use)
+rust/knoxlots/fixtures/

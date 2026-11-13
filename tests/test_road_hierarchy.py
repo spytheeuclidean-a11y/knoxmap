@@ -1,6 +1,7 @@
 import unittest
 from types import SimpleNamespace
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import numpy as np
 from PIL import Image
@@ -196,6 +197,31 @@ class RoadHierarchyTests(unittest.TestCase):
         local_stalls = sum(zone.kind == "ParkingStall" for zone in local_zones)
         motorway_stalls = sum(zone.kind == "ParkingStall" for zone in motorway_zones)
         self.assertGreater(local_stalls, motorway_stalls)
+
+    def test_kerbside_bays_do_not_place_wheel_stops_on_roads(self):
+        """Kerbside parking zones stay invisible; no concrete wheel-stop curbs
+        are painted onto roads or paths."""
+        with TemporaryDirectory() as directory:
+            ground_path = f"{directory}/map.bmp"
+            veg_path = f"{directory}/map_veg.bmp"
+            pixels = Image.new("RGB", (80, 60), renderer.C.DARK_GRASS)
+            for y in range(16, 31):
+                for x in range(80):
+                    pixels.putpixel((x, y), renderer.C.MEDIUM_ASPHALT)
+            pixels.save(ground_path)
+            Image.new("RGB", (80, 60), renderer.C.VEG_NOTHING).save(veg_path)
+            classes = np.zeros((60, 80), dtype=np.uint8)
+            classes[16:31, :] = osm.ROAD_HIERARCHY_CODES["residential"]
+            with mock.patch("knoxbuild.yards._rule_ready", return_value=True):
+                zones = building._detect_zones(
+                    ground_path, [], settings=SimpleNamespace(parking_density=1.0),
+                    road_hierarchy=classes, veg_path=veg_path)
+            veg = np.asarray(Image.open(veg_path).convert("RGB"))
+            painted = {tuple(colour) for colour in veg.reshape(-1, 3)}
+
+        self.assertTrue(any(zone.kind == "ParkingStall" for zone in zones), "no bays")
+        stops = painted & (set(renderer.C.PARKING_BLOCK_X) | set(renderer.C.PARKING_BLOCK_Y))
+        self.assertFalse(stops, "wheel stops should not be laid on roads or paths")
 
     def test_commercial_frontage_prefers_higher_order_road_at_equal_distance(self):
         with TemporaryDirectory() as directory:

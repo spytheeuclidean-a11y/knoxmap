@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import random
 import zlib
-from xml.sax.saxutils import escape, quoteattr
+from xml.sax.saxutils import quoteattr
 
 from . import catalog as C
 from .layout import ROOM_STYLE, Building, Plan, _erika_ready, roof_rects
@@ -162,12 +162,9 @@ def floor_options(kind: str, of_kind: dict, mansion: bool = False) -> list[str]:
             if o in C.EXTRA_FLOORS]
 
 
-# Flat roofs carry plant: bare tar from edge to edge read as unfinished. One
-# air-conditioning unit per ROOF_AC_EVERY tiles of roof, a vent per
-# ROOF_VENT_EVERY, and a hatch, kept off the edges and off each other.
+# Flat roofs carry a few rooftop AC units, kept off the edges and well spaced.
 ROOF_MIN_TILES = 60
-ROOF_AC_EVERY = 90
-ROOF_VENT_EVERY = 60
+ROOF_AC_EVERY = 300
 
 
 def _rooftop(grid: list[list[int]], width: int, height: int,
@@ -180,23 +177,52 @@ def _rooftop(grid: list[list[int]], width: int, height: int,
     if area < ROOF_MIN_TILES or not tiles:
         return []
     rng = random.Random(f"{seed}:{width}:{height}:{area}")
-    # Only the air-conditioning unit stands on a roof. Every other tile in
-    # rooftop_furniture (the vents at 014/015, the hatch at 016/022/023) is
-    # attachedCeiling or a wall-mounted Conditioner, and the game hangs a
-    # ceiling tile from the ceiling of the level it sits on - on the roof floor
-    # that is a storey above the roof, so they floated over the building. The
-    # count is kept, so a roof still carries as many pieces as it did.
-    wanted = ["roof_ac"] * (1 + max(1, area // ROOF_AC_EVERY)
-                            + area // ROOF_VENT_EVERY)
+    # Only the air-conditioning unit stands on a roof (vents/hatches in
+    # rooftop_furniture are attachedCeiling/wall-mounted and floated above the
+    # roof). Keep the count sparse so roofs look realistic rather than cluttered.
+    wanted = ["roof_ac"] * max(1, area // ROOF_AC_EVERY)
     taken: set[tuple[int, int]] = set()
     out = []
     rng.shuffle(tiles)
     for role in wanted:
         for x, y in tiles:
-            if any((x + dx, y + dy) in taken for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+            if any(abs(x - ox) <= 3 and abs(y - oy) <= 3 for ox, oy in taken):
                 continue
             taken.add((x, y))
             out.append((role, x, y, rng.choice(("W", "N"))))
+            break
+    return out
+
+
+CHIMNEY_MIN_TILES = 30
+CHIMNEY_SECOND_AT = 220
+
+
+def _chimneys(grid: list[list[int]], width: int, height: int,
+              seed: str | int = 0) -> list[tuple[str, int, int, str]]:
+    """Chimneys on a pitched roof, where the camera sees every one.
+
+    A gabled roof came out as a bare slope of tiles. Build 42 has no chimney
+    of its own in the roof sets, but the brick stacks on rooftop_furniture
+    (024/025) stand on a floor like the air-conditioning unit does, and on the
+    roof floor that is where a chimney belongs. The big houses get two.
+    """
+    import random
+
+    tiles = [(x, y) for y in range(1, height - 1) for x in range(1, width - 1)
+             if all(grid[y + dy][x + dx] for dy in (-1, 0, 1) for dx in (-1, 0, 1))]
+    area = sum(1 for row in grid for value in row if value)
+    if area < CHIMNEY_MIN_TILES or not tiles:
+        return []
+    rng = random.Random(f"{seed}:chimney:{width}:{height}:{area}")
+    rng.shuffle(tiles)
+    wanted = 1 + (1 if area >= CHIMNEY_SECOND_AT else 0)
+    out = []
+    for _ in range(wanted):
+        for x, y in tiles:
+            if any(abs(x - ox) <= 1 and abs(y - oy) <= 1 for _r, ox, oy, _o in out):
+                continue
+            out.append(("roof_chimney", x, y, rng.choice(("W", "N"))))
             break
     return out
 
@@ -241,6 +267,46 @@ def _storefront_runs(storey, doors) -> list[tuple[str, int, int, int]]:
                 runs.append((d, fixed, start, t - start))
                 start = None
     return runs
+
+
+def shopfront_dressing(storey, rng) -> tuple[dict, dict]:
+    """Tiles for a shop's awnings and its sign, for maps without Erika's Tiles.
+
+    The game's own shop furniture has both: awnings to sit over the glass and
+    four-tile signboards to hang on the wall a storey up. Without them a shop
+    is windows in brick, which from across the road is a row of boxes with
+    doors. Returns ((x, y) -> sign tile, (x, y) -> awning tile): the sign on
+    the squares a floor above the glass, the awnings over the glass itself,
+    skipping the door.
+    """
+    runs = [r for r in _storefront_runs(storey, storey.doors) if r[3] >= 2]
+    if not runs:
+        return {}, {}
+    grid = storey.grid
+    # Only a south or east wall is seen from the street: a sign on the other
+    # side of the building hangs on its inner face.
+    visible = [r for r in runs
+               if (r[0] == "N" and (r[1] >= len(grid) or not grid[r[1]][r[2]]))
+               or (r[0] == "W" and (r[1] >= len(grid[0]) or not grid[r[2]][r[1]]))]
+    if not visible:
+        return {}, {}
+    door_at = {(x, y) for x, y, _d in storey.doors}
+    awning = rng.choice(C.AWNINGS)
+    awnings = {}
+    for d, fixed, start, length in visible:
+        for t in range(start, start + length):
+            x, y = (fixed, t) if d == "W" else (t, fixed)
+            if (x, y) not in door_at:
+                awnings[(x, y)] = awning[d]
+    d, fixed, start, length = max(visible, key=lambda r: r[3])
+    fits = [s for s in C.GAME_SIGNS.get(d, ()) if len(s) <= length]
+    sign = {}
+    if fits:
+        strip = rng.choice(fits)
+        first = start + (length - len(strip)) // 2
+        sign = {((fixed, first + j) if d == "W" else (first + j, fixed)): tile
+                for j, tile in enumerate(strip)}
+    return sign, awnings
 
 
 def _add(entries: list[dict], entry: dict | None) -> int:
@@ -353,7 +419,9 @@ def render_tbx(plan: Plan | Building, name: str,
     glazed: set[tuple[int, int, str]] = set()
     user_tiles: dict[int, dict[tuple[int, int], str]] = {}
     store_ext = store_int = store_door = 0
-    if front_idx and C.ERIKA_STOREFRONTS and storeys[0].shop_front and _erika_ready():
+    erika_front = bool(front_idx and C.ERIKA_STOREFRONTS and storeys[0].shop_front
+                       and _erika_ready())
+    if erika_front:
         rng = random.Random(name)
         ext, inte, door = rng.choice(C.ERIKA_STOREFRONTS)
         store_ext, store_int, store_door = _add(entries, ext), _add(entries, inte), _add(entries, door)
@@ -377,6 +445,20 @@ def render_tbx(plan: Plan | Building, name: str,
                 first = start + (length - len(sign)) // 2
                 user_tiles[1] = {((fixed, first + j) if d == "W" else (first + j, fixed)): tile
                                  for j, tile in enumerate(sign)}
+    # Without Erika's Tiles a shop front is windows in brick. The game's own
+    # shop furniture has an awning to hang over the glass and a signboard to
+    # hang a storey up; both are painted tiles, so they cost the file nothing
+    # but their names.
+    if storeys[0].shop_front and not erika_front:
+        sign, awnings = shopfront_dressing(storeys[0],
+                                           random.Random(f"{name}:shopfront"))
+        # A signboard hangs one storey up, over the glass. A single-storey shop
+        # has no storey there to hang it on, and the roof floor is not a wall -
+        # the sign would be painted on the slates.
+        if sign and len(storeys) > 1:
+            user_tiles[1] = sign
+        if awnings:
+            user_tiles.setdefault(0, {}).update(awnings)
     # A depth-three flat roof walls in its storey with the cap entry's
     # CapGap tiles, which BuildingTemplates.txt sets to stucco - every top
     # floor came out stucco whatever the building was made of. Give each
@@ -389,8 +471,12 @@ def render_tbx(plan: Plan | Building, name: str,
         entries.append({"category": "roof_caps", "tiles": cap})
         roof_cap_idx = len(entries)
 
-    rooftop = [] if peaked or garage_only else _rooftop(
-        storeys[-1].grid, building.width, building.height, name)
+    if peaked and not garage_only:
+        rooftop = _chimneys(storeys[-1].grid, building.width, building.height, name)
+    elif peaked or garage_only:
+        rooftop = []
+    else:
+        rooftop = _rooftop(storeys[-1].grid, building.width, building.height, name)
     # Which furniture roles this building actually uses, in first-use order.
     roles: list[str] = []
     for storey in storeys:
@@ -426,7 +512,7 @@ def render_tbx(plan: Plan | Building, name: str,
     # again. A style's own floor still overrides the lot. This has to happen
     # before the tile entries are written out below, and before used_tiles is
     # counted, or the new entries never reach the file.
-    from .layout import FLOOR_CHOICES, KIND_FLOOR_CHOICES
+    from .layout import KIND_FLOOR_CHOICES
 
     # What sort of building this is, for the rooms it floors differently: a
     # station's corridor is not somebody's hallway.

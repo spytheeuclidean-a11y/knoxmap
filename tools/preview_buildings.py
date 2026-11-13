@@ -7,7 +7,6 @@ Writes <map>_buildings_overlay.png and <map>_floorplan.png.
 from __future__ import annotations
 
 import csv
-import json
 import os
 import sys
 

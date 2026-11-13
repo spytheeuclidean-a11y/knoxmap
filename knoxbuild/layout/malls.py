@@ -244,7 +244,8 @@ def _mall_plan(plan: Plan, rng: random.Random, target: int, level: int,
 
     # The units, the corridor and whatever is left behind it, side by side.
     shop_kinds = [f for f, _b in uses or () if f in MALL_SHOP_KINDS]
-    deal = list(MALL_SHOP_KINDS)
+    # Extra tickets make these shops more likely without displacing mapped uses.
+    deal = list(MALL_SHOP_KINDS) + ["gunstore", "jewelrystore"]
     rng.shuffle(deal)
     deal = shop_kinds + deal
     dealt = 0
@@ -652,7 +653,9 @@ GLAZED_UNITS = {"clothesstore", "shoestore", "sewingstore", "electronicsstore",
                 "giftstore", "toystore", "bookstore", "furniturestore",
                 "sportstore", "jewelrystore", "musicstore", "candystore",
                 "toolstore", "pharmacy", "generalstore", "gunstore", "bakery",
-                "cafe", "foodcourt", "grocery", "conveniencestore"}
+                "cafe", "foodcourt", "grocery", "conveniencestore",
+                "gardenstore", "armysurplus", "hunting", "artstore", "petstore",
+                "camerastore"}
 # The kinds an inline unit of a mall is let as: the shops of the mall's own
 # mix that stand open to the concourse, less the department store, which is
 # an anchor's, and the food court, which has a block of its own.

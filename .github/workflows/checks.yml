@@ -72,12 +72,18 @@ jobs:
         run: python -m compileall -q app.py knoxmap.py knoxmap_setup.py knoxpaths.py generator knoxbuild tools web worlded
 
       # Mistakes, not style: an undefined name, a comparison that is always
-      # true, a statement that does nothing. pyproject.toml says why the wider
-      # rule set is not here yet.
+      # true, a statement that does nothing. pyproject.toml lists the rules
+      # selected and the next one to add.
       - name: Lint
         run: |
           pip install -r requirements-dev.txt
           ruff check .
+
+      # A line of the window is a translation key, so a message with no line in
+      # lang/english.txt can never be translated. The script only adds whole
+      # messages and never removes one; see pyproject.toml for the rule set.
+      - name: Language template has every message
+        run: python tools/make_lang_template.py --check
 
       - name: JavaScript parses
         run: |

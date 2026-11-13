@@ -128,6 +128,47 @@ def _tidy(path: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return out
 
 
+def _de_dogleg(path: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Two straight runs a tile apart are one run.
+
+    The fit puts a long street's halves on neighbouring grid lines more often
+    than it should, and the step between them reads in game as the road
+    shifting sideways for no reason. Everything from the step on moves back
+    onto the line it came from, so the street runs straight through.
+    """
+    out = [tuple(p) for p in path]
+    i = 1
+    while i <= len(out) - 2:
+        a, b, c = out[i - 1], out[i], out[i + 1]
+        step = (b[0] - a[0], b[1] - a[1])
+        ahead = (c[0] - b[0], c[1] - b[1])
+        step_len = abs(step[0]) + abs(step[1])
+        is_ortho_step = step_len == 1 or (
+            step_len == 2 and (step[0] == 0 or step[1] == 0)
+        )
+        min_ahead = 3 if step_len == 1 else 6
+        is_ortho_ahead = (step[0] * ahead[0] + step[1] * ahead[1] == 0
+                          and abs(ahead[0]) + abs(ahead[1]) >= min_ahead)
+        is_diag_ahead = (abs(ahead[0]) == abs(ahead[1]) >= min_ahead
+                         and step[0] * ahead[0] >= 0
+                         and step[1] * ahead[1] >= 0)
+        if is_ortho_step and ahead != step \
+                and (is_ortho_ahead or is_diag_ahead):
+            dx, dy = -step[0], -step[1]
+            # the run after the step, up to where it turns: that run moves
+            # onto the line, and the road carries on from the same corner.
+            last = i + 1
+            while last + 1 < len(out) and \
+                    (out[last + 1][0] - out[last][0], out[last + 1][1] - out[last][1]) == ahead:
+                last += 1
+            for j in range(i, last + 1):
+                out[j] = (out[j][0] + dx, out[j][1] + dy)
+            del out[i]
+            continue
+        i += 1
+    return out
+
+
 def _rigid(f, px: list) -> bool:
     """Whether this road is left exactly as it was drawn: a roundabout, or any
     small closed loop, which has no straight sides to fit."""
@@ -499,6 +540,8 @@ def straighten_roads(features: list, proj, classify, is_polygon, clean: bool = F
         for v in verts[1:]:
             path += _legs(path[-1], snapped[v])
         path = _tidy(path)
+        if clean:
+            path = _tidy(_de_dogleg(path))
         if len(path) < 2:
             drawn.append(None)
             continue

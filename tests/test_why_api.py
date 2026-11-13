@@ -116,7 +116,10 @@ class ThePageAsks(unittest.TestCase):
 
     def setUp(self):
         root = Path(__file__).resolve().parent.parent
-        self.js = (root / "static" / "js" / "app.js").read_text(encoding="utf-8")
+        self.js = "\n".join(
+            p.read_text(encoding="utf-8")
+            for p in sorted((root / "static" / "js").glob("*.js"))
+        )
         self.html = (root / "templates" / "index.html").read_text(encoding="utf-8")
 
     def test_the_building_that_was_clicked_is_asked_about(self):

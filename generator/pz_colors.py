@@ -94,6 +94,18 @@ KERB_NW = (12, 34, 204)
 KERB_SW = (12, 34, 205)
 KERB_NE = (12, 34, 206)
 KERB_SE = (12, 34, 207)
+# A kerb on a diagonal edge, which the four square kerbs above cannot draw: on a
+# street that crosses the tile grid at an angle the tarmac is diagonal to the
+# square, not beside it. Two per direction - the pair the game's own sheet gives
+# for that 45-degree edge (tools/preview_diag_kerbs.py lists them all).
+KERB_DNW_0 = (12, 34, 208)
+KERB_DNW_1 = (12, 34, 209)
+KERB_DNE_0 = (12, 34, 210)
+KERB_DNE_1 = (12, 34, 211)
+KERB_DSW_0 = (12, 34, 212)
+KERB_DSW_1 = (12, 34, 213)
+KERB_DSE_0 = (12, 34, 214)
+KERB_DSE_1 = (12, 34, 215)
 LINE_YELLOW_N = (12, 35, 200)
 LINE_YELLOW_W = (12, 35, 201)
 LINE_WHITE_N = (12, 35, 202)
@@ -114,6 +126,33 @@ STORM_DRAIN = (12, 36, 207)
 LITTER = (12, 36, 208)
 MAILBOX = (12, 36, 209)
 BIN = (12, 36, 210)
+# A utility pole on the verge, from the street decoration sheet's bare pole.
+# Painted only when the rules carry it: a colour with no rule behind it is
+# dropped with a warning.
+UTILITY_POLE = (12, 36, 211)
+# Benches, the news kiosk and the blue collection box, one colour per square
+# (worlded/patch_rules_roads.py). A bench is two squares long. The catalogue
+# draws the backless bench in two axes only - orient W runs it along y, orient
+# N along x - so a kerb running north-south takes BENCH_Y.
+BENCH_Y = ((12, 41, 200), (12, 41, 201))
+BENCH_X = ((12, 41, 202), (12, 41, 203))
+KIOSK_N = (12, 41, 212)
+KIOSK_E = (12, 41, 213)
+KIOSK_S = (12, 41, 214)
+KIOSK_W = (12, 41, 215)
+POSTBOX_N = (12, 41, 216)
+POSTBOX_E = (12, 41, 217)
+POSTBOX_S = (12, 41, 218)
+POSTBOX_W = (12, 41, 219)
+# A manhole cover on the pavement.
+MANHOLE = (12, 41, 220)
+# A dog house and a swing in a back yard (knoxbuild/yards.py).
+DOG_HOUSE = (12, 41, 221)
+# Concrete wheel stops across the mouth of a kerbside bay (knoxbuild/build.py).
+# Three squares each, across the bay: PARKING_BLOCK_X runs along x (for a bay
+# on a north-south road), PARKING_BLOCK_Y along y.
+PARKING_BLOCK_X = ((12, 41, 230), (12, 41, 231), (12, 41, 232))
+PARKING_BLOCK_Y = ((12, 41, 233), (12, 41, 234), (12, 41, 235))
 # Speed limit signs from Erika's Tiles, painted only when that mod is set up:
 # (limit, facing) -> colour. A sign faces the traffic that drives past it.
 SPEED_SIGNS = {(25, "S"): (12, 38, 200), (25, "E"): (12, 38, 201),

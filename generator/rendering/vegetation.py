@@ -155,7 +155,6 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
 
     rng = random.Random(0x5EED)
     draw = ImageDraw.Draw(veg)
-    land_draw = ImageDraw.Draw(landscape)
     vp = veg.load()
     lp = landscape.load()
     w, h = veg.size
