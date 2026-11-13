@@ -266,6 +266,9 @@
               <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
             </div>
           </div>
+          <label class="check setting setting-static"><input type="checkbox" id="drawnOnly">
+            Only what I draw <span class="hint">- nothing is downloaded, so a
+            place that is not on OpenStreetMap can be built</span></label>
         </div>
         <!-- After the tab's own settings: the area, its corners and what it
              comes to. -->
@@ -330,9 +333,6 @@
         <input type="search" id="sketchFind" class="list-search" hidden
                autocomplete="off" placeholder="Search what to draw">
         <div id="sketchPalette" class="sketch-palette"></div>
-        <label class="check"><input type="checkbox" id="drawnOnly">
-          Only what I draw <span class="hint">- nothing is downloaded, so a
-          place that is not on OpenStreetMap can be built</span></label>
         <div id="sketchTools" class="sketch-actions"></div>
         <div id="sketchPicked" class="edit-selected" hidden></div>
         <div id="sketchNote" class="hint"></div>

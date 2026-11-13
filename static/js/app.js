@@ -84,6 +84,31 @@ let rotateHandleMarker = null;
 let areaReshaping = false;
 map.on('draw:editstart', () => { areaReshaping = true; updateRotateHandle(); });
 map.on('draw:editstop', () => { areaReshaping = false; updateRotateHandle(); });
+// A corner moved: the handle turns the shape as it now is, not as it was
+// before, or the next turn would put the corner back.
+map.on('draw:editvertex draw:editresize draw:editmove', () => {
+  if (!currentRect) return;
+  currentRect._pivot = calculatePivot(currentRect);
+  currentRect._origPoints = getShapeLatLngs(currentRect);
+  currentRect._rotationAngle = 0;
+  updateRotateHandle();
+});
+// Turning the area replaces its points - a box or a circle becomes a new
+// polygon - and Leaflet.draw's corner markers stay on the old ones: a corner
+// dragged after that moves its marker and not the shape. So a turn made
+// while reshaping starts the reshape again, on the turned shape.
+function restartReshape() {
+  if (!areaReshaping) return;
+  const edit = drawControl._toolbars.edit && drawControl._toolbars.edit._modes.edit;
+  if (!edit || !edit.handler.enabled()) return;
+  edit.handler.disable();
+  // The polygon editor keeps the point list it was made with; give it the
+  // turned one (the same call Leaflet.draw makes when an edit is undone).
+  if (currentRect && currentRect.editing && currentRect.editing._updateLatLngs) {
+    currentRect.editing._updateLatLngs({ layer: currentRect });
+  }
+  edit.handler.enable();
+}
 let rotateHandleStem = null;
 let isRotatingSelection = false;
 
@@ -317,6 +342,7 @@ function rotateSelectionBy(deg) {
 
   updateBboxFields();
   updateRotateHandle();
+  restartReshape();
 }
 
 function attachRotateHandleEvents(marker) {
@@ -443,6 +469,7 @@ function attachRotateHandleEvents(marker) {
 
       updateBboxFields();
       updateRotateHandle();
+      restartReshape();
     };
 
     window.addEventListener('mousemove', onMove, true);
