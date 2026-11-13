@@ -225,63 +225,55 @@
 
     <section class="panel" data-card="style">
       <h2>2. Settings</h2>
-      <label class="field">Map name
-        <input type="text" id="mapName" value="" placeholder="leave blank for an automatic name"/>
-      </label>
-      <label class="field">Scale (metres per tile)
-        <input type="number" id="metersPerTile" list="metersPerTileOptions"
-               value="1" min="0.5" max="100" step="0.25" inputmode="decimal"
-               title="Metres of the real place in one game tile, to the quarter metre. 1 is recommended; 1 to 8 is the usual range. 0.5 doubles the detail on a small area, and 1.5 is the middle ground between a town at full size and one at half."/>
-        <datalist id="metersPerTileOptions">
-          <option value="0.5" label="0.5 m per tile (small areas, twice the detail)"></option>
-          <option value="1" label="1 m per tile (recommended)"></option>
-          <option value="1.5" label="1.5 m per tile (two thirds the size)"></option>
-          <option value="2" label="2 m per tile"></option>
-          <option value="3" label="3 m per tile"></option>
-          <option value="4" label="4 m per tile"></option>
-          <option value="6" label="6 m per tile"></option>
-          <option value="8" label="8 m per tile (whole regions)"></option>
-        </datalist>
-      </label>
-
-      <div class="field-label">Kind of place</div>
-      <div class="preset-cards" id="presetCards" role="radiogroup" aria-label="Kind of place">
-        <button type="button" class="preset-card is-on" data-preset="town" role="radio" aria-checked="true">Town</button>
-        <button type="button" class="preset-card" data-preset="suburb" role="radio" aria-checked="false">Suburb</button>
-        <button type="button" class="preset-card" data-preset="city" role="radio" aria-checked="false">City</button>
-        <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
-      </div>
       <select id="preset" hidden>
         <option value="town" selected>Town</option>
         <option value="suburb">Suburb</option>
         <option value="city">City</option>
         <option value="rural">Rural</option>
       </select>
-
-      <div class="setting setting-switch" style="margin: 8px 0;">
-        <div class="setting-head">
-          <span class="setting-name">Terrain only (no buildings)</span>
-          <label class="switch"><input type="checkbox" role="switch"
-            id="terrainOnlyToggle" aria-label="Terrain only (no buildings)">
-            <span class="switch-track"></span></label>
+      <input type="search" id="settingFind" class="list-search" hidden
+             autocomplete="off" placeholder="Search the settings">
+      <!-- The tabs: filled from /api/settings so the page never holds a second,
+           drifting copy of the limits. -->
+      <div id="advanced-body"></div>
+      <!-- Parts of a tab that are fields of the page rather than settings of
+           the generator; buildSettingsForm puts each into its tab. -->
+      <div id="settingsParts" hidden>
+        <div class="tab-part" data-part="map">
+          <label class="field setting setting-static">Map name
+            <input type="text" id="mapName" value="" placeholder="leave blank for an automatic name"/>
+          </label>
+          <label class="field setting setting-static">Scale (metres per tile)
+            <input type="number" id="metersPerTile" list="metersPerTileOptions"
+                   value="1" min="0.5" max="100" step="0.25" inputmode="decimal"
+                   title="Metres of the real place in one game tile, to the quarter metre. 1 is recommended; 1 to 8 is the usual range. 0.5 doubles the detail on a small area, and 1.5 is the middle ground between a town at full size and one at half."/>
+            <datalist id="metersPerTileOptions">
+              <option value="0.5" label="0.5 m per tile (small areas, twice the detail)"></option>
+              <option value="1" label="1 m per tile (recommended)"></option>
+              <option value="1.5" label="1.5 m per tile (two thirds the size)"></option>
+              <option value="2" label="2 m per tile"></option>
+              <option value="3" label="3 m per tile"></option>
+              <option value="4" label="4 m per tile"></option>
+              <option value="6" label="6 m per tile"></option>
+              <option value="8" label="8 m per tile (whole regions)"></option>
+            </datalist>
+          </label>
+          <div class="setting setting-static">
+            <div class="field-label">Kind of place</div>
+            <div class="preset-cards" id="presetCards" role="radiogroup" aria-label="Kind of place">
+              <button type="button" class="preset-card is-on" data-preset="town" role="radio" aria-checked="true">Town</button>
+              <button type="button" class="preset-card" data-preset="suburb" role="radio" aria-checked="false">Suburb</button>
+              <button type="button" class="preset-card" data-preset="city" role="radio" aria-checked="false">City</button>
+              <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
+            </div>
+          </div>
         </div>
-        <span class="setting-hint">Generates terrain, roads, railways, water and vegetation without placing any buildings.</span>
       </div>
-
-      <details id="advanced">
-        <summary>More settings</summary>
-        <input type="search" id="settingFind" class="list-search" hidden
-               autocomplete="off" placeholder="Search the settings">
-        <div id="advanced-body">
-          <!-- Filled from /api/settings so the page never holds a second,
-               drifting copy of the limits. -->
-        </div>
-        <button type="button" id="resetSettings" class="linkish">Reset to the defaults for this kind of place</button>
-        <!-- Shown once a map is open: which of these knobs have been moved
-             since it was made, and a button to put them into it without
-             drawing the box or setting everything a second time. -->
-        <div id="reapply" class="reapply" hidden></div>
-      </details>
+      <button type="button" id="resetSettings" class="linkish">Reset to the defaults for this kind of place</button>
+      <!-- Shown once a map is open: which of these knobs have been moved
+           since it was made, and a button to put them into it without
+           drawing the box or setting everything a second time. -->
+      <div id="reapply" class="reapply" hidden></div>
 
       <details id="steamLibraries">
         <summary>Steam libraries</summary>

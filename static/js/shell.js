@@ -187,7 +187,6 @@
     if (node.matches('h2') || node.id === 'steamLibraries' || node.id === 'zomboidFolderBox') continue;
     mapProps.append(node);
   }
-  $('advanced').open = true;
   for (const id of ['sketch', 'zonesPanel', 'editMap', 'handBuilt']) holder.append($(id));
   // The Generate button and the drawing board's button are pressed from here.
   holder.append(genCard, makeCard);

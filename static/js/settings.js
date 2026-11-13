@@ -6,6 +6,7 @@
 // with the page enforcing last week's bounds.
 
 const SETTING_LABELS = {
+  terrain_only:        ['Terrain only (no buildings)', 'Generates terrain, roads, railways, water and vegetation without placing any buildings.'],
   zombies_per_resident:['Zombies per person', 'Each person who lived or worked here becomes this many zombies.'],
   m2_per_person:       ['Living space (m²)', 'Per resident. Less space means more crowded homes, so more zombies. About 50 in a city, 45 in a town, 60 in a suburb.'],
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
@@ -72,8 +73,15 @@ async function loadSettings() {
 // The settings are drawn as tabs, one card each: what a tab is mostly used
 // for on show, the rest behind its own Advanced. A key named nowhere here
 // still appears, in an Other tab, so a new knob is never lost; putting it in
-// its place is a table entry.
+// its place is a table entry. A part is a block of the page's own fields
+// (.tab-part in index.html) shown at the top of its tab.
 const SETTING_GROUPS = {
+  map: {
+    title: 'Map',
+    part: 'map',
+    main: ['terrain_only'],
+    advanced: [],
+  },
   gameplay: {
     title: 'Gameplay',
     main: ['zombies_per_resident', 'spawn_density', 'guaranteed_rifle'],
@@ -289,6 +297,10 @@ function settingGroup(name, group, values) {
     parent.appendChild(el);
   };
   if (group.preview) card.appendChild(forestPreview(card, group));
+  const part = group.part && document.querySelector(`.tab-part[data-part="${group.part}"]`);
+  if (part) card.appendChild(part);
+  // Nothing of the generator's in it, nothing to reset.
+  if (!groupKeys(group).length) card.querySelector('.group-reset').hidden = true;
   group.main.forEach(key => add(card, key));
   const advanced = document.createElement('details');
   advanced.className = 'setting-group-advanced';
@@ -343,6 +355,9 @@ function settingTabs() {
 
 function buildSettingsForm(values) {
   const body = document.getElementById('advanced-body');
+  // The page's own fields are kept, not rebuilt: back to their holder first.
+  const parts = document.getElementById('settingsParts');
+  for (const part of body.querySelectorAll('.tab-part')) parts.appendChild(part);
   body.innerHTML = '';
   const bar = document.createElement('div');
   bar.className = 'setting-tabs';
@@ -393,8 +408,6 @@ function buildSettingsForm(values) {
   fx.wireSettings(body);
   markChangedTabs();
   runListSearch('advanced-body');
-  const topTerrain = document.getElementById('terrainOnlyToggle');
-  if (topTerrain) topTerrain.checked = !!values.terrain_only;
 }
 
 function openSettingTab(name, remember = false) {
@@ -453,8 +466,6 @@ function showSearchAcrossTabs(query) {
 
 function readSettings() {
   const out = { preset: document.getElementById('preset').value };
-  const topTerrain = document.getElementById('terrainOnlyToggle');
-  if (topTerrain) out.terrain_only = topTerrain.checked ? 1 : 0;
   for (const el of document.querySelectorAll('#advanced-body [data-key]')) {
     // A switch is on or off, and sends the 1 or 0 the generator reads.
     if (el.type === 'checkbox') {
@@ -639,8 +650,6 @@ document.getElementById('advanced-body').addEventListener('input', markChangedTa
 document.getElementById('advanced-body').addEventListener('change', markChangedTabs);
 document.getElementById('advanced-body').addEventListener('listsearch',
   e => showSearchAcrossTabs(e.detail.query));
-const topTerrainEl = document.getElementById('terrainOnlyToggle');
-if (topTerrainEl) topTerrainEl.addEventListener('change', showReapply);
 
 document.getElementById('preset').addEventListener('change', () => {
   if (!settingsMeta) return;

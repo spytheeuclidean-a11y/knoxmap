@@ -8,8 +8,8 @@ from knoxbuild.settings import Settings
 ROOT = Path(__file__).resolve().parent.parent
 APP = "\n".join(p.read_text(encoding="utf-8")
                 for p in sorted((ROOT / "static" / "js").glob("*.js")))
-TABS = ["gameplay", "roads", "buildings", "land", "forest"]
-UI_LINES = ["Gameplay", "Roads", "Buildings", "Land", "Forest", "Other", "Settings",
+TABS = ["map", "gameplay", "roads", "buildings", "land", "forest"]
+UI_LINES = ["Map", "Gameplay", "Roads", "Buildings", "Land", "Forest", "Other", "Settings",
             "Advanced", "Reset", "Changed from the defaults for this kind of place"]
 LANGS = ("english", "espanol", "portugues_brasil", "russian")
 
@@ -27,7 +27,7 @@ def tabs():
         body = m.group(2)
         title = re.search(r"title: '([^']+)'", body).group(1)
         subheads = re.findall(r"\['([^']+)', \[", body)
-        keys = [k for k in re.findall(r"'(\w+)'", body)
+        keys = [k for k in re.findall(r"'(\w+)'", re.sub(r"part: '\w+'", "", body))
                 if k not in (title,) and k not in subheads]
         out[m.group(1)] = (title, keys, subheads)
     return out
@@ -59,6 +59,16 @@ class SettingTabs(unittest.TestCase):
         for lang in LANGS:
             with self.subTest(lang=lang):
                 self.assertEqual(sorted(wanted - translations(lang)), [])
+
+    def test_the_page_fields_are_parts_of_tabs(self):
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        parts = re.findall(r'class="tab-part" data-part="(\w+)"', html)
+        self.assertEqual(parts, ["map"])
+        named = re.findall(r"part: '(\w+)'", block("SETTING_GROUPS"))
+        self.assertEqual(named, parts)
+        # No collapser left around the settings, and no second terrain switch.
+        self.assertNotIn('<details id="advanced"', html)
+        self.assertNotIn("terrainOnlyToggle", html + APP)
 
     def test_search_reaches_the_tabs(self):
         self.assertIn("new CustomEvent('listsearch'", APP)

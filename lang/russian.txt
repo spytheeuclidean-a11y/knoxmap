@@ -630,3 +630,4 @@ Details = Подробности
 Other = Прочее
 Settings = Настройки
 Changed from the defaults for this kind of place = Изменено относительно значений для этого типа места
+Map = Карта

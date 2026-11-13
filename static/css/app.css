@@ -410,6 +410,9 @@ body.rotate-dragging * {
 .setting-tab.found-none { opacity: .45; }
 #advanced-body:not(.searching) > .setting-group:not(.is-on) { display: none; }
 #advanced-body > .setting-group { margin: 8px 0 12px; }
+/* The page's own fields in a tab (Map name, Scale, Kind of place, Setup). */
+.setting-group .setting-static { margin-bottom: 10px; }
+.setting-group .setting-static .hint { margin: 0 0 6px; }
 .setting-note { display: block; font-size: 11px; color: var(--faint); font-style: italic; }
 
 /* A card's settings, one line each: name and (i), slider, number. What the
