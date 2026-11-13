@@ -5,18 +5,18 @@
     "buildings": 32,
     "cells": 4,
     "files": {
-      "82_0.lotheader": "0d2eeef8cd215996b5c064789eaf7151283600ade7e434b97a46a0062aced943",
-      "82_1.lotheader": "5802d42d5c8f9e78e0816c752c8974363ebe6dbb7f3615636f06f07396eb6f28",
-      "83_0.lotheader": "bfcca835304c64354804fbe6f2d176040707541a5e76819183f349d5faa59a00",
-      "83_1.lotheader": "d9751b57910e91694a2f814174e3e471649597d5eb99c8030ee1b1e60bd47721",
+      "82_0.lotheader": "434add1f06fdbf78c780622695be2f7bce1c10b5206843c8d4b1d9b54b4ee1ed",
+      "82_1.lotheader": "906d1a36bd3fed2a2fe837f704ac276f3bc7fbaa9734f173b84ddda9fda01df2",
+      "83_0.lotheader": "293e14a117e725863bff988b876365fa150e88de71cad7b967830eac89d5cbd2",
+      "83_1.lotheader": "6702ae5c230a2b7d12d712af21b9f34340ab4438921ba0ab6ad6da75002d8e72",
       "chunkdata_82_0.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_82_1.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_83_0.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_83_1.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
-      "world_82_0.lotpack": "ffd00912e1245c209b35de3ed599131cd5d305df95677142c3ffad86093b00b4",
-      "world_82_1.lotpack": "381472fbe667bbbffe979df9ad2f2ad160db9fbe10b36318263867a4c10be0fd",
-      "world_83_0.lotpack": "76954bdcd61ccbe67d8caaaa3a01cb04db1d65cf6dc9f19e6c791dc5ae9a6f1f",
-      "world_83_1.lotpack": "2ff3d9eb0fbb044dbf1446196309becf0a0fb57aa285f776ec497c26fedab680"
+      "world_82_0.lotpack": "a301cded0157f693b091e43ea4785bc1b36c2c83dc4835bf18957923ad16db7e",
+      "world_82_1.lotpack": "e51b8318747c1bd2c949b1f5c427730d2d7be91e3d08aeee1f816f481c834f0d",
+      "world_83_0.lotpack": "df14ac4760358d6e6e7f47cb31f0e0dc4c22c7741fa1f17cba07a4a4840f2d03",
+      "world_83_1.lotpack": "cc7e7e7312b9e1f35d5e419c3d959ae29bddf9ed894f0539a6ecbe47ccfbf236"
     }
   },
   "village": {
@@ -25,18 +25,18 @@
     "buildings": 13,
     "cells": 4,
     "files": {
-      "82_0.lotheader": "23867dda46375a6216386f51e71a0f57c519970f03ccf5f184a13a92fbfe0d56",
-      "82_1.lotheader": "159823eb385948fa692e3db727391779baed95af4ea589f50f049bf4859e9267",
-      "83_0.lotheader": "cd6d82d6915e7ee6dd8777664780088a6424aa5dff992233e4cfe9e3c42cf0d2",
-      "83_1.lotheader": "cc957e5ec70767e4bd1ff8e0538035ab931086adc9511f4e8921fd6f4dcc65c2",
+      "82_0.lotheader": "c26c52cf2b2171b3f70d4afdf0d11b169c0f18eab27a54dc7a8a7c776cef1366",
+      "82_1.lotheader": "ccfa891e15c12997a30d5811108418ef04a30334919d75810b3148bc0026ef45",
+      "83_0.lotheader": "8c2d4e238a51ddd5b768e6cfd3ce525ce8a81348f2d0db9dcd2146c2f62ace5d",
+      "83_1.lotheader": "dde8e2654249e2a621499a41eac7b65f05815353457ca942823c51bf00dd3762",
       "chunkdata_82_0.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_82_1.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_83_0.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_83_1.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
-      "world_82_0.lotpack": "8686c13b99bed55fb2b69ebab989992cf85bb6fb418d6c015af77d349da6b66b",
-      "world_82_1.lotpack": "33b0cf3854955a8f7e7802fde28085e777caf58648babb3a91251d66366973ef",
-      "world_83_0.lotpack": "adf09710ef9c6ea59cf4f0799a550e0dce8c35f3ed54c34df99951d0af7f5149",
-      "world_83_1.lotpack": "233737cd4f45fcf5dfb54fc2be873e89fd2d3addcd238235b42276c2a3e1576d"
+      "world_82_0.lotpack": "6fea8a77e917463901423e2eef57e2450553598a8aec7a49501e4f7ed4a5cd42",
+      "world_82_1.lotpack": "9174047bfcd5cd29946f8f9920e1f3544fdc71c26a1004f055b51ac7bba961b9",
+      "world_83_0.lotpack": "b4dfe69add3ea7f2f88d07666f2ce3842839a1b0264451cf0e5509787c0ca9ce",
+      "world_83_1.lotpack": "43346e43e6e4979cdc2ac1dc5da613a5044045215609bef84ef00762d3f3c911"
     }
   },
   "coast": {
@@ -45,17 +45,17 @@
     "buildings": 10,
     "cells": 4,
     "files": {
-      "82_0.lotheader": "2c8f8bffebbda4a48e9f09d1818b498010e4ad05ae048c6a824288debc8e0e27",
+      "82_0.lotheader": "b7f3c86f8f686920a5b58d95632809145df723b53ad876b189764da032da1b01",
       "82_1.lotheader": "e750b252ee2c20e7937e75c173b14203e6d0e7a76da9fef1628630756bfb829f",
-      "83_0.lotheader": "e2de6103063386c9d050eea9dbc1fd6f93348dd699c4d1a436fe6d20bd4f616c",
+      "83_0.lotheader": "991c8616b3e667e37a9f5ac6f3d5272817c5cdd0007909ce6e43da82674d2bef",
       "83_1.lotheader": "a7ab8799906772d36954cabadf5938fe458a7a67fd1cf26e016a77c4dc0920cb",
       "chunkdata_82_0.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_82_1.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_83_0.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
       "chunkdata_83_1.bin": "5e2d8bd2247f04440aace59349c8d5af5f7ecf01f7f8325538714c0c357a8256",
-      "world_82_0.lotpack": "9ce26b38d1c36971dd0ecd69059fdd8c8d7f639616969e4697c7020d26ba6db0",
+      "world_82_0.lotpack": "f3ac82f359f1de71eef1189133c824ea17358cb03297a96ea90231ebdef29efb",
       "world_82_1.lotpack": "a5dfb670b9511581454f6b672a962c89fa798f0a2d492ce2ae1d523a6ff4bd81",
-      "world_83_0.lotpack": "9261bae509a3ccd99f4bd06a4f3e7df6ec2998c8e97ef6a4ffa2202e5e1d647d",
+      "world_83_0.lotpack": "2b63fa6bc10a0f7d5d3af805b4af64108de25abd277f45869dc73c9c7c11e947",
       "world_83_1.lotpack": "de0368f1ff355da620de2d90515734cd0763c3457293d2e722ddb394ee99fd62"
     }
   }
