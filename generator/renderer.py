@@ -501,7 +501,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                             pave_side = max(1, round((s_m - v_m) / meters_per_tile))
                             r_v = (w_road + 2 * verge_side - 1) / 2.0
                             r_s = r_v + pave_side
-                            if int(r_s * 1.41421356) - int((r_v * 1.41421356) + 0.999999) + 1 < 2:
+                            if int(r_s * 1.41421356) - int((r_v * 1.41421356) + 0.999999) + 1 < 4:
                                 pave_side += 1
                             w_stroke = w_road + 2 * (verge_side + pave_side)
                         strokes.append((w_stroke, ground_rings(feat)))
