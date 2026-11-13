@@ -18,10 +18,12 @@ ROAD_CATEGORIES = frozenset({
 })
 
 # Sub-tile jitter tolerance in tiles for Douglas-Peucker simplification.
-SIMPLIFY_TOLERANCE_TILES = 0.6
+SIMPLIFY_TOLERANCE_TILES = 0.65
 LOOP_SIMPLIFY_TOLERANCE_TILES = 0.3
 SMALL_LOOP_SPAN_TILES = 18.0
-MAX_SMOOTH_SHIFT_TILES = 0.5
+MAX_SMOOTH_SHIFT_TILES = 0.75
+CHAIKIN_MAX_INSET_TILES = 4.0
+CHAIKIN_MIN_COS = 0.25  # Keep sharp corners (> ~75 deg turn) crisp.
 
 
 def _perp_dist(pt: tuple[float, float], a: tuple[float, float],
@@ -61,7 +63,7 @@ def _douglas_peucker(pts: list[tuple[float, float]],
 
 
 def _smooth_micro_kinks(pts: list[tuple[float, float]]) -> list[tuple[float, float]]:
-    """Nudge gentle short-segment kinks toward the local chord, clamped <= 0.5 tiles."""
+    """Nudge gentle short/medium-segment kinks toward the local chord."""
     if len(pts) < 3:
         return pts
     out = list(pts)
@@ -73,10 +75,10 @@ def _smooth_micro_kinks(pts: list[tuple[float, float]]) -> list[tuple[float, flo
         v2x, v2y = bx - px, by - py
         l1 = math.hypot(v1x, v1y)
         l2 = math.hypot(v2x, v2y)
-        if l1 < 1e-6 or l2 < 1e-6 or min(l1, l2) >= 6.0:
+        if l1 < 1e-6 or l2 < 1e-6 or min(l1, l2) >= 12.0:
             continue
         cos_t = (v1x * v2x + v1y * v2y) / (l1 * l2)
-        if cos_t <= 0.75:
+        if cos_t <= 0.65:
             continue
         mx, my = (ax + bx) * 0.5, (ay + by) * 0.5
         dx, dy = (mx - px) * 0.5, (my - py) * 0.5
@@ -89,6 +91,45 @@ def _smooth_micro_kinks(pts: list[tuple[float, float]]) -> list[tuple[float, flo
     return out
 
 
+def _smooth_curves_chaikin(
+    pts: list[tuple[float, float]], iterations: int = 2
+) -> list[tuple[float, float]]:
+    """Round polygonal road bends with bounded Chaikin corner-cutting.
+
+    Endpoints stay pinned, sharp turns (cos_t <= CHAIKIN_MIN_COS) stay crisp,
+    and corner insets are capped at CHAIKIN_MAX_INSET_TILES so long straight
+    stretches keep their alignment.
+    """
+    cur = list(pts)
+    for _ in range(iterations):
+        if len(cur) < 3:
+            return cur
+        nxt: list[tuple[float, float]] = [cur[0]]
+        for i in range(1, len(cur) - 1):
+            ax, ay = cur[i - 1]
+            px, py = cur[i]
+            bx, by = cur[i + 1]
+            v1x, v1y = px - ax, py - ay
+            v2x, v2y = bx - px, by - py
+            l1 = math.hypot(v1x, v1y)
+            l2 = math.hypot(v2x, v2y)
+            if l1 < 1e-6 or l2 < 1e-6:
+                continue
+            cos_t = (v1x * v2x + v1y * v2y) / (l1 * l2)
+            if cos_t <= CHAIKIN_MIN_COS:
+                nxt.append((px, py))
+                continue
+            d1 = min(CHAIKIN_MAX_INSET_TILES, 0.25 * l1)
+            d2 = min(CHAIKIN_MAX_INSET_TILES, 0.25 * l2)
+            qx, qy = px - (v1x / l1) * d1, py - (v1y / l1) * d1
+            rx, ry = px + (v2x / l2) * d2, py + (v2y / l2) * d2
+            nxt.append((qx, qy))
+            nxt.append((rx, ry))
+        nxt.append(cur[-1])
+        cur = nxt
+    return cur
+
+
 def _clean_stretch(pts: list[tuple[float, float]],
                    is_small_loop: bool = False) -> list[tuple[float, float]]:
     if len(pts) <= 2:
@@ -97,10 +138,10 @@ def _clean_stretch(pts: list[tuple[float, float]],
     simplified = _douglas_peucker(pts, tol)
     if is_small_loop:
         # Keep roundabouts round: do not collapse below 8 vertices if originally >= 8.
-        if len(pts) >= 8 and len(simplified) < 8:
-            return list(pts)
-        return simplified
-    return _smooth_micro_kinks(simplified)
+        base = list(pts) if (len(pts) >= 8 and len(simplified) < 8) else simplified
+        return _smooth_curves_chaikin(base, iterations=1)
+    smoothed = _smooth_micro_kinks(simplified)
+    return _smooth_curves_chaikin(smoothed, iterations=2)
 
 
 def clean_mapped_roads(features: list[OSMFeature], proj, classify, is_polygon) -> int:

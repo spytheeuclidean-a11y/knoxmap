@@ -86,6 +86,25 @@ class MappedRoadsRevamp(unittest.TestCase):
                         spurs += 1
         self.assertEqual(spurs, 0)
 
+    def test_curved_road_is_smoothed_while_sharp_corner_stays_crisp(self):
+        # Gentle bend with 20-tile segments gets rounded into more points,
+        # while a sharp 90-degree corner stays unrounded.
+        curve = osm.OSMFeature(
+            4, "way", {"highway": "residential"},
+            [(10.0, 10.0), (10.0, 30.0), (20.0, 50.0)],
+        )
+        corner = osm.OSMFeature(
+            5, "way", {"highway": "residential"},
+            [(80.0, 10.0), (80.0, 30.0), (100.0, 30.0)],
+        )
+        mapped_roads.clean_mapped_roads(
+            [curve, corner], self.proj, osm.classify, renderer._is_polygon
+        )
+        self.assertGreater(len(curve.geometry), 3)
+        self.assertEqual(curve.geometry[0], (10.0, 10.0))
+        self.assertEqual(curve.geometry[-1], (20.0, 50.0))
+        self.assertEqual(corner.geometry, [(80.0, 10.0), (80.0, 30.0), (100.0, 30.0)])
+
 
 if __name__ == "__main__":
     unittest.main()
