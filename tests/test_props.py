@@ -63,6 +63,39 @@ class OutdoorProps(unittest.TestCase):
             for y, x in zip(*np.nonzero(added)):
                 self.assertTrue(park.contains(Point(x + 0.5, y + 0.5)))
 
+    def test_cemetery_places_neat_rows_floors_and_statues(self):
+        with TemporaryDirectory() as directory:
+            bdir = os.path.join(directory, "buildings")
+            os.mkdir(bdir)
+            ground = Image.new("RGB", (60, 60), C.LIGHT_GRASS)
+            ground.save(os.path.join(directory, "graveyard.bmp"))
+            Image.new("RGB", ground.size, C.VEG_NOTHING).save(
+                os.path.join(directory, "graveyard_veg.bmp"))
+            occupied = np.zeros((60, 60), dtype=bool)
+            cemetery = Polygon([(4, 4), (44, 4), (44, 34), (4, 34)])
+            areas = SimpleNamespace(_items=[(cemetery, {"category": "cemetery"})])
+
+            placements, counts = place_props(
+                directory, "graveyard", bdir, occupied, areas,
+                metres_per_tile=1.0, seed=7)
+
+            self.assertGreater(counts["graves"], 20)
+            self.assertTrue(placements)
+            tbx_name = next(n for n in os.listdir(bdir) if n.endswith(".tbx"))
+            with open(os.path.join(bdir, tbx_name), encoding="utf-8") as handle:
+                tbx = handle.read()
+            self.assertIn('layer="Floor"', tbx)
+            self.assertIn('layer="FloorFurniture"', tbx)
+            self.assertIn('layer="Furniture"', tbx)
+            # No open grave pits, rock cairns, or rope posts from the old broken list.
+            for bad in ("_016", "_017", "_019", "_020", "_021", "_030", "_031"):
+                self.assertNotIn(f"location_community_cemetary_01{bad}", tbx)
+            # Contains actual headstones and a focal angel statue.
+            self.assertTrue(
+                any(f"location_community_cemetary_01_00{n}" in tbx for n in (0, 2, 4, 8)))
+            self.assertTrue(
+                any(f"location_community_cemetary_01_0{n}" in tbx for n in (11, 12, 13, 14)))
+
 
 if __name__ == "__main__":
     unittest.main()

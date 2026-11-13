@@ -31,28 +31,68 @@ from .bitmaps import read_rgb, same_colour
 from .structures import CELL, render_tiles_tbx
 from .world import Placement
 
-# location_community_cemetary_01: headstones, wooden crosses and the angel on
-# her plinth. Several shapes, because a churchyard where every stone is the
-# same reads as a car park.
+# location_community_cemetary_01: stone headstones, wooden crosses, filled
+# grave mounds and angel statues, verified against BuildingFurniture.txt.
 # Tile names are spelled the way BuildingEd's own config spells them, three
 # digits: BuildingFurniture.txt carries every one of these sheets that way and
 # never a short form, and a tbx that names a tile the pack does not have is
 # dropped without a word.
-HEADSTONES = ["location_community_cemetary_01_008", "location_community_cemetary_01_009",
-              "location_community_cemetary_01_011", "location_community_cemetary_01_012",
-              "location_community_cemetary_01_013", "location_community_cemetary_01_016",
-              "location_community_cemetary_01_017"]
-# 030 and 031 are the wooden crosses BuildingEd offers; 044 and 046 have
-# artwork on the sheet but are in none of its furniture entries, so a lot that
-# named them would come out with two graves missing.
-CROSSES = ["location_community_cemetary_01_030", "location_community_cemetary_01_031"]
-ANGELS = ["location_community_cemetary_01_019", "location_community_cemetary_01_020",
-          "location_community_cemetary_01_021", "location_community_cemetary_01_022"]
-CROSS_SHARE = 0.12         # of the graves, a wooden cross instead of a stone
-ANGEL_SHARE = 0.006        # and once in a while a monument
+HEADSTONES_N = [
+    "location_community_cemetary_01_000",
+    "location_community_cemetary_01_002",
+    "location_community_cemetary_01_004",
+    "location_community_cemetary_01_008",
+]
+HEADSTONES_W = [
+    "location_community_cemetary_01_001",
+    "location_community_cemetary_01_003",
+    "location_community_cemetary_01_005",
+    "location_community_cemetary_01_009",
+]
+HEADSTONES = HEADSTONES_N + HEADSTONES_W
+CROSSES_N = [
+    "location_community_cemetary_01_022",
+    "location_community_cemetary_01_039",
+]
+CROSSES_W = [
+    "location_community_cemetary_01_023",
+    "location_community_cemetary_01_038",
+]
+CROSSES = CROSSES_N + CROSSES_W
+ANGELS = [
+    "location_community_cemetary_01_011",
+    "location_community_cemetary_01_012",
+    "location_community_cemetary_01_013",
+    "location_community_cemetary_01_014",
+]
+GRAVE_MOUND_N = (
+    "location_community_cemetary_01_043",
+    "location_community_cemetary_01_042",
+)
+GRAVE_MOUND_W = (
+    "location_community_cemetary_01_040",
+    "location_community_cemetary_01_041",
+)
+CEMETERY_PATH_FLOORS = (
+    "floors_exterior_tilesandstone_01_005",
+    "floors_exterior_tilesandstone_01_007",
+)
+CEMETERY_PLAZA_FLOOR = "floors_exterior_tilesandstone_01_004"
+CEMETERY_PLAZA_CENTER = "floors_exterior_tilesandstone_01_006"
+CEMETERY_BENCH_N = (
+    "furniture_seating_outdoor_01_011",
+    "furniture_seating_outdoor_01_010",
+)
+CEMETERY_BENCH_W = (
+    "furniture_seating_outdoor_01_009",
+    "furniture_seating_outdoor_01_008",
+)
+CROSS_SHARE = 0.10         # of the graves, a wooden cross instead of a stone
+MONUMENT_SHARE = 0.05      # paved 2x2 family plot with statue or twin stones
+MOUND_SHARE = 0.65         # filled earth mound in front of the headstone
 GRAVE_SPACING_M = 2.0      # along a row
 GRAVE_ROW_M = 3.0          # between rows
-PATH_EVERY_ROWS = 8        # a way through, so it is not one solid block
+SECTION_ROWS = 4           # rows per block before a paved cross-walkway
 MAX_GRAVES = 40000         # a whole county of churchyards, and no more
 
 # location_military_generic_01: ammunition crates and fuel drums, and nothing
@@ -137,6 +177,180 @@ def _polygons(areas, category: str) -> list:
             if (props.get("category") or "") == category and not shape.is_empty]
 
 
+def _place_cemetery(
+    poly,
+    width: int,
+    height: int,
+    across: int,
+    row_pitch: int,
+    budget: int,
+    blocked: np.ndarray,
+    put_layer,
+    rng: random.Random,
+    point_cls,
+) -> int:
+    """Lay out one cemetery with paved paths, a focal plaza, and neat grave rows."""
+    minx, miny, maxx, maxy = (int(v) for v in poly.bounds)
+    x0, y0 = max(0, minx), max(0, miny)
+    x1, y1 = min(width, maxx), min(height, maxy)
+    poly_w, poly_h = x1 - x0, y1 - y0
+    if poly_w < 3 or poly_h < 3 or budget <= 0:
+        return 0
+
+    def can_use(x: int, y: int) -> bool:
+        return (
+            0 <= x < width
+            and 0 <= y < height
+            and not blocked[y, x]
+            and poly.contains(point_cls(x + 0.5, y + 0.5))
+        )
+
+    orient_n = poly_w >= poly_h
+    path_floor = rng.choice(CEMETERY_PATH_FLOORS)
+    placed_graves = 0
+
+    # 1. Central memorial plaza on medium/large cemeteries with focal statue & benches.
+    if poly_w >= 14 and poly_h >= 14:
+        radius = 2 if (poly_w >= 22 and poly_h >= 22) else 1
+        cx, cy = (x0 + x1) // 2, (y0 + y1) // 2
+        plaza_cells = [
+            (px, py)
+            for py in range(cy - radius, cy + radius + 1)
+            for px in range(cx - radius, cx + radius + 1)
+        ]
+        if all(can_use(px, py) for px, py in plaza_cells):
+            for px, py in plaza_cells:
+                if px == cx and py == cy:
+                    floor_tile = CEMETERY_PLAZA_CENTER
+                elif abs(px - cx) == radius or abs(py - cy) == radius:
+                    floor_tile = path_floor
+                else:
+                    floor_tile = CEMETERY_PLAZA_FLOOR
+                put_layer(px, py, "Floor", floor_tile, block=False)
+            # Central angel statue facing down the main avenue.
+            statue = ANGELS[2] if orient_n else ANGELS[3]
+            put_layer(cx, cy, LAYER, statue, block=True)
+            if radius == 2:
+                if can_use(cx - 1, cy - 2) and can_use(cx, cy - 2):
+                    put_layer(cx - 1, cy - 2, LAYER, CEMETERY_BENCH_N[0], block=True)
+                    put_layer(cx, cy - 2, LAYER, CEMETERY_BENCH_N[1], block=True)
+                if can_use(cx - 2, cy - 1) and can_use(cx - 2, cy):
+                    put_layer(cx - 2, cy - 1, LAYER, CEMETERY_BENCH_W[0], block=True)
+                    put_layer(cx - 2, cy, LAYER, CEMETERY_BENCH_W[1], block=True)
+            for px, py in plaza_cells:
+                blocked[py, px] = True
+
+    # 2. Central paved avenue running perpendicular to the grave rows.
+    if poly_w >= 10 and poly_h >= 10:
+        if orient_n:
+            ave_w = 2 if poly_w >= 18 else 1
+            ax0 = (x0 + x1) // 2 - (ave_w // 2)
+            for py in range(y0 + 1, y1 - 1):
+                for px in range(ax0, ax0 + ave_w):
+                    if can_use(px, py):
+                        put_layer(px, py, "Floor", path_floor, block=True)
+        else:
+            ave_h = 2 if poly_h >= 18 else 1
+            ay0 = (y0 + y1) // 2 - (ave_h // 2)
+            for px in range(x0 + 1, x1 - 1):
+                for py in range(ay0, ay0 + ave_h):
+                    if can_use(px, py):
+                        put_layer(px, py, "Floor", path_floor, block=True)
+
+    # 3. Neat rows of headstones, crosses, filled grave mounds, and paved cross-paths.
+    headstones = HEADSTONES_N if orient_n else HEADSTONES_W
+    crosses = CROSSES_N if orient_n else CROSSES_W
+    mound = GRAVE_MOUND_N if orient_n else GRAVE_MOUND_W
+    tall_stone = headstones[0]
+    monument_angel = ANGELS[2] if orient_n else ANGELS[3]
+
+    def place_family_monument(gx: int, gy: int) -> bool:
+        """A paved 2x2 family plot with an angel statue or twin tall stones."""
+        footprint = [(gx, gy), (gx + 1, gy), (gx, gy + 1), (gx + 1, gy + 1)]
+        if not all(can_use(px, py) for px, py in footprint):
+            return False
+        for px, py in footprint:
+            put_layer(px, py, "Floor", CEMETERY_PLAZA_FLOOR, block=False)
+        if rng.random() < 0.5:
+            put_layer(gx, gy, LAYER, monument_angel, block=False)
+            if orient_n:
+                put_layer(gx, gy + 1, "FloorFurniture", mound[1], block=False)
+            else:
+                put_layer(gx + 1, gy, "FloorFurniture", mound[1], block=False)
+        else:
+            put_layer(gx, gy, LAYER, tall_stone, block=False)
+            if orient_n:
+                put_layer(gx + 1, gy, LAYER, tall_stone, block=False)
+                put_layer(gx, gy + 1, "FloorFurniture", mound[1], block=False)
+                put_layer(gx + 1, gy + 1, "FloorFurniture", mound[1], block=False)
+            else:
+                put_layer(gx, gy + 1, LAYER, tall_stone, block=False)
+                put_layer(gx + 1, gy, "FloorFurniture", mound[1], block=False)
+                put_layer(gx + 1, gy + 1, "FloorFurniture", mound[1], block=False)
+        for px, py in footprint:
+            blocked[py, px] = True
+        return True
+
+    def place_single_grave(gx: int, gy: int) -> bool:
+        fx, fy = (gx, gy + 1) if orient_n else (gx + 1, gy)
+        if not (can_use(gx, gy) and can_use(fx, fy)):
+            return False
+        stone = rng.choice(crosses if rng.random() < CROSS_SHARE else headstones)
+        if rng.random() < MOUND_SHARE:
+            put_layer(gx, gy, "FloorFurniture", mound[0], block=False)
+            put_layer(fx, fy, "FloorFurniture", mound[1], block=False)
+        put_layer(gx, gy, LAYER, stone, block=True)
+        put_layer(fx, fy, "", "", block=True)
+        return True
+
+    if orient_n:
+        y = y0 + 1
+        row_idx = 0
+        while y + 1 < y1 and placed_graves < budget:
+            if row_idx > 0 and row_idx % SECTION_ROWS == 0:
+                for px in range(x0 + 1, x1 - 1):
+                    if can_use(px, y):
+                        put_layer(px, y, "Floor", path_floor, block=True)
+                y += 2
+                row_idx = 0
+                continue
+            x = x0 + 1
+            while x < x1 - 1 and placed_graves < budget:
+                if x + 1 < x1 - 1 and rng.random() < MONUMENT_SHARE and place_family_monument(x, y):
+                    placed_graves += 1
+                    x += max(across, 3)
+                    continue
+                if place_single_grave(x, y):
+                    placed_graves += 1
+                x += across
+            y += row_pitch
+            row_idx += 1
+    else:
+        x = x0 + 1
+        col_idx = 0
+        while x + 1 < x1 and placed_graves < budget:
+            if col_idx > 0 and col_idx % SECTION_ROWS == 0:
+                for py in range(y0 + 1, y1 - 1):
+                    if can_use(x, py):
+                        put_layer(x, py, "Floor", path_floor, block=True)
+                x += 2
+                col_idx = 0
+                continue
+            y = y0 + 1
+            while y < y1 - 1 and placed_graves < budget:
+                if y + 1 < y1 - 1 and rng.random() < MONUMENT_SHARE and place_family_monument(x, y):
+                    placed_graves += 1
+                    y += max(across, 3)
+                    continue
+                if place_single_grave(x, y):
+                    placed_graves += 1
+                y += across
+            x += row_pitch
+            col_idx += 1
+
+    return placed_graves
+
+
 def place_props(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                 areas, metres_per_tile: float,
                 seed: int = 0x6FADE) -> tuple[list, dict]:
@@ -167,42 +381,35 @@ def place_props(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
     rng = random.Random(seed)
     tiles: list[tuple[int, int, int, str, str]] = []
 
-    def put(x: int, y: int, tile: str) -> bool:
+    def put_layer(x: int, y: int, layer: str, tile: str, *,
+                  block: bool = True) -> bool:
         if not (0 <= x < width and 0 <= y < height) or blocked[y, x]:
             return False
-        blocked[y, x] = True
+        if block:
+            blocked[y, x] = True
         occupied[y, x] = True
         if veg is not None:
             veg[y, x] = C.VEG_NOTHING
-        tiles.append((x, y, 0, LAYER, tile))
+        if tile:
+            tiles.append((x, y, 0, layer, tile))
         return True
+
+    def put(x: int, y: int, tile: str) -> bool:
+        return put_layer(x, y, LAYER, tile)
 
     def step(metres: float) -> int:
         return max(1, int(round(metres / max(0.05, metres_per_tile))))
 
-    across, down = step(GRAVE_SPACING_M), step(GRAVE_ROW_M)
+    across = max(2, step(GRAVE_SPACING_M))
+    row_pitch = max(3, step(GRAVE_ROW_M))
     for poly in cemeteries:
         if counts["graves"] >= MAX_GRAVES:
             break
-        minx, miny, maxx, maxy = (int(v) for v in poly.bounds)
-        for y in lattice_on_map(miny + down, maxy, down, height):
-            row = (y - (miny + down)) // down + 1     # counted from the polygon's own edge
-            if row % PATH_EVERY_ROWS == 0:
-                continue                       # a way through the plots
-            for x in lattice_on_map(minx + across, maxx, across, width):
-                if counts["graves"] >= MAX_GRAVES:
-                    break
-                if not poly.contains(Point(x + 0.5, y + 0.5)):
-                    continue
-                roll = rng.random()
-                if roll < ANGEL_SHARE:
-                    tile = rng.choice(ANGELS)
-                elif roll < ANGEL_SHARE + CROSS_SHARE:
-                    tile = rng.choice(CROSSES)
-                else:
-                    tile = rng.choice(HEADSTONES)
-                if put(x, y, tile):
-                    counts["graves"] += 1
+        counts["graves"] += _place_cemetery(
+            poly, width, height, across, row_pitch,
+            MAX_GRAVES - counts["graves"],
+            blocked, put_layer, rng, Point,
+        )
 
     gap = step(DUMP_EVERY_M)
     for poly in bases:

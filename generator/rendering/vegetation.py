@@ -165,15 +165,12 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
                     elif cat == "cemetery":
-                        # A few flowers between the graves, not instead of
-                        # them: the headstones themselves go in later, as
-                        # props (knoxbuild/props.py).
-                        roll = rng.random()
-                        if roll < 0.012:
+                        # Sparse shade trees only; headstones, paths and plazas
+                        # go in later via knoxbuild/props.py (which clears veg
+                        # wherever a plot or walkway lands).
+                        if rng.random() < 0.008:
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
-                        elif roll < 0.04:
-                            vp[x, y] = C.FLOWERS
                     else:
                         if rng.random() < 0.35:
                             vp[x, y] = C.DENSE_BUSHES_GRASS
