@@ -91,3 +91,7 @@ node_modules/
 
 # Local WorldEd regression fixtures (set KNOXLOTS_FIXTURES to use)
 rust/knoxlots/fixtures/
+
+# Design notes and scratch from the superpowers workflow, never shipped.
+docs/superpowers/
+.superpowers/

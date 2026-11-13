@@ -568,3 +568,46 @@ KnoxMap could not reach the OpenStreetMap servers. Check your internet connectio
 OSM query failed: {details} = Не удалось получить данные OSM: {details}
 The map would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works. {details} = Не удалось скачать карту. Публичные серверы Overpass могут быть перегружены; обычно помогает повторная генерация через несколько минут. {details}
 {count} of {total} map tiles would not download. The public Overpass servers are shared and go busy; waiting a few minutes and generating again usually works, and a smaller area always does. {details} = Не удалось скачать {count} из {total} частей карты. Публичные серверы Overpass могут быть перегружены; попробуй повторить генерацию через несколько минут или уменьшить область. {details}
+Stand size = Размер рощ
+How big the clumps of forest and the clearings between them are, in metres. = Насколько велики рощи и поляны между ними, в метрах.
+Edge softness = Мягкость опушки
+How far a wood spills out past its edge, in metres, thinning as it goes. 0 is a hard edge. = Насколько лес выходит за свою опушку, в метрах, редея по мере удаления. 0 - резкая граница.
+300 m of forest with a road and a field, as these settings draw it. = 300 м леса с дорогой и полем, как их нарисуют эти настройки.
+A sample of forest with these settings = Образец леса с этими настройками
+
+
+# The Forest card
+Forest = Лес
+Reset = Сбросить
+Advanced = Дополнительно
+Shape = Форма
+Around the woods = Вокруг леса
+Everywhere = Везде
+Not shown in the picture. = На картинке не видно.
+About {setting} = О настройке «{setting}»
+300 m of woods, a road, houses and a field, as these settings draw them. = 300 м леса, дорога, дома и поле - так, как их рисуют эти настройки.
+Thickets = Чащи
+How much of a wood is a wall of trees. 1 is a tenth of it. = Какая часть леса - стена деревьев. 1 - десятая часть.
+Stand variety = Разнообразие участков
+At 0 the stands are all about one size; higher mixes big, middling and small. = При 0 участки примерно одного размера; выше - вперемешку большие, средние и маленькие.
+Raggedness = Рваность
+Smooth blobs at 0, ragged and broken stands at 1. = Гладкие пятна при 0, рваные и разорванные участки при 1.
+Edge wobble = Извилистость опушки
+How irregular the line is that a wood spills out to. = Насколько неровна линия, до которой лес выходит за опушку.
+Spill thickness = Густота выхода
+How much of the spill past a wood is thick trees rather than single ones. = Какая часть выхода леса - густые деревья, а не одиночные.
+Keep meadows open = Сохранять поляны открытыми
+How far across a clearing a wood may spill. 1 lets it fill small meadows. = Как далеко лес может заходить на поляну. При 1 он заполняет маленькие поляны.
+Forest seed = Сид леса
+Another layout of the woods with the same settings. = Другая раскладка леса с теми же настройками.
+House clearings = Поляны у домов
+How far the clearing round a house in the woods reaches, in metres. 0 is none. = Как далеко простирается поляна вокруг дома в лесу, в метрах. 0 - без поляны.
+Big trees = Большие деревья
+How many big old trees stand in the woods. = Сколько больших старых деревьев стоит в лесу.
+Made-up woods = Придуманные леса
+Woods made up where there is no land cover data. = Леса, придуманные там, где нет данных о покрове.
+Scrub on open ground = Кустарник на открытом месте
+Trees and bushes scattered over open grass where there is no land cover data. = Деревья и кусты, разбросанные по открытой траве там, где нет данных о покрове.
+Shrubland and marsh = Кустарники и болота
+How thickly the land cover's shrubland, grass tufts and marsh are planted. = Насколько густо засажены кустарники, пучки травы и болота из данных о покрове.
+Forests = Леса

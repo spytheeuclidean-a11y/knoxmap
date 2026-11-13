@@ -2589,12 +2589,32 @@ function runListSearch(boxId) {
         !head.querySelector(`${found.item}:not(.out-of-search)`));
     }
   }
+  // A subhead with nothing left under it before the next subhead goes too.
+  for (const head of box.querySelectorAll('.setting-subhead')) {
+    let any = false;
+    for (let n = head.nextElementSibling; n && !n.matches('.setting-subhead'); n = n.nextElementSibling) {
+      if (n.matches(`${found.item}:not(.out-of-search)`)
+          || n.querySelector(`${found.item}:not(.out-of-search)`)) { any = true; break; }
+    }
+    head.classList.toggle('out-of-search', !any);
+  }
+  // A match inside a closed Advanced panel opens it, or it would be found
+  // and not seen. The panel is marked so its toggle handler does not save
+  // the search's opening as the user's own choice.
+  if (found.query) {
+    for (const panel of box.querySelectorAll('details.setting-group-advanced')) {
+      if (!panel.open && panel.querySelector(`${found.item}:not(.out-of-search)`)) {
+        panel.dataset.searchOpened = '1';
+        panel.open = true;
+      }
+    }
+  }
   found.input.classList.toggle('found-nothing', Boolean(words.length) && !shown);
 }
 
 // Every list in the window long enough to be worth searching. The last number
 // is how many things it has to hold before the box is worth showing at all.
-searchableList('settingFind', 'advanced-body', '.setting', null, 8);
+searchableList('settingFind', 'advanced-body', '.setting', '.setting-group', 8);
 searchableList('sketchFind', 'sketchPalette', '.sketch-pick', '.palette-group', 12);
 searchableList('boardFind', 'boardPalette', '.sketch-pick', '.palette-group', 12);
 searchableList('zoneFind', 'zoneList', 'li', null, 6);

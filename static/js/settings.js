@@ -11,6 +11,20 @@ const SETTING_LABELS = {
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
   tree_density:        ['Woodland', 'Scales tree cover everywhere: the woods, the gardens and the scrub over open ground. Trees are cover to hide in.'],
   forest_density:      ['Forests', 'Scales every wood, on top of Woodland: the ones the mapper drew and the tree cover WorldCover finds. Thick forest round a thinly planted town, or the other way about.'],
+  forest_stand_m:      ['Stand size', 'How big the clumps of forest and the clearings between them are, in metres.'],
+  forest_edge_m:       ['Edge softness', 'How far a wood spills out past its edge, in metres, thinning as it goes. 0 is a hard edge.'],
+  forest_thickets:     ['Thickets', 'How much of a wood is a wall of trees. 1 is a tenth of it.'],
+  forest_stand_variety: ['Stand variety', 'At 0 the stands are all about one size; higher mixes big, middling and small.'],
+  forest_raggedness:   ['Raggedness', 'Smooth blobs at 0, ragged and broken stands at 1.'],
+  forest_edge_wobble:  ['Edge wobble', 'How irregular the line is that a wood spills out to.'],
+  forest_spill_thick:  ['Spill thickness', 'How much of the spill past a wood is thick trees rather than single ones.'],
+  forest_keep_meadows: ['Keep meadows open', 'How far across a clearing a wood may spill. 1 lets it fill small meadows.'],
+  forest_seed:         ['Forest seed', 'Another layout of the woods with the same settings.'],
+  forest_house_clearing_m: ['House clearings', 'How far the clearing round a house in the woods reaches, in metres. 0 is none.'],
+  forest_big_trees:    ['Big trees', 'How many big old trees stand in the woods.'],
+  forest_groves:       ['Made-up woods', 'Woods made up where there is no land cover data.'],
+  forest_wild_growth:  ['Scrub on open ground', 'Trees and bushes scattered over open grass where there is no land cover data.'],
+  forest_shrubland:    ['Shrubland and marsh', 'How thickly the land cover\'s shrubland, grass tufts and marsh are planted.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
   fill_gaps:           ['Fill gaps from Microsoft footprints', 'On adds the buildings OpenStreetMap has not got, from Microsoft’s machine-detected building footprints, same licence. Downloads about 30 MB per tile on the first run, nothing to install. Worth it where your town is half missing from OSM; elsewhere it adds sheds. Falls back to Overture (needs DuckDB) if Microsoft cannot be reached.'],
   fill_frontage:       ['Fill gaps in streets', 'Builds buildings missing from a street that has buildings beside the gap, matching their neighbours (width, depth, set-back, storeys) where there is room. Choose whether to also extend the ends of rows or only fill gaps between existing buildings.'],
@@ -55,50 +69,249 @@ async function loadSettings() {
   buildSettingsForm(settingsMeta.current);
 }
 
+// Settings that belong together are drawn as a card of their own, the most
+// used on show and the rest behind Advanced. A key named here is drawn in its
+// card; any other key in the list as before, so a new group is a table entry.
+const SETTING_GROUPS = {
+  forest: {
+    title: 'Forest',
+    preview: true,
+    main: ['forest_density', 'forest_thickets', 'forest_stand_m', 'forest_stand_variety',
+           'forest_edge_m'],
+    advanced: [
+      ['Shape', ['forest_raggedness', 'forest_edge_wobble', 'forest_spill_thick',
+                 'forest_keep_meadows', 'forest_seed']],
+      ['Around the woods', ['forest_house_clearing_m', 'forest_big_trees', 'forest_groves',
+                            'forest_wild_growth', 'forest_shrubland']],
+      ['Everywhere', ['tree_density', 'landcover', 'winter_look']],
+    ],
+  },
+};
+// The preview's sample land has land cover all over it, as a map with
+// WorldCover does, and these do nothing there.
+const NOT_IN_PREVIEW = new Set(['forest_groves', 'forest_wild_growth', 'landcover',
+                                'winter_look']);
+
+function groupKeys(group) {
+  return [...group.main, ...group.advanced.flatMap(([, keys]) => keys)];
+}
+
+// A tooltip opened with a tap closes at a tap anywhere else: a browser that
+// does not focus a clicked button (Safari) never sends the (i) a blur.
+document.addEventListener('click', e => {
+  for (const open of document.querySelectorAll('.setting-compact.hint-open')) {
+    if (open.contains(e.target)) continue;
+    open.classList.remove('hint-open');
+    open.querySelector('.setting-info')?.setAttribute('aria-expanded', 'false');
+  }
+});
+
+function settingElement(key, label, hint, values, compact = false) {
+  const [lo, hi] = settingsMeta.limits[key];
+  const isInt = settingsMeta.types
+    ? settingsMeta.types[key] === 'int'
+    : Number.isInteger(settingsMeta.defaults[key]);
+  const choices = settingsMeta.options?.[key];
+  const isChoice = Array.isArray(choices);
+  // A setting that is only ever 0 or 1 is a switch, not a quantity. As a
+  // slider it was two positions wide, read "1" or "0" rather than on or
+  // off, and could be left halfway on a touchscreen.
+  const isSwitch = !isChoice && isInt && lo === 0 && hi === 1;
+  // A seed is an identifier, not a quantity: nobody wants to drag a slider
+  // across a million values to find one, so it gets a box and a dice.
+  const isSeed = key === 'seed' || key === 'forest_seed';
+  // A slider whose whole range is 1 or less steps by 0.01, so a default such
+  // as 0.33 is a position it can hold; at 0.05 the browser snapped it to 0.35
+  // and the page sent that. Wider ranges keep 0.05. The same rule is checked
+  // against every default in tests/test_forest_card.py.
+  const floatStep = hi - lo <= 1 ? 0.01 : 0.05;
+  const wrap = document.createElement('div');
+  wrap.className = isSwitch ? 'setting setting-switch' : 'setting';
+  const control = isSeed
+    ? `<div class="seed-row"><input type="number" data-key="${key}" min="${lo}"
+         max="${hi}" step="1" value="${values[key]}"><button type="button"
+         class="dice" title="Random seed">random</button></div>`
+    : isChoice
+    ? `<select data-key="${key}">${choices.map(([value, name]) =>
+        `<option value="${value}"${value === values[key] ? ' selected' : ''}>${name}</option>`).join('')}</select>`
+    : isSwitch
+    ? ''
+    : `<input type="range" data-key="${key}" min="${lo}" max="${hi}"
+         step="${isInt ? 1 : floatStep}" value="${values[key]}">`;
+  // The switch sits in the heading, where the number used to be: the name
+  // on the left, what it is set to on the right, the hint underneath.
+  const head = isSwitch
+    ? `<label class="switch"><input type="checkbox" role="switch"
+         data-key="${key}" aria-label="${label}"${values[key] ? ' checked' : ''}>
+       <span class="switch-track"></span></label>`
+    : isSeed || isChoice ? ''
+    : `<output class="setting-val">${values[key]}</output>`;
+  if (compact) {
+    // A card's settings are one line each - name, slider, number - so the
+    // whole card and its picture fit on the screen together. What a setting
+    // does is behind the (i), shown on hover, focus or a tap; it stays in
+    // the page so the settings search still finds a setting by it.
+    wrap.classList.add('setting-compact');
+    if (isSeed || isChoice) wrap.classList.add('setting-wide');
+    wrap.innerHTML = `
+      <span class="setting-name">${label}<button type="button" class="setting-info"
+        aria-label="About ${label}" aria-expanded="false">i</button></span>
+      ${control}
+      ${head}
+      <span class="setting-hint" role="tooltip">${hint}</span>`;
+    const info = wrap.querySelector('.setting-info');
+    // Opened near the bottom of its scrolling panel, the tooltip would run
+    // out of sight, so there it opens upwards.
+    const aim = () => {
+      const pane = wrap.closest('.ws-pnl-body') || document.documentElement;
+      const below = pane.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
+      wrap.classList.toggle('hint-up', below < 110);
+    };
+    info.addEventListener('mouseenter', aim);
+    info.addEventListener('focus', aim);
+    info.addEventListener('click', () => {
+      const open = wrap.classList.toggle('hint-open');
+      info.setAttribute('aria-expanded', String(open));
+    });
+    info.addEventListener('blur', () => {
+      wrap.classList.remove('hint-open');
+      info.setAttribute('aria-expanded', 'false');
+    });
+    return wrap;
+  }
+  wrap.innerHTML = `
+    <div class="setting-head"><span class="setting-name">${label}</span>
+      ${head}</div>
+    ${control}
+    <span class="setting-hint">${hint}</span>`;
+  return wrap;
+}
+
+// The forest card draws a sample of land as its sliders move, from the same
+// code the map is drawn with (/api/forest-preview), so what is seen is what
+// is got. The old picture stays until the new one has loaded.
+function forestPreview(card, group) {
+  const fig = document.createElement('figure');
+  fig.className = 'forest-preview';
+  // Sticky: it stays at the top of the panel while the card's own sliders
+  // scroll under it, so a slider far down Advanced still has its picture.
+  fig.innerHTML = `<img alt="A sample of forest with these settings" width="300" height="300"
+    title="300 m of woods, a road, houses and a field, as these settings draw them.">`;
+  const img = fig.querySelector('img');
+  const keys = groupKeys(group).filter(k => !NOT_IN_PREVIEW.has(k));
+  let timer = null;
+  const refresh = () => {
+    const q = new URLSearchParams();
+    for (const key of keys) {
+      const el = card.querySelector(`[data-key="${key}"]`);
+      if (el && el.value !== '') q.set(key, el.value);
+    }
+    const next = new Image();
+    next.onload = () => { img.src = next.src; };
+    next.src = `/api/forest-preview?${q}`;
+  };
+  card.addEventListener('input', e => {
+    if (!keys.includes(e.target.dataset?.key)) return;
+    clearTimeout(timer);
+    timer = setTimeout(refresh, 150);
+  });
+  setTimeout(refresh, 0);       // once the card's sliders are in it
+  // Pinned at the top of the panel, the picture would leave a short panel
+  // no room for the sliders it shows, so it takes at most under half the
+  // panel's height, never less than 120 px; a taller panel gets a bigger one.
+  if (typeof ResizeObserver === 'function') {
+    let pane = null;
+    const fit = () => {
+      if (!pane || !pane.clientHeight) return;
+      const size = Math.max(120, Math.min(300, Math.round(pane.clientHeight * 0.45)));
+      img.style.maxWidth = `${size}px`;
+    };
+    const watch = new ResizeObserver(fit);
+    const attach = () => {
+      pane = fig.closest('.ws-pnl-body');
+      if (pane) { watch.observe(pane); fit(); } else setTimeout(attach, 200);
+    };
+    setTimeout(attach, 0);
+  }
+  return fig;
+}
+
+function settingGroup(name, group, values) {
+  const card = document.createElement('section');
+  card.className = 'setting-group';
+  card.dataset.group = name;
+  card.innerHTML = `<div class="setting-group-head"><span class="setting-group-title">${group.title}</span>
+    <button type="button" class="linkish group-reset">Reset</button></div>`;
+  const add = (parent, key) => {
+    if (!(key in settingsMeta.defaults) || !SETTING_LABELS[key]) return;
+    const [label, hint] = SETTING_LABELS[key];
+    const el = settingElement(key, label, hint, values, true);
+    if (NOT_IN_PREVIEW.has(key)) {
+      el.classList.add('not-in-preview');
+      el.querySelector('.setting-hint').insertAdjacentHTML('beforeend',
+        ' <span class="setting-note">Not shown in the picture.</span>');
+    }
+    parent.appendChild(el);
+  };
+  if (group.preview) card.appendChild(forestPreview(card, group));
+  group.main.forEach(key => add(card, key));
+  const advanced = document.createElement('details');
+  advanced.className = 'setting-group-advanced';
+  advanced.innerHTML = '<summary>Advanced</summary>';
+  for (const [title, keys] of group.advanced) {
+    const head = document.createElement('div');
+    head.className = 'setting-subhead';
+    head.textContent = title;
+    advanced.appendChild(head);
+    keys.forEach(key => add(advanced, key));
+  }
+  // Open or closed is remembered in this browser; a private window that
+  // refuses storage just starts closed.
+  const remember = `knoxmap.${name}.advanced`;
+  try { advanced.open = localStorage.getItem(remember) === '1'; } catch (e) { /* no storage */ }
+  advanced.addEventListener('toggle', () => {
+    // A search that opened the panel is not the user choosing it open.
+    if (advanced.dataset.searchOpened) { delete advanced.dataset.searchOpened; return; }
+    try { localStorage.setItem(remember, advanced.open ? '1' : '0'); } catch (e) { /* no storage */ }
+  });
+  card.appendChild(advanced);
+  card.querySelector('.group-reset').addEventListener('click', () => resetGroup(card, group));
+  return card;
+}
+
+// The card's own keys back to the chosen kind of place's values, and nothing
+// else: Reset at the bottom of the list still does every setting.
+function resetGroup(card, group) {
+  const preset = settingsMeta.presets[document.getElementById('preset').value]
+    || settingsMeta.defaults;
+  for (const key of groupKeys(group)) {
+    const el = card.querySelector(`[data-key="${key}"]`);
+    if (!el || !(key in preset)) continue;
+    if (el.type === 'checkbox') el.checked = !!preset[key];
+    else el.value = preset[key];
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+}
+
 function buildSettingsForm(values) {
   const body = document.getElementById('advanced-body');
   body.innerHTML = '';
+  const groupOf = {};
+  for (const [name, group] of Object.entries(SETTING_GROUPS)) {
+    for (const key of groupKeys(group)) groupOf[key] = name;
+  }
+  const placed = new Set();
   for (const [key, [label, hint]] of Object.entries(SETTING_LABELS)) {
     if (!(key in settingsMeta.defaults)) continue;   // knob has been removed
-    const [lo, hi] = settingsMeta.limits[key];
-    const isInt = settingsMeta.types
-      ? settingsMeta.types[key] === 'int'
-      : Number.isInteger(settingsMeta.defaults[key]);
-    const choices = settingsMeta.options?.[key];
-    const isChoice = Array.isArray(choices);
-    // A setting that is only ever 0 or 1 is a switch, not a quantity. As a
-    // slider it was two positions wide, read "1" or "0" rather than on or
-    // off, and could be left halfway on a touchscreen.
-    const isSwitch = !isChoice && isInt && lo === 0 && hi === 1;
-    const wrap = document.createElement('div');
-    wrap.className = isSwitch ? 'setting setting-switch' : 'setting';
-    // A seed is an identifier, not a quantity: nobody wants to drag a slider
-    // across two billion values to find one, so it gets a box and a dice.
-    const control = key === 'seed'
-      ? `<div class="seed-row"><input type="number" data-key="${key}" min="${lo}"
-           max="${hi}" step="1" value="${values[key]}"><button type="button"
-           class="dice" title="Random seed">random</button></div>`
-      : isChoice
-      ? `<select data-key="${key}">${choices.map(([value, name]) =>
-          `<option value="${value}"${value === values[key] ? ' selected' : ''}>${name}</option>`).join('')}</select>`
-      : isSwitch
-      ? ''
-      : `<input type="range" data-key="${key}" min="${lo}" max="${hi}"
-           step="${isInt ? 1 : 0.05}" value="${values[key]}">`;
-    // The switch sits in the heading, where the number used to be: the name
-    // on the left, what it is set to on the right, the hint underneath.
-    const head = isSwitch
-      ? `<label class="switch"><input type="checkbox" role="switch"
-           data-key="${key}" aria-label="${label}"${values[key] ? ' checked' : ''}>
-         <span class="switch-track"></span></label>`
-      : key === 'seed' || isChoice ? ''
-      : `<output class="setting-val">${values[key]}</output>`;
-    wrap.innerHTML = `
-      <div class="setting-head"><span class="setting-name">${label}</span>
-        ${head}</div>
-      ${control}
-      <span class="setting-hint">${hint}</span>`;
-    body.appendChild(wrap);
+    const name = groupOf[key];
+    if (!name) {
+      body.appendChild(settingElement(key, label, hint, values));
+    } else if (!placed.has(name)) {
+      // The card goes where the first of its keys would have.
+      placed.add(name);
+      body.appendChild(settingGroup(name, SETTING_GROUPS[name], values));
+    }
   }
   fx.wireSettings(body);
   runListSearch('advanced-body');
