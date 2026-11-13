@@ -512,17 +512,23 @@ def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None:
     """Keep trees, scrub, and grass off every rasterized road, sidewalk, rail, and water tile."""
     import numpy as np
     from ..rail_tiles import RAIL_RULES
+    from . import native_pixels
 
-    road_colours = np.array((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
-                             C.DARKEST_ASPHALT, C.PALE_CONCRETE, C.DARK_POTHOLE,
-                             C.LIGHT_POTHOLE, C.WATER)
-                            + tuple(colour for _, colour, _ in RAIL_RULES), dtype=np.uint8)
-    veg_colours = np.array((C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
-                            C.GRASS_ON_DARK, C.SHORT_GRASS, C.LOT_OF_GRASS_AND_TREES,
-                            C.BUSHES_TREES_DARK_GRASS, C.BUSHES, C.DENSE_BUSHES_GRASS,
-                            C.FLOWERS, C.BOULDERS, C.ROCKS,
-                            C.TREE_BIG, C.TREE_HUGE, C.TREE_GIANT, C.TREE_SMALL),
-                           dtype=np.uint8)
+    road_tuple = ((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
+                   C.DARKEST_ASPHALT, C.PALE_CONCRETE, C.DARK_POTHOLE,
+                   C.LIGHT_POTHOLE, C.WATER)
+                  + tuple(colour for _, colour, _ in RAIL_RULES))
+    veg_tuple = (C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
+                 C.GRASS_ON_DARK, C.SHORT_GRASS, C.LOT_OF_GRASS_AND_TREES,
+                 C.BUSHES_TREES_DARK_GRASS, C.BUSHES, C.DENSE_BUSHES_GRASS,
+                 C.FLOWERS, C.BOULDERS, C.ROCKS,
+                 C.TREE_BIG, C.TREE_HUGE, C.TREE_GIANT, C.TREE_SMALL)
+    if native_pixels.clear_road_vegetation(
+        veg, landscape, road_tuple, veg_tuple, C.VEG_NOTHING
+    ):
+        return
+    road_colours = np.array(road_tuple, dtype=np.uint8)
+    veg_colours = np.array(veg_tuple, dtype=np.uint8)
     width, height = landscape.size
     for top in range(0, height, 256):
         bottom = min(height, top + 256)
