@@ -291,9 +291,9 @@ BARRICADE_Y = ["location_military_generic_01_043", "location_military_generic_01
 MAIN_ROAD = 6              # primary and above (generator.osm.ROAD_HIERARCHY_CODES)
 CHECKPOINT_AT = 24         # tiles: a road ending this near the border leaves town
 CHECKPOINT_APART = 12      # tiles between two checkpoints on the same road end
-ROAD_BLOCK_SPACING = 60    # tiles between blocks along a main road
+ROAD_BLOCK_SPACING = 60    # tiles between two blocks on roads that end apart
 MAX_CHECKPOINTS = 4
-MAX_ROAD_BLOCKS = 6
+MAX_ROAD_BLOCKS = 2        # one or two, at the ends of main roads - not a cordon
 MAX_EVAC_CENTRES = 8
 EVAC_PROPS = 4             # crates and drums in a school yard
 
@@ -377,6 +377,53 @@ def _edge_exits(ground: np.ndarray, width: int, height: int) -> list:
     return [pick(side) for side in sides if int(side.min()) <= CHECKPOINT_AT]
 
 
+def _runs(mask: np.ndarray, axis: int) -> tuple[np.ndarray, np.ndarray]:
+    """For a road mask, how long the run each square sits in is, and whether it
+    ends that run - measured along `axis` (1 is x, 0 is y)."""
+    import numpy as np
+
+    m = mask if axis == 1 else mask.T
+    height, width = m.shape
+    length = np.zeros_like(m, dtype=np.int32)
+    ends = np.zeros_like(m)
+    for row in range(height):
+        line = m[row]
+        if not line.any():
+            continue
+        edges = np.diff(line.astype(np.int8), prepend=0, append=0)
+        starts = np.nonzero(edges == 1)[0]
+        stops = np.nonzero(edges == -1)[0] - 1
+        for first, last in zip(starts.tolist(), stops.tolist()):
+            length[row, first:last + 1] = last - first + 1
+            if last - first + 1 >= 8:            # a road, not a stub
+                ends[row, first] = True
+                ends[row, last] = True
+    if axis == 1:
+        return length, ends
+    return length.T, ends.T
+
+
+def _road_ends(main: np.ndarray, margin: int = 2) -> list[tuple[int, int]]:
+    """Where a main road stops: the square that ends a run longer than the road
+    is wide, and that runs along the road rather than across it.
+
+    Counting neighbours only finds the end of a one-tile lane - the last column
+    of a four-lane road has three neighbours, all of them road - and looking one
+    way along an axis flags the kerb row of every wide road. What separates an
+    end from a kerb is which run ends: the long one is the road.
+    """
+    import numpy as np
+
+    length_x, ends_x = _runs(main, 1)
+    length_y, ends_y = _runs(main, 0)
+    ends = main & np.where(length_x >= length_y, ends_x, ends_y)
+    height, width = main.shape
+    inside = np.zeros_like(main)
+    inside[margin:-margin, margin:-margin] = True   # the border is the checkpoint's
+    ys, xs = np.nonzero(ends & inside)
+    return list(zip(xs.tolist(), ys.tolist()))
+
+
 def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                     rows: list, road_hierarchy: np.ndarray | None = None,
                     seed: int = 0x5161) -> tuple[list, dict]:
@@ -429,12 +476,19 @@ def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray
 
     if road_hierarchy is not None:
         main = road_hierarchy[:height, :width] >= MAIN_ROAD
-        ys, xs = np.nonzero(main)
+        # A block belongs where a road actually stops, not at intervals along
+        # it: a cordon every few hundred metres reads as scenery, and the point
+        # of the scene is that this road, here, is the end of the way.
+        ends = _road_ends(main)
+        middle_x, middle_y = width / 2, height / 2
+        ends.sort(key=lambda p: -((p[0] - middle_x) ** 2 + (p[1] - middle_y) ** 2))
         picked: list = []
-        for y, x in zip(ys[::5].tolist(), xs[::5].tolist()):
+        for x, y in ends:
             if counts["road_blocks"] >= MAX_ROAD_BLOCKS:
                 break
-            if any(abs(x - px) < ROAD_BLOCK_SPACING and abs(y - py) < ROAD_BLOCK_SPACING
+            # Two ends of the same road are the two ends of the same road: the
+            # spacing is a distance, not a box, or the second is always refused.
+            if any((x - px) ** 2 + (y - py) ** 2 < ROAD_BLOCK_SPACING ** 2
                    for px, py in picked):
                 continue
             placed = _stop_the_road(ground, width, height, x, y, put, rng)
