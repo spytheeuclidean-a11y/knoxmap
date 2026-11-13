@@ -426,8 +426,7 @@
   };
   for (const t of TOOLS) {
     const tab = make('button', 'setting-tab',
-      `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span><span>${esc(t.label)}</span>`
-      + '<span class="setting-tab-dot" title="Something here changes the map" hidden></span>');
+      `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span><span>${esc(t.label)}</span>`);
     tab.type = 'button';
     tab.dataset.tool = t.id;
     tab.title = `${t.title} (${t.key})`;
@@ -498,18 +497,6 @@
     const next = all[(to + all.length) % all.length];
     next.focus(); next.click();
   });
-  // A yellow dot on a tool's tab while it holds something that changes the
-  // map, as Properties dots a tab with a setting off its default.
-  const TOOL_CHANGED = {
-    draw: () => !!($('sketchCount') && $('sketchCount').textContent.trim()) || !!($('sketchRect') && $('sketchRect').checked),
-    zone: () => !!$('zoneList') && !!$('zoneList').querySelector('li.is-changed'),
-    change: () => !!($('editCount') && $('editCount').textContent.trim()),
-  };
-  for (const id of ['sketchCount', 'zoneList', 'editCount']) {
-    if ($(id)) new MutationObserver(() => render()).observe($(id),
-      { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['class'] });
-  }
-  $('sketchRect')?.addEventListener('change', () => render());
   function renderTools() {
     // Nothing to work on at Home: the panel steps aside for it.
     const atHome = !!ws.home;
@@ -518,8 +505,6 @@
       requestAnimationFrame(() => map.invalidateSize());
     }
     for (const tab of toolTabs.children) {
-      const dot = tab.querySelector('.setting-tab-dot');
-      if (dot) dot.hidden = !(TOOL_CHANGED[tab.dataset.tool] && TOOL_CHANGED[tab.dataset.tool]());
       const on = tab.dataset.tool === ws.tool;
       tab.classList.toggle('is-on', on);
       tab.setAttribute('aria-selected', String(on));

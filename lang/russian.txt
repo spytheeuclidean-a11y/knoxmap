@@ -673,5 +673,4 @@ Extent = Границы
 Features = Объекты
 The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners = Границы карты: нарисуй их прямоугольником, многоугольником, кругом или от руки, или введи углы
 Features to add to the map: a street, a house, a park… built like a real one = Объекты для карты: улица, дом, парк… строятся как настоящие
-Something here changes the map = Здесь есть изменения карты
 Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Features. = Ничего не скачивается, поэтому место, которого нет в OpenStreetMap, можно построить из нарисованного во вкладке «Объекты».

@@ -918,7 +918,6 @@ Smallest building = Smallest building
 Smart = Smart
 Smooth blobs at 0, ragged and broken stands at 1. = Smooth blobs at 0, ragged and broken stands at 1.
 Snap to the streets it joins, and to what is already drawn = Snap to the streets it joins, and to what is already drawn
-Something here changes the map = Something here changes the map
 Something under {BOARD_TRACE_MAX_MB} MB is plenty to trace. = Something under {BOARD_TRACE_MAX_MB} MB is plenty to trace.
 Something went wrong = Something went wrong
 South must be below north, and west left of east. = South must be below north, and west left of east.

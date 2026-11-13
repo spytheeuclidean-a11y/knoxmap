@@ -1094,5 +1094,4 @@ Extent = Extensión
 Features = Elementos
 The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners = La extensión del mapa: dibújala como rectángulo, polígono, círculo o a mano alzada, o escribe sus esquinas
 Features to add to the map: a street, a house, a park… built like a real one = Elementos para añadir al mapa: una calle, una casa, un parque… construidos como uno real
-Something here changes the map = Algo aquí cambia el mapa
 Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Features. = No se descarga nada, así que se puede construir un lugar que no está en OpenStreetMap con lo dibujado en Elementos.
