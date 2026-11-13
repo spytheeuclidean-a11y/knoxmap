@@ -488,8 +488,8 @@ def _assign_kinds(rooms: list[Room], mix: list[str], fill: list[str]) -> None:
 CORRIDOR_WORTH_IT = 8
 
 
-NEEDS_CORRIDOR = {"school", "police", "civic", "medical", "fire", "military",
-                  "library", "offices"}
+NEEDS_CORRIDOR = {"school", "police", "civic", "medical", "fire", "fire_police",
+                  "military", "library", "offices"}
 
 # Pairs that belong together when both rooms fit on the floor. Shop and
 # restaurant fronts already choose an adjacent back room in _assign_shop_floor.
@@ -508,6 +508,7 @@ BUSINESS_NEIGHBOURS = {
                ("policeoffice", "evidenceroom"), ("policelocker", "lockerroom")),
     "library": (("library", "storage"), ("lobby", "library")),
     "fire": (("firegarage", "firestorage"), ("kitchen", "bedroom")),
+    "fire_police": (("firegarage", "firestorage"), ("policeoffice", "policelocker")),
     "offices": (("office", "officestorage"), ("office", "breakroom")),
 }
 
@@ -560,6 +561,7 @@ MIN_SPECIAL_ROOMS = {
     "civic": {"office": 1, "lobby": 1},
     "medical": {"clinic": 1, "medical": 1},
     "fire": {"firegarage": 1},
+    "fire_police": {"firegarage": 1, "policeoffice": 1, "policelocker": 1},
     "military": {"armystorage": 1},
     "library": {"library": 1},
     "offices": {"office": 1},

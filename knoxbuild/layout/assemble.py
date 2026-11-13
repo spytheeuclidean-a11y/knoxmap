@@ -300,7 +300,7 @@ KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 16.0, "shed": 20.0, "church": 12.0
                    "shop": 2.0, "school": 9.0, "civic": 2.5,
                    "restaurant": 1.5, "medical": 1.3, "offices": 3.0,
                    "police": 2.0, "library": 8.0, "fire": 4.0,
-                   "military": 4.0,
+                   "fire_police": 3.0, "military": 4.0,
                    # A bunker under a whole base is thousands of tiles a level.
                    "basement_military": 6.0, "basement_industrial": 6.0,
                    "basement_mall": 4.0, "basement_school": 3.0,
@@ -333,7 +333,7 @@ MAX_ROOM_AREA = 120
 # these are the buildings the game itself spends it on.
 KIND_MAX_ROOM = {"church": 340, "library": 280, "school": 170, "gym": 320,
                  "industrial": 460, "barn": 460, "shed": 460, "military": 150,
-                 "civic": 170, "fire": 220, "medical": 140,
+                 "civic": 170, "fire": 220, "fire_police": 220, "medical": 140,
                  # A great hall and a concourse. Without an entry here the cap
                  # is MAX_ROOM_AREA whatever KIND_ROOM_SCALE says, which is
                  # why no room-size setting moved either of these.

@@ -555,9 +555,16 @@ SPECIAL_MIXES = {
                     "storage", "library"],
                    ["library", "library", "library", "storage", "office"]),
     # A fire station: the appliance bay, the gear store and the crew's rooms.
-    "fire":       (["firegarage", "firestorage", "office", "bedroom",
-                    "kitchen", "bathroom", "firestorage"],
-                   ["bedroom", "office", "storage"]),
+    "fire":       (["firegarage", "firestorage", "lobby", "office",
+                    "bathroom", "kitchen", "firestorage", "bedroom"],
+                   ["bedroom", "office", "bathroom", "storage"]),
+    # A combined fire and police station: appliance bay + gear store alongside
+    # police offices, lockers, armoury and cells.
+    "fire_police": (["firegarage", "firestorage", "lobby", "policeoffice",
+                     "policelocker", "policegunstorage", "prisoncells",
+                     "bathroom", "office", "breakroom"],
+                    ["policeoffice", "bedroom", "office", "bathroom",
+                     "policelocker", "storage"]),
     # The floors above a shop: offices, as in any high street.
     "offices":    (["office", "office", "breakroom", "bathroom", "storage", "office"],
                    ["office", "office", "storage"]),

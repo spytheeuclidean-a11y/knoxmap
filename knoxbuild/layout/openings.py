@@ -507,15 +507,30 @@ def _exterior_door(plan: Plan, rng: random.Random,
         return
 
 
+VEHICLE_BAY_ROOMS = {"firegarage", "garage", "garagestorage", "mechanic", "warehouse"}
+
+
 def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:
     """Turn the street-facing garage entry into a three-tile door opening."""
+    multi_room = len(plan.rooms) > 1
     candidates = []
-    for room_id in range(1, len(plan.rooms) + 1):
+    bay_walls = []
+    for room_id, room in enumerate(plan.rooms, start=1):
+        is_bay = room.kind in VEHICLE_BAY_ROOMS
+        if multi_room and not is_bay:
+            continue
         for side, wall in _outside_runs(plan, room_id):
+            if is_bay and len(wall) >= 3:
+                bay_walls.append((side == (street or "S"), len(wall), wall))
             for door in plan.doors:
                 if door in wall:
                     candidates.append((side == (street or "S"), len(wall),
                                        door, wall))
+    if not candidates and bay_walls:
+        _faces_street, _length, wall = max(bay_walls)
+        entry = wall[len(wall) // 2]
+        plan.doors.append(entry)
+        candidates.append((_faces_street, _length, entry, wall))
     if not candidates:
         return
     _faces_street, _length, entry, wall = max(candidates)

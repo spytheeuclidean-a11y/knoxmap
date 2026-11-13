@@ -18,7 +18,7 @@ import numpy as np
 
 BOTTOM_LEVEL = -32
 
-LARGE_KINDS = {"school", "medical", "civic", "police", "mall", "industrial"}
+LARGE_KINDS = {"school", "medical", "civic", "police", "fire", "fire_police", "mall", "industrial"}
 CHURCH_MIN_M2 = 600
 LARGE_TWO_LEVELS_M2 = 3_000
 INSTALLATION_SITE_M2 = 50_000          # an industrial site this big goes deep

@@ -139,7 +139,7 @@ WALL_ART_CHANCE = 0.55
 # and a school came out with a wall of them. A classroom, a corridor and a
 # police office get none.
 ART_FREE_KINDS = {"police", "civic", "school", "medical", "fire",
-                  "military", "library"}
+                  "fire_police", "military", "library"}
 # Buildings that are places of work, not homes, and the rooms in them whose
 # usual wishlist is a domestic one. A station, a school or a clinic gets a
 # noticeboard and a water cooler where a house gets a side table and a
@@ -158,8 +158,8 @@ HOME_KINDS = {None, "house", "apartment", "basement_house", "basement_house_rec"
               "basement_house_cellar"}
 # What a home puts in a box room instead.
 HOME_STORE = {"metal_rack": "shelf", "crate": "dresser"}
-CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "military",
-               "library"}
+CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "fire_police",
+               "military", "library"}
 CIVIC_ROOMS = {
     "hall": ["plant", "water_cooler", "chair", "painting", "chair"],
     "lobby": ["shop_counter", "chair", "chair", "plant", "painting",
@@ -2224,6 +2224,40 @@ KIND_FLOOR_CHOICES = {
         "janitor":           ["civic_scuff", "civic_worn"],
         "bathroom":          ["civic_pale", "civic_worn"],
         "office":            ["civic_pale", "civic_grey"],
+        "storage":           ["civic_scuff", "civic_pale"],
+    },
+    "fire": {
+        "firegarage":        ["concrete"],
+        "firestorage":       ["civic_scuff", "concrete"],
+        "hall":              ["civic_hall", "civic_pale", "civic_grey"],
+        "lobby":             ["civic_hall", "civic_pale", "civic_grey"],
+        "office":            ["civic_pale", "civic_grey"],
+        "kitchen":           ["civic_pale", "civic_worn"],
+        "bathroom":          ["tile_white", "civic_pale"],
+        "bedroom":           ["civic_pale", "civic_grey"],
+        "storage":           ["civic_scuff", "civic_pale"],
+    },
+    "fire_police": {
+        "firegarage":        ["concrete"],
+        "firestorage":       ["civic_scuff", "concrete"],
+        "hall":              ["civic_hall", "civic_pale", "civic_grey"],
+        "lobby":             ["civic_hall", "civic_pale", "civic_grey"],
+        "prisoncells":       ["civic_hall"],
+        "policeoffice":      ["civic_pale", "civic_grey", "civic_hall"],
+        "policehall":        ["civic_hall", "civic_pale"],
+        "policelocker":      ["civic_pale", "civic_scuff"],
+        "policegunstorage":  ["civic_pale", "civic_grey", "civic_scuff"],
+        "policeoutfitstorage": ["civic_pale", "civic_scuff"],
+        "policearchive":     ["civic_pale", "civic_grey"],
+        "officestorage":     ["civic_pale", "civic_scuff"],
+        "interrogationroom": ["civic_pale", "civic_grey"],
+        "security":          ["civic_pale", "civic_grey"],
+        "breakroom":         ["civic_pale", "civic_worn"],
+        "janitor":           ["civic_scuff", "civic_worn"],
+        "bathroom":          ["tile_white", "civic_pale"],
+        "office":            ["civic_pale", "civic_grey"],
+        "bedroom":           ["civic_pale", "civic_grey"],
+        "kitchen":           ["civic_pale", "civic_worn"],
         "storage":           ["civic_scuff", "civic_pale"],
     },
 }
