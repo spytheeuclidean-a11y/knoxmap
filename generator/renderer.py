@@ -331,8 +331,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # softness (tools/regression_maps.py, the tests) get the rest at default.
     fp = forest_params or ForestParams(stand_m=forest_stand_m, edge_m=forest_edge_m)
     # Read more than once below - the buildings pass goes back over the
-    # address points - so never leave this as a generator.
-    features = list(features)
+    # address points - and road layout passes rewrite feat.geometry, so copy
+    # the feature wrappers rather than mutating the caller's list in-place.
+    import copy
+    features = [copy.copy(f) for f in features]
     road_layout = int(straight_roads or 0)
     if road_layout == 0:
         from .mapped_roads import clean_mapped_roads

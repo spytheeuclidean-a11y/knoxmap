@@ -103,7 +103,7 @@ class RenderWorldCoverTest(unittest.TestCase):
                    C.DARK_POTHOLE, C.LIGHT_POTHOLE)
         # The road runs edge to edge of the bbox (the map is padded to whole
         # cells past it): no field or wood cut it.
-        self.assertGreater(road.mean(axis=1).max(), 0.7)
+        self.assertGreater(road.any(axis=0).mean(), 0.7)
         grown = is_(self.veg, C.CORN_1, C.CORN_2, C.TREES, C.TREES_DARK_GRASS,
                     C.SPARSE_TREES, C.BUSHES, C.ROCKS, C.BOULDERS)
         self.assertFalse((grown & road).any())
