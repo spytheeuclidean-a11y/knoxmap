@@ -433,7 +433,8 @@ function openSettingTab(name, remember = false) {
 }
 
 // A dot on a tab that holds a setting moved off the kind of place's value, so
-// a change is not lost behind a tab or a closed Advanced.
+// a change is not lost behind a tab or a closed Advanced; and the setting's
+// name marked where it is.
 function differs(el, want) {
   if (want === undefined) return false;
   if (el.type === 'checkbox') return el.checked !== !!want;
@@ -448,8 +449,13 @@ function markChangedTabs() {
   const preset = settingsMeta.presets[document.getElementById('preset').value]
     || settingsMeta.defaults;
   for (const card of body.querySelectorAll('.setting-group')) {
-    const moved = [...card.querySelectorAll('[data-key]')]
-      .some(el => differs(el, preset[el.dataset.key] ?? settingsMeta.defaults[el.dataset.key]));
+    let moved = false;
+    for (const el of card.querySelectorAll('[data-key]')) {
+      // The setting's own name says so too, bold and yellow.
+      const off = differs(el, preset[el.dataset.key] ?? settingsMeta.defaults[el.dataset.key]);
+      el.closest('.setting')?.classList.toggle('is-changed', off);
+      moved ||= off;
+    }
     const dot = body.querySelector(`#setting-tab-${card.dataset.group} .setting-tab-dot`);
     if (dot) dot.hidden = !moved;
   }

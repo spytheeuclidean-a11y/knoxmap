@@ -337,6 +337,9 @@ body.ws-loading > * { visibility: hidden; }
 .ws-legend.shut .ws-legend-body { display: none; }
 .ws-legend.shut .tw { transform: rotate(-90deg); }
 .ws-legend .ws-layers li { padding: 1px 2px; }
+.ws-places { left: auto; bottom: auto; right: 10px; top: 52px; width: 250px; max-width: 250px; }
+.ws-places .count { margin-left: auto; color: var(--faint); font-family: var(--mono); text-transform: none; }
+.ws-places #landmarksBtn { font-size: 12px; padding: 4px 10px; }
 .ws-layers { list-style: none; margin: 0; padding: 0; }
 .ws-layers li { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 4px; }
 .ws-layers .eye { background: none; border: 0; color: var(--muted); cursor: pointer; width: 20px; padding: 0; font-size: 14px; }

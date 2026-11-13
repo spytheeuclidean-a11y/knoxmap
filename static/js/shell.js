@@ -172,13 +172,20 @@
   layers.setAttribute('aria-label', 'Layers');
   layers.innerHTML = `<div class="ws-legend-head"><button class="tw" aria-label="Fold" type="button">▾</button>
     <span class="ttl">Layers</span></div><div class="ws-legend-body"></div>`;
+  // Named places, the same, at the top right under the basemaps: the button
+  // and the list it finds, folded away when it is in the way.
+  const places = make('section', 'ws-legend ws-places');
+  places.id = 'wsPlaces';
+  places.setAttribute('aria-label', 'Named places');
+  places.innerHTML = `<div class="ws-legend-head"><button class="tw" aria-label="Fold" type="button">▾</button>
+    <span class="ttl">Named places</span><span class="count" id="landmarkCount"></span></div>
+    <div class="ws-legend-body"></div>`;
   const propsBody = props.querySelector('.ws-pnl-body');
   // On the page before anything moves into them: app.js finds its controls by id.
   controls.prepend(props);
-  pane.appendChild(layers);
+  pane.append(layers, places);
 
-  // Properties, part one: the map's settings - the area is in their Map tab -
-  // and the list of named places under them.
+  // Properties, part one: the map's settings - the area is in their Map tab.
   const mapProps = make('div', 'ws-mapprops');
   mapProps.style.cssText = 'display:flex;flex-direction:column;gap:10px';
   // Part two: the tool's own panel, when a tool has one.
@@ -191,7 +198,8 @@
   }
   for (const node of [...areaCard.children]) {
     if (node.matches('h2') || node.id === 'presetsPanel') continue;
-    mapProps.append(node);
+    if (node.id === 'landmark-panel') places.querySelector('.ws-legend-body').append(node);
+    else mapProps.append(node);
   }
   for (const id of ['sketch', 'zonesPanel', 'editMap', 'handBuilt']) holder.append($(id));
   // The Generate button and the drawing board's button are pressed from here.
@@ -289,6 +297,7 @@
         + label('Panels')
         + item('Properties', () => togglePanel(props), { on: !props.hidden })
         + item('Layers', () => togglePanel(layers), { on: !layers.hidden })
+        + item('Named places', () => togglePanel(places), { on: !places.hidden })
         + item('Reset the layout', resetLayout),
       Map: () => label('Kind of place')
         + [...document.querySelectorAll('#presetCards .preset-card')].map(c =>
@@ -878,7 +887,7 @@
   function resetLayout() {
     props.hidden = false; dockPanel(props);
     controls.append(props);
-    layers.hidden = false; layers.classList.remove('shut');
+    for (const w of [layers, places]) { w.hidden = false; w.classList.remove('shut'); }
     document.documentElement.style.removeProperty('--dock-w');
     props.querySelector('.ws-pnl-body').style.height = '';
     for (const n of [...ws.popped]) dockDoc(n, false);

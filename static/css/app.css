@@ -15,6 +15,7 @@
   --accent-soft: #2c3a20;
   --warn: #e0b060;
   --warn-soft: #3a3020;
+  --changed: #f2c94c;
   --bad: #f07a6e;
   --bad-soft: #3d2320;
   --shadow: 0 2px 8px rgba(0,0,0,.45);
@@ -296,11 +297,9 @@ body.rotate-dragging * {
 .stat-note.warn { background: var(--warn-soft); color: var(--warn); }
 .stat-note.bad { background: var(--bad-soft); color: var(--bad); }
 
-#landmark-panel { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
-#landmarkBox { align-self: stretch; margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; }
-#landmarkBox > summary { padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
-#landmarkBox > summary .count { color: var(--faint); font-weight: 400; margin-left: 4px; }
-#landmark-results { padding: 0 10px 6px; font-size: 13px; }
+#landmark-panel { display: flex; flex-direction: column; align-items: center; }
+#landmark-results { align-self: stretch; margin-top: 6px; font-size: 13px; max-height: 45vh; overflow-y: auto; }
+#landmark-results:empty { display: none; }
 #landmark-results details { border-top: 1px solid var(--line); }
 #landmark-results summary { padding: 4px 0; cursor: pointer; }
 #landmark-results .count { color: var(--faint); margin-left: 4px; }
@@ -404,7 +403,14 @@ body.rotate-dragging * {
 .setting-tab:hover { color: var(--text); border-color: var(--line-strong); }
 .setting-tab.is-on { color: var(--text); border-color: var(--accent); font-weight: 600; }
 .setting-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.setting-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.setting-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--changed); }
+/* A setting moved off the kind of place's value (markChangedTabs). */
+.setting.is-changed > .setting-name, .setting.is-changed .setting-head .setting-name { font-weight: 700; color: var(--changed); }
+.setting.is-changed input[type="range"] { accent-color: var(--changed); }
+.setting.is-changed .setting-val { color: var(--changed); }
+.setting.is-changed select, .setting.is-changed .seed-row input { border-color: var(--changed); color: var(--changed); }
+.setting.is-changed .switch .switch-track { border-color: var(--changed); background: var(--warn-soft); }
+.setting.is-changed .switch .switch-track::after { background: var(--changed); }
 .setting-tab-dot[hidden] { display: none; }
 .setting-tab-count { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .setting-tab-count:empty { display: none; }
