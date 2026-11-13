@@ -681,24 +681,78 @@ SALON_TILES_PER_CHAIR = 25
 
 def furnish_salon(plan, idx: int, room, rng: random.Random, occupied: set,
                   no_go: set, keeps_open=None) -> list[str]:
-    """Hairdresser's chairs out in the floor, and wash basins along the back
-    wall each with a commercial counter beside it. Returns what is left for
-    the walls: mirrors and a plant, no bookcases."""
+    """Styling stations (mirror + vanity counter + salon chair), wash basins,
+    reception desk with register, waiting seating, hood dryers, and shelves."""
     L = _layout()
     cells = _cells(plan, idx, room)
     front = _front_side(plan, idx, cells, None)
     frame = Frame(cells, front)
     back = OPPOSITE[front]
-    # The back wall: a basin, then a counter, then a basin. A wall with doors
-    # down it has room for one basin or none, so the side walls get a turn.
+
+    # 1. Reception desk near the front/side corner, with a register on top.
+    for side in ("W", "N", "E", "S"):
+        if side == back:
+            continue
+        wall_cells = _against(plan, idx, cells, side)[1:-1]
+        placed_desk = False
+        for i in range(len(wall_cells) - 1):
+            x0, y0 = wall_cells[i]
+            x1, y1 = wall_cells[i + 1]
+            if abs(x0 - x1) + abs(y0 - y1) != 1:
+                continue
+            if _put(plan, idx, "shop_counter", x0, y0, side, occupied, no_go, keeps_open):
+                _put(plan, idx, "shop_counter", x1, y1, side, occupied, no_go, keeps_open)
+                plan.furniture.append(("register", x0, y0, L._facing("register", side)))
+                placed_desk = True
+                break
+        if placed_desk:
+            break
+
+    # 2. Styling stations: vanity counter + mirror on the wall, salon chair a step out facing it.
+    chair = "salon_chair" if "salon_chair" in C.FURNITURE else "office_chair"
+    want = max(2, room.area // SALON_TILES_PER_CHAIR)
+    chairs = 0
+    station_walls = [w for w in ("W", "N", "E", "S") if w not in (front, back)]
+    station_walls.append(back)
+    for wall in station_walls:
+        sx, sy = STEP[OPPOSITE[wall]]
+        wall_cells = _against(plan, idx, cells, wall)[1:-1]
+        for x, y in wall_cells[::2]:
+            if chairs >= want:
+                break
+            cx, cy = x + sx, y + sy
+            if (x, y) in occupied or (cx, cy) in occupied:
+                continue
+            if not _put(plan, idx, chair, cx, cy, OPPOSITE[wall], occupied, no_go, keeps_open):
+                continue
+            # Vanity counter against the wall in front of the chair, plus mirror above.
+            _put(plan, idx, "shop_counter", x, y, wall, occupied, no_go, keeps_open)
+            if not _hang(plan, idx, "mirror_small", x, y, wall):
+                _hang(plan, idx, "mirror", x, y, wall)
+            chairs += 1
+        if chairs >= want:
+            break
+
+    # Fallback: if no wall had space, place chairs in the open floor.
+    for d in range(frame.depth - 3, 1, -3):
+        for a in range(2, frame.length - 1, 3):
+            if chairs >= want:
+                break
+            x, y = frame.xy(a, d)
+            chairs += _put(plan, idx, chair, x, y, L._facing(chair, back), occupied, no_go,
+                           keeps_open)
+
+    # 3. Wash basins along the back wall (or a side wall if the back is full).
     basin = rng.choice([s for s in ("sink", "sink_cream") if s in C.FURNITURE] or ["sink"])
 
-    def wash_wall(frame, back) -> int:
+    def wash_wall(frame, wall_side) -> int:
         run = [basin if n % 2 == 0 else "shop_counter" for n in range(frame.length)]
         basins = 0
         for a, role in enumerate(run):
+            if basins >= 2 and role == basin:
+                continue
             x, y = frame.xy(a, frame.depth - 1)
-            orient = L._facing(role, back)
+            orient = L._facing(role, wall_side)
             got = _fits(plan, idx, role, x, y, orient, no_go | occupied)
             if got is None or (keeps_open and not keeps_open(set(got))):
                 continue
@@ -712,44 +766,65 @@ def furnish_salon(plan, idx: int, room, rng: random.Random, occupied: set,
         if washed >= 2:
             break
         washed += wash_wall(Frame(cells, f), OPPOSITE[f])
-    # Styling stations: a salon chair a step out from a mirror on the wall,
-    # facing it, side by side along a north or west wall (the walls a
-    # mirror hangs on). The chairs used to stand in rows in the open floor,
-    # office chairs turned to the basins.
-    chair = "salon_chair" if "salon_chair" in C.FURNITURE else "office_chair"
-    want = max(2, room.area // SALON_TILES_PER_CHAIR)
-    chairs = 0
-    for wall in ("W", "N"):
-        if wall in (front, back):
+
+    # 4. Waiting area: a sofa or a row of chairs against a free wall, plus coffee table.
+    waiting_placed = False
+    for side in ("W", "N", "E", "S"):
+        if side == back:
             continue
-        sx, sy = STEP[OPPOSITE[wall]]
-        for i, (x, y) in enumerate(_against(plan, idx, cells, wall)[1:-1]):
-            if chairs >= want:
-                continue
-            if (x, y) in occupied or (x + sx, y + sy) in occupied:
-                continue
-            if not _put(plan, idx, chair, x + sx, y + sy, OPPOSITE[wall], occupied, no_go,
-                        keeps_open):
-                continue
-            occupied.add((x, y))             # the station's own step to the mirror
-            _hang(plan, idx, "mirror", x, y, wall)
-            chairs += 1
-    # Where no side wall takes them: in rows across the floor, as before.
-    for d in range(frame.depth - 3, 1, -3):
-        for a in range(2, frame.length - 1, 3):
-            if chairs >= want:
+        wall_cells = _against(plan, idx, cells, side)[1:-1]
+        for x, y in wall_cells:
+            if _put(plan, idx, "sofa", x, y, side, occupied, no_go, keeps_open):
+                sx, sy = STEP[OPPOSITE[side]]
+                _put(plan, idx, "coffee_table", x + sx, y + sy, side, occupied, no_go, keeps_open)
+                waiting_placed = True
                 break
-            x, y = frame.xy(a, d)
-            chairs += _put(plan, idx, chair, x, y, L._facing(chair, back), occupied, no_go,
-                           keeps_open)
-    # A hood dryer for a big salon, against a wall.
-    if chairs >= 3 and "hair_dryer" in C.FURNITURE:
+        if waiting_placed:
+            break
+    if not waiting_placed:
+        placed_chairs = 0
+        for side in ("W", "N", "E", "S"):
+            for x, y in _against(plan, idx, cells, side)[1:-1]:
+                if placed_chairs >= 3:
+                    break
+                if _put(plan, idx, "chair", x, y, side, occupied, no_go, keeps_open):
+                    placed_chairs += 1
+            if placed_chairs:
+                break
+
+    # 5. Hood dryers, product shelves, coat rack, bin, and plants.
+    if chairs >= 2 and "hair_dryer" in C.FURNITURE:
+        dryers = 0
         for side in (back, "W", "N", "E", "S"):
-            if side != front and any(
-                    _put(plan, idx, "hair_dryer", x, y, side, occupied, no_go, keeps_open)
-                    for x, y in _against(plan, idx, cells, side)[1:-1]):
+            if side == front:
+                continue
+            for x, y in _against(plan, idx, cells, side)[1:-1]:
+                if dryers >= (2 if chairs >= 4 else 1):
+                    break
+                if _put(plan, idx, "hair_dryer", x, y, side, occupied, no_go, keeps_open):
+                    dryers += 1
+            if dryers >= (2 if chairs >= 4 else 1):
                 break
-    return ["mirror", "plant"]
+
+    shelves = 0
+    for side in ("W", "N", "E", "S"):
+        if side == front:
+            continue
+        for x, y in _against(plan, idx, cells, side)[1:-1]:
+            if shelves >= 2:
+                break
+            if _put(plan, idx, "shelf", x, y, side, occupied, no_go, keeps_open):
+                shelves += 1
+        if shelves >= 2:
+            break
+
+    for prop in ("coat_rack", "bin", "plant"):
+        for side in ("W", "N", "E", "S"):
+            if any(_put(plan, idx, prop, x, y, side, occupied, no_go, keeps_open)
+                   for x, y in _against(plan, idx, cells, side)):
+                break
+
+    return ["mirror", "mirror_small", "plant", "clock", "painting"]
 
 
 # A home's own furniture: one choice per flat (or per storey of a house) for
