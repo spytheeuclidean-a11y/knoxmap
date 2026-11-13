@@ -43,6 +43,26 @@ class BasementTbx(unittest.TestCase):
         self.assertEqual(len(b.floors), 1)
         self.assertFalse(any(o.get("type") == "roof" for f in b.floors for o in f.objects))
 
+    def test_plan_basement_relights_stairwell_and_drops_isolated_islands(self):
+        import numpy as np
+        from knoxbuild import basements
+        from knoxbuild.audit import audit, basement_unreached
+        from knoxbuild.layout import build_building
+        from knoxbuild.settings import Settings
+
+        bld = build_building(14, 12, levels=1, kind="house", street="W", seed=3)
+        mask = np.zeros((10, 12), dtype=bool)
+        mask[1:4, 0:4] = True      # disconnected island
+        mask[1:10, 5:12] = True    # main component
+        spec = basements.BasementSpec(tier="house", kind="house", levels=1,
+                                      dx=1, dy=1, mask=mask)
+        below = basements.plan_basement(bld, spec, 3, Settings())
+        self.assertIsNotNone(below)
+        rep = audit(bld, kind="house")
+        self.assertEqual(rep.get("room with no light switch", 0), 0)
+        unreached, _ = basement_unreached(below)
+        self.assertEqual(unreached, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
