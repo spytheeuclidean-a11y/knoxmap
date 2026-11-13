@@ -723,12 +723,12 @@ def furnish_salon(plan, idx: int, room, rng: random.Random, occupied: set,
             cx, cy = x + sx, y + sy
             if (x, y) in occupied or (cx, cy) in occupied:
                 continue
+            if not _hang(plan, idx, "mirror", x, y, wall):
+                continue
             if not _put(plan, idx, chair, cx, cy, OPPOSITE[wall], occupied, no_go, keeps_open):
                 continue
-            # Vanity counter against the wall in front of the chair, plus mirror above.
+            # Vanity counter against the wall in front of the chair.
             _put(plan, idx, "shop_counter", x, y, wall, occupied, no_go, keeps_open)
-            if not _hang(plan, idx, "mirror_small", x, y, wall):
-                _hang(plan, idx, "mirror", x, y, wall)
             chairs += 1
         if chairs >= want:
             break

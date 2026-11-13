@@ -2715,7 +2715,7 @@ def _under_a_window(role: str) -> bool:
                      "radio", "coffee_maker", "toaster", "bin", "phone", "box",
                      "box_battered", "hamper", "sale_sign"}
             or role.startswith(("bed", "double_bed", "sofa_", "counter", "dresser",
-                                "low_table_")))
+                                "low_table_", "sink", "kitchen_sink")))
 
 
 # A cost (essentials, secondary, decoration) packed into one int that sorts
