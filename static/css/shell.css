@@ -179,17 +179,23 @@ body.ws-loading > * { visibility: hidden; }
 
 /* ---- the stage: the map, Home over it, the game world ---------------------- */
 .ws-home { position: absolute; inset: 0; overflow-y: auto; background: var(--bg); z-index: 1050; padding: 26px 30px 40px; }
-.ws-bigsearch .btn { width: auto; flex: none; padding: 8px 20px; }
-.ws-bigsearch input { min-width: 0; width: auto; }
 .ws-home[hidden] { display: none; }
 .ws-home-in { max-width: 960px; margin: 0 auto; display: grid; gap: 22px; }
 .ws-hero h1 { margin: 0 0 4px; font-size: 22px; text-wrap: balance; }
 .ws-hero p { margin: 0 0 12px; color: var(--muted); }
-.ws-bigsearch { display: flex; gap: 8px; }
-.ws-bigsearch input { flex: 1; font-size: 15px; padding: 8px 12px; background: var(--field);
-  border: 1px solid var(--line-strong); border-radius: 6px; color: var(--text); }
-.ws-or { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
-.ws-link { background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; font: inherit; }
+/* Home's three ways to start: big buttons, each a picture of what it does. */
+.ws-starts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.ws-start { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 18px 16px 16px;
+  text-align: center; font: inherit; color: var(--text); cursor: pointer; background: var(--panel);
+  border: 1px solid var(--line-strong); border-radius: 10px; transition: border-color .12s, background .12s, transform .12s; }
+.ws-start:hover { border-color: var(--accent); background: var(--hover); transform: translateY(-2px); }
+.ws-start:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ws-start.primary { border-color: var(--accent); background: var(--accent-soft); }
+.ws-start svg { width: 120px; height: 80px; fill: none; stroke: var(--accent); stroke-width: 2.2;
+  stroke-linecap: round; stroke-linejoin: round; }
+.ws-start b { font-size: 16px; }
+.ws-start span { color: var(--muted); font-size: 13px; line-height: 1.4; }
+@media (max-width: 860px) { .ws-starts { grid-template-columns: 1fr; } }
 .ws-cols { display: grid; grid-template-columns: 3fr 2fr; gap: 22px; align-items: start; }
 .ws-home h2 { margin: 0 0 8px; font-size: 14px; display: flex; gap: 10px; align-items: baseline; }
 .ws-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }

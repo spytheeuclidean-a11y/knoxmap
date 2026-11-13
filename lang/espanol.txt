@@ -1096,3 +1096,12 @@ The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, 
 Features to add to the map: a street, a house, a park… built like a real one = Elementos para añadir al mapa: una calle, una casa, un parque… construidos como uno real
 Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Features. = No se descarga nada, así que se puede construir un lugar que no está en OpenStreetMap con lo dibujado en Elementos.
 Dismiss until something else is missing = Ocultar hasta que falte algo más
+Any town, city or stretch of country in the world. KnoxMap builds its streets, houses, loot and zombies. = Cualquier pueblo, ciudad o rincón del mundo. KnoxMap construye sus calles, casas, botín y zombis.
+A real place = Un lugar real
+Find a town, a city or any stretch of the world by name, or draw its outline on the map. = Busca un pueblo, una ciudad o cualquier rincón del mundo por su nombre, o dibuja su contorno en el mapa.
+A map from scratch = Un mapa desde cero
+Draw roads, houses and land on a blank sheet, with nothing real under it. = Dibuja calles, casas y terreno en una hoja en blanco, sin nada real debajo.
+A building by hand = Un edificio a mano
+Lay out one building room by room, to place on your maps. = Diseña un edificio habitación por habitación para ponerlo en tus mapas.
+None yet. Start from a real place above to make your first. = Ninguno todavía. Empieza desde un lugar real, arriba, para hacer el primero.
+Start a map from a real place, or open one of your maps. = Empieza un mapa desde un lugar real o abre uno de tus mapas.

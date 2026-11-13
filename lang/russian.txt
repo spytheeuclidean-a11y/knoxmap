@@ -675,3 +675,12 @@ The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, 
 Features to add to the map: a street, a house, a park… built like a real one = Объекты для карты: улица, дом, парк… строятся как настоящие
 Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Features. = Ничего не скачивается, поэтому место, которого нет в OpenStreetMap, можно построить из нарисованного во вкладке «Объекты».
 Dismiss until something else is missing = Скрыть, пока не появится другая проблема
+Any town, city or stretch of country in the world. KnoxMap builds its streets, houses, loot and zombies. = Любой город, посёлок или уголок мира. KnoxMap строит его улицы, дома, добычу и зомби.
+A real place = Настоящее место
+Find a town, a city or any stretch of the world by name, or draw its outline on the map. = Найди город, посёлок или любой уголок мира по названию или обведи его на карте.
+A map from scratch = Карта с нуля
+Draw roads, houses and land on a blank sheet, with nothing real under it. = Рисуй дороги, дома и землю на чистом листе, без настоящего места под ним.
+A building by hand = Здание вручную
+Lay out one building room by room, to place on your maps. = Спланируй здание комната за комнатой, чтобы ставить его на свои карты.
+None yet. Start from a real place above to make your first. = Пока нет. Начни с настоящего места выше, чтобы сделать первую.
+Start a map from a real place, or open one of your maps. = Начни карту с настоящего места или открой одну из своих карт.

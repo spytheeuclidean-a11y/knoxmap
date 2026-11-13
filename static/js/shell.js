@@ -524,7 +524,7 @@
   }
   function renderOptions() {
     let h;
-    if (ws.home) h = '<b>Home</b><span>Search for a place to start, or open one of your maps.</span>';
+    if (ws.home) h = '<b>Home</b><span>Start a map from a real place, or open one of your maps.</span>';
     else if (ws.view === 'world') h = '<b>Game world</b><span>Where the map sits in the world every installed map shares. '
       + 'Click to put it somewhere else; Standalone plays it on its own.</span>';
     else if (ws.view === 'iso') h = '<b>In-game 2.5D</b><span>2.5D isometric view of your town and furnished buildings. Pan and zoom with the mouse.</span>';
@@ -694,19 +694,44 @@
   };
 
   // Home: where a new user starts, and where every map is.
+  // A real place: a new map, with the place search at the top ready to type
+  // into - or the Extent tools, to draw it instead.
+  function startRealPlace() {
+    newMap();
+    setTimeout(() => $('searchInput').focus(), 50);
+  }
+
   function renderHome() {
     if (home.dataset.built) return;
     home.dataset.built = '1';
     home.innerHTML = `<div class="ws-home-in">
       <div class="ws-hero"><h1>Make a Project Zomboid map of a real place</h1>
-        <p>Your street, your town, anywhere. KnoxMap builds its streets, houses, loot and zombies.</p>
-        <div class="ws-bigsearch"><input type="search" id="wsHomeSearch" autocomplete="off"
-          placeholder="Your street and house number, a town or a city" aria-label="Search for a place">
-          <button type="button" class="btn btn-primary" id="wsHomeGo">Search</button></div>
-        <p class="hint" style="margin:6px 0 0">For your own home, type the street and number, then press Enter.</p>
-        <div class="ws-or"><button type="button" class="ws-link" id="wsHomeDraw">Or draw the area on the map yourself</button>
-          <button type="button" class="ws-link" id="wsHomeBoard">Draw a map from scratch</button>
-          <button type="button" class="ws-link" id="wsHomeBuilder">Build a building by hand</button></div></div>
+        <p>Any town, city or stretch of country in the world. KnoxMap builds its streets, houses, loot and zombies.</p>
+        <!-- Three ways to start, each a picture of what it does. -->
+        <div class="ws-starts">
+          <button type="button" class="ws-start primary" id="wsHomeDraw">
+            <svg viewBox="0 0 96 64" aria-hidden="true"><path d="M8 14l22-6 22 6 22-6v42l-22 6-22-6-22 6z"/>
+              <path d="M30 8v42M52 14v42"/><path d="M14 36c8-2 12 4 20 0s12-10 18-6"/>
+              <path d="M68 30c0-6.5 4.5-11 10-11s10 4.5 10 11c0 8-10 17-10 17s-10-9-10-17z"/>
+              <circle cx="78" cy="30" r="3.5"/></svg>
+            <b>A real place</b>
+            <span>Find a town, a city or any stretch of the world by name, or draw its outline on the map.</span>
+          </button>
+          <button type="button" class="ws-start" id="wsHomeBoard">
+            <svg viewBox="0 0 96 64" aria-hidden="true"><rect x="16" y="6" width="54" height="52" rx="3"/>
+              <path d="M16 42c10-2 16 3 26-2s18-8 28-6"/><path d="M26 26l6-5 6 5v8H26zM44 22l6-5 6 5v8H44z"/>
+              <path d="M66 56l16-16 6 6-16 16-8 2z"/><path d="M78 44l6 6"/></svg>
+            <b>A map from scratch</b>
+            <span>Draw roads, houses and land on a blank sheet, with nothing real under it.</span>
+          </button>
+          <button type="button" class="ws-start" id="wsHomeBuilder">
+            <svg viewBox="0 0 96 64" aria-hidden="true"><rect x="18" y="8" width="60" height="48" rx="1"/>
+              <path d="M18 30h24M42 8v14M42 30v26M42 38h36M60 38v18"/>
+              <path d="M42 22a8 8 0 0 1 8 8"/><path d="M28 56v-4M70 8v4"/></svg>
+            <b>A building by hand</b>
+            <span>Lay out one building room by room, to place on your maps.</span>
+          </button>
+        </div></div>
       <div class="ws-cols">
         <section><h2>Your maps</h2><div class="ws-card" id="wsHomeMaps"></div></section>
         <section style="display:grid;gap:16px">
@@ -720,19 +745,10 @@
     mapsBox.append($('mapList'));
     mapsCard.hidden = true;
     holder.append(mapsCard);
-    if (!$('mapList').children.length) mapsBox.insertAdjacentHTML('afterbegin', '<p class="hint" id="wsNoMaps" style="margin:0">None yet. Search for a place to make your first.</p>');
+    if (!$('mapList').children.length) mapsBox.insertAdjacentHTML('afterbegin', '<p class="hint" id="wsNoMaps" style="margin:0">None yet. Start from a real place above to make your first.</p>');
     presets.open = true;
     $('wsHomePresets').append(presets);
-    const go = () => {
-      const q = $('wsHomeSearch').value.trim();
-      if (!q) return;
-      newMap();
-      $('searchInput').value = q;
-      runSearch(q);
-    };
-    $('wsHomeGo').addEventListener('click', go);
-    $('wsHomeSearch').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
-    $('wsHomeDraw').addEventListener('click', newMap);
+    $('wsHomeDraw').addEventListener('click', startRealPlace);
     $('wsHomeBoard').addEventListener('click', () => click('boardOpen'));
     $('wsHomeBuilder').addEventListener('click', () => click('builderOpen'));
     $('wsHomeSetup').addEventListener('click', () => { dialog('Check my setup', [$('healthCard')]); click('healthBtn'); });
@@ -1088,7 +1104,7 @@
     if (!$('board').hidden || !$('builder').hidden) return;
     const typing = e.target.matches('input, select, textarea');
     const k = e.key.toLowerCase();
-    if (e.ctrlKey && k === 'f') { e.preventDefault(); if (ws.home) $('wsHomeSearch').focus(); else $('searchInput').focus(); return; }
+    if (e.ctrlKey && k === 'f') { e.preventDefault(); if (ws.home) startRealPlace(); else $('searchInput').focus(); return; }
     if (typing) return;
     if (e.ctrlKey && k === 'n') { e.preventDefault(); newMap(); }
     else if (e.ctrlKey && k === 'h') { e.preventDefault(); goHome(); }
