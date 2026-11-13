@@ -392,14 +392,14 @@
   // controls. The map's drawing buttons, and what a drawing in progress
   // shows (Finish, Cancel, Save), are pressed from the Area tab.
   const TOOLS = [
-    { id: 'area', key: 'A', label: 'Area', title: 'Draw what to make, as a rectangle, a polygon, a circle or freehand' },
-    { id: 'draw', key: 'D', label: 'Add', title: 'Add to this area: a street, a house, a park… built like a real one',
+    { id: 'area', icon: '📐', key: 'A', label: 'Area', title: 'Draw what to make, as a rectangle, a polygon, a circle or freehand' },
+    { id: 'draw', icon: '✏️', key: 'D', label: 'Add', title: 'Add to this area: a street, a house, a park… built like a real one',
       panel: 'sketch' },
-    { id: 'zone', key: 'Z', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
+    { id: 'zone', icon: '🧩', key: 'Z', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
       panel: 'zonesPanel' },
-    { id: 'change', key: 'E', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
+    { id: 'change', icon: '🔧', key: 'E', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
       panel: 'editMap' },
-    { id: 'make', key: 'B', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
+    { id: 'make', icon: '🏗️', key: 'B', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
   ];
   const toolTabs = tools.querySelector('.ws-tool-tabs');
   const toolPanes = tools.querySelector('.ws-tool-panes');
@@ -424,7 +424,8 @@
       <button type="button" class="btn" data-once="boardOpen">Draw a map from scratch</button>`,
   };
   for (const t of TOOLS) {
-    const tab = make('button', 'setting-tab', esc(t.label));
+    const tab = make('button', 'setting-tab',
+      `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span><span>${esc(t.label)}</span>`);
     tab.type = 'button';
     tab.dataset.tool = t.id;
     tab.title = `${t.title} (${t.key})`;

@@ -79,6 +79,7 @@ async function loadSettings() {
 const SETTING_GROUPS = {
   map: {
     title: 'Map',
+    icon: '🗺️',
     part: 'map',
     partEnd: 'map-area',
     main: ['terrain_only'],
@@ -86,6 +87,7 @@ const SETTING_GROUPS = {
   },
   gameplay: {
     title: 'Gameplay',
+    icon: '🧟',
     main: ['zombies_per_resident', 'spawn_density', 'guaranteed_rifle'],
     advanced: [
       ['Zombies', ['m2_per_person']],
@@ -94,6 +96,7 @@ const SETTING_GROUPS = {
   },
   roads: {
     title: 'Roads',
+    icon: '🛣️',
     main: ['true_map', 'straight_roads', 'align_streets'],
     advanced: [
       ['Layout', ['rotate_degrees', 'include_proposed_roads', 'seed']],
@@ -101,6 +104,7 @@ const SETTING_GROUPS = {
   },
   buildings: {
     title: 'Buildings',
+    icon: '🏘️',
     main: ['max_buildings', 'fill_gaps', 'height_mix', 'max_levels', 'arch_style',
            'vanilla_tiles'],
     advanced: [
@@ -114,6 +118,7 @@ const SETTING_GROUPS = {
   },
   land: {
     title: 'Land',
+    icon: '⛰️',
     main: ['landcover', 'elevation', 'winter_look'],
     advanced: [
       ['Details', ['max_relief', 'climate_flavor', 'ne_context']],
@@ -121,6 +126,7 @@ const SETTING_GROUPS = {
   },
   forest: {
     title: 'Forest',
+    icon: '🌲',
     preview: true,
     main: ['forest_density', 'forest_thickets', 'forest_stand_m', 'forest_stand_variety',
            'forest_edge_m'],
@@ -364,7 +370,7 @@ function settingTabs() {
   const listed = new Set(tabs.flatMap(([, group]) => groupKeys(group)));
   const rest = Object.keys(SETTING_LABELS)
     .filter(key => key in settingsMeta.defaults && !listed.has(key));
-  if (rest.length) tabs.push(['other', { title: 'Other', main: rest, advanced: [] }]);
+  if (rest.length) tabs.push(['other', { title: 'Other', icon: '⚙️', main: rest, advanced: [] }]);
   return tabs;
 }
 
@@ -387,7 +393,9 @@ function buildSettingsForm(values) {
     tab.dataset.tab = name;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-controls', `setting-panel-${name}`);
-    tab.innerHTML = `<span class="setting-tab-name">${group.title}</span>`
+    // The emoji is its own element, so the name stays a line to translate.
+    tab.innerHTML = `<span class="setting-tab-icon" aria-hidden="true">${group.icon || ''}</span>`
+      + `<span class="setting-tab-name">${group.title}</span>`
       + '<span class="setting-tab-dot" title="Changed from the defaults for this kind of place" hidden></span>'
       + '<span class="setting-tab-count"></span>';
     tab.addEventListener('click', () => {

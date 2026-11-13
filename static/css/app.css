@@ -408,6 +408,8 @@ body.rotate-dragging * {
   box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
 .setting-tab.is-on .setting-tab-count { color: var(--accent-ink); opacity: .8; }
 .setting-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.setting-tab-icon { font-size: 14px; line-height: 1; }
+.setting-tab-icon:empty { display: none; }
 .setting-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--changed); }
 .setting-tab.is-on .setting-tab-dot { box-shadow: 0 0 0 1.5px var(--accent-ink); }
 /* A setting moved off the kind of place's value (markChangedTabs). */
