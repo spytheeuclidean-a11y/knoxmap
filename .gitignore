@@ -88,3 +88,6 @@ node_modules/
 
 # A snapshot of the tree taken before 0.87: kept locally, not source.
 .pre87_backup/
+
+# Local WorldEd regression fixtures (set KNOXLOTS_FIXTURES to use)
+rust/knoxlots/fixtures/

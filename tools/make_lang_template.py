@@ -43,7 +43,17 @@ ROOT = Path(__file__).resolve().parent.parent
 PAGE = ROOT / "templates" / "index.html"
 SCRIPTS = tuple(
     ROOT / "static" / "js" / name
-    for name in ("app.js", "draw.js", "fx.js", "iso_view.js", "shell.js")
+    for name in (
+        "app.js",
+        "building_editor.js",
+        "draw.js",
+        "drawing_board.js",
+        "fx.js",
+        "iso_view.js",
+        "placement.js",
+        "settings.js",
+        "shell.js",
+    )
 )
 OUT = ROOT / "lang" / "english.txt"
 
