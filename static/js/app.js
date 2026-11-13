@@ -51,7 +51,9 @@ window.addEventListener('unhandledrejection', e =>
   sendPageError((e.reason && e.reason.message) || e.reason, 'unhandled promise',
                 e.reason && e.reason.stack));
 
-const map = L.map('map', { zoomControl: true }).setView([38.0406, -84.5037], 14);
+// It opens on the whole world rather than one town: a place is found from
+// there by the search, or zoomed into and drawn.
+const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([20, 0], 2);
 // Tiles through KnoxMap's own server, which follows the OSM tile policy -
 // see the /tiles route in app.py.
 L.tileLayer('/tiles/{z}/{x}/{y}.png', {
