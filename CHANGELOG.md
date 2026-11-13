@@ -1,6 +1,18 @@
-## Unreleased
+## 1.8.6
 
-- **The ceiling, shared out** (`knoxbuild/mixer.py`). *Most buildings* said
+- **Default "As mapped" roads & smoother curves** (#127, `generator/mapped_roads.py`, `generator/renderer.py`, `knoxbuild/settings.py`). **As mapped** is now the default Road layout. Sub-tile OpenStreetMap digitization jitter is cleaned with Douglas-Peucker simplification while keeping intersections, junctions, and roundabouts pinned; gentle bends and kinks are smoothed with bounded Chaikin corner-cutting while keeping sharp street corners crisp; and post-rasterization edge smoothing shaves 1-tile spurs and fills 1-tile notches. Also fixed `building_mix` loading in `Settings.from_dict()` so **Generate map** works cleanly with saved settings, and added a warning on the **Coastline** toggle explaining that it treats everything outside the landmass as sea.
+
+- **Improved forest generation & Forest settings card** (#121, #120, `generator/rendering/woodland.py`, `knoxbuild/settings.py`). Woods now grow with varied stand sizes, thickets, young trees, undergrowth, and soft edges that spill naturally without covering roads, paving, house clearings, or small meadows. Ground marked as trees by OpenStreetMap or WorldCover always keeps trees, and houses in woods get their own clearings.
+
+- **Tabbed Tools & Properties sidebars** (#125, `templates/index.html`, `static/js/`). Organized the workspace sidebars into focused tabs: **Tools** on the left for map-specific edits (extent, drawn features, zones, changes, hand-built buildings) and **Properties** on the right for whole-map generation settings.
+
+- **Street dressing, landmarks & story vignettes** (#115, #117, #120, `knoxbuild/landmarks.py`, `knoxbuild/props.py`, `knoxbuild/yards.py`). Added street props (awnings, signboards, utility poles, benches, kiosks, collection boxes, dropped kerbs, manholes, parking blocks, yard clutter), unmapped landmarks (steeples, shop signs, silos, masts), story vignettes stamped from map geometry, lived-in front/back yards, revamped cemeteries, and rural/industrial supply dumps.
+
+- **Roads, kerbs, buildings & roofs** (#117, #120, `generator/rendering/roads.py`, `knoxbuild/layout/furnishing.py`). Sidewalks no longer break on diagonal steps, kerbs are never drawn against car parks, crosswalks are painted beneath lane lines, diagonal 2×2 kerbs align cleanly, `_de_dogleg` straightens 1-tile street jogs, fire/police stations and barbershops/salons get richer interiors, and pitched house roofs extend full width without overlapping neighbour walls.
+
+- **Language pipeline & codebase cleanup** (#115, #119, `tools/make_lang_template.py`, `static/js/`, `knoxbuild/catalog.py`). Finished the `lang/english.txt` scanner (`--check` passes with +77 whole messages), split `static/js/app.js` into focused modules (`settings.js`, `drawing_board.js`, `building_editor.js`, `placement.js`), externalized `catalog.py` tables into compressed data, and cleaned up release/CI checks.
+
+- **The ceiling, shared out** (#126, `knoxbuild/mixer.py`). *Most buildings* said
   how many a map may hold; these say how they are chosen.
 
   *Mix of buildings* is percentages by kind -
