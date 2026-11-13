@@ -17,18 +17,135 @@ import knoxstop
 def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
                       density: float = 1.0, should_stop=None,
-                      extra_forest=None) -> None:
+                      extra_forest=None,
+                      clustering: float = 28.0,
+                      openness: float = 0.25,
+                      edge_softness: int = 3,
+                      seed: int = 1) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
                      {"forest", "scrub", "tree_single"}], proj, density, should_stop,
-                    extra_forest=extra_forest)
+                    extra_forest=extra_forest,
+                    clustering=clustering, openness=openness,
+                    edge_softness=edge_softness, seed=seed)
+
+
+def _erode_mask(mask: Image.Image, radius: int) -> Image.Image:
+    """Erode a binary L mask by `radius` tiles, using native box_any when available."""
+    import numpy as np
+    from . import native_pixels
+
+    if radius <= 0:
+        return mask
+    w, h = mask.size
+    inv = (np.asarray(mask) == 0).astype(np.uint8)
+    raw = native_pixels.box_any(inv.tobytes(), w, h, radius)
+    if raw is not None:
+        eroded = (~np.frombuffer(raw, dtype=bool).reshape(h, w)).astype(np.uint8) * 255
+        return Image.fromarray(eroded, "L")
+    return mask.filter(ImageFilter.MinFilter(2 * radius + 1))
+
+
+def _apply_forest_clustering(veg: Image.Image, landscape: Image.Image,
+                             mask: Image.Image, eroded: Image.Image,
+                             scrub_mask: Image.Image, proj: Projector,
+                             density: float, clustering: float,
+                             openness: float, seed: int, should_stop=None) -> None:
+    """Break mapped forests into natural stands, thinner patches, and clearings."""
+    import numpy as np
+
+    w, h = veg.size
+    mask_arr = np.asarray(mask) > 0
+    if not mask_arr.any():
+        return
+
+    big = max(4, int(round(max(4.0, float(clustering)) / proj.meters_per_tile)))
+    small = max(2, int(round(max(2.0, float(clustering) * 0.35) / proj.meters_per_tile)))
+    lats = lattices(h, w, [(big, 0.75), (small, 0.25)], (int(seed) & 0xFFFFFFFF) ^ 0x5700D)
+
+    sx = np.arange(0, w, 6, dtype=np.float32)
+    sample_parts = []
+    for top in range(0, h, 256):
+        knoxstop.check(should_stop, "the woodland")
+        bottom = min(h, top + 256)
+        sub_y = np.arange(top + ((-top) % 6), bottom, 6, dtype=np.float32)
+        if sub_y.size == 0:
+            continue
+        sub_mask = mask_arr[sub_y.astype(int)][:, ::6]
+        if not sub_mask.any():
+            continue
+        n_sub = smooth_noise(sub_y, sx, lats)
+        sample_parts.append(n_sub[sub_mask])
+
+    if not sample_parts:
+        return
+    sample = np.concatenate(sample_parts)
+    if sample.size == 0:
+        return
+
+    open_share = max(0.0, min(0.95, float(openness)))
+    q_clear, q_sparse, q_med = np.quantile(
+        sample,
+        [open_share * 0.45, open_share, open_share + (1.0 - open_share) * 0.35],
+    )
+    shift = round((density - 1.0) * 2) if density > 0 else -4
+    palette = np.array(
+        [C.VEG_NOTHING, C.SPARSE_TREES, C.TREES_DARK_GRASS, C.TREES], dtype=np.uint8
+    )
+    eroded_arr = np.asarray(eroded) > 0
+    scrub_arr = np.asarray(scrub_mask) > 0
+    xs = np.arange(w, dtype=np.float32)
+
+    for top in range(0, h, 256):
+        knoxstop.check(should_stop, "the woodland")
+        bottom = min(h, top + 256)
+        m_s = mask_arr[top:bottom]
+        if not m_s.any():
+            continue
+        ys = np.arange(top, bottom, dtype=np.float32)
+        n_s = smooth_noise(ys, xs, lats)
+
+        grade = np.full(m_s.shape, 3, dtype=np.int8)
+        grade[n_s < q_med] = 2
+        grade[n_s < q_sparse] = 1
+        grade[n_s < q_clear] = 0
+        grade[~eroded_arr[top:bottom]] -= 1
+        grade = np.clip(grade + shift, 0, 3)
+
+        land_s = np.array(landscape.crop((0, top, w, bottom)))
+        veg_s = np.array(veg.crop((0, top, w, bottom)))
+        is_water = np.all(land_s == C.WATER, axis=2)
+        paint_m = m_s & ~is_water
+        if not paint_m.any():
+            continue
+
+        # Keep scrub tiles intact where a clearing leaves no forest tree.
+        scrub_keep = paint_m & scrub_arr[top:bottom] & (grade == 0)
+        tree_m = paint_m & ~scrub_keep
+        veg_s[tree_m] = palette[grade[tree_m]]
+        if scrub_keep.any():
+            veg_s[scrub_keep] = C.BUSHES_TREES_DARK_GRASS
+
+        has_tree = tree_m & (grade > 0)
+        grass_to_dark = has_tree & (
+            np.all(land_s == C.MEDIUM_GRASS, axis=2)
+            | np.all(land_s == C.LIGHT_GRASS, axis=2)
+        )
+        if grass_to_dark.any():
+            land_s[grass_to_dark] = C.DARK_GRASS
+            landscape.paste(Image.fromarray(land_s), (0, top))
+        veg.paste(Image.fromarray(veg_s), (0, top))
 
 
 def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
                     density: float = 1.0, should_stop=None,
-                    extra_forest=None) -> None:
+                    extra_forest=None,
+                    clustering: float = 28.0,
+                    openness: float = 0.25,
+                    edge_softness: int = 3,
+                    seed: int = 1) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,
@@ -73,7 +190,7 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                                           extra_forest.astype(np.uint8) * 255), "L")
 
     # Build a "border band" of the forest mask so we can paint edges lighter.
-    eroded = mask.filter(ImageFilter.MinFilter(5))
+    eroded = _erode_mask(mask, max(0, int(round(edge_softness))))
     veg_px = veg.load()
     mask_px = mask.load()
     eroded_px = eroded.load()
@@ -91,8 +208,13 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
         return GRADES[min(max(i + shift, 0), len(GRADES) - 1)]
 
     w, h = veg.size
+    base_edge = C.TREES_DARK_GRASS if openness > 0 else graded(C.TREES_DARK_GRASS)
+    base_inside = C.TREES if openness > 0 else graded(C.TREES)
     if w*h >= woodland.MIN_PIXELS and woodland.paint(veg, landscape, mask, eroded, scrub_mask,
-                                       graded(C.TREES_DARK_GRASS), graded(C.TREES), should_stop):
+                                       base_edge, base_inside, should_stop):
+        if openness > 0:
+            _apply_forest_clustering(veg, landscape, mask, eroded, scrub_mask,
+                                     proj, density, clustering, openness, seed, should_stop)
         return
     for y in range(h):
         if y % 256 == 0:
@@ -105,8 +227,7 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                 lp = land_px[x, y]
                 if lp == C.WATER:
                     continue
-                shade = graded(C.TREES if eroded_px[x, y]
-                               else C.TREES_DARK_GRASS)
+                shade = base_inside if eroded_px[x, y] else base_edge
                 if shade == C.VEG_NOTHING:
                     continue
                 veg_px[x, y] = shade
@@ -114,6 +235,9 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                 # so the PZ renderer is happy (trees sit on dark grass best).
                 if lp in (C.MEDIUM_GRASS, C.LIGHT_GRASS):
                     land_px[x, y] = C.DARK_GRASS
+    if openness > 0:
+        _apply_forest_clustering(veg, landscape, mask, eroded, scrub_mask,
+                                 proj, density, clustering, openness, seed, should_stop)
 
 
 def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
