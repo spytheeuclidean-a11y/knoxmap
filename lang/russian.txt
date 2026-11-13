@@ -632,4 +632,3 @@ Settings = Настройки
 Changed from the defaults for this kind of place = Изменено относительно значений для этого типа места
 Map = Карта
 Area = Область
-This map = Эта карта

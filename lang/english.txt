@@ -981,7 +981,6 @@ This floor copied up to {to}. = This floor copied up to {to}.
 This is not a KnoxMap preset version 1. = This is not a KnoxMap preset version 1.
 This link has an unreadable KnoxMap preset. = This link has an unreadable KnoxMap preset.
 This link has no valid KnoxMap preset. = This link has no valid KnoxMap preset.
-This map = This map
 This map is busy. Editing it now would not reach the step that is running. = This map is busy. Editing it now would not reach the step that is running.
 This map is not installed. = This map is not installed.
 This map still needs: {steps}. = This map still needs: {steps}.

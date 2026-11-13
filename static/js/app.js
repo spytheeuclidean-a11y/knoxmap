@@ -856,6 +856,7 @@ function clearBboxFields() {
   document.getElementById('generateBtn').disabled = true;
   document.getElementById('landmarksBtn').disabled = true;
   document.getElementById('landmark-results').innerHTML = '';
+  document.getElementById('landmarkBox').hidden = true;
   fx.resetFrom('area');
   updateRotateHandle();
 }
@@ -2460,6 +2461,12 @@ document.getElementById('landmarksBtn').addEventListener('click', async () => {
   const out = document.getElementById('landmark-results');
   btn.disabled = true;
   out.innerHTML = '<div class="hint">Looking…</div>';
+  // The list is a section of its own, opened on a new look and folded away
+  // when it is in the way.
+  const box = document.getElementById('landmarkBox');
+  box.hidden = false;
+  box.open = true;
+  document.getElementById('landmarkCount').textContent = '';
 
   try {
     const res = await fetch('/api/landmarks', {
@@ -2482,6 +2489,7 @@ document.getElementById('landmarksBtn').addEventListener('click', async () => {
 function renderLandmarks(items) {
   const out = document.getElementById('landmark-results');
   landmarkMarkers.clearLayers();
+  document.getElementById('landmarkCount').textContent = items.length || '';
   if (!items.length) {
     out.innerHTML = '<div class="hint">Nothing named in this area.</div>';
     return;

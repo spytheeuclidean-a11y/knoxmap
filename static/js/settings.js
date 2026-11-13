@@ -74,11 +74,13 @@ async function loadSettings() {
 // for on show, the rest behind its own Advanced. A key named nowhere here
 // still appears, in an Other tab, so a new knob is never lost; putting it in
 // its place is a table entry. A part is a block of the page's own fields
-// (.tab-part in index.html) shown at the top of its tab.
+// (.tab-part in index.html) shown at the top of its tab; a partEnd, after
+// the tab's main settings.
 const SETTING_GROUPS = {
   map: {
     title: 'Map',
     part: 'map',
+    partEnd: 'map-area',
     main: ['terrain_only'],
     advanced: [],
   },
@@ -302,9 +304,13 @@ function settingGroup(name, group, values) {
   // Nothing of the generator's in it, nothing to reset.
   if (!groupKeys(group).length) card.querySelector('.group-reset').hidden = true;
   group.main.forEach(key => add(card, key));
+  const end = group.partEnd && document.querySelector(`.tab-part[data-part="${group.partEnd}"]`);
+  if (end) card.appendChild(end);
   const advanced = document.createElement('details');
   advanced.className = 'setting-group-advanced';
-  advanced.innerHTML = '<summary>Advanced</summary>';
+  const many = group.advanced.flatMap(([, keys]) => keys)
+    .filter(key => key in settingsMeta.defaults && SETTING_LABELS[key]).length;
+  advanced.innerHTML = `<summary><span>Advanced</span><span class="adv-count">${many}</span></summary>`;
   for (const [title, keys] of group.advanced) {
     const head = document.createElement('div');
     head.className = 'setting-subhead';

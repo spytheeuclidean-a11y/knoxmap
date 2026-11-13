@@ -296,8 +296,11 @@ body.rotate-dragging * {
 .stat-note.warn { background: var(--warn-soft); color: var(--warn); }
 .stat-note.bad { background: var(--bad-soft); color: var(--bad); }
 
-#landmark-panel { margin-top: 10px; }
-#landmark-results { margin-top: 6px; font-size: 13px; }
+#landmark-panel { margin-top: 10px; display: flex; flex-direction: column; align-items: center; }
+#landmarkBox { align-self: stretch; margin-top: 8px; border: 1px solid var(--line); border-radius: 6px; }
+#landmarkBox > summary { padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
+#landmarkBox > summary .count { color: var(--faint); font-weight: 400; margin-left: 4px; }
+#landmark-results { padding: 0 10px 6px; font-size: 13px; }
 #landmark-results details { border-top: 1px solid var(--line); }
 #landmark-results summary { padding: 4px 0; cursor: pointer; }
 #landmark-results .count { color: var(--faint); margin-left: 4px; }
@@ -389,8 +392,6 @@ body.rotate-dragging * {
   margin: 12px 0; }
 .setting-group-head { display: flex; justify-content: space-between; align-items: baseline;
   margin-bottom: 8px; font-weight: 600; }
-.setting-group-advanced > summary { cursor: pointer; color: var(--muted); font-size: 13px;
-  margin: 6px 0; }
 .setting-subhead { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--faint); margin: 12px 0 6px; }
 /* The settings' tabs (buildSettingsForm in settings.js): a bar that wraps to
@@ -425,7 +426,19 @@ body.rotate-dragging * {
 .setting-group .forest-preview img { margin: 0 auto; }
 .setting-group-head { margin-bottom: 8px; }
 .setting-group .setting-subhead { margin: 8px 0 3px; }
-.setting-group-advanced > summary { margin: 4px 0 2px; }
+/* Advanced is a bar of its own, with how many settings are behind it. */
+.setting-group-advanced > summary { list-style: none; display: flex; align-items: center; gap: 7px;
+  margin: 10px 0 4px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
+  color: var(--text); background: var(--field); border: 1px solid var(--line-strong); border-radius: 6px; }
+.setting-group-advanced > summary::-webkit-details-marker { display: none; }
+.setting-group-advanced > summary::before { content: '▸'; color: var(--accent); font-size: 13px;
+  transition: transform .15s; }
+.setting-group-advanced[open] > summary::before { transform: rotate(90deg); }
+.setting-group-advanced > summary:hover { border-color: var(--accent); }
+.setting-group-advanced > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.setting-group-advanced > summary .adv-count { margin-left: auto; font: 400 11px var(--mono);
+  color: var(--faint); }
+.setting-group-advanced[open] > summary { margin-bottom: 6px; }
 .setting-compact { position: relative; display: grid; align-items: center;
   grid-template-columns: 12.6em minmax(0, 1fr) 2.4em; column-gap: 5px;
   margin-bottom: 2px; min-height: 24px; font-size: 12px; }
@@ -437,7 +450,7 @@ body.rotate-dragging * {
 .setting-compact.setting-wide > .seed-row { grid-column: 2 / 4; margin: 0; }
 .setting-compact.setting-wide select { font-size: 12px; padding: 2px 4px; }
 .setting-compact .seed-row input { min-width: 0; flex: 1; padding: 2px 6px; font-size: 12px; }
-.setting-compact.setting-switch .switch { grid-column: 3; justify-self: end; }
+.setting-compact.setting-switch .switch { grid-column: 2; justify-self: start; }
 .setting-info { flex: none; width: 15px; height: 15px; padding: 0; border-radius: 50%;
   border: 1px solid var(--line-strong); background: transparent; color: var(--muted);
   font: italic 600 10px/13px Georgia, serif; text-align: center; cursor: help; }

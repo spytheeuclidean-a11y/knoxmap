@@ -1061,4 +1061,3 @@ Details = Detalles
 Other = Otros
 Settings = Ajustes
 Changed from the defaults for this kind of place = Cambiado respecto a los valores de este tipo de lugar
-This map = Este mapa
