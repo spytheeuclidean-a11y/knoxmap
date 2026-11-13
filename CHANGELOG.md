@@ -1,3 +1,20 @@
+## Unreleased
+
+- **Setup could not download the map tools** (`knoxmap_setup.py`). The map
+  tools are somebody else's release and they retag rather than add: the
+  build Setup was pinned to stopped existing, so every new install got a
+  404, no tools arrived, and compiling then failed on their absence. Setup
+  now asks for the newest release and keeps the pinned build only as a
+  fallback for a machine that cannot reach the API, so the next retag
+  upstream costs nobody an install.
+
+- **And says so when they are missing** (`tools/compile_map.py`). With no
+  tools installed the compile died with "unsupported operand type(s) for /:
+  'NoneType' and 'str'", which is nothing anybody can act on: the rail-rules
+  step was handed the tools folder without checking there was one. It has
+  words for this a few lines later - "the map tools (PZMappingTools) are not
+  installed" - and now they are what comes back. The WorldEd backend had
+  always guarded the same call; only the Rust one had not.
 ## 1.8.5.8
 
 - **WorldCover now grows what it says grows** (`generator/rendering/landcover_veg.py`,
