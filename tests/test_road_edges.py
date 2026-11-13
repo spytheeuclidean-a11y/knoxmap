@@ -133,7 +133,7 @@ class DiagonalKerbs(unittest.TestCase):
         found = {veg.getpixel((x, y)) for y in range(h) for x in range(w)} & diag_colours
         self.assertFalse(found, f"unexpected diagonal kerbs on shallow step: {found}")
 
-    def test_forty_five_degree_edge_still_gets_diagonal_kerbs(self):
+    def test_forty_five_degree_edge_gets_no_diagonal_kerbs(self):
         from types import SimpleNamespace
         from unittest import mock
 
@@ -149,8 +149,11 @@ class DiagonalKerbs(unittest.TestCase):
                 landscape.putpixel((x, x - d), C.MEDIUM_ASPHALT)
             for d in range(1, 4):
                 landscape.putpixel((x, x + d), C.PALE_CONCRETE)
-        diag_colours = {C.KERB_DNE_0, C.KERB_DNE_1, C.KERB_DSW_0, C.KERB_DSW_1}
+        diag_colours = {
+            C.KERB_DNW_0, C.KERB_DNW_1, C.KERB_DNE_0, C.KERB_DNE_1,
+            C.KERB_DSW_0, C.KERB_DSW_1, C.KERB_DSE_0, C.KERB_DSE_1,
+        }
         with mock.patch("generator.rendering.furniture._rule_ready", return_value=True):
             _paint_road_details(veg, landscape, {}, SimpleNamespace(meters_per_tile=1.0))
         found = {veg.getpixel((x, y)) for y in range(h) for x in range(w)} & diag_colours
-        self.assertTrue(found, "expected diagonal kerbs on 45-degree road edge")
+        self.assertFalse(found, f"unexpected diagonal kerbs on 45-degree road edge: {found}")
