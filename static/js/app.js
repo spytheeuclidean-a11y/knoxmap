@@ -2390,7 +2390,6 @@ const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('search-results');
 const searchHere = document.getElementById('searchHere');
 let searchTimer = null;
-let searchMarker = null;
 
 function setRectFromBounds(bounds) {
   setSelection(L.rectangle(bounds, SEL_STYLE));
@@ -2427,16 +2426,14 @@ function hideSearchResults() {
   searchResults.innerHTML = '';
 }
 
-// A found place on the map: there, with a box round it as the extent - or
+// A found place on the map: there, with a box round it as the extent (and no
+// pin: the box says where it is) - or
 // its real boundary, when it has one and that is asked for. The search box
 // at the top and Home's Find a place both end here.
 function goToPlace(r) {
   const bounds = boundsForResult(r);
   map.fitBounds(bounds, { padding: [30, 30] });
   setRectFromBounds(bounds);
-  if (searchMarker) map.removeLayer(searchMarker);
-  searchMarker = L.marker([r.lat, r.lon]).addTo(map)
-    .bindPopup(escapeHtml(r.name)).openPopup();
   hideSearchResults();
   searchInput.value = r.name;
 }
