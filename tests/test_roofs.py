@@ -112,6 +112,16 @@ class RoofLayouts(unittest.TestCase):
         alone = tbx._roof_pieces(layout.roof_rects([[1] * 3 for _ in range(2)]), True, True)
         self.assertNotEqual(alone[0][0], "FlatTop")
 
+    def test_rectangular_pitched_houses_cover_full_width_without_flattop_strip(self):
+        for w, h in ((6, 10), (8, 12), (10, 14), (12, 16), (13, 16)):
+            with self.subTest(w=w, h=h):
+                grid = [[1] * w for _ in range(h)]
+                pieces = tbx._roof_pieces(layout.roof_rects(grid), True, True)
+                self.assertEqual(len(pieces), 1, pieces)
+                kind, _depth, _caps, box = pieces[0]
+                self.assertNotEqual(kind, "FlatTop")
+                self.assertEqual(box, (0, 0, w, h))
+
 
 if __name__ == "__main__":
     unittest.main()
