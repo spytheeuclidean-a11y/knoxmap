@@ -163,7 +163,7 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     driveable = is_colour(ground, (C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
                                   C.DARKEST_ASPHALT))
     pavement = is_colour(ground, (C.PALE_CONCRETE,))
-    roadside = pavement | is_colour(
+    roadside = is_colour(
         ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.PAVING,
                  C.DIRT_ROWS_H, C.DIRT_ROWS_V))
     # Hydrants, bins and mailboxes stand on the grass or paving beside the
@@ -286,6 +286,22 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     return x, y
         return None
 
+    def off_the_pavement(gx, gy, sx, sy):
+        """First free non-sidewalk roadside tile off the kerb."""
+        x1, y1 = gx + sx, gy + sy
+        x2, y2 = gx + 2 * sx, gy + 2 * sy
+        if (0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h
+                and pavement[y2, x2] and empty[y1, x1]
+                and not driveable[y1, x1] and roadside[y1, x1]):
+            return x1, y1
+        for n in range(2, 6):
+            x, y = gx + n * sx, gy + n * sy
+            if not (0 <= x < w and 0 <= y < h) or driveable[y, x]:
+                return None
+            if empty[y, x] and roadside[y, x]:
+                return x, y
+        return None
+
     for edge, (sx, sy), lamp in straight:
         kerb_mask = np.all(vp == edge, axis=2) | diag_kerbs[edge]
         ys, xs = np.nonzero(kerb_mask)
@@ -328,6 +344,11 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     px, py = spot
                     if near_buildings is not None and not near_buildings[py, px]:
                         continue
+                elif what in ("speed", "lamp", "pole"):
+                    spot = off_the_pavement(gx, gy, sx, sy)
+                    if spot is None:
+                        continue
+                    px, py = spot
                 if colour is None or not (0 <= px < w and 0 <= py < h):
                     continue
                 # Speed signs keep a spacing per facing: the north-south roads,

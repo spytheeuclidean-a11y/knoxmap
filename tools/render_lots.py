@@ -119,7 +119,7 @@ def read_squares(pack: str, names: list[str], lo: int, hi: int,
 
 def render(map_dir: str, X: int, Y: int, W: int, H: int,
            max_level: int | None = None, scale: float = 1.0,
-           world: bool = False) -> Image.Image | None:
+           world: bool = False, progress=None) -> Image.Image | None:
     """An area of a compiled map, drawn the way the game draws it.
 
     Returns the picture, or None when nothing in that area has been compiled
@@ -149,8 +149,16 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     # At very small scales (broad county/town overviews), individual grass blend
     # overlays are sub-pixel and skipping them cuts out over a million alpha-blends.
     skip_blends = (scale < 0.25)
-    for cxw in range(wx0 // CELL, (wx0 + W - 1) // CELL + 1):
-        for cyw in range(wy0 // CELL, (wy0 + H - 1) // CELL + 1):
+    cxs = range(wx0 // CELL, (wx0 + W - 1) // CELL + 1)
+    cys = range(wy0 // CELL, (wy0 + H - 1) // CELL + 1)
+    total_cells = max(1, len(cxs) * len(cys))
+    done_cells = 0
+    for cxw in cxs:
+        for cyw in cys:
+            done_cells += 1
+            if progress:
+                pct = int(45 * done_cells / total_cells)
+                progress(pct, f"Reading compiled cells ({done_cells}/{total_cells})…")
             header = os.path.join(lots, f"{cxw}_{cyw}.lotheader")
             pack = os.path.join(lots, f"world_{cxw}_{cyw}.lotpack")
             if not (os.path.exists(header) and os.path.exists(pack)):
@@ -242,10 +250,19 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     # Iterating sorted populated squares per level directly is mathematically
     # equivalent to the (z, s, dx) triple loop while skipping empty coordinates
     # and freeing each level's list as soon as it has been composited.
+    total_squares = max(1, sum(len(v) for v in by_z.values()))
+    done_squares = 0
     for z in sorted(by_z):
         rows = by_z.pop(z)
+        if progress:
+            pct = 45 + int(50 * done_squares / total_squares)
+            progress(pct, f"Sorting level {z} ({len(rows):,} tiles)…")
         rows.sort()
         for _diag, dx, dy, tile_names in rows:
+            done_squares += 1
+            if progress and (done_squares & 0x7FFF) == 0:
+                pct = 45 + int(50 * done_squares / total_squares)
+                progress(pct, f"Drawing level {z} ({done_squares:,}/{total_squares:,} tiles)…")
             px = (dx - dy) * half + H * half
             py = (dx + dy) * quarter + lift - z * level_px - TW * 3 // 2
             for name in tile_names:

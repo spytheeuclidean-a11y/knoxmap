@@ -235,6 +235,30 @@ class RoadsideProps(unittest.TestCase):
                   if vegetation.getpixel((x, y)) in edge_colors]
         self.assertEqual(placed, [])
 
+    def test_lamps_signs_and_poles_never_stand_on_wide_sidewalk(self):
+        ground = Image.new("RGB", (180, 24), C.DARK_GRASS)
+        pixels = ground.load()
+        for y in range(24):
+            for x in range(4, 12):
+                pixels[x, y] = C.MEDIUM_ASPHALT
+            # 2-tile sidewalk at x=12, 13; grass begins at x=14.
+            pixels[12, y] = C.PALE_CONCRETE
+            pixels[13, y] = C.PALE_CONCRETE
+        vegetation = Image.new("RGB", ground.size, C.VEG_NOTHING)
+        for y in range(24):
+            vegetation.putpixel((11, y), C.EDGE_LINE_E)
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=True), \
+                mock.patch.object(furniture, "_rule_ready", return_value=True):
+            counts = renderer._paint_street_furniture(vegetation, ground)
+        self.assertGreater(counts.get("lamp", 0), 0)
+        for x in (12, 13):
+            for y in range(24):
+                self.assertIn(
+                    vegetation.getpixel((x, y)),
+                    (C.VEG_NOTHING, C.LITTER, C.MANHOLE),
+                    f"fixture placed on sidewalk at {(x, y)}",
+                )
+
 
 if __name__ == "__main__":
     unittest.main()

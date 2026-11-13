@@ -281,6 +281,16 @@ def api_iso_info(name: str):
     })
 
 
+_ISO_PROGRESS: dict[str, tuple[int, str]] = {}
+
+
+@bp.route("/api/iso-progress/<name>")
+def api_iso_progress(name: str):
+    """Live progress of an in-flight 2.5D isometric render for `name`."""
+    pct, stage = _ISO_PROGRESS.get(name, (0, ""))
+    return jsonify({"pct": pct, "stage": stage})
+
+
 @bp.route("/api/iso-render/<name>")
 def api_iso_render(name: str):
     """Render an area of the compiled map in 2.5D isometric view."""
@@ -293,6 +303,9 @@ def api_iso_render(name: str):
 
     from tools import render_lots
     from knoxbuild.picture import _trim, picture as make_picture
+
+    def on_progress(pct: int, stage: str) -> None:
+        _ISO_PROGRESS[name] = (max(0, min(99, int(pct))), stage)
 
     # Scale parameter (1.0 = native in-game zoom)
     try:
@@ -340,11 +353,14 @@ def api_iso_render(name: str):
             return send_file(target_path, mimetype="image/png")
         # Otherwise generate full picture
         try:
+            _ISO_PROGRESS[name] = (1, "Starting full-map 2.5D render…")
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            make_picture(map_dir, target_path, roofs=roofs)
+            make_picture(map_dir, target_path, roofs=roofs, progress=on_progress)
+            _ISO_PROGRESS.pop(name, None)
             if target_path.is_file():
                 return send_file(target_path, mimetype="image/png")
         except Exception as exc:
+            _ISO_PROGRESS.pop(name, None)
             return failed(f"Could not draw picture: {exc}", 500, exc)
         return jsonify({"error": "Could not render picture."}), 500
 
@@ -361,8 +377,12 @@ def api_iso_render(name: str):
         return send_file(cache_file, mimetype="image/png")
 
     try:
-        drawn = render_lots.render(str(map_dir), x, y, w, h, max_level=max_level, scale=scale)
+        _ISO_PROGRESS[name] = (1, "Starting 2.5D sector render…")
+        drawn = render_lots.render(
+            str(map_dir), x, y, w, h, max_level=max_level, scale=scale, progress=on_progress
+        )
     except Exception as exc:
+        _ISO_PROGRESS.pop(name, None)
         return failed(f"Render failed: {exc}", 500, exc)
 
     if drawn is None:
@@ -374,11 +394,14 @@ def api_iso_render(name: str):
         height = (w + h) * quarter + 2 * TW
         drawn = Image.new("RGBA", (width, height), (24, 26, 28, 255))
 
+    _ISO_PROGRESS[name] = (96, "Trimming & saving PNG…")
     trimmed = _trim(drawn)
     try:
         trimmed.save(cache_file, "PNG")
+        _ISO_PROGRESS.pop(name, None)
         return send_file(cache_file, mimetype="image/png")
     except Exception as exc:
+        _ISO_PROGRESS.pop(name, None)
         return failed(f"Saving render failed: {exc}", 500, exc)
 
 

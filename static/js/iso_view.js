@@ -216,10 +216,13 @@
     bindEvents();
   }
 
+  let progressPollTimer = null;
+
   function startProgress(title, sub, estimatedSecs = 4) {
     ensureElements();
     isCancelled = false;
     if (progressTimer) clearInterval(progressTimer);
+    if (progressPollTimer) clearInterval(progressPollTimer);
 
     if (progressTitle) progressTitle.textContent = title || 'Loading isometric view…';
     if (progressSub) progressSub.textContent = sub || 'Reading map data…';
@@ -234,6 +237,27 @@
 
     progressStartTime = Date.now();
     const durationMs = Math.max(1000, estimatedSecs * 1000);
+    let hasServerProgress = false;
+
+    if (activeMap) {
+      progressPollTimer = setInterval(async () => {
+        if (isCancelled || !activeMap) return;
+        try {
+          const res = await fetch(`/api/iso-progress/${encodeURIComponent(activeMap)}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data && data.stage) {
+            hasServerProgress = true;
+            const p = Math.max(1, Math.min(99, Number(data.pct) || 1));
+            if (progressBar) progressBar.style.width = `${p}%`;
+            if (progressPercent) progressPercent.textContent = `${p}%`;
+            if (progressSub) progressSub.textContent = data.stage;
+          }
+        } catch (_) {
+          // Ignore transient poll errors while rendering.
+        }
+      }, 400);
+    }
 
     progressTimer = setInterval(() => {
       const elapsed = Date.now() - progressStartTime;
@@ -241,6 +265,7 @@
       const min = Math.floor(sec / 60);
       const remSec = String(sec % 60).padStart(2, '0');
       if (progressClock) progressClock.textContent = `⏱️ ${min}:${remSec}`;
+      if (hasServerProgress) return;
 
       let p = 0;
       if (elapsed < durationMs * 0.4) {
@@ -274,6 +299,10 @@
     if (progressTimer) {
       clearInterval(progressTimer);
       progressTimer = null;
+    }
+    if (progressPollTimer) {
+      clearInterval(progressPollTimer);
+      progressPollTimer = null;
     }
 
     if (isError) {
