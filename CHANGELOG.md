@@ -1,4 +1,4 @@
-## Unreleased
+## 1.8.5.9
 
 - **Setup could not download the map tools** (`knoxmap_setup.py`). The map
   tools are somebody else's release and they retag rather than add: the
