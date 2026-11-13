@@ -2669,8 +2669,6 @@ function runListSearch(boxId) {
 searchableList('settingFind', 'advanced-body', '.setting', '.setting-group', 8);
 searchableList('sketchFind', 'sketchPalette', '.sketch-pick', '.palette-group', 12);
 searchableList('boardFind', 'boardPalette', '.sketch-pick', '.palette-group', 12);
-searchableList('zoneFind', 'zoneList', 'li', null, 6);
-searchableList('zoneSettingFind', 'zoneEditor', 'label.zone-row', null, 6);
 searchableList('builtFind', 'builtList', 'li', null, 6);
 searchableList('bdFind', 'bdRooms', '.sketch-pick', '.palette-group', 12);
 

@@ -882,11 +882,16 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 
 /* ---- zones with settings of their own -------------------------------- */
 .zone-list { list-style: none; margin: 8px 0 0; padding: 0; }
-.zone-list li { display: flex; align-items: center; gap: 6px; padding: 4px 6px;
-  border: 1px solid var(--line); border-radius: 4px; margin-bottom: 4px;
-  font-size: 13px; cursor: pointer; }
+.zone-list li { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
 .zone-list li.on { border-color: var(--accent); }
-.zone-list .zone-what { flex: 1 1 auto; color: var(--muted); font-size: 11px; }
+.zone-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: pointer; }
+.zone-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+.zone-caret { color: var(--accent); transition: transform .15s; }
+.zone-list li.on .zone-caret { transform: rotate(90deg); }
+.zone-name { font-weight: 600; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-list .zone-what { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-list li > .zone-editor { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 .zone-list button { font: inherit; font-size: 11px; cursor: pointer;
   color: var(--text); background: transparent; border: 1px solid var(--line-strong);
   border-radius: 3px; padding: 1px 6px; }

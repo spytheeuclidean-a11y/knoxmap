@@ -338,6 +338,7 @@
           exactly as a surveyed one would be - a street gets its pavement,
           kerbs and parked cars; a house gets rooms, loot and people.</p>
         <!-- What is picked on the map, always shown: No selection until then. -->
+        <div id="sketchTools" class="sketch-actions"></div>
         <div id="sketchPicked" class="edit-selected is-empty"><span class="hint">No selection</span></div>
         <div class="setting setting-compact setting-switch sketch-rect">
           <span class="setting-name">Draw areas as boxes<button type="button" class="setting-info"
@@ -352,7 +353,6 @@
         <input type="search" id="sketchFind" class="list-search" hidden
                autocomplete="off" placeholder="Search what to draw">
         <div id="sketchPalette" class="sketch-palette"></div>
-        <div id="sketchTools" class="sketch-actions"></div>
         <div id="sketchNote" class="hint"></div>
       </details>
 
@@ -367,11 +367,9 @@
           <button type="button" id="zoneSave" class="btn" disabled>Save zones</button>
         </div>
         <div id="zoneTools" class="sketch-actions"></div>
-        <input type="search" id="zoneFind" class="list-search" hidden
-               autocomplete="off" placeholder="Search the zones">
+        <!-- One foldable item per zone; the open one holds its settings
+             (zoneEditor, moved into it by drawZoneList). -->
         <ul id="zoneList" class="zone-list"></ul>
-        <input type="search" id="zoneSettingFind" class="list-search" hidden
-               autocomplete="off" placeholder="Search this zone's settings">
         <div id="zoneEditor" class="zone-editor" hidden></div>
         <div id="zoneNote" class="hint"></div>
       </details>

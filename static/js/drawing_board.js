@@ -1045,13 +1045,32 @@ function zoneSummary(zone) {
   return bits.join(' · ');
 }
 
+// Each zone a foldable item: its heading (name, what is different, Remove)
+// and, when open, its settings - the one zone editor, moved into it. The
+// list is redrawn for every keystroke in a zone's name, so a row that is
+// already there is updated in place: rebuilding it would take the editor,
+// and the box being typed in, out of the page.
 function drawZoneList() {
   const box = document.getElementById('zoneList');
-  box.innerHTML = zoneList.map((z, i) => `<li data-i="${i}" class="${i === zonePicked ? 'on' : ''}">
-      <span>${escapeHtml(z.name || 'Zone ' + (i + 1))}</span>
-      <span class="zone-what">${escapeHtml(zoneSummary(z))}</span>
-      <button type="button" data-drop="${i}">Remove</button></li>`).join('');
-  runListSearch('zoneList');
+  const editor = document.getElementById('zoneEditor');
+  if (box.children.length !== zoneList.length) {
+    box.after(editor);                       // parked while the rows are rebuilt
+    box.innerHTML = zoneList.map((z, i) => `<li data-i="${i}" class="zone-item">
+        <div class="zone-head" role="button" tabindex="0" aria-expanded="false">
+          <span class="zone-caret" aria-hidden="true">▸</span>
+          <span class="zone-name"></span><span class="zone-what"></span>
+          <button type="button" data-drop="${i}">Remove</button></div></li>`).join('');
+  }
+  zoneList.forEach((z, i) => {
+    const li = box.children[i];
+    li.querySelector('.zone-name').textContent = z.name || 'Zone ' + (i + 1);
+    li.querySelector('.zone-what').textContent = zoneSummary(z);
+    li.classList.toggle('on', i === zonePicked);
+    li.querySelector('.zone-head').setAttribute('aria-expanded', String(i === zonePicked));
+  });
+  const open = box.children[zonePicked];
+  if (open && editor.parentElement !== open) open.appendChild(editor);
+  else if (!open && editor.parentElement !== box.parentElement) box.after(editor);
   // The list is redrawn for every change a zone has in it, so this is where
   // what the map says about it is kept up to date.
   zoneList.forEach((z, i) => {
@@ -1083,7 +1102,6 @@ function drawZoneEditor() {
   if (!zone || !zoneMeta) {
     box.hidden = true;
     box.innerHTML = '';
-    runListSearch('zoneEditor');     // and its search box goes with it
     return;
   }
   box.hidden = false;
@@ -1148,7 +1166,6 @@ function drawZoneEditor() {
       drawZoneList();
     });
   }
-  runListSearch('zoneEditor');
   for (const input of box.querySelectorAll('[data-zone-key]')) {
     input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', ev => {
       const key = ev.target.dataset.zoneKey;
@@ -1259,8 +1276,18 @@ document.getElementById('zoneList').addEventListener('click', ev => {
     zoneEd.remove(zoneList[parseInt(drop.dataset.drop, 10)].layer);
     return;
   }
-  const row = ev.target.closest('li[data-i]');
-  if (row) zonePick(parseInt(row.dataset.i, 10));
+  // The heading opens its zone, or folds it if it is the open one; a click in
+  // the open zone's settings is not a click on the zone.
+  const head = ev.target.closest('.zone-head');
+  if (!head) return;
+  const i = parseInt(head.parentElement.dataset.i, 10);
+  zonePick(i === zonePicked ? -1 : i);
+});
+document.getElementById('zoneList').addEventListener('keydown', ev => {
+  const head = ev.target.closest('.zone-head');
+  if (!head || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  ev.preventDefault();
+  head.click();
 });
 
 // ...and the other way round: the row under the pointer lights its zone up on
