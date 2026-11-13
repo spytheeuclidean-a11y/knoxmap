@@ -78,6 +78,12 @@ map.addControl(drawControl);
 
 let currentRect = null;
 let rotateHandleMarker = null;
+// The handle that turns the area shows only while it is being reshaped
+// (Reshape, in the Tools panel's Area tab); the rest of the time the area is
+// just a shape on the map.
+let areaReshaping = false;
+map.on('draw:editstart', () => { areaReshaping = true; updateRotateHandle(); });
+map.on('draw:editstop', () => { areaReshaping = false; updateRotateHandle(); });
 let rotateHandleStem = null;
 let isRotatingSelection = false;
 
@@ -215,7 +221,7 @@ function removeRotateHandle() {
 }
 
 function updateRotateHandle() {
-  if (!currentRect || !drawnItems.hasLayer(currentRect)) {
+  if (!areaReshaping || !currentRect || !drawnItems.hasLayer(currentRect)) {
     removeRotateHandle();
     return;
   }

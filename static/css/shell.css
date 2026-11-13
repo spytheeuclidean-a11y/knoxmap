@@ -97,6 +97,10 @@ body.ws-loading > * { visibility: hidden; }
 .ws-tool-pane > .hint { margin: 0; }
 .ws-draw-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .ws-draw-btns .btn { justify-content: center; text-align: center; }
+.ws-draw-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border: 1px solid var(--accent);
+  border-radius: 6px; background: var(--accent-soft); }
+.ws-draw-acts[hidden] { display: none; }
+.ws-draw-acts .btn { flex: 1 1 auto; justify-content: center; }
 .ws-tool-pane > .btn { align-self: stretch; }
 
 /* A column again: the tabs, steps and upgrade note come and go, and the map
@@ -105,10 +109,9 @@ body.ws-loading > * { visibility: hidden; }
 .ws-center > * { flex: none; }
 .ws #map-pane { flex: 1 1 auto; min-height: 0; }
 /* Leaflet's own draw buttons show only with the Area tool. */
-/* The map's drawing buttons are pressed from the Tools panel's Area tab; the
-   map keeps only what a drawing in progress shows: Finish, Cancel, Save. */
-.ws .leaflet-draw-toolbar, .ws .lasso-control { visibility: hidden; }
-.ws .leaflet-draw-actions { visibility: visible; }
+/* The map's drawing buttons, and the Finish, Cancel and Save a drawing in
+   progress shows, are pressed from the Tools panel's Area tab (shell.js). */
+.ws .leaflet-draw, .ws .lasso-control { visibility: hidden; }
 
 /* tabs */
 .ws-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 4px 8px 0; background: var(--bg);

@@ -389,9 +389,8 @@
 
   // =========================== tools ===========================
   // A tab each, in the Tools panel on the left; under it, that tool's own
-  // controls. The map's drawing buttons are pressed from the Area tab, so
-  // the map itself keeps only what a drawing in progress shows (Finish,
-  // Cancel, Save).
+  // controls. The map's drawing buttons, and what a drawing in progress
+  // shows (Finish, Cancel, Save), are pressed from the Area tab.
   const TOOLS = [
     { id: 'area', key: 'A', label: 'Area', title: 'Draw what to make, as a rectangle, a polygon, a circle or freehand' },
     { id: 'draw', key: 'D', label: 'Add', title: 'Add to this area: a street, a house, a park… built like a real one',
@@ -405,15 +404,16 @@
   const toolTabs = tools.querySelector('.ws-tool-tabs');
   const toolPanes = tools.querySelector('.ws-tool-panes');
   const TOOL_PANE = {
-    area: `<p class="hint">Draw the area to make. Drag it to move it; drag the handle above it to turn it.</p>
+    area: `<p class="hint">Draw the area to make. Reshape to move its corners or turn it by the handle above it.</p>
       <div class="ws-draw-btns">
         <button type="button" class="btn" data-draw="rectangle" title="Drag out a box"><span aria-hidden="true">▭</span> Rectangle</button>
         <button type="button" class="btn" data-draw="polygon" title="Click its corners one by one; click the first again to finish"><span aria-hidden="true">⬠</span> Polygon</button>
         <button type="button" class="btn" data-draw="circle" title="Drag out from the middle"><span aria-hidden="true">◯</span> Circle</button>
         <button type="button" class="btn" data-draw="lasso" title="Drag round the area you want"><span aria-hidden="true">✎</span> Freehand</button>
       </div>
+      <div class="ws-draw-acts" hidden></div>
       <div class="ws-draw-btns">
-        <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save on the map">Reshape</button>
+        <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save">Reshape</button>
         <button type="button" class="btn btn-small" data-opt="clear">Clear the area</button>
       </div>
       <div class="ws-sub-h">Corners</div>
@@ -450,7 +450,29 @@
       render();
     }
   }
+  // While a shape is being drawn or reshaped, what finishes it - Finish,
+  // Delete last point, Cancel, Save - is here under the drawing buttons. The
+  // buttons press the map toolbar's own, which stays hidden.
+  const drawActs = toolPanes.querySelector('.ws-draw-acts');
+  let drawLinks = [];
+  function showDrawActions() {
+    requestAnimationFrame(() => {
+      const list = [...map.getContainer().querySelectorAll('.leaflet-draw-actions')]
+        .find(ul => ul.style.display === 'block');
+      drawLinks = list ? [...list.querySelectorAll('li')]
+        .filter(li => getComputedStyle(li).display !== 'none').map(li => li.querySelector('a')).filter(Boolean) : [];
+      drawActs.innerHTML = drawLinks.map((a, i) => `<button type="button" class="btn btn-small${
+        /finish|save/i.test(a.textContent) ? ' btn-primary' : ''}" data-act="${i}" title="${esc(a.title || '')}">${
+        esc(a.textContent)}</button>`).join('');
+      drawActs.hidden = !drawLinks.length;
+    });
+  }
+  function hideDrawActions() { drawLinks = []; drawActs.innerHTML = ''; drawActs.hidden = true; }
+  map.on('draw:drawstart draw:editstart draw:deletestart', showDrawActions);
+  map.on('draw:drawstop draw:editstop draw:deletestop', hideDrawActions);
   tools.addEventListener('click', e => {
+    const act = e.target.closest('[data-act]');
+    if (act) { drawLinks[+act.dataset.act]?.click(); return; }
     const tab = e.target.closest('.ws-tool-tabs [data-tool]');
     if (tab) return setTool(tab.dataset.tool);
     const draw = e.target.closest('[data-draw]');
@@ -500,7 +522,7 @@
       + 'Click to put it somewhere else; Standalone plays it on its own.</span>';
     else if (ws.view === 'iso') h = '<b>In-game 2.5D</b><span>2.5D isometric view of your town and furnished buildings. Pan and zoom with the mouse.</span>';
     else h = {
-      area: '<b>Area</b><span>Draw it with the buttons under Tools on the left: rectangle, polygon, circle or freehand. Drag the box to move it; drag the handle above it to turn it.</span>',
+      area: '<b>Area</b><span>Draw it with the buttons under Tools on the left: rectangle, polygon, circle or freehand. Reshape to move its corners or turn it.</span>',
       draw: '<b>Add to this area</b><span>Pick what to draw under Tools on the left, then draw it on the map.</span>',
       zone: '<b>Zones</b><span>Press Draw a zone under Tools on the left, draw it on the map, then give it its own settings.</span>',
       make: '<b>Build</b><span>Build a building by hand, or draw a map from scratch on a blank sheet.</span>',
