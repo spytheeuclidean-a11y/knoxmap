@@ -890,6 +890,14 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 
 /* ---- zones with settings of their own -------------------------------- */
 .zone-list { list-style: none; margin: 8px 0 0; padding: 0; }
+/* Over the settings in Properties when zones change some of them. */
+.zones-notice { display: flex; align-items: center; gap: 8px; width: 100%; margin: 0 0 8px; padding: 6px 10px;
+  font: inherit; font-size: 12px; text-align: left; cursor: pointer; color: var(--text);
+  background: var(--warn-soft); border: 1px solid var(--changed); border-radius: 6px; }
+.zones-notice::before { content: '🧩'; }
+.zones-notice::after { content: '›'; margin-left: auto; color: var(--changed); font-size: 16px; }
+.zones-notice[hidden] { display: none; }
+.zones-notice:hover { border-color: var(--text); }
 .zone-list li { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
 .zone-list li.on { border-color: var(--accent); }
 .zone-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: pointer; }

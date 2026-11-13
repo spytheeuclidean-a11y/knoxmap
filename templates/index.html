@@ -230,6 +230,9 @@
         <option value="city">City</option>
         <option value="rural">Rural</option>
       </select>
+      <!-- Zones (Tools, Zones) set some of these differently in parts of the
+           map; this says so, and opens them. -->
+      <button type="button" id="zonesNotice" class="zones-notice" hidden></button>
       <input type="search" id="settingFind" class="list-search" hidden
              autocomplete="off" placeholder="Search the settings">
       <!-- The tabs: filled from /api/settings so the page never holds a second,
@@ -361,7 +364,7 @@
         <p class="hint">Draw a part of the map and give it its own settings -
           a town centre that is taller and thick with zombies, an estate all
           in one brick, a quiet edge. Anything outside every zone is built to
-          the settings above.</p>
+          the settings in Properties.</p>
         <div class="sketch-actions">
           <button type="button" id="zoneDraw" class="btn">Draw a zone</button>
           <button type="button" id="zoneSave" class="btn" disabled>Save zones</button>
@@ -479,8 +482,8 @@
           <div id="censusAudit" class="census-audit" hidden></div>
           <div class="census-actions">
             <button id="recountBtn" class="btn btn-small" type="button">Recount</button>
-            <span id="censusNote" class="step-note">Change the zombie settings under More settings,
-              then recount. No need to rebuild.</span>
+            <span id="censusNote" class="step-note">Change the zombie settings in Properties, on
+              the Gameplay tab, then recount. No need to rebuild.</span>
           </div>
         </div>
       </div>

@@ -473,6 +473,11 @@ function markChangedTabs() {
       el.closest('.setting')?.classList.toggle('is-changed', off);
       moved ||= off;
     }
+    // Only what I draw is the page's own switch, off unless asked for.
+    for (const own of card.querySelectorAll('#drawnOnly')) {
+      own.closest('.setting')?.classList.toggle('is-changed', own.checked);
+      moved ||= own.checked;
+    }
     const dot = body.querySelector(`#setting-tab-${card.dataset.group} .setting-tab-dot`);
     if (dot) dot.hidden = !moved;
   }

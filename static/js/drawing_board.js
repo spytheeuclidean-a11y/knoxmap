@@ -119,8 +119,6 @@ function showSketchCount() {
   const badge = document.getElementById('sketchCount');
   const n = sketchCount();
   if (badge) badge.textContent = n ? `(${n})` : '';
-  const only = document.getElementById('drawnOnly');
-  if (only && !n) only.checked = false;
 }
 
 // What is drawn, as GeoJSON with the palette id on it.
@@ -152,11 +150,6 @@ function loadSketchGeoJSON(drawn) {
   sketchEd.replace(items);
 }
 
-document.getElementById('drawnOnly').addEventListener('change', ev => {
-  noteSketch(ev.target.checked
-    ? 'Nothing will be downloaded: the map is only what you have drawn.'
-    : 'What you draw goes in on top of what is on OpenStreetMap.');
-});
 
 loadSketchPalette();
 
@@ -1050,7 +1043,22 @@ function zoneSummary(zone) {
 // list is redrawn for every keystroke in a zone's name, so a row that is
 // already there is updated in place: rebuilding it would take the editor,
 // and the box being typed in, out of the page.
+// How many zones set something of their own, said over the settings in
+// Properties: they are what those settings are not, in parts of the map.
+function showZonesNotice() {
+  const note = document.getElementById('zonesNotice');
+  if (!note) return;
+  const n = zoneList.filter(z => Object.keys(z.settings || {}).length
+    || z.wall_style || (z.presets || []).length).length;
+  note.hidden = !n;
+  note.textContent = n === 1 ? 'One zone changes settings in part of the map'
+    : `${n} zones change settings in parts of the map`;
+}
+document.getElementById('zonesNotice').addEventListener('click', () =>
+  document.querySelector('.ws-tool-tabs [data-tool="zone"]')?.click());
+
 function drawZoneList() {
+  showZonesNotice();
   const box = document.getElementById('zoneList');
   const editor = document.getElementById('zoneEditor');
   if (box.children.length !== zoneList.length) {
@@ -1089,6 +1097,31 @@ function zonePick(i) {
   drawZoneList();
   drawZoneEditor();
 }
+
+// What the map itself is set to, in Properties: what a zone's empty box means.
+function zoneMapValue(setting) {
+  const el = document.querySelector(`#advanced-body [data-key="${setting.id}"]`);
+  if (!el) return setting.default;
+  if (el.type === 'checkbox') return el.checked ? 1 : 0;
+  return el.value.trim() === '' ? setting.default : el.value;
+}
+function zoneMapWord(setting) {
+  return Number(zoneMapValue(setting)) ? 'As the map is (On)' : 'As the map is (Off)';
+}
+// Properties changed: the open zone's empty boxes show the new values.
+function refreshZonePlaceholders() {
+  if (!zoneMeta) return;
+  for (const s of zoneMeta.settings) {
+    const el = document.querySelector(`#zoneEditor [data-zone-key="${s.id}"]`);
+    if (!el) continue;
+    if (el.tagName === 'SELECT') el.options[0].textContent = zoneMapWord(s);
+    else el.placeholder = zoneMapValue(s);
+  }
+}
+for (const ev of ['input', 'change']) {
+  document.getElementById('advanced-body').addEventListener(ev, refreshZonePlaceholders);
+}
+document.getElementById('preset').addEventListener('change', () => setTimeout(refreshZonePlaceholders, 0));
 
 // A zone setting that is only ever 0 or 1: it gets on, off, or nothing at
 // all, rather than a box to type 1 into.
@@ -1138,12 +1171,12 @@ function drawZoneEditor() {
         // to the map. A zone sets what is different about it, not everything.
         ? `<select data-zone-key="${s.id}"
              class="${zone.settings[s.id] !== undefined ? 'zone-set' : ''}">
-           <option value="">As the map is</option>
+           <option value="">${zoneMapWord(s)}</option>
            <option value="1"${zone.settings[s.id] === 1 ? ' selected' : ''}>On</option>
            <option value="0"${zone.settings[s.id] === 0 ? ' selected' : ''}>Off</option>
            </select>`
         : `<input type="number" data-zone-key="${s.id}" min="${s.min}" max="${s.max}"
-             step="${s.int ? 1 : 0.05}" placeholder="${s.default}"
+             step="${s.int ? 1 : 0.05}" placeholder="${zoneMapValue(s)}"
              class="${zone.settings[s.id] !== undefined ? 'zone-set' : ''}"
              value="${zone.settings[s.id] !== undefined ? zone.settings[s.id] : ''}">`}
       </label>`).join('')}`;
