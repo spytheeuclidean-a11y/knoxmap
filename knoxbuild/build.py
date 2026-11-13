@@ -813,7 +813,8 @@ def car_park_stalls(bounds: tuple[int, int, int, int], w: int, h: int):
 
 def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
                   settings: Settings | None = None, areas=None, drives=(),
-                  keep_clear=(), road_hierarchy: np.ndarray | None = None):
+                  keep_clear=(), road_hierarchy: np.ndarray | None = None,
+                  veg_path: str | None = None):
     """Parking stalls along the roads, town zones over built-up ground.
 
     Without these the streets are bare: vehicles only ever spawn inside
@@ -858,6 +859,8 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
     STALL_W, STALL_H = 3, 5
     step = 14           # how often to consider a spot
     taken: set[tuple[int, int]] = set()
+    # Kerbside stalls, for the wheel stops across the ends of their bays.
+    bays: list[tuple[int, int, int, int]] = []
 
     # A car on most drives, as in Knox County.
     for x, y, sw, sh in drives:
@@ -932,6 +935,40 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
                 continue
             taken.add(key)
             zones.append(Zone("ParkingStall", x, y, sw, sh))
+            if not car_park:
+                bays.append((x, y, sw, sh))
+
+    # A concrete wheel stop closes each end of a run of kerbside bays, as the
+    # blocks do on the vanilla streets. A bay that runs straight on into the
+    # next has no end there, so only the last stall of a run takes one.
+    if bays and veg_path and os.path.exists(veg_path):
+        from .yards import _rule_ready
+        if _rule_ready("Parking block X0"):
+            starts = {(x, y) for x, y, _sw, _sh in bays}
+            veg = read_rgb(veg_path)
+            veg_h, veg_w = veg.shape[:2]
+            for x, y, sw, sh in bays:
+                along_y = sh > sw          # the bay runs along the road's length
+                fx, fy = (x, y + sh) if along_y else (x + sw, y)
+                if (fx, fy) in starts:
+                    continue                # another bay continues the run
+                # The block lies along the road at the bay's end, down the
+                # middle of the bay: across the mouth it would run into the
+                # pavement, since a kerbside stall straddles the kerb.
+                bx, by = (x + sw // 2, fy) if along_y else (fx, y + sh // 2)
+                tiles = C.PARKING_BLOCK_Y if along_y else C.PARKING_BLOCK_X
+                cells = [(bx, by + k) if along_y else (bx + k, by)
+                         for k in range(len(tiles))]
+                # All three squares or none: half a block of concrete reads as
+                # a mistake, and nothing may already stand there.
+                if not all(0 <= sx_ < veg_w and 0 <= sy_ < veg_h
+                           and is_asphalt(sx_, sy_)
+                           and tuple(veg[sy_, sx_]) == C.VEG_NOTHING
+                           for sx_, sy_ in cells):
+                    continue
+                for (sx_, sy_), colour in zip(cells, tiles):
+                    veg[sy_, sx_] = colour
+            Image.fromarray(veg).save(veg_path, format="BMP")
 
     # One town zone per cell that holds buildings, covering their extent with a
     # margin so gardens and the street frontage count as town too.
@@ -976,7 +1013,6 @@ def _street_finder(out_dir: str, map_name: str,
     """A function giving the side ("N", "S", "W" or "E") of a footprint that
     faces the nearest pavement or road, or None if none is near."""
     import numpy as np
-    from PIL import Image
 
     from generator import pz_colors as PC
 
@@ -1033,7 +1069,6 @@ def _street_finder(out_dir: str, map_name: str,
 
 
 def _load_road_hierarchy(out_dir: str, map_name: str, proj) -> np.ndarray | None:
-    from PIL import Image
 
     path = os.path.join(out_dir, f"{map_name}_road_hierarchy.bmp")
     if not os.path.exists(path):
@@ -1061,7 +1096,6 @@ def _road_weight(out_dir: str, map_name: str, proj,
     is what made the ground look like that, and no real road runs over it, it
     is ground a building may stand on.
     """
-    from PIL import Image
 
     from generator import pz_colors as C
 
@@ -2418,6 +2452,51 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     prop_placements, prop_counts = place_props(out_dir, map_name, bdir, occupied,
                                                areas, metres_per_tile,
                                                seed=seed + 5)
+    # A steeple on each church, and the board a motel or a drive-in puts up by
+    # the road (knoxbuild/landmarks.py). The rest of the skyline - water
+    # towers, silos and transmission masts - is mapped as its own feature and
+    # built by generator/structures.py.
+    from .landmarks import place_landmarks, sign_for
+    businesses: list[tuple[int, int, int, int, str]] = []
+    for group in (points or {}).values():
+        for bx, by, tags in group:
+            what = sign_for(tags)
+            if what:
+                businesses.append((int(bx), int(by), int(bx), int(by), what))
+    # A motel is as often the building as a point inside it, and only the
+    # building's own tags come with the outline it was built from. The board
+    # is put up at the edge of that outline, so the pass is given all of it.
+    for feat in geo.get("features", []):
+        what = sign_for(feat.get("properties") or {})
+        ring = _ring_points(feat.get("geometry") or {}) if what else []
+        if len(ring) < 3:
+            continue
+        px_ring = [proj.to_px(lat, lon) for lon, lat in ring]
+        businesses.append((int(round(min(x for x, _y in px_ring))),
+                           int(round(min(y for _x, y in px_ring))),
+                           int(round(max(x for x, _y in px_ring))),
+                           int(round(max(y for _x, y in px_ring))), what))
+    landmark_placements, landmark_counts = place_landmarks(
+        out_dir, map_name, bdir, occupied, rows, businesses,
+        metres_per_tile=metres_per_tile, seed=seed + 7)
+    if landmark_counts["steeples"] or landmark_counts["signs"]:
+        print(f"landmarks             : {landmark_counts['steeples']} steeples, "
+              f"{landmark_counts['signs']} roadside signs "
+              f"({landmark_counts['motel_signs']} motels, "
+              f"{landmark_counts['drive_in_signs']} drive-ins)")
+
+    # The three scenes: the way out of town held by the army, the school turned
+    # into a refuge, a main road stopped. Same props as the bases above, put
+    # where the story is instead of where a land use is.
+    from .props import place_vignettes
+    vignette_placements, vignette_counts = place_vignettes(
+        out_dir, map_name, bdir, occupied, rows, road_hierarchy=road_hierarchy,
+        seed=seed + 9)
+    if vignette_counts["vignette_props"]:
+        print(f"story vignettes       : {vignette_counts['checkpoints']} checkpoints, "
+              f"{vignette_counts['road_blocks']} roadblocks, "
+              f"{vignette_counts['evac_centres']} evacuation centres "
+              f"({vignette_counts['vignette_props']} props)")
 
     if used_presets:
         tally = ", ".join(f"{name} x{n}" for name, n in used_presets.most_common(6))
@@ -2425,9 +2504,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               f"({tally})")
 
     # Five jobs that each read the finished ground and none of which changes
-    # it or what another one reads: fences, the zombie spawn map, the paper
-    # map, the parking/town zones and the bridges. Mostly numpy and shapely,
-    # which let go of the interpreter lock, so threads overlap them.
+    # what another one reads: fences, the zombie spawn map, the paper map, the
+    # parking/town zones and the bridges. The zones are the one that writes:
+    # its wheel stops go into the vegetation bitmap, which every other veg
+    # writer (yards, pumps, props) has finished with by now. Mostly numpy and
+    # shapely, which let go of the interpreter lock, so threads overlap them.
     say("Fences, zombies, zones and the paper map", 0.82)
     from concurrent.futures import ThreadPoolExecutor
     from .structures import build_structures
@@ -2458,7 +2539,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         job_zones = pool.submit(
             _detect_zones, os.path.join(out_dir, f"{map_name}.bmp"), placements,
             settings=settings, areas=areas, drives=drives, keep_clear=forecourts,
-            road_hierarchy=road_hierarchy)
+            road_hierarchy=road_hierarchy,
+            veg_path=os.path.join(out_dir, f"{map_name}_veg.bmp"))
         # Fences go into the project alongside the buildings, but not into the
         # town zones: a fence lot spans its whole cell and would mark it all town.
         job_structures = pool.submit(build_structures, out_dir, map_name, bdir)
@@ -2468,8 +2550,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         zones = job_zones.result()
         structure_placements, raised = job_structures.result()
     placements = (placements + fence_placements + structure_placements +
-                  pump_placements + prop_placements + light_placements
-                  + escalator_placements)
+                  pump_placements + prop_placements + landmark_placements
+                  + vignette_placements + light_placements + escalator_placements)
 
     say("Writing the WorldEd project", 0.95)
     pzw_path = os.path.join(out_dir, f"{map_name}.pzw")

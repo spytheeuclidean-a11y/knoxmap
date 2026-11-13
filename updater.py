@@ -161,7 +161,6 @@ def _set(**fields) -> None:
 
 def check(force: bool = False) -> dict:
     """Look for a newer release and stage it. Safe to call from any thread."""
-    import requests
 
     with _lock:
         if _state["state"] in ("checking", "downloading"):

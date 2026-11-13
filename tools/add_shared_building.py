@@ -25,7 +25,6 @@ have is not dangerous but is full of holes.
 from __future__ import annotations
 
 import datetime as _datetime
-import json
 import os
 import sys
 

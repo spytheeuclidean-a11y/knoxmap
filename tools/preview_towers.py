@@ -38,6 +38,9 @@ TOWERS = [
     ("lighthouse", {"man_made": "lighthouse"}, (3, 3)),
     ("windmill", {"man_made": "windmill", "height": "15"}, (5, 5)),
     ("clock tower", {"man_made": "tower", "tower:type": "clock"}, (4, 4)),
+    ("steeple", {"man_made": "tower", "tower:type": "bell_tower"}, (3, 3)),
+    ("silo", {"man_made": "silo"}, (4, 4)),
+    ("transmission tower", {"power": "tower"}, (3, 3)),
 ]
 
 

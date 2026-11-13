@@ -1,11 +1,13 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 from PIL import Image
 
 from generator import pz_colors as C
+from knoxbuild import yards as yards_module
 from knoxbuild.bitmaps import read_rgb
 from knoxbuild.yards import YARD_MIN_DEPTH, _pave_patio, paint_paths, yard_plan
 
@@ -135,6 +137,35 @@ class BackYards(unittest.TestCase):
             self.assertTrue(x0 or y0, door)
             self.assertEqual({(x + 1, y) for x, y in x0}, x1, door)
             self.assertEqual({(x, y + 1) for x, y in y0}, y1, door)
+
+    def test_yards_get_a_dog_house_and_a_swing_with_the_rules(self):
+        """Not every yard has them, but a street of them does: the props are
+        gated on the rules carrying them, like the poles and the benches."""
+        houses = [("house", 4 + 12 * n, 10) for n in range(6)]
+        with mock.patch.object(yards_module, "_rule_ready", return_value=True):
+            veg = _paint(80, 40, houses, veg=True)
+        self.assertTrue(self.pieces(veg, C.DOG_HOUSE), "no dog house")
+
+    def test_a_blocked_square_moves_the_dog_house_rather_than_dropping_it(self):
+        """The props used to be tried on one fixed square each and silently
+        skipped when the patio or a bed was there."""
+        houses = [("house", 10, 10)]
+        with mock.patch.object(yards_module, "_rule_ready", return_value=True), \
+                mock.patch.object(yards_module, "DOG_HOUSE_SHARE", 1.0):
+            plain = _paint(40, 40, houses, veg=True)
+            dog = self.pieces(plain, C.DOG_HOUSE)
+            self.assertTrue(dog, "no dog house at all")
+            # Water on the square it took: it must find another, not vanish.
+            blocked = _paint(40, 40, houses, water=[next(iter(dog))], veg=True)
+        moved = self.pieces(blocked, C.DOG_HOUSE)
+        self.assertTrue(moved, "the dog house was dropped, not moved")
+        self.assertNotEqual(moved, dog)
+
+    def test_without_the_rules_a_yard_gets_neither(self):
+        houses = [("house", 4 + 12 * n, 10) for n in range(6)]
+        with mock.patch.object(yards_module, "_rule_ready", return_value=False):
+            veg = _paint(80, 40, houses, veg=True)
+        self.assertEqual(self.pieces(veg, C.DOG_HOUSE), set())
 
     def test_a_blocked_half_takes_the_whole_deck_chair_with_it(self):
         """With water where the second half would go, the first half is not

@@ -402,11 +402,9 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
     """What stands, what cannot be built on and which streets are looked along,
     or None when there is nothing to look at."""
     import numpy as np
-    import shapely
-    from shapely.geometry import LineString, Polygon
+    from shapely.geometry import LineString
     from shapely.strtree import STRtree
 
-    from .projection import _inside
 
     k = proj.meters_per_tile
 
@@ -572,7 +570,7 @@ def _back_sheds(buckets: dict, vegetation_feats: list, building_feats: list,
     one is a function of where they stand, so the same map comes out the same.
     """
     import numpy as np
-    from shapely.geometry import Point, Polygon
+    from shapely.geometry import Polygon
     from shapely.strtree import STRtree
 
     from .projection import _inside

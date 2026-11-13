@@ -24,6 +24,8 @@ import re
 import unittest
 from pathlib import Path
 
+from tools import make_lang_template
+
 ROOT = Path(__file__).resolve().parent.parent
 LANG = ROOT / "lang"
 TEMPLATE = LANG / "english.txt"
@@ -110,6 +112,46 @@ class TheTranslationFiles(unittest.TestCase):
                 self.assertGreater(done, 0)
                 print(f"  {path.name}: {done} of {len(self.english)} lines "
                       f"({100 * done / len(self.english):.0f}%)")
+
+
+class TheTemplateGenerator(unittest.TestCase):
+    """Regenerating must never subtract a line: a key is what a translation is.
+
+    The extractor reads the window by pattern, so it cannot promise to find
+    every hand-written line. tools/make_lang_template.py adds rather than
+    rewrites for that reason, and these tests hold it to it.
+    """
+
+    def test_regenerating_keeps_every_committed_line(self):
+        lines, _dropped = make_lang_template.template_lines()
+        keys = {line.partition(" = ")[0] for line in lines}
+        missing = sorted(set(entries(TEMPLATE)) - keys)
+        self.assertEqual(missing, [],
+                         f"{len(missing)} committed key(s) would be deleted: {missing[:5]}")
+
+    def test_a_template_literal_with_a_placeholder_is_found(self):
+        # `${placeRoad}` in draw.js is a sentence a translator reads; before
+        # the extractor allowed braces and backticks it was invisible.
+        found = make_lang_template.messages()
+        self.assertTrue(any(line.startswith("A road of {placeRoad}") for line in found),
+                        found[:5])
+
+    def test_a_curated_placeholder_message_keeps_its_braces(self):
+        # The CODE regex used to reject anything with {} - including every
+        # EXTRA_MESSAGES line with a live number in it.
+        self.assertIn("Map data source set to {source}", make_lang_template.messages())
+
+    def test_the_committed_template_is_up_to_date(self):
+        # What CI runs: every whole message the code says is in the file.
+        self.assertEqual(make_lang_template.main(["--check"]), 0)
+
+    def test_a_line_the_code_no_longer_says_is_kept_unless_pruned(self):
+        previous = ["Only in the old template"]
+        kept, dropped = make_lang_template.template_lines(previous)
+        self.assertIn("Only in the old template", kept)
+        self.assertEqual(dropped, previous)
+        pruned, _dropped = make_lang_template.template_lines(previous, prune=True)
+        self.assertNotIn("Only in the old template", pruned)
 
 
 if __name__ == "__main__":

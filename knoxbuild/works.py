@@ -47,7 +47,7 @@ def dress_works(rows: list[dict], door_lists: dict, cv, drives: list | None, rng
     """Yards for the works in `rows`. `cv` is paint_paths' canvas: ground,
     veg, w, h, free(x, y), paint(x, y, colour), paved_at, occupied_at and
     claimed_bytes. Returns the works given a yard."""
-    w, h = cv.w, cv.h
+    w = cv.w
     done = 0
     for row in rows:
         if row.get("kind") not in WORKS_KINDS:

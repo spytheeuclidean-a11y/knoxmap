@@ -45,6 +45,8 @@ YARD_DEPTH = 9           # back yard, from the back wall to the back fence
 YARD_MIN_DEPTH = 4
 YARD_SIDE = 2            # how far the fence stands out past the house's sides
 PAVED = (C.PALE_CONCRETE, C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT)
+# Ground the yard props do not stand on: paving, drives and the patio stone.
+LAWNLESS = PAVED + (C.PAVING_STONE, C.LIGHT_ASPHALT)
 CROSSABLE = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.DIRT,
              C.DIRT_ROWS_H, C.DIRT_ROWS_V)
 YARD_FENCE_STYLES = ("tall_wooden", "short_wooden", "white_picket", "short_chainlink")
@@ -52,6 +54,23 @@ YARD_ARCHETYPES = ("family", "grill", "laundry", "garden", "bare")
 YARD_ARCHETYPE_WEIGHTS = (30, 22, 18, 18, 12)
 YARD_FENCE_WEIGHTS = (40, 30, 18, 12)
 FENCED_SHARE = 0.85
+# The dog's house and the kids' swing: not every yard, but enough of them that
+# a street reads as lived in rather than laid out.
+DOG_HOUSE_SHARE = 0.45
+
+
+def _rule_ready(label: str) -> bool:
+    """Whether the map tools' Rules.txt carries one of our rules yet.
+
+    A colour with no rule behind it is dropped with a warning, so an install
+    set up before these props existed gets neither until Setup runs again.
+    """
+    try:
+        import knoxpaths
+        rules = knoxpaths.mapping_tools_dir() / "config" / "Rules.txt"
+        return f"KnoxMap road {label}" in rules.read_text(encoding="utf-8", errors="replace")
+    except Exception:      # noqa: BLE001 - no tools, no props
+        return False
 
 
 def yard_plan(bx0: int, by0: int) -> tuple[str, bool, str]:
@@ -517,6 +536,22 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 claimed_bytes[y * w + x] = 1
                 return True
 
+            def place_first(colour, order):
+                """The first square in `order` that will take the prop.
+
+                A fixed square was silently skipped when the patio, a bed or a
+                path already stood there; the yard simply went without. This
+                walks the candidates - lawn only, since these props stand on
+                grass - and takes the first that is free.
+                """
+                for u, v in order:
+                    x, y = at(u, v)
+                    if tuple(ground[y, x]) in LAWNLESS:
+                        continue
+                    if place(u, v, colour):
+                        return True
+                return False
+
             def place_pair(first, second):
                 """Both halves of one two-tile sprite, or neither: a half
                 alone is half a deck chair."""
@@ -569,6 +604,23 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 place(1, depth - 2, C.BIN)
             else:
                 place(width - 2, depth - 2, C.BIN)
+
+            # Yard storytelling: the dog's house against one fence, a swing
+            # for the kids against the other. Both want lawn, so they are
+            # offered a square each and skipped where there is no room.
+            lawn = [(u, v) for v in range(depth) for u in range(width)]
+            # The catalogue's dog house comes in orient N only - its door faces
+            # north - so it goes against the far fence, at v = depth - 2, and
+            # looks back up the yard rather than into the boards. The side
+            # fences are the fallback. The swing wants open lawn to run up to.
+            against_a_fence = [(u, v) for u, v in lawn if v == depth - 2]
+            against_a_fence += [(u, v) for u, v in lawn if u in (1, width - 2)]
+            if _rule_ready("Dog house") and yrng.random() < DOG_HOUSE_SHARE:
+                place_first(C.DOG_HOUSE, against_a_fence + lawn)
+            # No swing: location_community_park_01_010 is the top crossbar of
+            # a three-tile set that stands on two levels (011/012/013 under it,
+            # 014 above), and a yard colours a single ground bitmap. Placed
+            # alone the crossbar hangs in the air, which is worse than no swing.
 
             # Claimed only now: the furniture stands on the patio, and `place`
             # refuses a claimed tile.
