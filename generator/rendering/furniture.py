@@ -18,6 +18,9 @@ from ..osm import ROAD_HIERARCHY_BY_CODE
 GRIME_SHARE = 0.0
 # Roads at least this wide get a faded edge line down each side.
 EDGE_LINE_MIN_WIDTH = 5
+# Straight edge runs shorter than this are staircase steps on a diagonal road;
+# placing axis-aligned white edge lines on them leaves broken jagged dashes.
+EDGE_LINE_MIN_RUN = 6
 CRACK_SHARE = 0.012
 LITTER_SHARE = 0.002
 LAMP_EVERY = 18
@@ -101,6 +104,32 @@ def _mod_tiles_ready() -> bool:
         return False
 HYDRANT_EVERY = 38
 DRAIN_EVERY = 24
+
+
+def _long_runs(mask, min_len: int, axis: int):
+    """Keep only contiguous True runs of length >= min_len along `axis`."""
+    import numpy as np
+
+    if min_len <= 1:
+        return mask
+    h, w = mask.shape
+    if (axis == 1 and w < min_len) or (axis == 0 and h < min_len):
+        return np.zeros_like(mask)
+    starts = mask.copy()
+    for offset in range(1, min_len):
+        if axis == 1:
+            starts[:, :-offset] &= mask[:, offset:]
+            starts[:, -offset:] = False
+        else:
+            starts[:-offset, :] &= mask[offset:, :]
+            starts[-offset:, :] = False
+    out = starts.copy()
+    for offset in range(1, min_len):
+        if axis == 1:
+            out[:, offset:] |= starts[:, :-offset]
+        else:
+            out[offset:, :] |= starts[:-offset, :]
+    return out
 
 
 def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
@@ -190,9 +219,12 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     across[:i, :] = False
             side_a = np.zeros_like(asphalt); side_b = np.zeros_like(asphalt)
             side_a[:, 1:] = asphalt[:, :-1]; side_b[:, :-1] = asphalt[:, 1:]
-        # Straight edges only: the road continues along the line both ways.
-        pick = asphalt & outside & across & side_a & side_b & empty
-        diag_kerbs[colour] = asphalt & outside & across & (side_a | side_b) & ~pick
+        # Straight edges only: the road continues along the line both ways, and
+        # the run is long enough not to be a staircase step on a diagonal road.
+        candidate = asphalt & outside & across
+        long_edge = _long_runs(candidate, EDGE_LINE_MIN_RUN, 0 if dx else 1)
+        pick = long_edge & side_a & side_b & empty
+        diag_kerbs[colour] = candidate & (side_a | side_b) & ~pick
         vp[pick] = colour
         empty &= ~pick
         edge_lines += int(pick.sum())

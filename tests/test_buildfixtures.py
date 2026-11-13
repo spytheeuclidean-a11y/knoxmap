@@ -70,7 +70,10 @@ class WorldEdTests(unittest.TestCase):
                     self.check_building(folder, folder.name, 40, 40)
 
     def test_four_level_house(self):
-        self.check_building(FIXTURES / "exp/house", "house_0000", 269, 592)
+        house = FIXTURES / "exp/house"
+        if not (house / "buildings" / "house_0000.tbx").is_file():
+            self.skipTest("local exp/house WorldEd fixture is not installed")
+        self.check_building(house, "house_0000", 269, 592)
 
     def test_fresh_custom_walls_and_unusual_windows(self):
         extra = Path(os.environ.get("KNOXLOTS_EXTRA", FIXTURES / "extra"))

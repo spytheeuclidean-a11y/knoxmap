@@ -142,9 +142,18 @@ def _de_dogleg(path: list[tuple[int, int]]) -> list[tuple[int, int]]:
         a, b, c = out[i - 1], out[i], out[i + 1]
         step = (b[0] - a[0], b[1] - a[1])
         ahead = (c[0] - b[0], c[1] - b[1])
-        if abs(step[0]) + abs(step[1]) == 1 and ahead != step \
-                and step[0] * ahead[0] + step[1] * ahead[1] == 0 \
-                and abs(ahead[0]) + abs(ahead[1]) >= 3:
+        step_len = abs(step[0]) + abs(step[1])
+        is_ortho_step = step_len == 1 or (
+            step_len == 2 and (step[0] == 0 or step[1] == 0)
+        )
+        min_ahead = 3 if step_len == 1 else 6
+        is_ortho_ahead = (step[0] * ahead[0] + step[1] * ahead[1] == 0
+                          and abs(ahead[0]) + abs(ahead[1]) >= min_ahead)
+        is_diag_ahead = (abs(ahead[0]) == abs(ahead[1]) >= min_ahead
+                         and step[0] * ahead[0] >= 0
+                         and step[1] * ahead[1] >= 0)
+        if is_ortho_step and ahead != step \
+                and (is_ortho_ahead or is_diag_ahead):
             dx, dy = -step[0], -step[1]
             # the run after the step, up to where it turns: that run moves
             # onto the line, and the road carries on from the same corner.

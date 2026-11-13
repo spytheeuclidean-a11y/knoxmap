@@ -122,6 +122,7 @@
               <button type="button" class="btn btn-small" id="isoZoom100" title="Real in-game 1:1 scale">1:1</button>
             </div>
             <button type="button" class="btn btn-small" id="isoDownload" title="Save current image">Save picture</button>
+            <button type="button" class="btn btn-small" id="isoDelete" title="Delete cached image so it can be regenerated">Delete image</button>
           </div>
         </header>
 
@@ -739,6 +740,49 @@
       a.click();
     });
 
+    // Delete cached image so it can be regenerated
+    const deleteBtn = document.getElementById('isoDelete');
+    deleteBtn?.addEventListener('click', async () => {
+      if (!activeMap) return;
+      let box = null;
+      if (currentMode === 'sector') {
+        const sx = parseInt(document.getElementById('isoSectorX')?.value || '0', 10);
+        const sy = parseInt(document.getElementById('isoSectorY')?.value || '0', 10);
+        const sw = parseInt(document.getElementById('isoSectorW')?.value || '0', 10);
+        const sh = parseInt(document.getElementById('isoSectorH')?.value || '0', 10);
+        box = currentSector
+          ? [currentSector.x, currentSector.y, currentSector.w, currentSector.h]
+          : [sx, sy, sw, sh];
+      } else if (currentMode === 'close' && mapInfo?.picture_boxes?.close) {
+        const b = mapInfo.picture_boxes.close;
+        box = [b.x, b.y, b.w, b.h];
+      }
+      deleteBtn.disabled = true;
+      try {
+        const res = await fetch(`/api/iso-delete/${encodeURIComponent(activeMap)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: currentMode, box }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (mapInfo && mapInfo.pictures && currentMode !== 'sector') {
+          delete mapInfo.pictures[currentMode];
+        }
+        img.removeAttribute('src');
+        if (currentMode === 'sector' && box) {
+          renderSectorBox(box[0], box[1], box[2], box[3], currentSector ? currentSector.roofs : 1, true);
+        } else {
+          setMode(currentMode);
+        }
+      } catch (err) {
+        if (typeof window.setStatus === 'function') {
+          window.setStatus(`Could not delete image: ${err.message}`);
+        }
+      } finally {
+        deleteBtn.disabled = false;
+      }
+    });
+
     // Mode buttons
     el.querySelectorAll('[data-iso-mode]').forEach(btn => {
       btn.addEventListener('click', () => setMode(btn.dataset.isoMode));
@@ -931,9 +975,14 @@
 
     if (src) {
       loadImage(src, title, 'Reading generated town picture', 2);
+    } else if (mode === 'close' && mapInfo.picture_boxes && mapInfo.picture_boxes.close) {
+      const b = mapInfo.picture_boxes.close;
+      const scale = Math.min(1, 412 / Math.max(10, b.w + b.h));
+      const fallbackUrl = `/api/iso-render/${encodeURIComponent(activeMap)}?box=${b.x},${b.y},${b.w},${b.h}&scale=${scale.toFixed(2)}&roofs=1&t=${Date.now()}`;
+      loadImage(fallbackUrl, title, 'Rendering town center on demand…', 5);
     } else {
       const roofs = mode !== 'inside';
-      const fallbackUrl = `/api/iso-render/${encodeURIComponent(activeMap)}?roofs=${roofs ? 1 : 0}&scale=0.5`;
+      const fallbackUrl = `/api/iso-render/${encodeURIComponent(activeMap)}?roofs=${roofs ? 1 : 0}&scale=0.5&t=${Date.now()}`;
       loadImage(fallbackUrl, title, 'Rendering preview on demand…', 5);
     }
   }

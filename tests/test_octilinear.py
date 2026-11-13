@@ -122,6 +122,16 @@ class StraighteningKnowsWhenToStop(unittest.TestCase):
         self.assertEqual(_tidy(_de_dogleg(corner)),
                          [(0, 0), (40, 0), (40, 30)])
 
+    def test_diagonal_runs_a_tile_apart_become_one_straight_run(self):
+        from generator.octilinear import _de_dogleg, _tidy
+        stepped = [(0, 0), (15, 15), (16, 15), (31, 30)]
+        self.assertEqual(_tidy(_de_dogleg(stepped)), [(0, 0), (30, 30)])
+
+    def test_diagonal_runs_two_tiles_apart_become_one_straight_run(self):
+        from generator.octilinear import _de_dogleg, _tidy
+        stepped = [(0, 0), (15, 15), (17, 15), (32, 30)]
+        self.assertEqual(_tidy(_de_dogleg(stepped)), [(0, 0), (30, 30)])
+
 
 if __name__ == "__main__":
     unittest.main()

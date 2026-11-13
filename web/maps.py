@@ -382,6 +382,51 @@ def api_iso_render(name: str):
         return failed(f"Saving render failed: {exc}", 500, exc)
 
 
+@bp.route("/api/iso-delete/<name>", methods=["POST"])
+def api_iso_delete(name: str):
+    """Delete cached 2.5D isometric image(s) so they can be regenerated."""
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Unknown map."}), 404
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get("mode") or "").strip().lower()
+    box = data.get("box")
+    pics_dir = map_dir / "pictures"
+    cache_dir = pics_dir / "cache"
+    targets: list[Path] = []
+    if mode == "town":
+        targets.append(pics_dir / "town.png")
+    elif mode == "close":
+        targets.append(pics_dir / "close.png")
+    elif mode == "inside":
+        targets.extend([pics_dir / "inside_town.png", pics_dir / "inside.png"])
+    elif mode == "sector":
+        if cache_dir.is_dir():
+            if isinstance(box, (list, tuple)) and len(box) == 4:
+                try:
+                    bx, by, bw, bh = [int(v) for v in box]
+                    targets.extend(cache_dir.glob(f"iso_{bx}_{by}_{bw}_{bh}_*.png"))
+                except (TypeError, ValueError):
+                    targets.extend(cache_dir.glob("iso_*.png"))
+            else:
+                targets.extend(cache_dir.glob("iso_*.png"))
+    else:
+        return jsonify({"error": "Unknown mode."}), 400
+    if mode == "close" and cache_dir.is_dir() and isinstance(box, (list, tuple)) and len(box) == 4:
+        try:
+            bx, by, bw, bh = [int(v) for v in box]
+            targets.extend(cache_dir.glob(f"iso_{bx}_{by}_{bw}_{bh}_*.png"))
+        except (TypeError, ValueError):
+            pass
+
+    deleted = []
+    for p in targets:
+        if p.is_file():
+            p.unlink()
+            deleted.append(p.name)
+    return jsonify({"deleted": deleted})
+
+
 @bp.route("/api/save", methods=["POST"])
 def api_save():
     """Save a map's file where the player can find it and show it in Explorer.
@@ -440,3 +485,72 @@ def download_all(map_name: str):
     buf.seek(0)
     return send_file(buf, mimetype="application/zip", as_attachment=True,
                      download_name=f"{safe}.zip")
+
+
+@bp.route("/api/road-inspector/<name>")
+def api_road_inspector(name: str):
+    """Serve the generated ground or road-details bitmap as a PNG for inspection."""
+    import numpy as np
+    from PIL import Image
+
+    from generator import pz_colors as C
+
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Unknown map."}), 404
+
+    layer = request.args.get("layer", "ground")
+    if layer not in ("ground", "details"):
+        return jsonify({"error": "layer must be ground or details"}), 400
+
+    src = map_dir / (f"{map_dir.name}.bmp" if layer == "ground" else f"{map_dir.name}_veg.bmp")
+    if not src.is_file():
+        return jsonify({"error": f"{src.name} has not been generated yet."}), 404
+
+    cache_dir = map_dir / "pictures" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    mtime = src.stat().st_mtime_ns
+    cache_file = cache_dir / f"roadinsp_{layer}_{mtime}.png"
+    if cache_file.is_file():
+        return send_file(cache_file, mimetype="image/png")
+
+    with Image.open(src) as im:
+        rgb = im.convert("RGB")
+
+    if layer == "ground":
+        rgb.save(cache_file, "PNG")
+        return send_file(cache_file, mimetype="image/png")
+
+    arr = np.asarray(rgb)
+    h, w = arr.shape[:2]
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    non_empty = np.any(arr != 0, axis=2)
+    rgba[non_empty, :3] = arr[non_empty]
+    rgba[non_empty, 3] = 140
+
+    def _paint_group(colours, out_rgba):
+        mask = np.zeros((h, w), dtype=bool)
+        for col in colours:
+            mask |= np.all(arr == np.array(col, dtype=np.uint8), axis=2)
+        rgba[mask] = out_rgba
+
+    _paint_group((C.KERB_W, C.KERB_N, C.KERB_S, C.KERB_E,
+                  C.KERB_NW, C.KERB_SW, C.KERB_NE, C.KERB_SE), (0, 230, 255, 255))
+    _paint_group((C.KERB_DNW_0, C.KERB_DNW_1, C.KERB_DNE_0, C.KERB_DNE_1,
+                  C.KERB_DSW_0, C.KERB_DSW_1, C.KERB_DSE_0, C.KERB_DSE_1),
+                 (80, 170, 255, 255))
+    _paint_group((C.LINE_WHITE_N, C.LINE_WHITE_W,
+                  C.EDGE_LINE_N, C.EDGE_LINE_S, C.EDGE_LINE_W, C.EDGE_LINE_E),
+                 (255, 255, 255, 255))
+    _paint_group((C.LINE_YELLOW_N, C.LINE_YELLOW_W), (255, 220, 40, 255))
+    props = (
+        C.LAMP_N, C.LAMP_S, C.LAMP_W, C.LAMP_E, C.HYDRANT, C.BIN, C.MAILBOX,
+        C.STORM_DRAIN, C.UTILITY_POLE, C.MANHOLE,
+        C.KIOSK_N, C.KIOSK_E, C.KIOSK_S, C.KIOSK_W,
+        C.POSTBOX_N, C.POSTBOX_E, C.POSTBOX_S, C.POSTBOX_W,
+        *C.BENCH_X, *C.BENCH_Y, *C.PARKING_BLOCK_X, *C.PARKING_BLOCK_Y,
+    )
+    _paint_group(props, (255, 130, 30, 255))
+
+    Image.fromarray(rgba, "RGBA").save(cache_file, "PNG")
+    return send_file(cache_file, mimetype="image/png")

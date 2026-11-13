@@ -216,6 +216,25 @@ class RoadsideProps(unittest.TestCase):
                     self.assertIn(C.PALE_CONCRETE, neighbours,
                                   "a prop is not beside a sidewalk")
 
+    def test_no_broken_edge_lines_on_diagonal_staircase(self):
+        """A diagonal road with 3-tile staircase steps must not get broken
+        white edge-line dashes on the steps."""
+        w, h = 80, 40
+        ground = Image.new("RGB", (w, h), C.DARK_GRASS)
+        pixels = ground.load()
+        for x in range(w):
+            y0 = 10 + x // 3
+            for y in range(y0, min(h, y0 + 8)):
+                pixels[x, y] = C.MEDIUM_ASPHALT
+        vegetation = Image.new("RGB", ground.size, C.VEG_NOTHING)
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False):
+            counts = renderer._paint_street_furniture(vegetation, ground)
+        self.assertEqual(counts.get("edge lines", 0), 0)
+        edge_colors = {C.EDGE_LINE_N, C.EDGE_LINE_S, C.EDGE_LINE_W, C.EDGE_LINE_E}
+        placed = [(x, y) for x in range(w) for y in range(h)
+                  if vegetation.getpixel((x, y)) in edge_colors]
+        self.assertEqual(placed, [])
+
 
 if __name__ == "__main__":
     unittest.main()
