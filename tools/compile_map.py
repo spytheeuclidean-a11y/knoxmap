@@ -359,9 +359,17 @@ def bitmap_pixels(width: int, height: int) -> int:
 # dropped from the compile with a warning, leaving holes where the track was,
 # so the rules are added to the tools' Rules.txt the first time a map is built.
 def ensure_rail_rules(tools_dir) -> bool:
-    """Keep compilation on the renderer's current rail palette and layers."""
+    """Keep compilation on the renderer's current rail palette and layers.
+
+    No tools, nothing to patch. The compile goes on to ask for Rules.txt
+    itself and says what is wrong in words (tools/terrain_source.rules_path);
+    reached with None this divided a path by a string and the report that
+    came back said "unsupported operand type(s) for /: 'NoneType' and 'str'".
+    """
     from worlded.patch_rules_roads import main as patch_roads
 
+    if tools_dir is None:
+        return False
     rules = tools_dir / "config" / "Rules.txt"
     try:
         before = rules.read_text(encoding="utf-8", errors="replace")
