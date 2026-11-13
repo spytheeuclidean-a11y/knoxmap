@@ -62,12 +62,6 @@ class Settings:
     # - and a map wanted thick woods round a thinly planted town had no way
     # to say so.
     forest_density: float = 1.0
-    # Size in metres of dense stands and clearings inside mapped forests.
-    forest_clustering: float = 28.0
-    # Share of mapped forest left open or sparse so woods are patchy, not walls.
-    forest_openness: float = 0.25
-    # Width in tiles of the thinned transition band along forest edges.
-    forest_edge_softness: int = 3
 
     # --- buildings -------------------------------------------------------
     # Generate terrain, roads, railways, water and vegetation only (no buildings).
@@ -269,9 +263,6 @@ LIMITS = {
     "m2_per_person": (10.0, 150.0),
     "tree_density": (0.0, 3.0),
     "forest_density": (0.0, 3.0),
-    "forest_clustering": (4.0, 120.0),
-    "forest_openness": (0.0, 0.9),
-    "forest_edge_softness": (0, 12),
     "terrain_only": (0, 1),
     "seed": (0, 2 ** 31 - 1),
     "true_map": (0, 1),
