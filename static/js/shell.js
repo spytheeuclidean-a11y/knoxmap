@@ -202,6 +202,7 @@
   for (const node of [...areaCard.children]) {
     if (node.matches('h2') || node.id === 'presetsPanel') continue;
     if (node.id === 'landmark-panel') places.querySelector('.ws-legend-body').append(node);
+    else if (node.id === 'coordsBox') continue;      // the Tools panel's Area tab has it
     else mapProps.append(node);
   }
   holder.append($('handBuilt'));
@@ -413,9 +414,10 @@
       </div>
       <div class="ws-draw-btns">
         <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save on the map">Reshape</button>
-        <button type="button" class="btn btn-small" data-opt="corners">Type the corners</button>
         <button type="button" class="btn btn-small" data-opt="clear">Clear the area</button>
-      </div>`,
+      </div>
+      <div class="ws-sub-h">Corners</div>
+      <p class="hint">Or type them, in degrees, and Use these corners.</p>`,
     make: `<p class="hint">A building of your own, room by room, to place on a map.</p>
       <button type="button" class="btn" data-once="builderOpen">Build a building by hand</button>
       <p class="hint">A map with nothing real under it: roads, houses and land drawn on a blank sheet.</p>
@@ -432,6 +434,7 @@
     pane.dataset.toolPane = t.id;
     pane.setAttribute('role', 'tabpanel');
     if (t.panel) { const node = $(t.panel); node.open = true; pane.appendChild(node); }
+    if (t.id === 'area') pane.appendChild($('coordsBox'));
     toolPanes.appendChild(pane);
   }
   const DRAW_BUTTON = {
@@ -439,12 +442,6 @@
     circle: '.leaflet-draw-draw-circle', lasso: '.lasso-btn', edit: '.leaflet-draw-edit-edit',
   };
   function areaOption(opt) {
-    if (opt === 'corners') {
-      // The corners are in Properties, on its Map tab.
-      document.querySelector('#advanced-body .setting-tab[data-tab="map"]')?.click();
-      $('south').scrollIntoView({ block: 'center' });
-      $('south').focus();
-    }
     if (opt === 'clear') {
       drawnItems.clearLayers();
       if (typeof removeRotateHandle === 'function') removeRotateHandle();

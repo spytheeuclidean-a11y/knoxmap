@@ -197,6 +197,25 @@
         <p class="hint">Share an area and its settings. Imported presets can be saved here or generated directly.</p>
         <div id="presetNote" class="hint"></div>
       </details>
+      <!-- The corners of the area. They report what was drawn, and they are
+           also a way to draw it: type four degrees and the box appears,
+           which is how somebody who knows exactly where their map ends
+           starts from the numbers instead of the mouse. -->
+      <div id="coordsBox" class="coords-box">
+        <div class="coords">
+          <label>S <input type="number" step="0.000001" id="south"
+                          placeholder="-90 to 90"></label>
+          <label>W <input type="number" step="0.000001" id="west"
+                          placeholder="-180 to 180"></label>
+          <label>N <input type="number" step="0.000001" id="north"
+                          placeholder="-90 to 90"></label>
+          <label>E <input type="number" step="0.000001" id="east"
+                          placeholder="-180 to 180"></label>
+          <button type="button" id="coordsApply" class="btn btn-small">Use these
+            corners</button>
+        </div>
+        <div id="coordsNote" class="hint"></div>
+      </div>
       <div id="landmark-panel">
         <button id="landmarksBtn" class="btn" disabled>List named places in the area</button>
         <div id="landmark-results"></div>
@@ -252,25 +271,6 @@
              comes to. -->
         <div class="tab-part" data-part="map-area">
           <div class="setting-subhead">Area</div>
-          <!-- The corners of the area. They report what was drawn, and they are
-               also a way to draw it: type four degrees and the box appears,
-               which is how somebody who knows exactly where their map ends
-               starts from the numbers instead of the mouse. -->
-          <div class="setting setting-static setting-area">
-            <div class="coords">
-              <label>S <input type="number" step="0.000001" id="south"
-                              placeholder="-90 to 90"></label>
-              <label>W <input type="number" step="0.000001" id="west"
-                              placeholder="-180 to 180"></label>
-              <label>N <input type="number" step="0.000001" id="north"
-                              placeholder="-90 to 90"></label>
-              <label>E <input type="number" step="0.000001" id="east"
-                              placeholder="-180 to 180"></label>
-              <button type="button" id="coordsApply" class="btn btn-small">Use these
-                corners</button>
-            </div>
-            <div id="coordsNote" class="hint"></div>
-          </div>
           <div class="setting setting-static">
             <div id="area-stats" class="empty">
               <div class="empty-state">Nothing selected yet.</div>

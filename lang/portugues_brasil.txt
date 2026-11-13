@@ -813,3 +813,5 @@ Reshape = Remodelar
 Draw the area to make. Drag it to move it; drag the handle above it to turn it. = Desenhe a área a fazer. Arraste-a para movê-la; arraste a alça acima dela para girá-la.
 A building of your own, room by room, to place on a map. = Uma construção sua, cômodo por cômodo, para pôr num mapa.
 A map with nothing real under it: roads, houses and land drawn on a blank sheet. = Um mapa sem nada real por baixo: ruas, casas e terreno desenhados numa folha em branco.
+Corners = Cantos
+Or type them, in degrees, and Use these corners. = Ou digite-os, em graus, e clique em Usar estes cantos.

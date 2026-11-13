@@ -69,10 +69,14 @@ class SettingTabs(unittest.TestCase):
         # No collapser left around the settings, and no second terrain switch.
         self.assertNotIn('<details id="advanced"', html)
         self.assertNotIn("terrainOnlyToggle", html + APP)
-        # The area's corners and numbers are in the Map tab.
+        # The area's numbers are in the Map tab.
         map_part = html[html.index('data-part="map"'):html.index('id="resetSettings"')]
-        for id_ in ("south", "west", "north", "east", "coordsApply", "area-stats", "mapName"):
+        for id_ in ("area-stats", "mapName", "metersPerTile", "presetCards"):
             self.assertIn(f'id="{id_}"', map_part, id_)
+        # The corners are typed in the Tools panel's Area tab, not here.
+        for id_ in ("south", "west", "north", "east", "coordsApply"):
+            self.assertNotIn(f'id="{id_}"', map_part, id_)
+        self.assertIn("pane.appendChild($('coordsBox'))", APP)
 
     def test_search_reaches_the_tabs(self):
         self.assertIn("new CustomEvent('listsearch'", APP)
