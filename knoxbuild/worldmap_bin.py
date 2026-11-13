@@ -148,17 +148,17 @@ def _pieces(rings, cell_x, cell_y):
 # outline starts in it as a 16-bit number: past 32767 values - 16383 points -
 # the start wraps negative and every outline after it fails to load. Knox
 # County's densest cell has about 1600. A packed city centre can have more.
-CELL_POINT_BUDGET = 15000
+CELL_POINT_BUDGET = 4500
 # The triangles are kept the same way: every outline's triangles go into one
 # buffer per cell whose start the game also keeps as a 16-bit number
 # (WorldMapGeometry.triangulate), so past 32767 indices the start wraps
-# negative and WorldMapRenderer.fillPolygon reads outside the buffer - the M
-# map stops drawing and throws every frame ("forgot to call endRun()"). A
-# polygon of n points is about 3n indices, so the point budget alone let a
-# packed city cell reach 45,000 (Hamburg). A road is triangulated again at
-# each of the five zoom levels it is simplified for, so it counts six times.
-CELL_INDEX_BUDGET = 30000
-HIGHWAY_COPIES = 6
+# negative and WorldMapRenderer.fillPolygon throws IndexOutOfBoundsException.
+# A polygon of n points is ~3n indices and can be kept/triangulated up to 6
+# times across zoom levels (both highways and dense building/area layers in
+# WorldMap / Spawn Selector), so all polygons count 6x against the budget.
+CELL_INDEX_BUDGET = 24000
+POLYGON_COPIES = 6
+HIGHWAY_COPIES = POLYGON_COPIES
 # What goes first when a cell is over it: the small things.
 KEEP_ORDER = ("water", "highway", "railway", "building", "natural")
 
@@ -169,8 +169,7 @@ def _points(piece) -> int:
 
 def _indices(piece, props) -> int:
     """Triangle indices the game will keep for this outline (see CELL_INDEX_BUDGET)."""
-    copies = HIGHWAY_COPIES if any(k == "highway" for k, _ in props) else 1
-    return 3 * _points(piece) * copies
+    return 3 * _points(piece) * POLYGON_COPIES
 
 
 def _fits(features: list) -> bool:
