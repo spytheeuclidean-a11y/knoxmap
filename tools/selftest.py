@@ -1330,50 +1330,70 @@ sys.modules.setdefault("selftest", sys.modules[__name__])
 # every one of them from the linter (F405), so a renamed check only failed at
 # run time, and it left the checks modules themselves unlintable.
 if __package__:                      # imported as tools.selftest
-    from .selftest_checks_a import (  # noqa: E402
-        check_1_3_6, check_basements, check_compile_failures, check_dwellings,
-        check_facing, check_garage_door, check_giant_outline, check_house_plan,
-        check_kitchen_fit, check_long_streets, check_lots_apart, check_mapped_rooms,
-        check_memory_guard, check_overpass_retry, check_overture, check_porch_lights,
-        check_portable, check_procedural, check_qt_env, check_repair, check_rifle,
-        check_rpath, check_split_large, check_squares, check_standing, check_stop,
-        check_street_zombies, check_wall_corners, check_wall_styles,
+    from .selftest_suite.buildings import (  # noqa: E402
+        check_1_3_6, check_basements, check_build_audits,
+        check_degenerate_footprints, check_dwellings, check_facing,
+        check_garage_door, check_giant_outline, check_house_plan,
+        check_kitchen_fit, check_lots_apart, check_mapped_rooms,
+        check_missing_drive, check_porch_lights, check_procedural, check_rifle,
+        check_shared_buildings, check_split_large, check_squares,
+        check_standing, check_wall_corners, check_wall_styles,
+        check_windows_open,
     )
-    from .selftest_checks_b import (  # noqa: E402
-        check_big_bitmaps, check_box_any, check_build_audits, check_car_park_stalls,
-        check_compile_records, check_compile_state, check_config_file,
-        check_degenerate_footprints, check_flat_selection, check_ground_shares,
-        check_health, check_install_clears, check_install_folder, check_mapstate,
-        check_missing_drive, check_no_size_wall, check_odd_requests, check_odd_tags,
-        check_osm_cache, check_osm_parse_tolerant, check_other_websites,
-        check_overpass_blank, check_overpass_setting, check_portable_presets,
-        check_prop_lattice, check_repeatable_seeds, check_saved_areas,
-        check_shared_buildings, check_straight_roads, check_street_angle,
-        check_throttle, check_trees_are_trees, check_updater, check_windows_open,
+    from .selftest_suite.compile_install import (  # noqa: E402
+        check_compile_failures, check_compile_records, check_compile_state,
+        check_install_clears, check_install_folder, check_portable,
+        check_qt_env, check_repair, check_rpath, check_updater,
         check_workshop, check_worlded_size,
+    )
+    from .selftest_suite.osm_data import (  # noqa: E402
+        check_odd_tags, check_osm_cache, check_osm_parse_tolerant,
+        check_other_websites, check_overpass_blank, check_overpass_retry,
+        check_overpass_setting, check_overture,
+    )
+    from .selftest_suite.terrain_roads import (  # noqa: E402
+        check_big_bitmaps, check_car_park_stalls, check_ground_shares,
+        check_long_streets, check_no_size_wall, check_prop_lattice,
+        check_repeatable_seeds, check_straight_roads, check_street_angle,
+        check_street_zombies, check_trees_are_trees,
+    )
+    from .selftest_suite.web_presets import (  # noqa: E402
+        check_box_any, check_config_file, check_flat_selection, check_health,
+        check_mapstate, check_memory_guard, check_odd_requests,
+        check_portable_presets, check_saved_areas, check_stop, check_throttle,
     )
 else:                                # run as a script
-    from selftest_checks_a import (  # noqa: E402
-        check_1_3_6, check_basements, check_compile_failures, check_dwellings,
-        check_facing, check_garage_door, check_giant_outline, check_house_plan,
-        check_kitchen_fit, check_long_streets, check_lots_apart, check_mapped_rooms,
-        check_memory_guard, check_overpass_retry, check_overture, check_porch_lights,
-        check_portable, check_procedural, check_qt_env, check_repair, check_rifle,
-        check_rpath, check_split_large, check_squares, check_standing, check_stop,
-        check_street_zombies, check_wall_corners, check_wall_styles,
+    from selftest_suite.buildings import (  # noqa: E402
+        check_1_3_6, check_basements, check_build_audits,
+        check_degenerate_footprints, check_dwellings, check_facing,
+        check_garage_door, check_giant_outline, check_house_plan,
+        check_kitchen_fit, check_lots_apart, check_mapped_rooms,
+        check_missing_drive, check_porch_lights, check_procedural, check_rifle,
+        check_shared_buildings, check_split_large, check_squares,
+        check_standing, check_wall_corners, check_wall_styles,
+        check_windows_open,
     )
-    from selftest_checks_b import (  # noqa: E402
-        check_big_bitmaps, check_box_any, check_build_audits, check_car_park_stalls,
-        check_compile_records, check_compile_state, check_config_file,
-        check_degenerate_footprints, check_flat_selection, check_ground_shares,
-        check_health, check_install_clears, check_install_folder, check_mapstate,
-        check_missing_drive, check_no_size_wall, check_odd_requests, check_odd_tags,
-        check_osm_cache, check_osm_parse_tolerant, check_other_websites,
-        check_overpass_blank, check_overpass_setting, check_portable_presets,
-        check_prop_lattice, check_repeatable_seeds, check_saved_areas,
-        check_shared_buildings, check_straight_roads, check_street_angle,
-        check_throttle, check_trees_are_trees, check_updater, check_windows_open,
+    from selftest_suite.compile_install import (  # noqa: E402
+        check_compile_failures, check_compile_records, check_compile_state,
+        check_install_clears, check_install_folder, check_portable,
+        check_qt_env, check_repair, check_rpath, check_updater,
         check_workshop, check_worlded_size,
+    )
+    from selftest_suite.osm_data import (  # noqa: E402
+        check_odd_tags, check_osm_cache, check_osm_parse_tolerant,
+        check_other_websites, check_overpass_blank, check_overpass_retry,
+        check_overpass_setting, check_overture,
+    )
+    from selftest_suite.terrain_roads import (  # noqa: E402
+        check_big_bitmaps, check_car_park_stalls, check_ground_shares,
+        check_long_streets, check_no_size_wall, check_prop_lattice,
+        check_repeatable_seeds, check_straight_roads, check_street_angle,
+        check_street_zombies, check_trees_are_trees,
+    )
+    from selftest_suite.web_presets import (  # noqa: E402
+        check_box_any, check_config_file, check_flat_selection, check_health,
+        check_mapstate, check_memory_guard, check_odd_requests,
+        check_portable_presets, check_saved_areas, check_stop, check_throttle,
     )
 
 
