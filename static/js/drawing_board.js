@@ -67,6 +67,10 @@ function sketchLabel(kind) {
 
 // Under headings, in the server's order. Thirty-four tools in one run is a
 // wall to read, and nobody hunting for "Hedge" wants to scan past "Motorway".
+const SKETCH_TIPS = {
+  coastline: 'Sea shore (natural=coastline) — floods everything to the right of the line as ocean. Use River or Lake or pond for inland water.',
+};
+
 // Folded, each heading is a section that starts closed (the Add tab); the
 // search opens the ones it finds something in.
 function paletteMarkup(folded = false) {
@@ -77,10 +81,11 @@ function paletteMarkup(folded = false) {
     if (!last || last.name !== name) groups.push({ name, items: [entry] });
     else last.items.push(entry);
   }
+  const tip = e => SKETCH_TIPS[e.id]
+    || Object.entries(e.tags).map(([k, v]) => k + '=' + v).join(', ');
   const picks = g => g.items.map(e => `<button type="button" class="sketch-pick"
         data-kind="${e.id}" data-geometry="${e.geometry}"
-        title="${escapeHtml(Object.entries(e.tags)
-          .map(([k, v]) => k + '=' + v).join(', '))}">
+        title="${escapeHtml(tip(e))}">
         <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#3d8bfd'}"></span>
         ${escapeHtml(e.label)}</button>`).join('');
   if (folded) {
@@ -114,6 +119,13 @@ function noteSketch(text) {
   const box = document.getElementById('sketchNote');
   if (box) box.textContent = text || '';
 }
+
+document.getElementById('sketchPalette')?.addEventListener('click', ev => {
+  const btn = ev.target.closest('.sketch-pick');
+  if (!btn) return;
+  const tip = SKETCH_TIPS[btn.dataset.kind];
+  if (tip) noteSketch(tip);
+});
 
 function sketchCount() {
   return sketchEd.count;
