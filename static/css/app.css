@@ -938,6 +938,11 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
   font-size: 12px; margin-bottom: 4px; }
 .zone-editor .zone-label { flex: 1 1 auto; color: var(--muted); }
 .zone-editor .zone-label .setting-info { margin-left: 4px; vertical-align: 1px; }
+/* The zone list's own button look (Remove) would make it a square. */
+.zone-list .zone-setting .setting-info { width: 15px; height: 15px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line-strong); font: italic 600 10px/13px Georgia, serif; color: var(--muted); }
+.zone-list .zone-setting .setting-info:hover,
+.zone-list .zone-setting .setting-info:focus-visible { color: var(--text); border-color: var(--accent); }
 .zone-setting .setting-hint { display: none; position: absolute; z-index: 10;
   top: 100%; left: 0; right: 0; margin-top: 2px; padding: 6px 8px;
   font-size: 12px; line-height: 1.35; color: var(--text); background: var(--field);

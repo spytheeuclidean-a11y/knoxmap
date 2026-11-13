@@ -48,7 +48,9 @@ Tiles/
 
 # Kept from the original project
 .DS_Store
-.claude/
+# Local Claude settings stay out; the project's skills are shared.
+.claude/*
+!.claude/skills/
 CLAUDE.local.md
 knoxmap_error.log
 
