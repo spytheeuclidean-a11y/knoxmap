@@ -654,3 +654,6 @@ Or type them, in degrees, and Use these corners. = Или введи их в г�
 Draw the area to make. Reshape to move its corners or turn it by the handle above it. = Нарисуй область для карты. «Изменить форму» — чтобы сдвинуть её углы или повернуть за ручку над ней.
 Finish = Готово
 Cancel = Отмена
+No selection = Ничего не выбрано
+About Only what I draw = О настройке «Только нарисованное»
+Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Add. = Ничего не скачивается, поэтому место, которого нет в OpenStreetMap, можно построить из нарисованного во вкладке «Добавить».

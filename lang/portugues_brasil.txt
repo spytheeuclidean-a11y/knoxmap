@@ -817,3 +817,6 @@ Or type them, in degrees, and Use these corners. = Ou digite-os, em graus, e cli
 Draw the area to make. Reshape to move its corners or turn it by the handle above it. = Desenhe a área a fazer. Use Remodelar para mover seus cantos ou girá-la pela alça acima dela.
 Finish = Concluir
 Cancel = Cancelar
+No selection = Nada selecionado
+About Only what I draw = Sobre Só o que eu desenho
+Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Add. = Nada é baixado, então dá para construir um lugar que não está no OpenStreetMap com o que for desenhado em Adicionar.

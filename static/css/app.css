@@ -723,6 +723,12 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .edit-selected .hint { flex: 1 1 120px; margin: 0; }
 .edit-selected small { opacity: .6; }
 .edit-selected .btn, .edit-selected select { font-size: 12px; padding: 4px 8px; }
+/* The Add tab's selection, at its top: plain to see when something is
+   picked, a quiet line saying so when nothing is. */
+#sketchPicked { margin: 0 0 8px; border: 1px solid var(--accent); background: var(--accent-soft); }
+#sketchPicked .hint { color: var(--text); font-weight: 600; font-size: 13px; }
+#sketchPicked.is-empty { padding: 5px 10px; border: 1px dashed var(--line); background: none; }
+#sketchPicked.is-empty .hint { color: var(--faint); font-weight: 400; font-size: 12px; }
 /* Why the clicked building is not on the map. Its own line under the row,
    because the remedy is a sentence and not a label. */
 .why { flex: 1 1 100%; font-size: 12px; line-height: 1.45; margin-top: 2px;

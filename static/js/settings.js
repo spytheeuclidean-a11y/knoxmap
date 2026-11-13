@@ -151,6 +151,31 @@ document.addEventListener('click', e => {
   }
 });
 
+// The (i) of a one-line setting: its tooltip on hover, focus or a tap.
+function wireSettingInfo(wrap) {
+  const info = wrap.querySelector('.setting-info');
+  if (!info) return;
+  // Opened near the bottom of its scrolling panel, the tooltip would run
+  // out of sight, so there it opens upwards.
+  const aim = () => {
+    const pane = wrap.closest('.ws-pnl-body') || document.documentElement;
+    const below = pane.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
+    wrap.classList.toggle('hint-up', below < 110);
+  };
+  info.addEventListener('mouseenter', aim);
+  info.addEventListener('focus', aim);
+  info.addEventListener('click', () => {
+    const open = wrap.classList.toggle('hint-open');
+    info.setAttribute('aria-expanded', String(open));
+  });
+  info.addEventListener('blur', () => {
+    wrap.classList.remove('hint-open');
+    info.setAttribute('aria-expanded', 'false');
+  });
+}
+// The rows written in the page itself (Only what I draw) get the same.
+document.querySelectorAll('.tab-part .setting-compact').forEach(wireSettingInfo);
+
 function settingElement(key, label, hint, values, compact = false) {
   const [lo, hi] = settingsMeta.limits[key];
   const isInt = settingsMeta.types
@@ -204,24 +229,7 @@ function settingElement(key, label, hint, values, compact = false) {
       ${control}
       ${head}
       <span class="setting-hint" role="tooltip">${hint}</span>`;
-    const info = wrap.querySelector('.setting-info');
-    // Opened near the bottom of its scrolling panel, the tooltip would run
-    // out of sight, so there it opens upwards.
-    const aim = () => {
-      const pane = wrap.closest('.ws-pnl-body') || document.documentElement;
-      const below = pane.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
-      wrap.classList.toggle('hint-up', below < 110);
-    };
-    info.addEventListener('mouseenter', aim);
-    info.addEventListener('focus', aim);
-    info.addEventListener('click', () => {
-      const open = wrap.classList.toggle('hint-open');
-      info.setAttribute('aria-expanded', String(open));
-    });
-    info.addEventListener('blur', () => {
-      wrap.classList.remove('hint-open');
-      info.setAttribute('aria-expanded', 'false');
-    });
+    wireSettingInfo(wrap);
     return wrap;
   }
   wrap.innerHTML = `

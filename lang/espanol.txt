@@ -1076,3 +1076,6 @@ Corners = Esquinas
 Or type them, in degrees, and Use these corners. = O escríbelas, en grados, y pulsa Usar estas esquinas.
 Draw the area to make. Reshape to move its corners or turn it by the handle above it. = Dibuja el área que quieres hacer. Usa Cambiar forma para mover sus esquinas o girarla con el asa de arriba.
 Finish = Terminar
+No selection = Nada seleccionado
+About Only what I draw = Acerca de Solo lo que dibujo
+Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Add. = No se descarga nada, así que se puede construir un lugar que no está en OpenStreetMap con lo dibujado en Añadir.

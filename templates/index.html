@@ -266,9 +266,16 @@
               <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
             </div>
           </div>
-          <label class="check setting setting-static"><input type="checkbox" id="drawnOnly">
-            Only what I draw <span class="hint">- nothing is downloaded, so a
-            place that is not on OpenStreetMap can be built</span></label>
+          <!-- Drawn like the generated settings' switches (settingElement). -->
+          <div class="setting setting-static setting-compact setting-switch">
+            <span class="setting-name">Only what I draw<button type="button" class="setting-info"
+              aria-label="About Only what I draw" aria-expanded="false">i</button></span>
+            <label class="switch"><input type="checkbox" role="switch" id="drawnOnly"
+              aria-label="Only what I draw"><span class="switch-track" aria-hidden="true"><span
+              class="sw-on">On</span><span class="sw-off">Off</span></span></label>
+            <span class="setting-hint" role="tooltip">Nothing is downloaded, so a place that is not on
+              OpenStreetMap can be built from what is drawn under Add.</span>
+          </div>
         </div>
         <!-- After the tab's own settings: the area, its corners and what it
              comes to. -->
@@ -330,11 +337,12 @@
         <p class="hint">Pick what to draw, then draw it on the map. It is built
           exactly as a surveyed one would be - a street gets its pavement,
           kerbs and parked cars; a house gets rooms, loot and people.</p>
+        <!-- What is picked on the map, always shown: No selection until then. -->
+        <div id="sketchPicked" class="edit-selected is-empty"><span class="hint">No selection</span></div>
         <input type="search" id="sketchFind" class="list-search" hidden
                autocomplete="off" placeholder="Search what to draw">
         <div id="sketchPalette" class="sketch-palette"></div>
         <div id="sketchTools" class="sketch-actions"></div>
-        <div id="sketchPicked" class="edit-selected" hidden></div>
         <div id="sketchNote" class="hint"></div>
       </details>
 

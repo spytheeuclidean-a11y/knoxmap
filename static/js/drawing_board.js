@@ -26,6 +26,7 @@ const sketchEd = KnoxDraw.create(map, {
   label: kind => sketchLabel(kind),
   note: text => noteSketch(text),
   pickedBox: document.getElementById('sketchPicked'),
+  emptyPicked: 'No selection',
   palette: document.getElementById('sketchPalette'),
   active: () => document.getElementById('sketch').open
                 && document.getElementById('board').hidden,

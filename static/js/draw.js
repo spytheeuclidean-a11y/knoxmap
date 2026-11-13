@@ -33,6 +33,7 @@
       onChange: () => {},   // called with {count, canUndo, canRedo, picked, editing}
       onPick: null,         // called with the picked layer or null
       pickedBox: null,      // element the picked shape's details go in
+      emptyPicked: null,    // what that box says with nothing picked; null hides it
       active: () => true,   // whether the keyboard belongs to this editor now
       snapOn: () => false,  // whether finished shapes snap
       snapDist: 14,         // in map units (metres on the drawing board)
@@ -272,7 +273,18 @@
     function renderPicked() {
       const box = o.pickedBox;
       if (!box) return;
-      if (!picked) { box.hidden = true; box.innerHTML = ''; return; }
+      box.classList.toggle('is-empty', !picked);
+      if (!picked) {
+        box.innerHTML = '';
+        box.hidden = !o.emptyPicked;
+        if (o.emptyPicked) {
+          const none = document.createElement('span');
+          none.className = 'hint';
+          none.textContent = o.emptyPicked;
+          box.append(none);
+        }
+        return;
+      }
       const size = measure(picked);
       box.hidden = false;
       box.innerHTML = '';
