@@ -11,6 +11,7 @@ static/vendor/** -text
 
 # Left out of release zips
 .github export-ignore
+.claude export-ignore
 .gitattributes export-ignore
 # The Steam Workshop item: 7 MB of gallery art and a mod that is
 # uploaded from here, none of which a player downloading KnoxMap needs.

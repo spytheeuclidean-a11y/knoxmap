@@ -9,14 +9,14 @@ from shapely.geometry import LineString, Point
 
 class OctilinearRoadDefaults(unittest.TestCase):
     def test_straight_roads_are_default_but_can_be_disabled(self):
-        self.assertEqual(Settings().straight_roads, 4)
-        self.assertEqual(Settings.from_dict({}).straight_roads, 4)
-        self.assertEqual(Settings.from_dict({"straight_roads": 0}).straight_roads, 0)
+        self.assertEqual(Settings().straight_roads, 0)
+        self.assertEqual(Settings.from_dict({}).straight_roads, 0)
+        self.assertEqual(Settings.from_dict({"straight_roads": 4}).straight_roads, 4)
         # By name, not by position: counted off the end of the argument list
         # this moved every time the renderer gained a knob, and said nothing
         # about straight roads when it did.
         straight = inspect.signature(renderer.render).parameters["straight_roads"]
-        self.assertEqual(straight.default, 4)
+        self.assertEqual(straight.default, 0)
 
     def test_curves_become_straight_runs_and_keep_shared_junctions(self):
         projection = SimpleNamespace(

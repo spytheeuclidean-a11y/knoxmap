@@ -476,7 +476,7 @@ def api_settings():
         "types": {f.name: ("enum" if f.name in (
                               "building_alignment", "arch_style", "height_mix",
                               "landcover", "elevation", "hospitals", "winter_look")
-                           else "text" if f.name == "region_override"
+                           else "text" if f.name in ("region_override", "building_mix")
                            else "int" if f.type in (int, "int") else "float")
                   for f in fields(Settings)},
         "options": {

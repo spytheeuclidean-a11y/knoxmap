@@ -631,13 +631,16 @@ def main(argv: list[str]) -> int:
         def runs_out(x: int, y: int) -> bool:
             """Tarmac for a road's length one way and none the other: the end of
             a road, as opposed to a hundred metres along one."""
-            for dx, dy in ((1, 0), (0, 1)):
+            import math as _math
+            for k in range(16):
+                ang = k * _math.pi / 16.0
+                dx, dy = _math.cos(ang), _math.sin(ang)
                 ahead = sum(1 for d in range(1, 41)
-                            if 0 <= x + dx * d < gw and 0 <= y + dy * d < gh
-                            and tarmac[y + dy * d, x + dx * d])
+                            if 0 <= round(x + dx * d) < gw and 0 <= round(y + dy * d) < gh
+                            and tarmac[round(y + dy * d), round(x + dx * d)])
                 behind = sum(1 for d in range(1, 41)
-                             if 0 <= x - dx * d < gw and 0 <= y - dy * d < gh
-                             and tarmac[y - dy * d, x - dx * d])
+                             if 0 <= round(x - dx * d) < gw and 0 <= round(y - dy * d) < gh
+                             and tarmac[round(y - dy * d), round(x - dx * d)])
                 if max(ahead, behind) >= 30 and min(ahead, behind) <= 6:
                     return True
             return False
