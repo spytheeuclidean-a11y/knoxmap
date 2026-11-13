@@ -48,12 +48,14 @@ LEVEL_PX = 96          # screen height of one storey at 1x
 
 # Persistent module-level cache for decoded tile sheets and resized sprites
 _SHEETS: dict[str, Image.Image | None] = {}
+_MAX_SHEETS = 32
 _SPRITE_CACHE: dict[tuple[str, int], Image.Image | None] = {}
 _MAX_SPRITE_CACHE = 8192
 
 
 def read_header(path: str) -> tuple[list[str], int, int]:
-    data = open(path, "rb").read()
+    with open(path, "rb") as fh:
+        data = fh.read()
     pos = 4 if data[:4] == b"LOTH" else 0
     pos += 4                                   # version
     (count,) = struct.unpack_from("<i", data, pos); pos += 4
@@ -66,9 +68,10 @@ def read_header(path: str) -> tuple[list[str], int, int]:
     return names, lo, hi
 
 
-def read_squares(pack: str, names: list[str], lo: int, hi: int,
-                 want: tuple[int, int, int, int]) -> dict:
-    """{(cell-local x, y, z): [tile names]} for squares inside `want` (x0, y0, x1, y1)."""
+def _iter_squares(pack: str, names: list[str], lo: int, hi: int,
+                  want: tuple[int, int, int, int],
+                  max_level: int | None = None):
+    """Yield (sx, sy, z, ids) for squares inside `want` without building a dict."""
     with open(pack, "rb") as fh:
         data = fh.read()
     pos = 4 if data[:4] == b"LOTP" else 0
@@ -76,7 +79,6 @@ def read_squares(pack: str, names: list[str], lo: int, hi: int,
     (n,) = struct.unpack_from("<i", data, pos); pos += 4
     offsets = struct.unpack_from(f"<{n}q", data, pos)
     wx0, wy0, wx1, wy1 = want
-    out = {}
     for cx in range(CHUNKS):
         for cy in range(CHUNKS):
             bx, by = cx * CHUNK, cy * CHUNK
@@ -99,10 +101,20 @@ def read_squares(pack: str, names: list[str], lo: int, hi: int,
                             continue
                         _room = struct.unpack_from("<i", data, p); p += 4
                         ids = struct.unpack_from(f"<{count - 1}i", data, p); p += 4 * (count - 1)
+                        if max_level is not None and z > max_level:
+                            continue
                         sx, sy = bx + x, by + y
                         if wx0 <= sx < wx1 and wy0 <= sy < wy1:
-                            out[(sx, sy, z)] = [names[i] for i in ids]
-    return out
+                            yield sx, sy, z, ids
+
+
+def read_squares(pack: str, names: list[str], lo: int, hi: int,
+                 want: tuple[int, int, int, int]) -> dict:
+    """{(cell-local x, y, z): [tile names]} for squares inside `want` (x0, y0, x1, y1)."""
+    return {
+        (sx, sy, z): [names[i] for i in ids]
+        for sx, sy, z, ids in _iter_squares(pack, names, lo, hi, want)
+    }
 
 
 def render(map_dir: str, X: int, Y: int, W: int, H: int,
@@ -127,7 +139,11 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
         box = _project_box(os.path.join(map_dir, f"{name}.pzw")) or WORLD_ORIGIN_CELLS
         ox, oy = box[0] * 300, box[1] * 300
         lots = os.path.join(map_dir, "lots")
-    squares: dict[tuple[int, int, int], list[str]] = {}
+    # Stream populated squares directly into per-level buckets (sorted in-place
+    # and freed level-by-level) instead of holding both a giant dict and a
+    # sorted copy of every square in RAM.
+    by_z: dict[int, list[tuple[int, int, int, tuple[str, ...]]]] = {}
+    intern: dict[tuple[str, ...], tuple[str, ...]] = {}
     top = 0
     wx0, wy0 = ox + X, oy + Y
     # At very small scales (broad county/town overviews), individual grass blend
@@ -142,19 +158,33 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
             names, lo, hi = read_header(header)
             base_x, base_y = cxw * CELL, cyw * CELL
             local = (wx0 - base_x, wy0 - base_y, wx0 + W - base_x, wy0 + H - base_y)
-            for (sx, sy, z), tiles in read_squares(pack, names, lo, hi, local).items():
-                if skip_blends:
-                    # Keep the base terrain tile (tiles[0] on z == 0, which is
-                    # itself a blends_natural / blends_street tile) and only
-                    # skip extra blend overlays stacked on top of it.
-                    head = tiles[:1] if z == 0 else []
-                    tail = [t for t in tiles[len(head):] if not t.startswith("blends_")]
-                    tiles = head + tail
-                    if not tiles:
-                        continue
-                squares[(base_x + sx - wx0, base_y + sy - wy0, z)] = tiles
-                top = max(top, z)
-    if not squares:
+            local_intern: dict[tuple[int, ...], tuple[str, ...]] = {}
+            for sx, sy, z, ids in _iter_squares(pack, names, lo, hi, local, max_level=max_level):
+                tiles = local_intern.get(ids)
+                if tiles is None:
+                    raw = tuple(names[i] for i in ids)
+                    if skip_blends:
+                        # Keep the base terrain tile (raw[0] on z == 0, which is
+                        # itself a blends_natural / blends_street tile) and only
+                        # skip extra blend overlays stacked on top of it.
+                        head = raw[:1] if z == 0 else ()
+                        tail = tuple(t for t in raw[len(head):] if not t.startswith("blends_"))
+                        raw = head + tail
+                    tiles = intern.setdefault(raw, raw) if raw else ()
+                    local_intern[ids] = tiles
+                if not tiles:
+                    continue
+                dx = base_x + sx - wx0
+                dy = base_y + sy - wy0
+                bucket = by_z.get(z)
+                if bucket is None:
+                    bucket = []
+                    by_z[z] = bucket
+                bucket.append((dx + dy, dx, dy, tiles))
+                if z > top:
+                    top = z
+    intern.clear()
+    if not by_z:
         return None
     if max_level is not None:
         top = min(top, max_level)
@@ -178,6 +208,8 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
             if sheet_name in SUMMER_SHEETS and idx < 4:
                 idx += 12
             if sheet_name not in _SHEETS:
+                if len(_SHEETS) >= _MAX_SHEETS:
+                    _SHEETS.clear()
                 path = tiles_dir / f"{sheet_name}.png"
                 _SHEETS[sheet_name] = Image.open(path).convert("RGBA") if path.exists() else None
             sheet = _SHEETS[sheet_name]
@@ -207,37 +239,37 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     canvas[:] = (24, 26, 28)
     lift = (top + 1) * level_px
 
-    # Iterating sorted populated squares directly is mathematically equivalent
-    # to the (z, s, dx) triple loop while skipping millions of empty coordinates.
-    ordered = sorted(
-        (z, dx + dy, dx, dy, tile_names)
-        for (dx, dy, z), tile_names in squares.items()
-        if max_level is None or z <= max_level
-    )
-    for z, _diag, dx, dy, tile_names in ordered:
-        px = (dx - dy) * half + H * half
-        py = (dx + dy) * quarter + lift - z * level_px - TW * 3 // 2
-        for name in tile_names:
-            sp = sprite_for(name)
-            if sp is None:
-                continue
-            ox, oy, sw, sh, pre_rgb, inv_a = sp
-            x0, y0 = px + ox, py + oy
-            x1, y1 = x0 + sw, y0 + sh
-            if x1 <= 0 or y1 <= 0 or x0 >= width or y0 >= height:
-                continue
-            sx0 = max(0, -x0)
-            sy0 = max(0, -y0)
-            sx1 = sw - max(0, x1 - width)
-            sy1 = sh - max(0, y1 - height)
-            cx0, cy0 = x0 + sx0, y0 + sy0
-            cx1, cy1 = x0 + sx1, y0 + sy1
-            dst = canvas[cy0:cy1, cx0:cx1]
-            if sx0 == 0 and sy0 == 0 and sx1 == sw and sy1 == sh:
-                t = pre_rgb + dst * inv_a
-            else:
-                t = pre_rgb[sy0:sy1, sx0:sx1] + dst * inv_a[sy0:sy1, sx0:sx1]
-            dst[:] = (t + (t >> 8) + 1) >> 8
+    # Iterating sorted populated squares per level directly is mathematically
+    # equivalent to the (z, s, dx) triple loop while skipping empty coordinates
+    # and freeing each level's list as soon as it has been composited.
+    for z in sorted(by_z):
+        rows = by_z.pop(z)
+        rows.sort()
+        for _diag, dx, dy, tile_names in rows:
+            px = (dx - dy) * half + H * half
+            py = (dx + dy) * quarter + lift - z * level_px - TW * 3 // 2
+            for name in tile_names:
+                sp = sprite_for(name)
+                if sp is None:
+                    continue
+                ox, oy, sw, sh, pre_rgb, inv_a = sp
+                x0, y0 = px + ox, py + oy
+                x1, y1 = x0 + sw, y0 + sh
+                if x1 <= 0 or y1 <= 0 or x0 >= width or y0 >= height:
+                    continue
+                sx0 = max(0, -x0)
+                sy0 = max(0, -y0)
+                sx1 = sw - max(0, x1 - width)
+                sy1 = sh - max(0, y1 - height)
+                cx0, cy0 = x0 + sx0, y0 + sy0
+                cx1, cy1 = x0 + sx1, y0 + sy1
+                dst = canvas[cy0:cy1, cx0:cx1]
+                if sx0 == 0 and sy0 == 0 and sx1 == sw and sy1 == sh:
+                    t = pre_rgb + dst * inv_a
+                else:
+                    t = pre_rgb[sy0:sy1, sx0:sx1] + dst * inv_a[sy0:sy1, sx0:sx1]
+                dst[:] = (t + (t >> 8) + 1) >> 8
+        del rows
     return Image.fromarray(canvas, "RGB").convert("RGBA")
 
 
