@@ -1194,6 +1194,12 @@ loadPresets();
 // ---- setup check -----------------------------------------------------------------
 
 let setupChecking = false;
+const SETUP_DISMISSED = 'knoxmap.setup.dismissed';
+document.getElementById('setupDismiss').addEventListener('click', () => {
+  const card = document.getElementById('setupCard');
+  try { localStorage.setItem(SETUP_DISMISSED, card.dataset.problems || ''); } catch (_) { /* no storage */ }
+  card.hidden = true;
+});
 
 async function checkSetup() {
   if (setupChecking) return;
@@ -1207,9 +1213,21 @@ async function checkSetup() {
     const script = document.getElementById('setupScript');
     if (script && data.setupCommand) script.textContent = data.setupCommand;
     if (data.ready) { card.hidden = true; return; }
-    document.getElementById('setupList').innerHTML = data.checks.map(c =>
-      `<li class="${c.ok ? 'ok' : 'missing'}"><span>${c.ok ? '✓' : '✗'}</span>
-        <b>${escapeHtml(c.label)}</b>${c.ok ? '' : ` — ${escapeHtml(c.fix)}`}</li>`).join('');
+    // Only what is wrong, each a heading whose fix folds open under it. A
+    // dismissed card stays away until the list of what is wrong changes.
+    const missing = data.checks.filter(c => !c.ok);
+    const key = missing.map(c => c.label).join('|');
+    let dismissed = '';
+    try { dismissed = localStorage.getItem(SETUP_DISMISSED) || ''; } catch (_) { /* no storage */ }
+    if (!missing.length || dismissed === key) { card.hidden = true; return; }
+    card.dataset.problems = key;
+    const list = document.getElementById('setupList');
+    // Checked again on every return to the window: what was open stays open.
+    const open = new Set([...list.querySelectorAll('details[open]')].map(d => d.dataset.check));
+    list.innerHTML = missing.map(c =>
+      `<li class="missing"><details data-check="${escapeHtml(c.label)}"${open.has(c.label) ? ' open' : ''}>
+        <summary><span>✗</span> <b>${escapeHtml(c.label)}</b></summary>
+        <p>${escapeHtml(c.fix)}</p></details></li>`).join('');
     card.hidden = false;
   } catch (_) { /* the page still works without the check */ }
   finally { setupChecking = false; }

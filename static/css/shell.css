@@ -68,11 +68,18 @@ body.ws-loading > * { visibility: hidden; }
 
 /* ---- setup banner, options bar ------------------------------------------- */
 .ws #setupCard { margin: 0; border-radius: 0; border-width: 0 0 1px; padding: 6px 14px; display: flex;
-  gap: 10px; align-items: center; flex-wrap: wrap; }
+  gap: 10px; align-items: flex-start; flex-wrap: wrap; line-height: 20px; }
 .ws #setupCard[hidden] { display: none; }
 .ws #setupCard h2 { font-size: 13px; margin: 0; }
 .ws #setupCard p { margin: 0; }
-.ws #setupCard .setup-list { display: flex; gap: 12px; margin: 0; padding: 0; flex-wrap: wrap; }
+.ws #setupCard .setup-list { display: flex; gap: 6px 16px; margin: 0; padding: 0; flex-wrap: wrap; align-items: flex-start; }
+.ws #setupCard .setup-list li { padding: 0; }
+.ws #setupCard .setup-list summary { display: inline-flex; align-items: center; gap: 4px; }
+.ws #setupCard .setup-list details p { margin: 4px 0 2px 21px; max-width: 70ch; color: var(--muted); }
+.ws #setupCard .setup-list span { color: var(--bad); }
+.setup-dismiss { margin-left: auto; align-self: flex-start; background: none; border: 0; cursor: pointer;
+  color: var(--muted); font-size: 15px; line-height: 1; padding: 3px 6px; border-radius: 4px; }
+.setup-dismiss:hover { color: var(--text); background: var(--hover); }
 .ws-options { display: flex; align-items: center; gap: 12px; padding: 4px 12px; background: var(--panel);
   border-bottom: 1px solid var(--line); color: var(--muted); flex-wrap: wrap; min-height: 34px; }
 .ws-options b { color: var(--text); font-weight: 600; }

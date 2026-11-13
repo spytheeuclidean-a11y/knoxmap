@@ -290,6 +290,7 @@ Details = Details
 Dirt track = Dirt track
 Discord = Discord
 Dismiss = Dismiss
+Dismiss until something else is missing = Dismiss until something else is missing
 Docker is not installed or not running. Install Docker or start Docker Desktop. = Docker is not installed or not running. Install Docker or start Docker Desktop.
 Docker was not found. Install Docker Desktop and start it. = Docker was not found. Install Docker Desktop and start it.
 Done = Done
