@@ -1,5 +1,18 @@
 /* KnoxMap. Plain on purpose: a map, a form, and buttons that say what they do. */
 
+/* The fold marker, the same on everything that folds: a chevron drawn from
+   two borders, pointing right when folded and down when open. Summaries
+   lose the browser's own triangle for it; the zone list and the panels'
+   fold buttons draw the same one (.zone-caret, .tw in shell.css). */
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary::before, .zone-caret {
+  content: ''; display: inline-block; flex: none; box-sizing: border-box;
+  width: 9px; height: 9px; margin: 0 9px 2px 3px; vertical-align: middle;
+  border-right: 2.5px solid var(--accent); border-bottom: 2.5px solid var(--accent);
+  border-radius: 1px; transform: rotate(-45deg); transition: transform .15s; }
+details[open] > summary::before, .zone-list li.on .zone-caret { transform: rotate(45deg); }
+
 :root {
   --bg: #151714;
   --panel: #1d201b;
@@ -445,9 +458,6 @@ body.rotate-dragging * {
   margin: 10px 0 4px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
   color: var(--text); background: var(--field); border: 1px solid var(--line-strong); border-radius: 6px; }
 .setting-group-advanced > summary::-webkit-details-marker { display: none; }
-.setting-group-advanced > summary::before { content: '▸'; color: var(--accent); font-size: 13px;
-  transition: transform .15s; }
-.setting-group-advanced[open] > summary::before { transform: rotate(90deg); }
 .setting-group-advanced > summary:hover { border-color: var(--accent); }
 .setting-group-advanced > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .setting-group-advanced > summary .adv-count { margin-left: auto; font: 400 11px var(--mono);
@@ -873,8 +883,6 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .palette-fold > summary { list-style: none; display: flex; align-items: center; gap: 6px; padding: 6px 8px;
   cursor: pointer; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
 .palette-fold > summary::-webkit-details-marker { display: none; }
-.palette-fold > summary::before { content: '▸'; color: var(--accent); transition: transform .15s; }
-.palette-fold[open] > summary::before { transform: rotate(90deg); }
 .palette-fold > summary:hover { color: var(--text); }
 .palette-fold > summary .count { margin-left: auto; font-family: var(--mono); color: var(--faint);
   text-transform: none; letter-spacing: 0; }
@@ -886,10 +894,8 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .zone-list li.on { border-color: var(--accent); }
 .zone-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: pointer; }
 .zone-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
-.zone-caret { color: var(--accent); transition: transform .15s; }
-.zone-list li.on .zone-caret { transform: rotate(90deg); }
 .zone-name { font-weight: 600; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.zone-list .zone-what { flex: 1 1 auto; min-width: 0; color: var(--muted); font-size: 11px;
+.zone-list .zone-what { flex: 1 1 0; min-width: 0; color: var(--muted); font-size: 11px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .zone-list li > .zone-editor { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 .zone-list button { font: inherit; font-size: 11px; cursor: pointer;

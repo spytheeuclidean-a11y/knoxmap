@@ -318,7 +318,7 @@ body.ws-loading > * { visibility: hidden; }
 .ws-pnl-head svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; }
 .ws-pnl-body { padding: 8px 10px 10px; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
 .ws-pnl.shut .ws-pnl-body, .ws-pnl.shut .ws-grip { display: none; }
-.ws-pnl.shut .tw { transform: rotate(-90deg); }
+
 .ws-grip { height: 5px; cursor: row-resize; border-top: 1px solid var(--line); flex: none; }
 .ws-grip:hover, .ws-grip.on { background: var(--accent); }
 .ws-float { position: absolute; z-index: 1000; border: 1px solid var(--line-strong); border-radius: 7px;
@@ -347,7 +347,14 @@ body.ws-loading > * { visibility: hidden; }
 .ws-legend-head .tw { background: none; border: 0; color: var(--muted); cursor: pointer; width: 18px; padding: 0; }
 .ws-legend-body { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
 .ws-legend.shut .ws-legend-body { display: none; }
-.ws-legend.shut .tw { transform: rotate(-90deg); }
+/* The fold buttons draw the app's chevron (app.css) rather than a ▾. */
+.ws-pnl-head .tw, .ws-legend-head .tw { font-size: 0; display: inline-grid; place-items: center;
+  width: 20px; height: 20px; }
+.ws-pnl-head .tw::before, .ws-legend-head .tw::before {
+  content: ''; box-sizing: border-box; width: 9px; height: 9px; margin-bottom: 3px;
+  border-right: 2.5px solid var(--accent); border-bottom: 2.5px solid var(--accent);
+  border-radius: 1px; transform: rotate(45deg); transition: transform .15s; }
+.ws-pnl.shut .tw::before, .ws-legend.shut .tw::before { transform: rotate(-45deg); margin: 0 3px 0 0; }
 .ws-legend .ws-layers li { padding: 1px 2px; }
 .ws-places { left: auto; bottom: auto; right: 10px; top: 52px; width: 250px; max-width: 250px; }
 .ws-places .count { margin-left: auto; color: var(--faint); font-family: var(--mono); text-transform: none; }

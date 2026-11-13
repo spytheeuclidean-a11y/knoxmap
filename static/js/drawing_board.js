@@ -1057,7 +1057,7 @@ function drawZoneList() {
     box.after(editor);                       // parked while the rows are rebuilt
     box.innerHTML = zoneList.map((z, i) => `<li data-i="${i}" class="zone-item">
         <div class="zone-head" role="button" tabindex="0" aria-expanded="false">
-          <span class="zone-caret" aria-hidden="true">▸</span>
+          <span class="zone-caret" aria-hidden="true"></span>
           <span class="zone-name"></span><span class="zone-what"></span>
           <button type="button" data-drop="${i}">Remove</button></div></li>`).join('');
   }
