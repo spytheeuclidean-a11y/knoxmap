@@ -823,3 +823,7 @@ Nothing is downloaded, so a place that is not on OpenStreetMap can be built from
 Draw areas as boxes = Desenhar áreas como caixas
 About Draw areas as boxes = Sobre Desenhar áreas como caixas
 On, a house, a park or a field is drawn by dragging out a box. Off, by clicking each of its corners. Roads and paths are always clicked point by point. = Ligado, uma casa, um parque ou um campo é desenhado arrastando uma caixa. Desligado, clicando em cada um dos seus cantos. Ruas e caminhos são sempre clicados ponto a ponto.
+Undo (Ctrl+Z) = Desfazer (Ctrl+Z)
+Redo (Ctrl+Shift+Z) = Refazer (Ctrl+Shift+Z)
+Box = Caixa
+Move and reshape: drag corners; arrow keys nudge a picked shape = Mover e remodelar: arraste os cantos; as setas empurram a forma escolhida

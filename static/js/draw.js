@@ -448,28 +448,62 @@
   // The same row of buttons everywhere. They follow the editor's state, so
   // Undo is dimmed when there is nothing to undo and Duplicate when nothing is
   // picked, wherever the row happens to be.
+  // Line icons for the editing buttons, here and in the Tools panel
+  // (KnoxDraw.icon), drawn in the text's colour.
+  const ICONS = {
+    undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
+    rect: '<rect x="4" y="6" width="16" height="12" rx="1.5"/>',
+    move: '<path d="M12 2v20M2 12h20"/><path d="m9 5 3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/><path d="M10 11v6M14 11v6"/>',
+    load: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
+    save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/>',
+    reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+  };
+  function icon(name) {
+    return `<svg class="kd-ico" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
+  }
+
+  // In groups: what was done (Undo, Redo), the shape (Rectangle, Move and
+  // reshape, Duplicate), and Clear on its own at the end, out of the way.
   // With { rect: false } the row leaves out Rectangle, for a page that offers
   // it as a switch of its own (the Add tab's Draw areas as boxes).
   function toolbar(container, ed, { rect = true } = {}) {
-    const defs = [
-      ['undo', 'Undo', 'Ctrl+Z', () => ed.undo()],
-      ['redo', 'Redo', 'Ctrl+Shift+Z', () => ed.redo()],
-      ...(rect ? [['rect', 'Rectangle', 'Draw areas as a rectangle by dragging',
-        () => ed.setRect(!ed.rect)]] : []),
-      ['edit', 'Move and reshape', 'Drag corners; arrow keys nudge a picked shape',
-        () => ed.setEditing(!ed.editing)],
-      ['dupe', 'Duplicate', 'Copy the picked shape', () => ed.duplicate()],
-      ['clear', 'Clear', 'Remove everything (Undo brings it back)', () => ed.clear()],
+    const groups = [
+      ['history', [
+        ['undo', 'undo', 'Undo', 'Undo (Ctrl+Z)', () => ed.undo(), true],
+        ['redo', 'redo', 'Redo', 'Redo (Ctrl+Shift+Z)', () => ed.redo(), true],
+      ]],
+      ['shape', [
+        ...(rect ? [['rect', 'rect', 'Box', 'Draw areas as a rectangle by dragging',
+          () => ed.setRect(!ed.rect)]] : []),
+        ['edit', 'move', 'Reshape', 'Move and reshape: drag corners; arrow keys nudge a picked shape',
+          () => ed.setEditing(!ed.editing)],
+        ['dupe', 'copy', 'Duplicate', 'Copy the picked shape', () => ed.duplicate()],
+      ]],
+      ['clear', [
+        ['clear', 'trash', 'Clear', 'Remove everything (Undo brings it back)', () => ed.clear()],
+      ]],
     ];
     container.classList.add('kd-bar');
     const buttons = {};
-    for (const [id, text, title, run] of defs) {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'btn kd-' + id; b.textContent = text;
-      b.title = title;
-      b.addEventListener('click', run);
-      container.appendChild(b);
-      buttons[id] = b;
+    for (const [group, defs] of groups) {
+      const box = document.createElement('span');
+      box.className = 'kd-group kd-group-' + group;
+      box.setAttribute('role', 'group');
+      for (const [id, ico, text, title, run, iconOnly] of defs) {
+        const b = document.createElement('button');
+        b.type = 'button'; b.className = 'btn kd-' + id + (iconOnly ? ' kd-icon-only' : '');
+        b.innerHTML = icon(ico) + (iconOnly ? '' : '<span></span>');
+        if (iconOnly) b.setAttribute('aria-label', text);
+        else b.querySelector('span').textContent = text;
+        b.title = title;
+        b.addEventListener('click', run);
+        box.appendChild(b);
+        buttons[id] = b;
+      }
+      container.appendChild(box);
     }
     function refresh() {
       const s = ed.state();
@@ -483,5 +517,5 @@
     return refresh;
   }
 
-  window.KnoxDraw = { create, toolbar };
+  window.KnoxDraw = { create, toolbar, icon };
 })();

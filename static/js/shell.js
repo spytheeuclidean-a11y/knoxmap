@@ -413,8 +413,8 @@
       </div>
       <div class="ws-draw-acts" hidden></div>
       <div class="ws-draw-btns">
-        <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save">Reshape</button>
-        <button type="button" class="btn btn-small" data-opt="clear">Clear the area</button>
+        <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save">${KnoxDraw.icon('move')}<span>Reshape</span></button>
+        <button type="button" class="btn btn-small kd-danger" data-opt="clear">${KnoxDraw.icon('trash')}<span>Clear the area</span></button>
       </div>
       <div class="ws-sub-h">Corners</div>
       <p class="hint">Or type them, in degrees, and Use these corners.</p>`,
@@ -437,6 +437,11 @@
     if (t.panel) { const node = $(t.panel); node.open = true; pane.appendChild(node); }
     if (t.id === 'area') pane.appendChild($('coordsBox'));
     toolPanes.appendChild(pane);
+  }
+  // The Change tab's buttons get the same icons as the drawing ones.
+  for (const [id, ico] of [['editLoad', 'load'], ['editShape', 'move'], ['editSave', 'save'], ['editReset', 'reset']]) {
+    const b = $(id);
+    if (b && !b.querySelector('.kd-ico')) b.insertAdjacentHTML('afterbegin', KnoxDraw.icon(ico));
   }
   const DRAW_BUTTON = {
     rectangle: '.leaflet-draw-draw-rectangle', polygon: '.leaflet-draw-draw-polygon',

@@ -660,3 +660,7 @@ Nothing is downloaded, so a place that is not on OpenStreetMap can be built from
 Draw areas as boxes = Рисовать области прямоугольником
 About Draw areas as boxes = О настройке «Рисовать области прямоугольником»
 On, a house, a park or a field is drawn by dragging out a box. Off, by clicking each of its corners. Roads and paths are always clicked point by point. = Включено — дом, парк или поле рисуется протягиванием прямоугольника. Выключено — щелчком по каждому углу. Дороги и тропы всегда рисуются по точкам.
+Undo (Ctrl+Z) = Отменить (Ctrl+Z)
+Redo (Ctrl+Shift+Z) = Повторить (Ctrl+Shift+Z)
+Box = Прямоугольник
+Move and reshape: drag corners; arrow keys nudge a picked shape = Сдвинуть и изменить форму: тяни за углы; стрелки сдвигают выбранную фигуру

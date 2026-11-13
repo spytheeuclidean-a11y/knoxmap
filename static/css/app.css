@@ -937,6 +937,36 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .kd-bar .btn { font-size: 12px; padding: 4px 10px; width: auto; }
 .kd-bar .btn:disabled { opacity: .45; cursor: default; }
 .kd-bar .btn.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* The editing buttons in groups, each group one joined strip; Clear at the
+   end on its own (draw.js toolbar). */
+.kd-bar { gap: 8px; }
+.kd-group { display: inline-flex; }
+.kd-group .btn { margin: 0; border-radius: 0; }
+.kd-group .btn + .btn { margin-left: -1px; }
+.kd-group .btn:first-child { border-radius: 6px 0 0 6px; }
+.kd-group .btn:last-child { border-radius: 0 6px 6px 0; }
+.kd-group .btn:only-child { border-radius: 6px; }
+.kd-group .btn:not(:disabled):hover, .kd-group .btn:focus-visible { position: relative; z-index: 1; }
+.kd-group-clear { margin-left: auto; }
+.kd-bar .btn.kd-icon-only { padding: 4px 7px; }
+.kd-bar .btn { white-space: nowrap; }
+/* In the narrow Tools panel, two lines: Undo and Redo with Clear across from
+   them, then the shape buttons sharing the width. */
+.ws-tool-pane .kd-bar { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; }
+.ws-tool-pane .kd-group-history { grid-area: 1 / 1; }
+.ws-tool-pane .kd-group-clear { grid-area: 1 / 3; margin-left: 0; }
+.ws-tool-pane .kd-group-shape { grid-column: 1 / -1; grid-row: 2; display: flex; }
+.ws-tool-pane .kd-group-shape .btn { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
+/* The Change tab's buttons: Load and Move and reshape across, Save and Undo
+   all side by side. */
+#editMap .sketch-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#editMap .sketch-actions .btn { white-space: nowrap; margin: 0; }
+#editLoad, #editShape { grid-column: 1 / -1; }
+.ws-draw-btns .btn { white-space: nowrap; padding-inline: 6px; }
+.kd-ico { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; }
+.btn:has(> .kd-ico) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.kd-bar .kd-clear:not(:disabled):hover, .btn.kd-danger:not(:disabled):hover { color: var(--bad); border-color: var(--bad); }
 
 /* The building editor: the picked room's outline, the size of a drag, and the
    tile under the pointer. */
