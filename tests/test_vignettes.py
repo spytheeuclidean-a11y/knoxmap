@@ -80,25 +80,29 @@ class Vignettes(unittest.TestCase):
             self.assertFalse([t for _x, _y, t, _l in tiles if t in BARRICADE_X + BARRICADE_Y])
             self.assertTrue([t for _x, _y, t, _l in tiles if t in CRATES])
 
-    def test_a_main_road_is_stopped_away_from_the_edge(self):
+    def test_a_main_road_is_stopped_at_the_end_of_it(self):
         with TemporaryDirectory() as directory:
-            hierarchy = np.zeros((200, 200), dtype=np.uint8)
-            hierarchy[90:94, 40:161] = 6
+            hhierarchy = np.zeros((200, 200), dtype=np.uint8)
+            hhierarchy[90:94, 40:161] = 6
             _o, _p, counts, bdir = self._place(
-                directory, [(40, 90, 160, 93)], hierarchy=hierarchy)
+                directory, [(40, 90, 160, 93)], hierarchy=hhierarchy)
             tiles, _names = _lots(bdir)
 
-            # Blocks every ROAD_BLOCK_SPACING tiles along the road, and one
-            # checkpoint where the road runs out - the way out of town.
-            self.assertGreaterEqual(counts["road_blocks"], 2)
+            # A road that stops dead inside the map is stopped where it stops -
+            # one block at the end the checkpoint does not already hold, and
+            # nothing along the way.
             self.assertEqual(counts["checkpoints"], 1)
+            self.assertEqual(counts["road_blocks"], 1)
             barricades = [(x, y, t) for x, y, t, _l in tiles if t in BARRICADE_Y]
-            # The road runs east-west, so every barrier is a column four deep.
             columns: dict = {}
             for x, y, _t in barricades:
                 columns.setdefault(x, set()).add(y)
-            self.assertGreaterEqual(len(columns), 3)
+            self.assertEqual(len(columns), 2)
             self.assertTrue(all(len(c) == 4 for c in columns.values()))
+            # At the ends, not in the middle: the road runs x 40..160.
+            self.assertTrue(all(min(c) < 46 or max(c) > 154 for c in columns.values()),
+                            f"a block stood away from the end of the road: "
+                            f"{sorted(columns)}")
 
     def test_a_side_street_is_not_a_roadblock(self):
         with TemporaryDirectory() as directory:

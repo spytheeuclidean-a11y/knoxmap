@@ -628,9 +628,28 @@ def main(argv: list[str]) -> int:
                     break
             else:
                 places.append((x, y))
-        check(len(places) >= 2,
-              f"and a main road away from the end is stopped too "
-              f"({len(barriers)} segments in {len(places)} places)")
+        def runs_out(x: int, y: int) -> bool:
+            """Tarmac for a road's length one way and none the other: the end of
+            a road, as opposed to a hundred metres along one."""
+            for dx, dy in ((1, 0), (0, 1)):
+                ahead = sum(1 for d in range(1, 41)
+                            if 0 <= x + dx * d < gw and 0 <= y + dy * d < gh
+                            and tarmac[y + dy * d, x + dx * d])
+                behind = sum(1 for d in range(1, 41)
+                             if 0 <= x - dx * d < gw and 0 <= y - dy * d < gh
+                             and tarmac[y - dy * d, x - dx * d])
+                if max(ahead, behind) >= 30 and min(ahead, behind) <= 6:
+                    return True
+            return False
+
+        # A block belongs where its road stops. The checkpoint is the border's
+        # job, so the ones away from the border are the ones to look at.
+        inland = [p for p in places
+                  if min(p[0], p[1], gw - 1 - p[0], gh - 1 - p[1]) > nearest + 8]
+        at_ends = [p for p in inland if runs_out(*p)]
+        check(len(at_ends) == len(inland),
+              f"and a block stands where its road stops, not along it "
+              f"({len(at_ends)} of {len(inland)} inland)")
         import csv as _csv
         with open(os.path.join(out, "selftest_placements.csv"),
                   newline="", encoding="utf-8") as handle:
