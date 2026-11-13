@@ -224,5 +224,66 @@ class Variation(unittest.TestCase):
             self.assertIn(C.FLOWERS, colours)
 
 
+class MultiDoorAndInfillFrontPaths(unittest.TestCase):
+    @staticmethod
+    def _write_doors_tbx(folder, name, doors):
+        rows = "\n".join(",".join(["1"] * SIZE) for _ in range(SIZE))
+        objs = "".join(
+            f'<object type="door" x="{x}" y="{y}" dir="{d}"/>'
+            for x, y, d in doors
+        )
+        with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
+            f.write(f"<building><floor><rooms>\n{rows}\n</rooms>{objs}</floor></building>")
+
+    def test_blocked_first_door_falls_back_to_street_facing_door(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((30, 30), dtype=bool)
+            ground = np.full((30, 30, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[22:25, :] = C.PALE_CONCRETE
+            ground[25:28, :] = C.MEDIUM_ASPHALT
+            veg = np.full((30, 30, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            # First door at north wall (blocked by occupied), second door at south wall facing street
+            self._write_doors_tbx(os.path.join(out, "buildings"), "multi.tbx",
+                                  [(3, 0, "N"), (3, 6, "N")])
+            occupied[10:16, 10:16] = True
+            occupied[9, 13] = True  # block the first door's outside tile
+            rows = [{"kind": "house", "file": "multi.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": SIZE, "height": SIZE}]
+            paths, _ = paint_paths(out, "m", rows, occupied)
+            self.assertEqual(paths, 1)
+            after = np.asarray(Image.open(os.path.join(out, "m.bmp")))
+            # South door at (13, 16) should have a paved stoop and a paved route to y=21
+            self.assertNotEqual(tuple(after[16, 13]), C.MEDIUM_GRASS)
+            self.assertTrue(any(tuple(after[21, x]) != C.MEDIUM_GRASS for x in range(10, 20)))
+
+    def test_infill_shop_with_two_front_doors_gets_paths_to_street(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((30, 30), dtype=bool)
+            ground = np.full((30, 30, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[22:25, :] = C.PALE_CONCRETE
+            ground[25:28, :] = C.MEDIUM_ASPHALT
+            veg = np.full((30, 30, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            self._write_doors_tbx(os.path.join(out, "buildings"), "shop.tbx",
+                                  [(1, 6, "N"), (4, 6, "N")])
+            occupied[10:16, 10:16] = True
+            rows = [{"kind": "shop", "file": "shop.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": SIZE, "height": SIZE}]
+            paths, _ = paint_paths(out, "m", rows, occupied)
+            self.assertEqual(paths, 1)
+            after = np.asarray(Image.open(os.path.join(out, "m.bmp")))
+            self.assertNotEqual(tuple(after[16, 11]), C.MEDIUM_GRASS)
+            self.assertNotEqual(tuple(after[21, 11]), C.MEDIUM_GRASS)
+            self.assertNotEqual(tuple(after[16, 14]), C.MEDIUM_GRASS)
+            self.assertNotEqual(tuple(after[21, 14]), C.MEDIUM_GRASS)
+
+
 if __name__ == "__main__":
     unittest.main()
