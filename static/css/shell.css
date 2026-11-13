@@ -102,6 +102,9 @@ body.ws-loading > * { visibility: hidden; }
 .ws-tool-pane { display: flex; flex-direction: column; gap: 8px; }
 .ws-tool-pane[hidden] { display: none; }
 .ws-tool-pane > .hint { margin: 0; }
+.ws-tool-pane > .pane-note { margin: 0; padding: 6px 9px; border-radius: 6px; font-size: 12px;
+  color: var(--text); background: var(--field); border-left: 3px solid var(--accent); }
+.ws-tool-pane > .pane-note:empty { display: none; }
 .ws-draw-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .ws-draw-btns .btn { justify-content: center; text-align: center; }
 .ws-draw-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border: 1px solid var(--accent);

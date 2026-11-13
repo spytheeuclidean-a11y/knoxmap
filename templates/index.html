@@ -238,6 +238,12 @@
         <summary><span aria-hidden="true">🧩</span> <span class="zones-notice-what"></span></summary>
         <ul class="zones-notice-list"></ul>
       </details>
+      <!-- Warnings about the whole map (its size), at the top. -->
+      <div id="areaWarnings" class="area-warnings"></div>
+      <!-- Shown once a map is open: which of these knobs have been moved
+           since it was made, and a button to put them into it without
+           drawing the box or setting everything a second time. -->
+      <div id="reapply" class="reapply" hidden></div>
       <input type="search" id="settingFind" class="list-search" hidden
              autocomplete="off" placeholder="Search the settings">
       <!-- The tabs: filled from /api/settings so the page never holds a second,
@@ -297,10 +303,6 @@
         </div>
       </div>
       <button type="button" id="resetSettings" class="linkish">Reset to the defaults for this kind of place</button>
-      <!-- Shown once a map is open: which of these knobs have been moved
-           since it was made, and a button to put them into it without
-           drawing the box or setting everything a second time. -->
-      <div id="reapply" class="reapply" hidden></div>
 
       <details id="steamLibraries">
         <summary>Steam libraries</summary>

@@ -1158,9 +1158,20 @@ function zoneSwitchable(setting) {
 // In the open zone, what it sets is yellow: the setting's name and its box,
 // its walls, the hand-built buildings ticked - as a setting moved off its
 // default is in Properties.
+// A zone setting's name with an (i), and the description it shows - the
+// same markup and behaviour as a setting in Properties (wireSettingInfo).
+function zoneInfoName(name, about) {
+  return `<span class="zone-label">${escapeHtml(name)}${about
+    ? `<button type="button" class="setting-info" aria-label="About ${escapeHtml(name)}"
+        aria-expanded="false">i</button>` : ''}</span>`;
+}
+function zoneInfoHint(about) {
+  return about ? `<span class="setting-hint" role="tooltip">${escapeHtml(about)}</span>` : '';
+}
+
 function markZoneEditor() {
   const box = document.getElementById('zoneEditor');
-  for (const row of box.querySelectorAll('label')) {
+  for (const row of box.querySelectorAll('label, .zone-setting')) {
     const field = row.querySelector('[data-zone-key], #zoneStyle, [data-building-preset]');
     if (!field) continue;
     const set = field.matches('[data-building-preset]') ? field.checked
@@ -1202,26 +1213,31 @@ function drawZoneEditor() {
   box.innerHTML = `
     <label><span>Name</span>
       <input type="text" id="zoneName" value="${escapeHtml(zone.name || '')}"></label>
-    <label><span>Walls</span><select id="zoneStyle">${styles.join('')}</select></label>
+    <div class="zone-row zone-setting">${zoneInfoName('Walls',
+        'Every building made in this zone gets these walls. Left as it is, the map\'s own choice is used.')}
+      <select id="zoneStyle" aria-label="Walls">${styles.join('')}</select>${zoneInfoHint(
+        'Every building made in this zone gets these walls. Left as it is, the map\'s own choice is used.')}</div>
     ${presetBox}
     <p class="hint">Leave a box empty and the map's own setting is used there.</p>
-    ${zoneMeta.settings.map(s => `<label class="zone-row"
-      data-find="${escapeHtml(s.id)}"><span>${escapeHtml(SETTING_LABELS[s.id]
-        ? SETTING_LABELS[s.id][0] : s.id)}</span>
+    ${zoneMeta.settings.map(s => `<div class="zone-row zone-setting"
+      data-find="${escapeHtml(s.id)}">${zoneInfoName(SETTING_LABELS[s.id]
+        ? SETTING_LABELS[s.id][0] : s.id, SETTING_LABELS[s.id] && SETTING_LABELS[s.id][1])}
       ${zoneSwitchable(s)
         // On or off, and a third state the number box could not say: leave it
         // to the map. A zone sets what is different about it, not everything.
-        ? `<select data-zone-key="${s.id}"
+        ? `<select data-zone-key="${s.id}" aria-label="${escapeHtml(SETTING_LABELS[s.id] ? SETTING_LABELS[s.id][0] : s.id)}"
              class="${zone.settings[s.id] !== undefined ? 'zone-set' : ''}">
            <option value="">${zoneMapWord(s)}</option>
            <option value="1"${zone.settings[s.id] === 1 ? ' selected' : ''}>On</option>
            <option value="0"${zone.settings[s.id] === 0 ? ' selected' : ''}>Off</option>
            </select>`
-        : `<input type="number" data-zone-key="${s.id}" min="${s.min}" max="${s.max}"
+        : `<input type="number" data-zone-key="${s.id}" aria-label="${escapeHtml(SETTING_LABELS[s.id] ? SETTING_LABELS[s.id][0] : s.id)}" min="${s.min}" max="${s.max}"
              step="${s.int ? 1 : 0.05}" placeholder="${zoneMapValue(s)}"
              class="${zone.settings[s.id] !== undefined ? 'zone-set' : ''}"
              value="${zone.settings[s.id] !== undefined ? zone.settings[s.id] : ''}">`}
-      </label>`).join('')}`;
+      ${zoneInfoHint(SETTING_LABELS[s.id] && SETTING_LABELS[s.id][1])}</div>`).join('')}`;
+  // Each setting's description behind its (i), as in Properties.
+  box.querySelectorAll('.zone-setting').forEach(wireSettingInfo);
 
   document.getElementById('zoneName').addEventListener('input', ev => {
     zone.name = ev.target.value; zoneDirty(true); drawZoneList();

@@ -205,6 +205,8 @@
     else if (node.id === 'coordsBox') continue;      // the Tools panel's Area tab has it
     else mapProps.append(node);
   }
+  // Warnings about the whole map first, above its settings.
+  mapProps.prepend($('zonesNotice'), $('areaWarnings'), $('reapply'));
   holder.append($('handBuilt'));
   // The Generate button and the drawing board's button are pressed from here.
   holder.append(genCard, makeCard);
@@ -424,6 +426,7 @@
       <p class="hint">A map with nothing real under it: roads, houses and land drawn on a blank sheet.</p>
       <button type="button" class="btn" data-once="boardOpen">Draw a map from scratch</button>`,
   };
+  const PANE_NOTE = { draw: 'sketchNote', zone: 'zoneNote', change: 'editNote' };
   for (const t of TOOLS) {
     const tab = make('button', 'setting-tab',
       `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span><span>${esc(t.label)}</span>`);
@@ -436,6 +439,10 @@
     pane.dataset.toolPane = t.id;
     pane.setAttribute('role', 'tabpanel');
     if (t.panel) { const node = $(t.panel); node.open = true; pane.appendChild(node); }
+    // What a tab has to say - a problem, what just happened - is at its top,
+    // under the tabs, rather than at the end of the list where it is missed.
+    const said = PANE_NOTE[t.id] && pane.querySelector('#' + PANE_NOTE[t.id]);   // not in the page yet
+    if (said) { said.classList.add('pane-note'); pane.prepend(said); }
     if (t.id === 'area') pane.appendChild($('coordsBox'));
     toolPanes.appendChild(pane);
   }

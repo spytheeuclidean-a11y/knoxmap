@@ -164,7 +164,7 @@ function wireSettingInfo(wrap) {
   // Opened near the bottom of its scrolling panel, the tooltip would run
   // out of sight, so there it opens upwards.
   const aim = () => {
-    const pane = wrap.closest('.ws-pnl-body') || document.documentElement;
+    const pane = wrap.closest('.ws-pnl-body, .ws-tools-body') || document.documentElement;
     const below = pane.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
     wrap.classList.toggle('hint-up', below < 110);
   };

@@ -819,13 +819,16 @@ function updateBboxFields() {
       Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b>
       (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.
     </div>` : ''}
+  `;
+  // The warnings about its size are about the whole map, so they are said at
+  // the top of Properties rather than under the numbers.
+  document.getElementById('areaWarnings').innerHTML = `
     ${heavy.length ? `<div class="stat-note warn">${heavy.join(' ')}
       You can still build it — this is a heads-up, not a wall.
       ${fitScale ? `<button type="button" class="use-scale" data-scale="${fitScale.mpt}">Use ${fitScale.mpt} m/tile
         (${fitScale.side} tiles a side, ${fitScale.bitmap})</button>` : ''}</div>` : ''}
     ${slow ? `<div class="stat-note warn">A big map — Generate map will take ${takes},
-      mostly OpenStreetMap downloads.</div>` : ''}
-  `;
+      mostly OpenStreetMap downloads.</div>` : ''}`;
   fx.countUp(stats);
   loadForecast(s, w, n, e, mpt);
   btn.disabled = false;
@@ -886,6 +889,7 @@ function clearBboxFields() {
   });
   const stats = document.getElementById('area-stats');
   stats.className = 'empty';
+  document.getElementById('areaWarnings').innerHTML = '';
   stats.innerHTML = `<div class="empty-state">
     Draw an area on the map - rectangle, polygon, circle or freehand - to see what you'll get.</div>`;
   document.getElementById('generateBtn').disabled = true;
@@ -936,7 +940,7 @@ function scaleThatFits(widthM, heightM, current) {
   return null;
 }
 
-document.getElementById('area-stats').addEventListener('click', ev => {
+document.getElementById('areaWarnings').addEventListener('click', ev => {
   const btn = ev.target.closest('.use-scale');
   if (!btn) return;
   document.getElementById('metersPerTile').value = btn.dataset.scale;

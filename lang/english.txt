@@ -1203,3 +1203,4 @@ Zoom out (Wheel down) = Zoom out (Wheel down)
 🔲 Selected area = 🔲 Selected area
 🪑 Furnished interiors = 🪑 Furnished interiors
 🪑 Interiors = 🪑 Interiors
+Every building made in this zone gets these walls. Left as it is, the map's own choice is used. = Every building made in this zone gets these walls. Left as it is, the map's own choice is used.

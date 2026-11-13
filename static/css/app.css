@@ -309,6 +309,8 @@ body.rotate-dragging * {
 .stat-note { margin-top: 8px; padding: 6px 8px; border-radius: 4px; font-size: 13px; background: var(--field); }
 .stat-note.warn { background: var(--warn-soft); color: var(--warn); }
 .stat-note.bad { background: var(--bad-soft); color: var(--bad); }
+.area-warnings:empty { display: none; }
+.area-warnings > .stat-note:first-child { margin-top: 0; }
 
 #landmark-panel { display: flex; flex-direction: column; align-items: center; }
 #landmark-results { align-self: stretch; margin-top: 6px; font-size: 13px; max-height: 45vh; overflow-y: auto; }
@@ -688,7 +690,7 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 /* Under the settings, once a map is open: what has been moved since it was
    made, and the button that puts it in. Quieter than the upgrade note - it is
    an offer, not something the map is waiting on. */
-.reapply { margin: 10px 0 0; padding: 9px 11px; border: 1px solid var(--line-strong);
+.reapply { margin: 0; padding: 9px 11px; border: 1px solid var(--line-strong);
   border-radius: 6px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .reapply[hidden] { display: none; }
 .reapply .hint { flex: 1 1 180px; margin: 0; }
@@ -930,6 +932,23 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .zone-editor input[type="text"] { width: 10em; }
 .zone-editor .zone-set { border-color: var(--changed); color: var(--changed); }
 /* What a zone sets, yellow as a changed setting is in Properties. */
+/* A zone setting: its name and (i), its box, and the description the (i)
+   shows, laid over the rows below like a setting's in Properties. */
+.zone-editor .zone-setting { position: relative; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; margin-bottom: 4px; }
+.zone-editor .zone-label { flex: 1 1 auto; color: var(--muted); }
+.zone-editor .zone-label .setting-info { margin-left: 4px; vertical-align: 1px; }
+.zone-setting .setting-hint { display: none; position: absolute; z-index: 10;
+  top: 100%; left: 0; right: 0; margin-top: 2px; padding: 6px 8px;
+  font-size: 12px; line-height: 1.35; color: var(--text); background: var(--field);
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); pointer-events: none; }
+.zone-setting:has(.setting-info:hover) .setting-hint,
+.zone-setting:has(.setting-info:focus-visible) .setting-hint,
+.zone-setting.hint-open .setting-hint { display: block; }
+.zone-setting.hint-up .setting-hint { top: auto; bottom: 100%; margin: 0 0 2px; }
+.zone-editor .zone-setting.is-changed .zone-label { color: var(--changed); font-weight: 700; }
+.zone-editor .zone-setting.is-changed select { border-color: var(--changed); color: var(--changed); }
 .zone-editor label.is-changed > span { color: var(--changed); font-weight: 700; }
 .zone-editor label.is-changed select { border-color: var(--changed); color: var(--changed); }
 .zone-editor label.is-changed input[type="checkbox"] { accent-color: var(--changed); }

@@ -1112,3 +1112,4 @@ A town, a city, a park, a coastline… = Un pueblo, una ciudad, un parque, una c
 Find = Buscar
 Its real boundary instead of a box = Su límite real en lugar de una caja
 outline = contorno
+Every building made in this zone gets these walls. Left as it is, the map's own choice is used. = Todos los edificios creados en esta zona tienen estas paredes. Si se deja como está, se usa la elección del propio mapa.
