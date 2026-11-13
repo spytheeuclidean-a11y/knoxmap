@@ -14,6 +14,7 @@ pub mod compile;
 pub mod header;
 pub mod kcell;
 pub mod pack;
+pub mod render;
 pub mod spawn;
 
 /// A cursor over bytes that reports what went wrong and where.

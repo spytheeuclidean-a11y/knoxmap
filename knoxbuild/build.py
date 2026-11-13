@@ -171,9 +171,10 @@ SPECIAL_BY_NAME = [
     ("diner", "restaurant"), ("restaurant", "restaurant"), ("grill", "restaurant"),
     ("cafe", "restaurant"), ("bar ", "restaurant"), ("barn", "barn"),
     ("library", "library"), ("bibliot", "library"), ("kütüphane", "library"),
-    ("police", "police"), ("polizei", "police"), ("polic", "police"),
+    ("police", "police"), ("sheriff", "police"), ("polizei", "police"), ("polic", "police"),
     ("karakol", "police"), ("politie", "police"), ("gendarm", "police"),
-    ("fire station", "fire"), ("feuerwehr", "fire"), ("itfaiye", "fire"),
+    ("fire station", "fire"), ("fire department", "fire"), ("firehouse", "fire"),
+    ("fire hall", "fire"), ("feuerwehr", "fire"), ("itfaiye", "fire"),
     ("caserne de pompiers", "fire"), ("brandweer", "fire"),
     ("bank", "civic"), ("city hall", "civic"),
     ("apartment", "apartment"), ("apartmani", "apartment"),
@@ -199,6 +200,7 @@ DEFAULT_LEVELS = {
     "police": (1, 2),
     "library": (1, 2),
     "fire": (1, 1),
+    "fire_police": (1, 2),
     # A keep is tall and a stand is not. Kept short because the mix is dealt
     # again on every storey: at four levels a castle had four chapels.
     "castle": (2, 3),
@@ -367,8 +369,7 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
 # Kinds with no walls and windows of their own (knoxbuild/catalog.py
 # SPECIAL_STYLES), dressed as the nearest kind that has: an army base is
 # built like a works, a station or a library like any other public building.
-STYLE_AS = {"military": "industrial", "fire": "industrial",
-            "garage": "industrial", "police": "civic", "library": "civic"}
+STYLE_AS = {"military": "industrial", "garage": "industrial", "library": "civic"}
 
 
 # A footprint this big, with nothing but building=yes on it, is a block of
@@ -538,28 +539,35 @@ def _mixed_levels(draw, settings: Settings, rng) -> int:
 
 def classify_building(tags: dict) -> str | None:
     """The special kind for this building, or None for an ordinary one."""
+    matched: list[str] = []
     for key in ("amenity", "shop", "healthcare", "leisure", "tourism",
                 "office", "industrial", "craft", "military", "historic",
                 "building"):
-        value = (tags.get(key) or "").strip().lower()
-        if not value:
+        raw = (tags.get(key) or "").strip().lower()
+        if not raw:
             continue
-        if value in SPECIAL_BY_VALUE:
-            return SPECIAL_BY_VALUE[value]
-        # shop=* with an unlisted value is still a shop.
-        if key == "shop" and value not in ("no", "vacant"):
-            return "shop"
-        if key == "healthcare":
-            return "medical"
-        # military=* is the key mappers use for everything on a base -
-        # armory, barracks, checkpoint, office, hangar, depot - and it was
-        # not read at all, so an armoury came out as somebody's house.
-        if key == "military" and value != "no":
-            return "military"
+        for value in (part.strip() for part in raw.split(";") if part.strip()):
+            if value in SPECIAL_BY_VALUE:
+                matched.append(SPECIAL_BY_VALUE[value])
+            # shop=* with an unlisted value is still a shop.
+            elif key == "shop" and value not in ("no", "vacant"):
+                matched.append("shop")
+            elif key == "healthcare":
+                matched.append("medical")
+            # military=* is the key mappers use for everything on a base -
+            # armory, barracks, checkpoint, office, hangar, depot - and it was
+            # not read at all, so an armoury came out as somebody's house.
+            elif key == "military" and value != "no":
+                matched.append("military")
     name = (tags.get("name") or "").lower()
-    for needle, kind in SPECIAL_BY_NAME:
-        if needle in name:
-            return kind
+    name_kinds = [kind for needle, kind in SPECIAL_BY_NAME if needle in name]
+    all_kinds = set(matched) | set(name_kinds)
+    if "fire" in all_kinds and "police" in all_kinds:
+        return "fire_police"
+    if matched:
+        return matched[0]
+    if name_kinds:
+        return name_kinds[0]
     return None
 
 
@@ -573,7 +581,8 @@ def _business_kind(special: str | None, uses: list[tuple[str, str]]) -> str | No
 # A public building has no wall style of its own, so it fell through to the
 # house styles and a police station could come out in clapboard. These borrow
 # another kind's, which is what such a building is built of.
-BORROWED_STYLE = {"police": "civic", "library": "civic", "fire": "civic",
+STATION_KINDS = {"fire", "police", "fire_police"}
+BORROWED_STYLE = {"library": "civic",
                   "military": "civic",
                   # Stone, not clapboard: a castle has no style of its own and
                   # the house styles would have built one out of weatherboard.
@@ -619,7 +628,7 @@ def _wall_pool(kind: str | None) -> list[dict]:
     from . import catalog as C
 
     kind = BORROWED_STYLE.get(kind or "", kind)
-    if not kind or kind not in C.SPECIAL_STYLES:
+    if not kind or (kind not in C.SPECIAL_STYLES and kind not in STATION_KINDS):
         return []
     return wall_variants(kind)
 
@@ -672,9 +681,31 @@ def wall_variants(kind: str) -> list[dict]:
     """Every style a building of this kind may be built in."""
     from . import catalog as C
 
+    houses = {s["name"]: s for s in C.HOUSE_STYLES}
+    if kind in STATION_KINDS:
+        base = C.SPECIAL_STYLES["civic"]
+        brick = houses.get("brick")
+        exteriors = []
+        if kind in ("fire", "fire_police") and brick:
+            exteriors.append(("brick", brick["exterior"]))
+        exteriors.append(("civic", base["exterior"]))
+        if kind == "police" and brick:
+            exteriors.append(("brick", brick["exterior"]))
+        interiors = [("civic", base["interior"])]
+        if "school" in C.SPECIAL_STYLES:
+            interiors.append(("hall", C.SPECIAL_STYLES["school"]["interior"]))
+        out = []
+        for ext_name, ext_tile in exteriors:
+            for int_name, int_tile in interiors:
+                variant = dict(base)
+                variant["exterior"] = ext_tile
+                variant["interior"] = int_tile
+                variant["name"] = f"{kind}_{ext_name}~{int_name}"
+                out.append(variant)
+        return out
+
     base = C.SPECIAL_STYLES[kind]
     out = list(getattr(C, "SPECIAL_STYLE_VARIANTS", {}).get(kind) or [base])
-    houses = {s["name"]: s for s in C.HOUSE_STYLES}
     for name in MORE_WALLS.get(kind, ()):
         donor = houses.get(name)
         if not donor:
@@ -715,7 +746,7 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
     from . import regional
 
     kind = BORROWED_STYLE.get(kind or "", kind)
-    if kind and kind in C.SPECIAL_STYLES:
+    if kind and (kind in C.SPECIAL_STYLES or kind in STATION_KINDS):
         variants = wall_variants(kind)
         if profile:
             picker = random.Random(profile.seed ^ 0xA37E)
@@ -1652,7 +1683,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                          unit_uses, hotel, entrances_by_unit[n], profile,
                          unit_mapped[n],
                          btag in ("garage", "garages")
-                         or special in ("garage", "fire"),
+                         or special in ("garage", "fire", "fire_police"),
                          preset_file))
             outline = px if len(units) == 1 else [
                 (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
@@ -2115,7 +2146,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"wrote {csv_path}")
     n_park = sum(1 for z in zones if z.kind == "ParkingStall")
     n_town = sum(1 for z in zones if z.kind == "TownZone")
-    print(f"zones                 : {n_park} parking, {n_town} town")
+    n_forage = sum(1 for z in zones if z.kind in ("Forest", "DeepForest", "Vegitation", "Farm"))
+    n_nav = sum(1 for z in zones if z.kind == "Nav")
+    print(f"zones                 : {n_park} parking, {n_town} town, {n_forage} forage, {n_nav} nav")
     print(f"petrol stations       : {n_pumps} pumps at {len(stations)} stations"
           f", {len(canopies)} canopies and {len(loose_fuel)} points")
     print(f"front paths, yards    : {paths} houses, {len(yard_fences)} back yards")

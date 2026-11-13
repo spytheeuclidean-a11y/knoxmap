@@ -165,15 +165,12 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
                     elif cat == "cemetery":
-                        # A few flowers between the graves, not instead of
-                        # them: the headstones themselves go in later, as
-                        # props (knoxbuild/props.py).
-                        roll = rng.random()
-                        if roll < 0.012:
+                        # Sparse shade trees only; headstones, paths and plazas
+                        # go in later via knoxbuild/props.py (which clears veg
+                        # wherever a plot or walkway lands).
+                        if rng.random() < 0.008:
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
-                        elif roll < 0.04:
-                            vp[x, y] = C.FLOWERS
                     else:
                         if rng.random() < 0.35:
                             vp[x, y] = C.DENSE_BUSHES_GRASS
@@ -512,13 +509,26 @@ def _clear_building_vegetation(veg: Image.Image, feats: list[OSMFeature],
 
 
 def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None:
-    """Keep mapped woodland and scrub off every rasterized road surface."""
+    """Keep trees, scrub, and grass off every rasterized road, sidewalk, rail, and water tile."""
     import numpy as np
     from ..rail_tiles import RAIL_RULES
+    from . import native_pixels
 
-    road_colours = np.array((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
-                             C.DARKEST_ASPHALT, C.DARK_POTHOLE,
-                             C.LIGHT_POTHOLE) + tuple(colour for _, colour, _ in RAIL_RULES), dtype=np.uint8)
+    road_tuple = ((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
+                   C.DARKEST_ASPHALT, C.PALE_CONCRETE, C.DARK_POTHOLE,
+                   C.LIGHT_POTHOLE, C.WATER)
+                  + tuple(colour for _, colour, _ in RAIL_RULES))
+    veg_tuple = (C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
+                 C.GRASS_ON_DARK, C.SHORT_GRASS, C.LOT_OF_GRASS_AND_TREES,
+                 C.BUSHES_TREES_DARK_GRASS, C.BUSHES, C.DENSE_BUSHES_GRASS,
+                 C.FLOWERS, C.BOULDERS, C.ROCKS,
+                 C.TREE_BIG, C.TREE_HUGE, C.TREE_GIANT, C.TREE_SMALL)
+    if native_pixels.clear_road_vegetation(
+        veg, landscape, road_tuple, veg_tuple, C.VEG_NOTHING
+    ):
+        return
+    road_colours = np.array(road_tuple, dtype=np.uint8)
+    veg_colours = np.array(veg_tuple, dtype=np.uint8)
     width, height = landscape.size
     for top in range(0, height, 256):
         bottom = min(height, top + 256)
@@ -529,7 +539,13 @@ def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None:
         if not road.any():
             continue
         vegetation = np.array(veg.crop((0, top, width, bottom)))
-        vegetation[road] = C.VEG_NOTHING
+        is_veg = np.zeros(ground.shape[:2], dtype=bool)
+        for colour in veg_colours:
+            is_veg |= np.all(vegetation == colour, axis=2)
+        clear = road & is_veg
+        if not clear.any():
+            continue
+        vegetation[clear] = C.VEG_NOTHING
         veg.paste(Image.fromarray(vegetation), (0, top))
 
 

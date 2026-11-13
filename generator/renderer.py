@@ -668,6 +668,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                                    C.DARKEST_ASPHALT, C.DARK_POTHOLE,
                                    C.LIGHT_POTHOLE),
                        _colour_mask)
+    _clear_road_vegetation(vegetation, landscape)
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:

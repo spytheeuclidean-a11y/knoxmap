@@ -161,12 +161,17 @@ GENERATE_LOTS_THREADS = 4
 ZONE_GROUPS = [
     ("ParkingStall", "#ff007f"),
     ("TownZone", "#aa0000"),
+    ("Forest", "#00aa00"),
+    ("DeepForest", "#006600"),
+    ("Vegitation", "#55aa00"),
+    ("Farm", "#aaaa00"),
+    ("Nav", "#00aaaa"),
 ]
 
 
 @dataclass
 class Zone:
-    kind: str          # "ParkingStall" | "TownZone"
+    kind: str          # "ParkingStall" | "TownZone" | "Forest" | "DeepForest" | "Vegitation" | "Farm" | "Nav"
     tile_x: int        # absolute tile coords
     tile_y: int
     width: int

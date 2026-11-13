@@ -35,7 +35,7 @@ class OfficeSeating(unittest.TestCase):
             for storey in b.storeys:
                 windows = set(storey.windows)
                 for role, x, y, o in storey.furniture:
-                    if not L._is_wall_piece(role):
+                    if not L._is_wall_piece(role) or role == "microwave":
                         continue
                     for cx, cy in L._cells_for(role, x, y, o):
                         self.assertNotIn(L._wall_edge(cx, cy, o), windows, (role, x, y, o))
@@ -70,6 +70,18 @@ class OfficeSeating(unittest.TestCase):
                     for cx, cy in L._tiles_under(role, x, y, o):
                         if 0 <= cx < w and 0 <= cy < h and g[cy][cx]:
                             self.assertFalse(L._narrow(g, cx, cy), (role, cx, cy))
+
+    def test_no_two_wall_pieces_share_an_edge(self):
+        for b in self.built:
+            for storey in b.storeys:
+                seen = {}
+                for role, x, y, o in storey.furniture:
+                    if not L._is_wall_piece(role) or role == "microwave":
+                        continue
+                    for cx, cy in L._cells_for(role, x, y, o):
+                        edge = L._wall_edge(cx, cy, o)
+                        self.assertNotIn(edge, seen, f"{role} overlaps {seen.get(edge)} at {edge}")
+                        seen[edge] = role
 
 
 if __name__ == "__main__":

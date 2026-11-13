@@ -198,6 +198,7 @@ AREA_LEVEL_TABLE = {
     "barn": ((None, (1, 1)),),
     "shed": ((None, (1, 1)),),
     "fire": ((None, (1, 2)),),
+    "fire_police": ((None, (1, 2)),),
     "stadium": ((None, (1, 2)),),
     "mall": ((None, (1, 2)),),
     "castle": ((None, (2, 3)),),
