@@ -2146,7 +2146,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"wrote {csv_path}")
     n_park = sum(1 for z in zones if z.kind == "ParkingStall")
     n_town = sum(1 for z in zones if z.kind == "TownZone")
-    print(f"zones                 : {n_park} parking, {n_town} town")
+    n_forage = sum(1 for z in zones if z.kind in ("Forest", "DeepForest", "Vegitation", "Farm"))
+    n_nav = sum(1 for z in zones if z.kind == "Nav")
+    print(f"zones                 : {n_park} parking, {n_town} town, {n_forage} forage, {n_nav} nav")
     print(f"petrol stations       : {n_pumps} pumps at {len(stations)} stations"
           f", {len(canopies)} canopies and {len(loose_fuel)} points")
     print(f"front paths, yards    : {paths} houses, {len(yard_fences)} back yards")

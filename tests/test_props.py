@@ -96,6 +96,30 @@ class OutdoorProps(unittest.TestCase):
             self.assertTrue(
                 any(f"location_community_cemetary_01_0{n}" in tbx for n in (11, 12, 13, 14)))
 
+    def test_farmland_and_industrial_grounds_get_supply_clutter(self):
+        with TemporaryDirectory() as directory:
+            bdir = os.path.join(directory, "buildings")
+            os.mkdir(bdir)
+            ground = Image.new("RGB", (180, 180), C.LIGHT_GRASS)
+            ground.save(os.path.join(directory, "rural.bmp"))
+            Image.new("RGB", ground.size, C.VEG_NOTHING).save(
+                os.path.join(directory, "rural_veg.bmp"))
+            occupied = np.zeros((180, 180), dtype=bool)
+            farm = Polygon([(5, 5), (85, 5), (85, 85), (5, 85)])
+            ind = Polygon([(95, 95), (175, 95), (175, 175), (95, 175)])
+            areas = SimpleNamespace(_items=[
+                (farm, {"category": "farmland"}),
+                (ind, {"category": "industrial"}),
+            ])
+
+            placements, counts = place_props(
+                directory, "rural", bdir, occupied, areas,
+                metres_per_tile=1.0, seed=11)
+
+            self.assertGreater(counts["farm_dumps"], 0)
+            self.assertGreater(counts["industrial_dumps"], 0)
+            self.assertTrue(placements)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -111,6 +111,12 @@ MAX_DUMPS = 600
 PICNIC_SPACING_M = 38.0
 PICNIC_MIN_M2 = 500
 MAX_PICNIC_TABLES = 300
+FARM_EVERY_M = 55.0
+FARM_MIN_M2 = 900
+MAX_FARM_CLUSTERS = 250
+IND_EVERY_M = 40.0
+IND_MIN_M2 = 600
+MAX_IND_DUMPS = 300
 
 LAYER = "Furniture"
 # Ground a prop never stands on: the carriageway, its pavement, and water.
@@ -351,6 +357,39 @@ def _place_cemetery(
     return placed_graves
 
 
+def _place_supply_dumps(polys: list, gap: int, min_m2: float, cap: int,
+                        width: int, height: int, metres_per_tile: float,
+                        put, rng, Point, *, run_range: tuple[int, int] = (2, 5),
+                        drum_chance: float = 0.4) -> int:
+    """Place spaced crate-and-drum stacks across open land-use polygons."""
+    placed_clusters = 0
+    lo, hi = run_range
+    for poly in polys:
+        if placed_clusters >= cap:
+            break
+        if poly.area * metres_per_tile * metres_per_tile < min_m2:
+            continue
+        minx, miny, maxx, maxy = (int(v) for v in poly.bounds)
+        for y in lattice_on_map(miny + gap, maxy, gap, height):
+            for x in lattice_on_map(minx + gap, maxx, gap, width):
+                if placed_clusters >= cap:
+                    break
+                if not poly.contains(Point(x + 0.5, y + 0.5)):
+                    continue
+                run = rng.randint(lo, hi)
+                horizontal = rng.random() < 0.5
+                placed = 0
+                for k in range(run):
+                    tile = rng.choice(DRUMS if k == run - 1 and rng.random() < drum_chance
+                                      else CRATES)
+                    px = x + (k if horizontal else 0)
+                    py = y + (0 if horizontal else k)
+                    placed += bool(put(px, py, tile))
+                if placed:
+                    placed_clusters += 1
+    return placed_clusters
+
+
 def place_props(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
                 areas, metres_per_tile: float,
                 seed: int = 0x6FADE) -> tuple[list, dict]:
@@ -363,13 +402,16 @@ def place_props(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
     from shapely.geometry import Point
 
     bmp = os.path.join(out_dir, f"{map_name}.bmp")
-    counts = {"graves": 0, "dumps": 0, "picnic_tables": 0}
+    counts = {"graves": 0, "dumps": 0, "picnic_tables": 0,
+              "farm_dumps": 0, "industrial_dumps": 0}
     if not os.path.exists(bmp) or areas is None:
         return [], counts
     cemeteries = _polygons(areas, "cemetery")
     bases = _polygons(areas, "military")
     parks = _polygons(areas, "park") + _polygons(areas, "playground")
-    if not cemeteries and not bases and not parks:
+    farms = _polygons(areas, "farmland")
+    industrials = _polygons(areas, "industrial")
+    if not cemeteries and not bases and not parks and not farms and not industrials:
         return [], counts
 
     ground = read_rgb(bmp)
@@ -411,32 +453,20 @@ def place_props(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
             blocked, put_layer, rng, Point,
         )
 
-    gap = step(DUMP_EVERY_M)
-    for poly in bases:
-        if counts["dumps"] >= MAX_DUMPS:
-            break
-        if poly.area * metres_per_tile * metres_per_tile < DUMP_MIN_M2:
-            continue
-        minx, miny, maxx, maxy = (int(v) for v in poly.bounds)
-        for y in lattice_on_map(miny + gap, maxy, gap, height):
-            for x in lattice_on_map(minx + gap, maxx, gap, width):
-                if counts["dumps"] >= MAX_DUMPS:
-                    break
-                if not poly.contains(Point(x + 0.5, y + 0.5)):
-                    continue
-                # A stack of stores: a short row of crates with a drum or two
-                # at the end of it, as they are stacked on a real apron.
-                run = rng.randint(2, 5)
-                horizontal = rng.random() < 0.5
-                placed = 0
-                for k in range(run):
-                    tile = rng.choice(DRUMS if k == run - 1 and rng.random() < 0.4
-                                      else CRATES)
-                    px = x + (k if horizontal else 0)
-                    py = y + (0 if horizontal else k)
-                    placed += bool(put(px, py, tile))
-                if placed:
-                    counts["dumps"] += 1
+    counts["dumps"] = _place_supply_dumps(
+        bases, step(DUMP_EVERY_M), DUMP_MIN_M2, MAX_DUMPS,
+        width, height, metres_per_tile, put, rng, Point,
+    )
+    counts["farm_dumps"] = _place_supply_dumps(
+        farms, step(FARM_EVERY_M), FARM_MIN_M2, MAX_FARM_CLUSTERS,
+        width, height, metres_per_tile, put, rng, Point,
+        run_range=(2, 3), drum_chance=0.5,
+    )
+    counts["industrial_dumps"] = _place_supply_dumps(
+        industrials, step(IND_EVERY_M), IND_MIN_M2, MAX_IND_DUMPS,
+        width, height, metres_per_tile, put, rng, Point,
+        run_range=(2, 4), drum_chance=0.45,
+    )
 
     pitch = step(PICNIC_SPACING_M)
     for poly in parks:
@@ -503,6 +533,8 @@ MAX_CHECKPOINTS = 4
 MAX_ROAD_BLOCKS = 2        # one or two, at the ends of main roads - not a cordon
 MAX_EVAC_CENTRES = 8
 EVAC_PROPS = 4             # crates and drums in a school yard
+HIGHWAY_STAGE_SPACING = 120
+MAX_HIGHWAY_STAGES = 4
 
 
 def _carriageway(ground: np.ndarray, x: int, y: int) -> bool:
@@ -643,7 +675,7 @@ def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray
     taken" question, and the ground only decides what may be put where.
     """
     counts = {"checkpoints": 0, "road_blocks": 0, "evac_centres": 0,
-              "vignette_props": 0}
+              "highway_stages": 0, "vignette_props": 0}
     bmp = os.path.join(out_dir, f"{map_name}.bmp")
     if not os.path.exists(bmp) or occupied is None:
         return [], counts
@@ -704,6 +736,43 @@ def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray
             picked.append((x, y))
             counts["road_blocks"] += 1
             counts["vignette_props"] += placed
+
+        # Roadside emergency staging caches (drums & supply crates on the verge
+        # of major highways) so long routes out of town have evacuation debris
+        # without blocking the carriageway.
+        staged: list[tuple[int, int]] = []
+        avoid = seen + picked
+        for y in range(24, height - 24, 16):
+            if counts["highway_stages"] >= MAX_HIGHWAY_STAGES:
+                break
+            for x in range(24, width - 24, 16):
+                if counts["highway_stages"] >= MAX_HIGHWAY_STAGES:
+                    break
+                if not main[y, x] or not _carriageway(ground, x, y):
+                    continue
+                if any((x - ax) ** 2 + (y - ay) ** 2 < ROAD_BLOCK_SPACING ** 2
+                       for ax, ay in avoid):
+                    continue
+                if any((x - sx) ** 2 + (y - sy) ** 2 < HIGHWAY_STAGE_SPACING ** 2
+                       for sx, sy in staged):
+                    continue
+                verge = []
+                for dy in range(-3, 4):
+                    for dx in range(-3, 4):
+                        nx, ny = x + dx, y + dy
+                        if (0 <= nx < width and 0 <= ny < height
+                                and not blocked[ny, nx]
+                                and not _carriageway(ground, nx, ny)):
+                            verge.append((nx, ny))
+                if len(verge) < 2:
+                    continue
+                rng.shuffle(verge)
+                made = sum(put(vx, vy, rng.choice(DRUMS + CRATES))
+                           for vx, vy in verge[:3])
+                if made:
+                    staged.append((x, y))
+                    counts["highway_stages"] += 1
+                    counts["vignette_props"] += made
 
     for row in rows or []:
         if counts["evac_centres"] >= MAX_EVAC_CENTRES:

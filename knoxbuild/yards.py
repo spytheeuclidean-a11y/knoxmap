@@ -451,13 +451,27 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         for k in (-1, 1):
             if free(sx + px * k, sy + py * k):
                 paint(sx + px * k, sy + py * k, C.PAVING_STONE)
+        # Front-yard flower beds flanking the stoop and an occasional kerbside
+        # bin opposite the mailbox so street fronts read as lived-in homes.
+        frng = random.Random((bx0 * 2654435761) ^ (by0 * 2246822519) ^ 0x517CC1B7)
+        if home and veg is not None and frng.random() < 0.60:
+            for k in (-2, 2, -3, 3):
+                fx, fy = sx + px * k, sy + py * k
+                if free(fx, fy) and tuple(ground[fy, fx]) not in LAWNLESS:
+                    put(fx, fy, C.FLOWERS)
         # The mailbox, beside the path where it reaches the street.
         if home and walk and end not in drive_tiles:
             mx, my = walk[0]
+            mb_side = None
             for k in (1, -1):
                 if free(mx + px * k, my + py * k):
                     put(mx + px * k, my + py * k, C.MAILBOX)
+                    mb_side = k
                     break
+            if mb_side is not None and veg is not None and frng.random() < 0.35:
+                bx_, by_ = mx - px * mb_side, my - py * mb_side
+                if free(bx_, by_) and tuple(ground[by_, bx_]) not in LAWNLESS:
+                    put(bx_, by_, C.BIN)
         if not home:
             dressed += 1
             continue
@@ -475,9 +489,15 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         want_depth = max(YARD_MIN_DEPTH,
                          YARD_DEPTH - random.Random((bx0 * 31 + by0) ^ 0xA5A5)
                          .choice((0, 0, 1, 1, 2, 3)))
-        for side in (YARD_SIDE, 1, 0):
-            u0 = (bx0 if dy else by0) - side
-            width = (bw if dy else bh) + 2 * side
+        base_u0 = bx0 if dy else by0
+        base_w = bw if dy else bh
+        candidates = [(base_u0 - side, base_w + 2 * side) for side in (YARD_SIDE, 1, 0)]
+        if base_w >= 5:
+            candidates += [(base_u0 + 1, base_w - 1), (base_u0, base_w - 1),
+                           (base_u0 + 1, base_w - 2)]
+        for u0, width in candidates:
+            if width < 3:
+                continue
 
             def at(u, v, u0=u0):
                 """World tile u along the back wall, v rows back from it."""

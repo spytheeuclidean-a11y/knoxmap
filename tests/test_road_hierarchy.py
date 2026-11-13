@@ -254,6 +254,23 @@ class RoadHierarchyTests(unittest.TestCase):
 
         self.assertGreater(lamp_count("residential"), lamp_count("motorway"))
 
+    def test_highway_traffic_jam_clusters_spawn_on_major_roads_outside_town(self):
+        with TemporaryDirectory() as directory:
+            path = f"{directory}/ground.bmp"
+            pixels = Image.new("RGB", (400, 80), renderer.C.DARK_GRASS)
+            for y in range(20, 32):
+                for x in range(400):
+                    pixels.putpixel((x, y), renderer.C.MEDIUM_ASPHALT)
+            pixels.save(path)
+            primary = np.zeros((80, 400), dtype=np.uint8)
+            primary[20:32, :] = osm.ROAD_HIERARCHY_CODES["primary"]
+            zones = building._detect_zones(
+                path, [], settings=SimpleNamespace(parking_density=1.0),
+                road_hierarchy=primary)
+        stalls = [z for z in zones if z.kind == "ParkingStall"]
+        interior = [z for z in stalls if 22 <= z.tile_y <= 28]
+        self.assertGreaterEqual(len(interior), 2)
+
 
 if __name__ == "__main__":
     unittest.main()

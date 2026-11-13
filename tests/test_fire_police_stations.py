@@ -63,6 +63,24 @@ class FirePoliceStations(unittest.TestCase):
                     self.assertIn("firegarage", kinds)
                     self.assertIn("policeoffice", kinds)
 
+    def test_firegarage_uses_service_bay_perimeter_furnishing(self):
+        b = L.build_building(24, 18, levels=2, kind="fire", commercial=True,
+                             street="W", garage_door=True, seed=17)
+        ground = b.storeys[0]
+        bays = [i for i, r in enumerate(ground.rooms, 1) if r.kind == "firegarage"]
+        self.assertTrue(bays)
+        bay_id = bays[0]
+        bay = ground.rooms[bay_id - 1]
+        bay_furniture = [
+            (role, x, y) for role, x, y, _o in ground.furniture
+            if L._room_at(ground, x, y) == bay_id
+        ]
+        self.assertTrue(any(role in ("metal_rack", "crate", "counter_2")
+                            for role, _x, _y in bay_furniture))
+        # Centre vehicle bay stays clear of perimeter props.
+        cx, cy = bay.x0 + bay.w // 2, bay.y0 + bay.h // 2
+        self.assertFalse(any(x == cx and y == cy for _role, x, y in bay_furniture))
+
 
 if __name__ == "__main__":
     unittest.main()

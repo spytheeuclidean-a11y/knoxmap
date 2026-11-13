@@ -1657,9 +1657,9 @@ def _furnish(plan: Plan, rng: random.Random,
                  if plan.kind not in HOME_KINDS and plan.kind != "apartment" else None)
         trade_fitted = False
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
-        if r.kind in ("garage", "mechanic") and interiors.furnish_service_bay(
+        if r.kind in ("garage", "mechanic", "firegarage") and interiors.furnish_service_bay(
                 plan, idx, r, rng, door_tiles, keep_clear,
-                mechanic=(r.kind == "mechanic")):
+                mechanic=(r.kind in ("mechanic", "firegarage"))):
             continue
         if office:
             base, office_fitted = interiors.furnish_office(

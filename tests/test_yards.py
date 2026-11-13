@@ -196,6 +196,33 @@ class Variation(unittest.TestCase):
     def test_a_house_gets_the_same_yard_every_time(self):
         self.assertEqual(yard_plan(42, 17), yard_plan(42, 17))
 
+    def test_terraced_edge_obstacle_still_gets_inset_back_yard_and_front_details(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((40, 60), dtype=bool)
+            ground = np.full((40, 60, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[28:32, :] = C.PALE_CONCRETE
+            ground[32:36, :] = C.MEDIUM_ASPHALT
+            veg = np.full((40, 60, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+            rows = []
+            # Three closely spaced terraced houses with front doors facing south (y=20)
+            # and a 1-tile obstacle along one side of the back yard.
+            for idx, bx in enumerate((6, 16, 26)):
+                _building(os.path.join(out, "buildings"), f"h{idx}.tbx", door=(3, 6, "N"))
+                occupied[14:20, bx:bx + SIZE] = True
+                occupied[10:14, bx] = True  # blocks side=0 on the west corner
+                rows.append({"kind": "house", "file": f"h{idx}.tbx",
+                             "tile_x": bx, "tile_y": 14, "width": SIZE, "height": SIZE})
+            _paths, fences = paint_paths(out, "m", rows, occupied)
+            # At least one house should get a fenced inset back yard despite the corner block.
+            self.assertTrue(any(yard_plan(6 + 10 * n, 14)[1] for n in range(3)))
+            self.assertGreater(len(fences), 0)
+            veg_after = np.asarray(Image.open(os.path.join(out, "m_veg.bmp")))
+            colours = {tuple(c) for c in veg_after.reshape(-1, 3)}
+            self.assertIn(C.FLOWERS, colours)
+
 
 if __name__ == "__main__":
     unittest.main()
