@@ -1503,17 +1503,18 @@ def _furnish(plan: Plan, rng: random.Random,
         def hang(role: str, x: int, y: int, facing: str) -> bool:
             if role in NORTH_WEST_ONLY and facing in ("S", "E"):
                 return False
-            edge = _wall_edge(x, y, facing)
-            if edge in door_edges or edge in used_walls:
-                return False
             orient = _facing(role, facing)
+            cells = _cells_for(role, x, y, orient)
             # Every tile of the piece in this room: a two-tile mirror hung at
             # the end of a wall reached through the outside wall.
-            if any(_room_at(plan, cx, cy) != idx for cx, cy in _cells_for(role, x, y, orient)):
+            if any(_room_at(plan, cx, cy) != idx for cx, cy in cells):
+                return False
+            edges = {_wall_edge(cx, cy, facing) for cx, cy in cells}
+            if edges & (door_edges | used_walls | plan.wall_pieces):
                 return False
             plan.furniture.append((role, x, y, orient))
-            used_walls.add(edge)
-            plan.wall_pieces.add(edge)
+            used_walls.update(edges)
+            plan.wall_pieces.update(edges)
             return True
 
         # The switch: on a wall one tile from this room's door, the way people

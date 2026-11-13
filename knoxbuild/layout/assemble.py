@@ -756,7 +756,9 @@ def _relight(plan: Plan, unlit: set, edges: set) -> None:
     """Hang a switch back in any room that lost its only one to an opening."""
     have = {_room_at(plan, x, y) for role, x, y, _d in plan.furniture
             if role == SWITCH}
-    taken = {_wall_edge(x, y, d) for _r, x, y, d in plan.furniture}
+    taken = {_wall_edge(cx, cy, d) for r, x, y, d in plan.furniture
+             if _is_wall_piece(r) for cx, cy in _cells_for(r, x, y, d)}
+    taken |= plan.wall_pieces
     for idx in sorted(unlit - have):
         if not idx:
             continue
@@ -778,6 +780,7 @@ def _relight(plan: Plan, unlit: set, edges: set) -> None:
                         continue
                     plan.furniture.append((SWITCH, x, y, _facing(SWITCH, facing)))
                     taken.add(edge)
+                    plan.wall_pieces.add(edge)
                     done = True
                     break
             if done:

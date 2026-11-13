@@ -391,10 +391,12 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
                 continue
             # Pieces grow east or south from their anchor; on a south or east
             # wall the anchor is the piece's own first tile all the same.
-            if _layout()._is_wall_piece(role):
-                if _layout()._wall_edge(x, y, side) not in plan.wall_pieces and \
+            if L._is_wall_piece(role):
+                piece_cells = L._cells_for(role, x, y, orient)
+                edges = {L._wall_edge(cx, cy, orient) for cx, cy in piece_cells}
+                if all(c in on_wall for c in piece_cells) and not (edges & plan.wall_pieces) and \
                         put(role, x, y, orient):
-                    plan.wall_pieces.add(_layout()._wall_edge(x, y, side))
+                    plan.wall_pieces.update(edges)
                     k += 1
                 i += 1
                 continue
@@ -1224,11 +1226,17 @@ def _hang(plan, idx, role, x, y, wall: str) -> bool:
     L = _layout()
     if wall not in ("N", "W") and role in L.NORTH_WEST_ONLY:
         return False
-    edge = L._wall_edge(x, y, wall)
-    if edge in plan.wall_pieces or role not in C.FURNITURE:
+    if role not in C.FURNITURE:
         return False
-    plan.furniture.append((role, x, y, L._facing(role, wall)))
-    plan.wall_pieces.add(edge)
+    orient = L._facing(role, wall)
+    cells = L._cells_for(role, x, y, orient)
+    if any(L._room_at(plan, cx, cy) != idx for cx, cy in cells):
+        return False
+    edges = {L._wall_edge(cx, cy, wall) for cx, cy in cells}
+    if edges & plan.wall_pieces:
+        return False
+    plan.furniture.append((role, x, y, orient))
+    plan.wall_pieces.update(edges)
     return True
 
 
@@ -1511,7 +1519,7 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
     mine = [f for f in plan.furniture if L._room_at(plan, f[1], f[2]) == idx]
     topped = {(x, y) for role, x, y, _o in mine
               if L._needs_surface(role) and not L._is_wall_piece(role)}
-    walls = set(door_edges)
+    walls = set(door_edges) | set(plan.wall_pieces)
     for role, x, y, o in plan.furniture:
         if L._is_wall_piece(role):
             walls |= {L._wall_edge(cx, cy, o) for cx, cy in L._cells_for(role, x, y, o)}
@@ -1536,12 +1544,25 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
             topped.add((x, y))
 
     def hang(item, spots) -> None:
-        spots = [s for s in spots if s[2] in C.FURNITURE.get(item, {})
-                 and L._wall_edge(*s) not in walls]
-        if spots:
-            x, y, o = rng.choice(spots)
+        if item not in C.FURNITURE:
+            return
+        candidates = []
+        for x, y, o in spots:
+            if o not in C.FURNITURE[item]:
+                continue
+            if item in L.NORTH_WEST_ONLY and o in ("S", "E"):
+                continue
+            cells = L._cells_for(item, x, y, o)
+            if any(L._room_at(plan, cx, cy) != idx for cx, cy in cells):
+                continue
+            edges = {L._wall_edge(cx, cy, o) for cx, cy in cells}
+            if not (edges & walls):
+                candidates.append((x, y, o, edges))
+        if candidates:
+            x, y, o, edges = rng.choice(candidates)
             plan.furniture.append((item, x, y, o))
-            walls.add(L._wall_edge(x, y, o))
+            walls.update(edges)
+            plan.wall_pieces.update(edges)
 
     def on_walls(sides=tuple(STEP)) -> list:
         """Every square of this room against one of its walls, with the wall."""
