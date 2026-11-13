@@ -251,7 +251,7 @@ def check_repeatable_seeds(check) -> None:
     for hashseed in ("1", "2", "random"):
         env = {**os.environ, "PYTHONHASHSEED": hashseed}
         got = subprocess.run([sys.executable, "-c", code], env=env,
-                             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             cwd=os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
                              capture_output=True, text=True).stdout.strip()
         seen.add(got)
     check(len(seen) == 1 and "" not in seen,

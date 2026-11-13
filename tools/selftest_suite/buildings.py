@@ -19,7 +19,7 @@ def check_1_3_6(check, out: str, tbx: list[str], pzw_text: str, log: str) -> Non
     """What 1.3.6 added: rows cut into units, rooms the game can fill, police
     stations and libraries, graves, army bases, and a place in the world of
     this map's own."""
-    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from audit_layouts import door_pair
 
     from knoxbuild import layout

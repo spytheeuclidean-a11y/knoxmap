@@ -663,7 +663,7 @@ def check_portable(check) -> None:
           "and a release from before they were split is still for everybody")
 
     # The launchers must keep LF, or /bin/sh chokes on the carriage returns.
-    root = Path(__file__).resolve().parent.parent
+    root = Path(__file__).resolve().parents[2]
     flow = root / ".github" / "workflows" / "release.yml"
     if flow.exists():
         # Whichever way a release is made - pushing the tag or drafting the
