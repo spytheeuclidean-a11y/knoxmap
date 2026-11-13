@@ -311,10 +311,23 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
             y_idx = np.arange(sides.shape[0])[:, None]
             x_idx = np.arange(sides.shape[1])[None, :]
             even = (y_idx % 2 == 0) & (x_idx % 2 == 0)
-            for name, (dy, dx) in (("NW", (-1, -1)), ("NE", (-1, 1)),
-                                   ("SW", (1, -1)), ("SE", (1, 1))):
+            for name, (dy, dx), (ey, ex) in (
+                ("NW", (-1, -1), (-1, 1)),
+                ("NE", (-1, 1), (1, 1)),
+                ("SW", (1, -1), (1, 1)),
+                ("SE", (1, 1), (-1, 1)),
+            ):
                 beside_diag = _shifted(road_r, dy, dx)
-                pick = (sides == 0) & beside_diag & pave_r & free & even
+                cand = (sides == 0) & beside_diag & pave_r
+                # Only place a 2x diagonal kerb along a real 45-degree edge (a
+                # run of at least 3 diagonal-edge tiles), not at an isolated
+                # step on a nearly-horizontal or nearly-vertical road.
+                n1 = _shifted(cand, ey, ex)
+                n2 = _shifted(cand, 2 * ey, 2 * ex)
+                p1 = _shifted(cand, -ey, -ex)
+                p2 = _shifted(cand, -2 * ey, -2 * ex)
+                diag_run = cand & ((n1 & p1) | (n1 & n2) | (p1 & p2))
+                pick = diag_run & free & even
                 if not pick.any():
                     continue
                 first, second = diag_kerb[name]
