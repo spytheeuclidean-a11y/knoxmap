@@ -1,5 +1,18 @@
 /* KnoxMap. Plain on purpose: a map, a form, and buttons that say what they do. */
 
+/* The fold marker, the same on everything that folds: a chevron drawn from
+   two borders, pointing right when folded and down when open. Summaries
+   lose the browser's own triangle for it; the zone list and the panels'
+   fold buttons draw the same one (.zone-caret, .tw in shell.css). */
+summary { list-style: none; cursor: pointer; }
+summary::-webkit-details-marker { display: none; }
+summary::before, .zone-caret {
+  content: ''; display: inline-block; flex: none; box-sizing: border-box;
+  width: 9px; height: 9px; margin: 0 9px 2px 3px; vertical-align: middle;
+  border-right: 2.5px solid var(--accent); border-bottom: 2.5px solid var(--accent);
+  border-radius: 1px; transform: rotate(-45deg); transition: transform .15s; }
+details[open] > summary::before, .zone-list li.on .zone-caret { transform: rotate(45deg); }
+
 :root {
   --bg: #151714;
   --panel: #1d201b;
@@ -15,6 +28,7 @@
   --accent-soft: #2c3a20;
   --warn: #e0b060;
   --warn-soft: #3a3020;
+  --changed: #f2c94c;
   --bad: #f07a6e;
   --bad-soft: #3d2320;
   --shadow: 0 2px 8px rgba(0,0,0,.45);
@@ -295,9 +309,12 @@ body.rotate-dragging * {
 .stat-note { margin-top: 8px; padding: 6px 8px; border-radius: 4px; font-size: 13px; background: var(--field); }
 .stat-note.warn { background: var(--warn-soft); color: var(--warn); }
 .stat-note.bad { background: var(--bad-soft); color: var(--bad); }
+.area-warnings:empty { display: none; }
+.area-warnings > .stat-note:first-child { margin-top: 0; }
 
-#landmark-panel { margin-top: 10px; }
-#landmark-results { margin-top: 6px; font-size: 13px; }
+#landmark-panel { display: flex; flex-direction: column; align-items: center; }
+#landmark-results { align-self: stretch; margin-top: 6px; font-size: 13px; max-height: 45vh; overflow-y: auto; }
+#landmark-results:empty { display: none; }
 #landmark-results details { border-top: 1px solid var(--line); }
 #landmark-results summary { padding: 4px 0; cursor: pointer; }
 #landmark-results .count { color: var(--faint); margin-left: 4px; }
@@ -389,10 +406,43 @@ body.rotate-dragging * {
   margin: 12px 0; }
 .setting-group-head { display: flex; justify-content: space-between; align-items: baseline;
   margin-bottom: 8px; font-weight: 600; }
-.setting-group-advanced > summary { cursor: pointer; color: var(--muted); font-size: 13px;
-  margin: 6px 0; }
 .setting-subhead { font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
   color: var(--faint); margin: 12px 0 6px; }
+/* The settings' tabs (buildSettingsForm in settings.js): a bar that wraps to
+   a second row in a narrow panel, and only the open tab's card shown -
+   except while searching, when every tab shows what it matched. */
+/* The tabs are the main division of each panel, Tools and Properties: a
+   bar of their own, the open one filled with the accent. */
+.setting-tabs { display: flex; flex-wrap: wrap; gap: 3px; margin: 8px 0 0; padding: 3px;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; }
+.setting-tab { flex: 1 1 30%; display: inline-flex; align-items: center; justify-content: center;
+  gap: 5px; padding: 7px 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+  background: transparent; border: 0; border-radius: 6px; transition: background .12s, color .12s; }
+.setting-tab:hover { color: var(--text); background: var(--hover); }
+.setting-tab.is-on { color: var(--accent-ink); background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+.setting-tab.is-on .setting-tab-count { color: var(--accent-ink); opacity: .8; }
+.setting-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.setting-tab-icon { font-size: 14px; line-height: 1; }
+.setting-tab-icon:empty { display: none; }
+.setting-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--changed); }
+.setting-tab.is-on .setting-tab-dot { box-shadow: 0 0 0 1.5px var(--accent-ink); }
+/* A setting moved off the kind of place's value (markChangedTabs). */
+.setting.is-changed > .setting-name, .setting.is-changed .setting-head .setting-name { font-weight: 700; color: var(--changed); }
+.setting.is-changed input[type="range"] { accent-color: var(--changed); }
+.setting.is-changed .setting-val { color: var(--changed); }
+.setting.is-changed select, .setting.is-changed .seed-row input { border-color: var(--changed); color: var(--changed); }
+.setting.is-changed .switch .switch-track { border-color: var(--changed); background: var(--warn-soft); color: var(--changed); }
+.setting.is-changed .switch .switch-track::after { background: var(--changed); }
+.setting-tab-dot[hidden] { display: none; }
+.setting-tab-count { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.setting-tab-count:empty { display: none; }
+.setting-tab.found-none { opacity: .45; }
+#advanced-body:not(.searching) > .setting-group:not(.is-on) { display: none; }
+#advanced-body > .setting-group { margin: 8px 0 12px; }
+/* The page's own fields in a tab (Map name, Scale, Kind of place, Setup). */
+.setting-group .setting-static { margin-bottom: 10px; }
+.setting-group .setting-static .hint { margin: 0 0 6px; }
 .setting-note { display: block; font-size: 11px; color: var(--faint); font-style: italic; }
 
 /* A card's settings, one line each: name and (i), slider, number. What the
@@ -405,7 +455,16 @@ body.rotate-dragging * {
 .setting-group .forest-preview img { margin: 0 auto; }
 .setting-group-head { margin-bottom: 8px; }
 .setting-group .setting-subhead { margin: 8px 0 3px; }
-.setting-group-advanced > summary { margin: 4px 0 2px; }
+/* Advanced is a bar of its own, with how many settings are behind it. */
+.setting-group-advanced > summary { list-style: none; display: flex; align-items: center; gap: 7px;
+  margin: 10px 0 4px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
+  color: var(--text); background: var(--field); border: 1px solid var(--line-strong); border-radius: 6px; }
+.setting-group-advanced > summary::-webkit-details-marker { display: none; }
+.setting-group-advanced > summary:hover { border-color: var(--accent); }
+.setting-group-advanced > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.setting-group-advanced > summary .adv-count { margin-left: auto; font: 400 11px var(--mono);
+  color: var(--faint); }
+.setting-group-advanced[open] > summary { margin-bottom: 6px; }
 .setting-compact { position: relative; display: grid; align-items: center;
   grid-template-columns: 12.6em minmax(0, 1fr) 2.4em; column-gap: 5px;
   margin-bottom: 2px; min-height: 24px; font-size: 12px; }
@@ -417,7 +476,7 @@ body.rotate-dragging * {
 .setting-compact.setting-wide > .seed-row { grid-column: 2 / 4; margin: 0; }
 .setting-compact.setting-wide select { font-size: 12px; padding: 2px 4px; }
 .setting-compact .seed-row input { min-width: 0; flex: 1; padding: 2px 6px; font-size: 12px; }
-.setting-compact.setting-switch .switch { grid-column: 3; justify-self: end; }
+.setting-compact.setting-switch .switch { grid-column: 2; justify-self: start; }
 .setting-info { flex: none; width: 15px; height: 15px; padding: 0; border-radius: 50%;
   border: 1px solid var(--line-strong); background: transparent; color: var(--muted);
   font: italic 600 10px/13px Georgia, serif; text-align: center; cursor: help; }
@@ -440,16 +499,22 @@ body.rotate-dragging * {
 .switch { position: relative; flex: none; cursor: pointer; line-height: 0; }
 .switch input { position: absolute; inset: 0; width: 100%; height: 100%;
   margin: 0; opacity: 0; cursor: pointer; }
-.switch-track { display: block; width: 34px; height: 18px; border-radius: 9px;
-  background: var(--field); border: 1px solid var(--line-strong);
-  transition: background .12s, border-color .12s; }
-.switch-track::after { content: ""; display: block; width: 12px; height: 12px;
-  margin: 2px; border-radius: 50%; background: var(--muted);
-  transition: transform .12s, background .12s; }
-.switch input:checked + .switch-track { background: var(--accent-soft);
-  border-color: var(--accent); }
-.switch input:checked + .switch-track::after { background: var(--accent);
-  transform: translateX(16px); }
+/* The switch says what it is set to, On or Off, beside its knob: a slide
+   alone did not read as on or off. The words are in the markup, so they are
+   translated; the pill grows to fit a longer one. */
+.switch-track { position: relative; display: inline-flex; align-items: center; box-sizing: border-box;
+  min-width: 50px; height: 20px; padding: 0 7px 0 21px; border-radius: 10px;
+  background: var(--field); border: 1px solid var(--line-strong); color: var(--muted);
+  font: 700 9px/1 var(--font); letter-spacing: .06em; text-transform: uppercase;
+  transition: background .12s, border-color .12s, padding .12s; }
+.switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--muted); transition: left .12s, background .12s; }
+.switch-track .sw-on { display: none; }
+.switch input:checked + .switch-track { background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); padding: 0 21px 0 7px; }
+.switch input:checked + .switch-track::after { background: var(--accent); left: calc(100% - 16px); }
+.switch input:checked + .switch-track .sw-on { display: inline; }
+.switch input:checked + .switch-track .sw-off { display: none; }
 .switch input:focus-visible + .switch-track { outline: 2px solid var(--accent);
   outline-offset: 2px; }
 .switch:hover .switch-track { border-color: var(--accent); }
@@ -625,7 +690,7 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 /* Under the settings, once a map is open: what has been moved since it was
    made, and the button that puts it in. Quieter than the upgrade note - it is
    an offer, not something the map is waiting on. */
-.reapply { margin: 10px 0 0; padding: 9px 11px; border: 1px solid var(--line-strong);
+.reapply { margin: 0; padding: 9px 11px; border: 1px solid var(--line-strong);
   border-radius: 6px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
 .reapply[hidden] { display: none; }
 .reapply .hint { flex: 1 1 180px; margin: 0; }
@@ -678,6 +743,13 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .edit-selected .hint { flex: 1 1 120px; margin: 0; }
 .edit-selected small { opacity: .6; }
 .edit-selected .btn, .edit-selected select { font-size: 12px; padding: 4px 8px; }
+/* The Add tab's selection, at its top: plain to see when something is
+   picked, a quiet line saying so when nothing is. */
+#sketchPicked { margin: 0 0 8px; border: 1px solid var(--accent); background: var(--accent-soft); }
+#sketchPicked .hint { color: var(--text); font-weight: 600; font-size: 13px; }
+#sketchPicked.is-empty { padding: 5px 10px; border: 1px dashed var(--line); background: none; }
+#sketchPicked.is-empty .hint { color: var(--faint); font-weight: 400; font-size: 12px; }
+.sketch-rect { margin: 0 0 8px; }
 /* Why the clicked building is not on the map. Its own line under the row,
    because the remedy is a sentence and not a label. */
 .why { flex: 1 1 100%; font-size: 12px; line-height: 1.45; margin-top: 2px;
@@ -808,14 +880,39 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .palette-group { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .palette-head { flex: 0 0 100%; font-size: 11px; letter-spacing: .04em;
   text-transform: uppercase; color: var(--muted); margin-bottom: 1px; }
+/* Folded (the Add tab): each heading a section that opens on a click. */
+.palette-group.palette-fold { display: block; border: 1px solid var(--line); border-radius: 6px; }
+.palette-fold > summary { list-style: none; display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  cursor: pointer; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.palette-fold > summary::-webkit-details-marker { display: none; }
+.palette-fold > summary:hover { color: var(--text); }
+.palette-fold > summary .count { margin-left: auto; font-family: var(--mono); color: var(--faint);
+  text-transform: none; letter-spacing: 0; }
+.palette-fold > .palette-items { display: flex; flex-wrap: wrap; gap: 4px; padding: 0 8px 8px; }
 
 /* ---- zones with settings of their own -------------------------------- */
 .zone-list { list-style: none; margin: 8px 0 0; padding: 0; }
-.zone-list li { display: flex; align-items: center; gap: 6px; padding: 4px 6px;
-  border: 1px solid var(--line); border-radius: 4px; margin-bottom: 4px;
-  font-size: 13px; cursor: pointer; }
+/* Over the settings in Properties when zones change some of them. */
+.zones-notice { margin: 0 0 8px; font-size: 12px; color: var(--text);
+  background: var(--warn-soft); border: 1px solid var(--changed); border-radius: 6px; }
+.zones-notice[hidden] { display: none; }
+.zones-notice > summary { display: flex; align-items: center; gap: 4px; padding: 6px 10px; }
+.zones-notice > summary::before { border-color: var(--changed); }
+.zones-notice > summary:hover { color: var(--changed); }
+.zones-notice-list { list-style: none; margin: 0; padding: 0 8px 8px; display: grid; gap: 4px; }
+.zones-notice-list button { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  padding: 5px 8px; font: inherit; font-size: 12px; text-align: left; cursor: pointer; color: var(--text);
+  background: var(--panel); border: 1px solid var(--line); border-radius: 5px; }
+.zones-notice-list button:hover { border-color: var(--changed); }
+.zones-notice-list span { color: var(--muted); font-size: 11px; }
+.zone-list li { border: 1px solid var(--line); border-radius: 6px; margin-bottom: 6px; font-size: 13px; }
 .zone-list li.on { border-color: var(--accent); }
-.zone-list .zone-what { flex: 1 1 auto; color: var(--muted); font-size: 11px; }
+.zone-head { display: flex; align-items: center; gap: 6px; padding: 6px 8px; cursor: pointer; }
+.zone-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 6px; }
+.zone-name { font-weight: 600; flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-list .zone-what { flex: 1 1 0; min-width: 0; color: var(--muted); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.zone-list li > .zone-editor { margin: 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
 .zone-list button { font: inherit; font-size: 11px; cursor: pointer;
   color: var(--text); background: transparent; border: 1px solid var(--line-strong);
   border-radius: 3px; padding: 1px 6px; }
@@ -833,7 +930,34 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
   width: 7em; padding: 2px 4px; color: var(--text); background: transparent;
   border: 1px solid var(--line-strong); border-radius: 3px; }
 .zone-editor input[type="text"] { width: 10em; }
-.zone-editor .zone-set { border-color: var(--accent); }
+.zone-editor .zone-set { border-color: var(--changed); color: var(--changed); }
+/* What a zone sets, yellow as a changed setting is in Properties. */
+/* A zone setting: its name and (i), its box, and the description the (i)
+   shows, laid over the rows below like a setting's in Properties. */
+.zone-editor .zone-setting { position: relative; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; margin-bottom: 4px; }
+.zone-editor .zone-label { flex: 1 1 auto; color: var(--muted); }
+.zone-editor .zone-label .setting-info { margin-left: 4px; vertical-align: 1px; }
+/* The zone list's own button look (Remove) would make it a square. */
+.zone-list .zone-setting .setting-info { width: 15px; height: 15px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line-strong); font: italic 600 10px/13px Georgia, serif; color: var(--muted); }
+.zone-list .zone-setting .setting-info:hover,
+.zone-list .zone-setting .setting-info:focus-visible { color: var(--text); border-color: var(--accent); }
+.zone-setting .setting-hint { display: none; position: absolute; z-index: 10;
+  top: 100%; left: 0; right: 0; margin-top: 2px; padding: 6px 8px;
+  font-size: 12px; line-height: 1.35; color: var(--text); background: var(--field);
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); pointer-events: none; }
+.zone-setting:has(.setting-info:hover) .setting-hint,
+.zone-setting:has(.setting-info:focus-visible) .setting-hint,
+.zone-setting.hint-open .setting-hint { display: block; }
+.zone-setting.hint-up .setting-hint { top: auto; bottom: 100%; margin: 0 0 2px; }
+.zone-editor .zone-setting.is-changed .zone-label { color: var(--changed); font-weight: 700; }
+.zone-editor .zone-setting.is-changed select { border-color: var(--changed); color: var(--changed); }
+.zone-editor label.is-changed > span { color: var(--changed); font-weight: 700; }
+.zone-editor label.is-changed select { border-color: var(--changed); color: var(--changed); }
+.zone-editor label.is-changed input[type="checkbox"] { accent-color: var(--changed); }
+.zone-list li.is-changed .zone-name { color: var(--changed); }
 .zone-preset { display: flex; align-items: center; gap: 6px; font-size: 12px;
   margin-bottom: 3px; }
 .zone-preset span { flex: 1 1 auto; color: var(--text); }
@@ -866,6 +990,36 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .kd-bar .btn { font-size: 12px; padding: 4px 10px; width: auto; }
 .kd-bar .btn:disabled { opacity: .45; cursor: default; }
 .kd-bar .btn.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* The editing buttons in groups, each group one joined strip; Clear at the
+   end on its own (draw.js toolbar). */
+.kd-bar { gap: 8px; }
+.kd-group { display: inline-flex; }
+.kd-group .btn { margin: 0; border-radius: 0; }
+.kd-group .btn + .btn { margin-left: -1px; }
+.kd-group .btn:first-child { border-radius: 6px 0 0 6px; }
+.kd-group .btn:last-child { border-radius: 0 6px 6px 0; }
+.kd-group .btn:only-child { border-radius: 6px; }
+.kd-group .btn:not(:disabled):hover, .kd-group .btn:focus-visible { position: relative; z-index: 1; }
+.kd-group-clear { margin-left: auto; }
+.kd-bar .btn.kd-icon-only { padding: 4px 7px; }
+.kd-bar .btn { white-space: nowrap; }
+/* In the narrow Tools panel, two lines: Undo and Redo with Clear across from
+   them, then the shape buttons sharing the width. */
+.ws-tool-pane .kd-bar { display: grid; grid-template-columns: auto 1fr auto; gap: 6px; }
+.ws-tool-pane .kd-group-history { grid-area: 1 / 1; }
+.ws-tool-pane .kd-group-clear { grid-area: 1 / 3; margin-left: 0; }
+.ws-tool-pane .kd-group-shape { grid-column: 1 / -1; grid-row: 2; display: flex; }
+.ws-tool-pane .kd-group-shape .btn { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
+/* The Change tab's buttons: Load and Move and reshape across, Save and Undo
+   all side by side. */
+#editMap .sketch-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#editMap .sketch-actions .btn { white-space: nowrap; margin: 0; }
+#editLoad, #editShape { grid-column: 1 / -1; }
+.ws-draw-btns .btn { white-space: nowrap; padding-inline: 6px; }
+.kd-ico { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
+  stroke-linecap: round; stroke-linejoin: round; }
+.btn:has(> .kd-ico) { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.kd-bar .kd-clear:not(:disabled):hover, .btn.kd-danger:not(:disabled):hover { color: var(--bad); border-color: var(--bad); }
 
 /* The building editor: the picked room's outline, the size of a drag, and the
    tile under the pointer. */

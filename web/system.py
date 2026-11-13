@@ -225,8 +225,8 @@ def _setup_report() -> dict:
         {"id": "compiler", "ok": bool(cli), "label": "Patched map compiler",
          "fix": f"Run {setup}, or compile by hand with Open in WorldEd."},
         {"id": "game", "ok": bool(game), "label": "Project Zomboid install",
-         "fix": ("Put the folder your Steam games are in under Steam libraries "
-                 f"above - the game's own folder works too - or run {setup} and "
+         "fix": ("Put the folder your Steam games are in under Edit, Steam "
+                 f"libraries - the game's own folder works too - or run {setup} and "
                  "paste the path when it asks."
                  + (" On a Mac the game lives inside ProjectZomboid.app; that "
                     "path is fine, and so is anything above it."

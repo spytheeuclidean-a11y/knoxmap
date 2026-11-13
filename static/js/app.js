@@ -51,7 +51,9 @@ window.addEventListener('unhandledrejection', e =>
   sendPageError((e.reason && e.reason.message) || e.reason, 'unhandled promise',
                 e.reason && e.reason.stack));
 
-const map = L.map('map', { zoomControl: true }).setView([38.0406, -84.5037], 14);
+// It opens on the whole world rather than one town: a place is found from
+// there by the search, or zoomed into and drawn.
+const map = L.map('map', { zoomControl: true, worldCopyJump: true }).setView([20, 0], 2);
 // Tiles through KnoxMap's own server, which follows the OSM tile policy -
 // see the /tiles route in app.py.
 L.tileLayer('/tiles/{z}/{x}/{y}.png', {
@@ -76,6 +78,37 @@ map.addControl(drawControl);
 
 let currentRect = null;
 let rotateHandleMarker = null;
+// The handle that turns the area shows only while it is being reshaped
+// (Reshape, in the Tools panel's Area tab); the rest of the time the area is
+// just a shape on the map.
+let areaReshaping = false;
+map.on('draw:editstart', () => { areaReshaping = true; updateRotateHandle(); });
+map.on('draw:editstop', () => { areaReshaping = false; updateRotateHandle(); });
+// A corner moved: the handle turns the shape as it now is, not as it was
+// before, or the next turn would put the corner back.
+map.on('draw:editvertex draw:editresize draw:editmove', () => {
+  if (!currentRect) return;
+  currentRect._pivot = calculatePivot(currentRect);
+  currentRect._origPoints = getShapeLatLngs(currentRect);
+  currentRect._rotationAngle = 0;
+  updateRotateHandle();
+});
+// Turning the area replaces its points - a box or a circle becomes a new
+// polygon - and Leaflet.draw's corner markers stay on the old ones: a corner
+// dragged after that moves its marker and not the shape. So a turn made
+// while reshaping starts the reshape again, on the turned shape.
+function restartReshape() {
+  if (!areaReshaping) return;
+  const edit = drawControl._toolbars.edit && drawControl._toolbars.edit._modes.edit;
+  if (!edit || !edit.handler.enabled()) return;
+  edit.handler.disable();
+  // The polygon editor keeps the point list it was made with; give it the
+  // turned one (the same call Leaflet.draw makes when an edit is undone).
+  if (currentRect && currentRect.editing && currentRect.editing._updateLatLngs) {
+    currentRect.editing._updateLatLngs({ layer: currentRect });
+  }
+  edit.handler.enable();
+}
 let rotateHandleStem = null;
 let isRotatingSelection = false;
 
@@ -213,7 +246,7 @@ function removeRotateHandle() {
 }
 
 function updateRotateHandle() {
-  if (!currentRect || !drawnItems.hasLayer(currentRect)) {
+  if (!areaReshaping || !currentRect || !drawnItems.hasLayer(currentRect)) {
     removeRotateHandle();
     return;
   }
@@ -309,6 +342,7 @@ function rotateSelectionBy(deg) {
 
   updateBboxFields();
   updateRotateHandle();
+  restartReshape();
 }
 
 function attachRotateHandleEvents(marker) {
@@ -435,6 +469,7 @@ function attachRotateHandleEvents(marker) {
 
       updateBboxFields();
       updateRotateHandle();
+      restartReshape();
     };
 
     window.addEventListener('mousemove', onMove, true);
@@ -784,13 +819,16 @@ function updateBboxFields() {
       Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b>
       (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.
     </div>` : ''}
+  `;
+  // The warnings about its size are about the whole map, so they are said at
+  // the top of Properties rather than under the numbers.
+  document.getElementById('areaWarnings').innerHTML = `
     ${heavy.length ? `<div class="stat-note warn">${heavy.join(' ')}
       You can still build it — this is a heads-up, not a wall.
       ${fitScale ? `<button type="button" class="use-scale" data-scale="${fitScale.mpt}">Use ${fitScale.mpt} m/tile
         (${fitScale.side} tiles a side, ${fitScale.bitmap})</button>` : ''}</div>` : ''}
     ${slow ? `<div class="stat-note warn">A big map — Generate map will take ${takes},
-      mostly OpenStreetMap downloads.</div>` : ''}
-  `;
+      mostly OpenStreetMap downloads.</div>` : ''}`;
   fx.countUp(stats);
   loadForecast(s, w, n, e, mpt);
   btn.disabled = false;
@@ -851,11 +889,14 @@ function clearBboxFields() {
   });
   const stats = document.getElementById('area-stats');
   stats.className = 'empty';
+  document.getElementById('areaWarnings').innerHTML = '';
   stats.innerHTML = `<div class="empty-state">
     Draw an area on the map - rectangle, polygon, circle or freehand - to see what you'll get.</div>`;
   document.getElementById('generateBtn').disabled = true;
   document.getElementById('landmarksBtn').disabled = true;
   document.getElementById('landmark-results').innerHTML = '';
+  const count = document.getElementById('landmarkCount');
+  if (count) count.textContent = '';
   fx.resetFrom('area');
   updateRotateHandle();
 }
@@ -899,7 +940,7 @@ function scaleThatFits(widthM, heightM, current) {
   return null;
 }
 
-document.getElementById('area-stats').addEventListener('click', ev => {
+document.getElementById('areaWarnings').addEventListener('click', ev => {
   const btn = ev.target.closest('.use-scale');
   if (!btn) return;
   document.getElementById('metersPerTile').value = btn.dataset.scale;
@@ -1157,6 +1198,12 @@ loadPresets();
 // ---- setup check -----------------------------------------------------------------
 
 let setupChecking = false;
+const SETUP_DISMISSED = 'knoxmap.setup.dismissed';
+document.getElementById('setupDismiss').addEventListener('click', () => {
+  const card = document.getElementById('setupCard');
+  try { localStorage.setItem(SETUP_DISMISSED, card.dataset.problems || ''); } catch (_) { /* no storage */ }
+  card.hidden = true;
+});
 
 async function checkSetup() {
   if (setupChecking) return;
@@ -1170,9 +1217,21 @@ async function checkSetup() {
     const script = document.getElementById('setupScript');
     if (script && data.setupCommand) script.textContent = data.setupCommand;
     if (data.ready) { card.hidden = true; return; }
-    document.getElementById('setupList').innerHTML = data.checks.map(c =>
-      `<li class="${c.ok ? 'ok' : 'missing'}"><span>${c.ok ? '✓' : '✗'}</span>
-        <b>${escapeHtml(c.label)}</b>${c.ok ? '' : ` — ${escapeHtml(c.fix)}`}</li>`).join('');
+    // Only what is wrong, each a heading whose fix folds open under it. A
+    // dismissed card stays away until the list of what is wrong changes.
+    const missing = data.checks.filter(c => !c.ok);
+    const key = missing.map(c => c.label).join('|');
+    let dismissed = '';
+    try { dismissed = localStorage.getItem(SETUP_DISMISSED) || ''; } catch (_) { /* no storage */ }
+    if (!missing.length || dismissed === key) { card.hidden = true; return; }
+    card.dataset.problems = key;
+    const list = document.getElementById('setupList');
+    // Checked again on every return to the window: what was open stays open.
+    const open = new Set([...list.querySelectorAll('details[open]')].map(d => d.dataset.check));
+    list.innerHTML = missing.map(c =>
+      `<li class="missing"><details data-check="${escapeHtml(c.label)}"${open.has(c.label) ? ' open' : ''}>
+        <summary><span>✗</span> <b>${escapeHtml(c.label)}</b></summary>
+        <p>${escapeHtml(c.fix)}</p></details></li>`).join('');
     card.hidden = false;
   } catch (_) { /* the page still works without the check */ }
   finally { setupChecking = false; }
@@ -1975,6 +2034,12 @@ loadMaps();
 
 document.getElementById('generateBtn').addEventListener('click', async () => {
   if (!currentRect) return;
+  // Only what I draw with nothing drawn downloads nothing and builds nothing:
+  // say so, rather than switching it off behind the user's back.
+  if (document.getElementById('drawnOnly').checked
+      && typeof sketchCount === 'function' && !sketchCount()
+      && !window.confirm('Only what I draw is on, but nothing is drawn under Features: '
+        + 'the map will be bare ground.\n\nGenerate it anyway?')) return;
 
   // A big map ties the app up for a long while, so say how big and how long
   // before starting rather than after.
@@ -2329,7 +2394,6 @@ const searchInput = document.getElementById('searchInput');
 const searchResults = document.getElementById('search-results');
 const searchHere = document.getElementById('searchHere');
 let searchTimer = null;
-let searchMarker = null;
 
 function setRectFromBounds(bounds) {
   setSelection(L.rectangle(bounds, SEL_STYLE));
@@ -2366,6 +2430,24 @@ function hideSearchResults() {
   searchResults.innerHTML = '';
 }
 
+// A found place on the map: there, with a box round it as the extent (and no
+// pin: the box says where it is) - or
+// its real boundary, when it has one and that is asked for. The search box
+// at the top and Home's Find a place both end here.
+function goToPlace(r) {
+  const bounds = boundsForResult(r);
+  map.fitBounds(bounds, { padding: [30, 30] });
+  setRectFromBounds(bounds);
+  hideSearchResults();
+  searchInput.value = r.name;
+}
+function goToOutline(r) {
+  const bounds = setOutline(r.outline);
+  map.fitBounds(bounds, { padding: [30, 30] });
+  hideSearchResults();
+  searchInput.value = r.name;
+}
+
 function renderSearchResults(results) {
   if (!results.length) {
     searchResults.innerHTML = '<li class="empty">No matches.</li>';
@@ -2388,26 +2470,12 @@ function renderSearchResults(results) {
   searchResults.querySelectorAll('button[data-outline]').forEach(btn => {
     btn.addEventListener('click', (ev) => {
       ev.stopPropagation();
-      const r = results[parseInt(btn.dataset.outline, 10)];
-      const bounds = setOutline(r.outline);
-      map.fitBounds(bounds, { padding: [30, 30] });
-      hideSearchResults();
-      searchInput.value = r.name;
+      goToOutline(results[parseInt(btn.dataset.outline, 10)]);
     });
   });
 
   searchResults.querySelectorAll('li[data-i]').forEach(li => {
-    li.addEventListener('click', () => {
-      const r = results[parseInt(li.dataset.i, 10)];
-      const bounds = boundsForResult(r);
-      map.fitBounds(bounds, { padding: [30, 30] });
-      setRectFromBounds(bounds);
-      if (searchMarker) map.removeLayer(searchMarker);
-      searchMarker = L.marker([r.lat, r.lon]).addTo(map)
-        .bindPopup(escapeHtml(r.name)).openPopup();
-      hideSearchResults();
-      searchInput.value = r.name;
-    });
+    li.addEventListener('click', () => goToPlace(results[parseInt(li.dataset.i, 10)]));
   });
 }
 
@@ -2460,6 +2528,11 @@ document.getElementById('landmarksBtn').addEventListener('click', async () => {
   const out = document.getElementById('landmark-results');
   btn.disabled = true;
   out.innerHTML = '<div class="hint">Looking…</div>';
+  // Its widget on the map unfolds for a new look (it may have been folded
+  // away, and the menu's List named places presses this button too).
+  btn.closest('.ws-legend')?.classList.remove('shut');
+  const count = document.getElementById('landmarkCount');
+  if (count) count.textContent = '';
 
   try {
     const res = await fetch('/api/landmarks', {
@@ -2482,6 +2555,8 @@ document.getElementById('landmarksBtn').addEventListener('click', async () => {
 function renderLandmarks(items) {
   const out = document.getElementById('landmark-results');
   landmarkMarkers.clearLayers();
+  const count = document.getElementById('landmarkCount');
+  if (count) count.textContent = items.length || '';
   if (!items.length) {
     out.innerHTML = '<div class="hint">Nothing named in this area.</div>';
     return;
@@ -2602,14 +2677,22 @@ function runListSearch(boxId) {
   // and not seen. The panel is marked so its toggle handler does not save
   // the search's opening as the user's own choice.
   if (found.query) {
-    for (const panel of box.querySelectorAll('details.setting-group-advanced')) {
+    for (const panel of box.querySelectorAll('details.setting-group-advanced, details.palette-fold')) {
       if (!panel.open && panel.querySelector(`${found.item}:not(.out-of-search)`)) {
         panel.dataset.searchOpened = '1';
         panel.open = true;
       }
     }
+  } else {
+    // A folded palette section the search opened folds again when it ends.
+    for (const panel of box.querySelectorAll('details.palette-fold[data-search-opened]')) {
+      delete panel.dataset.searchOpened;
+      panel.open = false;
+    }
   }
   found.input.classList.toggle('found-nothing', Boolean(words.length) && !shown);
+  // A list drawn in parts (the settings' tabs) shows its matches its own way.
+  box.dispatchEvent(new CustomEvent('listsearch', { detail: { query: found.query } }));
 }
 
 // Every list in the window long enough to be worth searching. The last number
@@ -2617,8 +2700,6 @@ function runListSearch(boxId) {
 searchableList('settingFind', 'advanced-body', '.setting', '.setting-group', 8);
 searchableList('sketchFind', 'sketchPalette', '.sketch-pick', '.palette-group', 12);
 searchableList('boardFind', 'boardPalette', '.sketch-pick', '.palette-group', 12);
-searchableList('zoneFind', 'zoneList', 'li', null, 6);
-searchableList('zoneSettingFind', 'zoneEditor', 'label.zone-row', null, 6);
 searchableList('builtFind', 'builtList', 'li', null, 6);
 searchableList('bdFind', 'bdRooms', '.sketch-pick', '.palette-group', 12);
 

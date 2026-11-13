@@ -26,6 +26,7 @@ const sketchEd = KnoxDraw.create(map, {
   label: kind => sketchLabel(kind),
   note: text => noteSketch(text),
   pickedBox: document.getElementById('sketchPicked'),
+  emptyPicked: 'No selection',
   palette: document.getElementById('sketchPalette'),
   active: () => document.getElementById('sketch').open
                 && document.getElementById('board').hidden,
@@ -33,7 +34,13 @@ const sketchEd = KnoxDraw.create(map, {
   onStart: () => { zoneEd.stop(); disarmAreaToolbar(); },
   onChange: () => { showSketchCount(); refreshSketchTools(); },
 });
-refreshSketchTools = KnoxDraw.toolbar(document.getElementById('sketchTools'), sketchEd);
+refreshSketchTools = KnoxDraw.toolbar(document.getElementById('sketchTools'), sketchEd, { rect: false });
+// Draw areas as boxes: the Add tab's switch for the editor's rectangle mode.
+document.getElementById('sketchRect').addEventListener('change', ev => {
+  sketchEd.setRect(ev.target.checked);
+  // Off unless asked for: on is a change, yellow like one.
+  ev.target.closest('.setting').classList.toggle('is-changed', ev.target.checked);
+});
 
 // What each category looks like while it is being drawn. Close enough to the
 // finished map to recognise, not so close it is mistaken for it.
@@ -60,7 +67,9 @@ function sketchLabel(kind) {
 
 // Under headings, in the server's order. Thirty-four tools in one run is a
 // wall to read, and nobody hunting for "Hedge" wants to scan past "Motorway".
-function paletteMarkup() {
+// Folded, each heading is a section that starts closed (the Add tab); the
+// search opens the ones it finds something in.
+function paletteMarkup(folded = false) {
   const groups = [];
   for (const entry of sketchPalette) {
     const name = entry.group || 'Other';
@@ -68,14 +77,21 @@ function paletteMarkup() {
     if (!last || last.name !== name) groups.push({ name, items: [entry] });
     else last.items.push(entry);
   }
-  return groups.map(g => `<div class="palette-group">
-      <span class="palette-head">${escapeHtml(g.name)}</span>
-      ${g.items.map(e => `<button type="button" class="sketch-pick"
+  const picks = g => g.items.map(e => `<button type="button" class="sketch-pick"
         data-kind="${e.id}" data-geometry="${e.geometry}"
         title="${escapeHtml(Object.entries(e.tags)
           .map(([k, v]) => k + '=' + v).join(', '))}">
         <span class="swatch" style="background:${SKETCH_COLOURS[e.category] || '#3d8bfd'}"></span>
-        ${escapeHtml(e.label)}</button>`).join('')}
+        ${escapeHtml(e.label)}</button>`).join('');
+  if (folded) {
+    return groups.map(g => `<details class="palette-group palette-fold">
+        <summary><span>${escapeHtml(g.name)}</span><span class="count">${g.items.length}</span></summary>
+        <div class="palette-items">${picks(g)}</div>
+      </details>`).join('');
+  }
+  return groups.map(g => `<div class="palette-group">
+      <span class="palette-head">${escapeHtml(g.name)}</span>
+      ${picks(g)}
     </div>`).join('');
 }
 
@@ -90,7 +106,7 @@ async function loadSketchPalette() {
     e => ({ ...e, category: (data.categories || {})[e.id] }));
   const box = document.getElementById('sketchPalette');
   if (!box) return;
-  box.innerHTML = paletteMarkup();
+  box.innerHTML = paletteMarkup(true);
   runListSearch('sketchPalette');
 }
 
@@ -107,8 +123,6 @@ function showSketchCount() {
   const badge = document.getElementById('sketchCount');
   const n = sketchCount();
   if (badge) badge.textContent = n ? `(${n})` : '';
-  const only = document.getElementById('drawnOnly');
-  if (only && !n) only.checked = false;
 }
 
 // What is drawn, as GeoJSON with the palette id on it.
@@ -140,11 +154,6 @@ function loadSketchGeoJSON(drawn) {
   sketchEd.replace(items);
 }
 
-document.getElementById('drawnOnly').addEventListener('change', ev => {
-  noteSketch(ev.target.checked
-    ? 'Nothing will be downloaded: the map is only what you have drawn.'
-    : 'What you draw goes in on top of what is on OpenStreetMap.');
-});
 
 loadSketchPalette();
 
@@ -1033,13 +1042,69 @@ function zoneSummary(zone) {
   return bits.join(' · ');
 }
 
+// Each zone a foldable item: its heading (name, what is different, Remove)
+// and, when open, its settings - the one zone editor, moved into it. The
+// list is redrawn for every keystroke in a zone's name, so a row that is
+// already there is updated in place: rebuilding it would take the editor,
+// and the box being typed in, out of the page.
+// The zones that set something of their own, said over the settings in
+// Properties: they are what those settings are not, in parts of the map.
+// Opened, it lists each one and what it sets; a zone there opens it in the
+// Zones tab.
+function zoneSets(zone) {
+  const bits = Object.entries(zone.settings || {}).map(([k, v]) => {
+    const name = SETTING_LABELS[k] ? SETTING_LABELS[k][0] : k;
+    const meta = (zoneMeta && zoneMeta.settings || []).find(s => s.id === k);
+    return `${name} ${meta && zoneSwitchable(meta) ? (v ? 'On' : 'Off') : v}`;
+  });
+  if (zone.wall_style) bits.push(`Walls ${zone.wall_style}`);
+  if ((zone.presets || []).length) bits.push(`${zone.presets.length} hand-built`);
+  return bits;
+}
+function showZonesNotice() {
+  const note = document.getElementById('zonesNotice');
+  if (!note) return;
+  const setting = zoneList.map((z, i) => [z, i]).filter(([z]) => zoneSets(z).length);
+  note.hidden = !setting.length;
+  note.querySelector('.zones-notice-what').textContent = setting.length === 1
+    ? 'One zone changes settings in part of the map'
+    : `${setting.length} zones change settings in parts of the map`;
+  note.querySelector('.zones-notice-list').innerHTML = setting.map(([z, i]) =>
+    `<li><button type="button" data-zone-open="${i}" title="Open it under Tools, Zones">
+       <b>${escapeHtml(z.name || 'Zone ' + (i + 1))}</b>
+       <span>${escapeHtml(zoneSets(z).join(' · '))}</span></button></li>`).join('');
+}
+document.getElementById('zonesNotice').addEventListener('click', ev => {
+  const open = ev.target.closest('[data-zone-open]');
+  if (!open) return;
+  document.querySelector('.ws-tool-tabs [data-tool="zone"]')?.click();
+  zonePick(parseInt(open.dataset.zoneOpen, 10));
+});
+
 function drawZoneList() {
+  showZonesNotice();
   const box = document.getElementById('zoneList');
-  box.innerHTML = zoneList.map((z, i) => `<li data-i="${i}" class="${i === zonePicked ? 'on' : ''}">
-      <span>${escapeHtml(z.name || 'Zone ' + (i + 1))}</span>
-      <span class="zone-what">${escapeHtml(zoneSummary(z))}</span>
-      <button type="button" data-drop="${i}">Remove</button></li>`).join('');
-  runListSearch('zoneList');
+  const editor = document.getElementById('zoneEditor');
+  if (box.children.length !== zoneList.length) {
+    box.after(editor);                       // parked while the rows are rebuilt
+    box.innerHTML = zoneList.map((z, i) => `<li data-i="${i}" class="zone-item">
+        <div class="zone-head" role="button" tabindex="0" aria-expanded="false">
+          <span class="zone-caret" aria-hidden="true"></span>
+          <span class="zone-name"></span><span class="zone-what"></span>
+          <button type="button" data-drop="${i}">Remove</button></div></li>`).join('');
+  }
+  zoneList.forEach((z, i) => {
+    const li = box.children[i];
+    // A zone that sets anything is a change from the map, so yellow like one.
+    li.classList.toggle('is-changed', zoneSets(z).length > 0);
+    li.querySelector('.zone-name').textContent = z.name || 'Zone ' + (i + 1);
+    li.querySelector('.zone-what').textContent = zoneSummary(z);
+    li.classList.toggle('on', i === zonePicked);
+    li.querySelector('.zone-head').setAttribute('aria-expanded', String(i === zonePicked));
+  });
+  const open = box.children[zonePicked];
+  if (open && editor.parentElement !== open) open.appendChild(editor);
+  else if (!open && editor.parentElement !== box.parentElement) box.after(editor);
   // The list is redrawn for every change a zone has in it, so this is where
   // what the map says about it is kept up to date.
   zoneList.forEach((z, i) => {
@@ -1059,11 +1124,63 @@ function zonePick(i) {
   drawZoneEditor();
 }
 
+// What the map itself is set to, in Properties: what a zone's empty box means.
+function zoneMapValue(setting) {
+  const el = document.querySelector(`#advanced-body [data-key="${setting.id}"]`);
+  if (!el) return setting.default;
+  if (el.type === 'checkbox') return el.checked ? 1 : 0;
+  return el.value.trim() === '' ? setting.default : el.value;
+}
+function zoneMapWord(setting) {
+  return Number(zoneMapValue(setting)) ? 'As the map is (On)' : 'As the map is (Off)';
+}
+// Properties changed: the open zone's empty boxes show the new values.
+function refreshZonePlaceholders() {
+  if (!zoneMeta) return;
+  for (const s of zoneMeta.settings) {
+    const el = document.querySelector(`#zoneEditor [data-zone-key="${s.id}"]`);
+    if (!el) continue;
+    if (el.tagName === 'SELECT') el.options[0].textContent = zoneMapWord(s);
+    else el.placeholder = zoneMapValue(s);
+  }
+}
+for (const ev of ['input', 'change']) {
+  document.getElementById('advanced-body').addEventListener(ev, refreshZonePlaceholders);
+}
+document.getElementById('preset').addEventListener('change', () => setTimeout(refreshZonePlaceholders, 0));
+
 // A zone setting that is only ever 0 or 1: it gets on, off, or nothing at
 // all, rather than a box to type 1 into.
 function zoneSwitchable(setting) {
   return setting.int && setting.min === 0 && setting.max === 1;
 }
+
+// In the open zone, what it sets is yellow: the setting's name and its box,
+// its walls, the hand-built buildings ticked - as a setting moved off its
+// default is in Properties.
+// A zone setting's name with an (i), and the description it shows - the
+// same markup and behaviour as a setting in Properties (wireSettingInfo).
+function zoneInfoName(name, about) {
+  return `<span class="zone-label">${escapeHtml(name)}${about
+    ? `<button type="button" class="setting-info" aria-label="About ${escapeHtml(name)}"
+        aria-expanded="false">i</button>` : ''}</span>`;
+}
+function zoneInfoHint(about) {
+  return about ? `<span class="setting-hint" role="tooltip">${escapeHtml(about)}</span>` : '';
+}
+
+function markZoneEditor() {
+  const box = document.getElementById('zoneEditor');
+  for (const row of box.querySelectorAll('label, .zone-setting')) {
+    const field = row.querySelector('[data-zone-key], #zoneStyle, [data-building-preset]');
+    if (!field) continue;
+    const set = field.matches('[data-building-preset]') ? field.checked
+      : field.matches('#zoneStyle') ? !!field.value : field.classList.contains('zone-set');
+    row.classList.toggle('is-changed', set);
+  }
+}
+document.getElementById('zoneEditor').addEventListener('input', () => setTimeout(markZoneEditor, 0));
+document.getElementById('zoneEditor').addEventListener('change', () => setTimeout(markZoneEditor, 0));
 
 function drawZoneEditor() {
   const box = document.getElementById('zoneEditor');
@@ -1071,7 +1188,6 @@ function drawZoneEditor() {
   if (!zone || !zoneMeta) {
     box.hidden = true;
     box.innerHTML = '';
-    runListSearch('zoneEditor');     // and its search box goes with it
     return;
   }
   box.hidden = false;
@@ -1097,26 +1213,31 @@ function drawZoneEditor() {
   box.innerHTML = `
     <label><span>Name</span>
       <input type="text" id="zoneName" value="${escapeHtml(zone.name || '')}"></label>
-    <label><span>Walls</span><select id="zoneStyle">${styles.join('')}</select></label>
+    <div class="zone-row zone-setting">${zoneInfoName('Walls',
+        'Every building made in this zone gets these walls. Left as it is, the map\'s own choice is used.')}
+      <select id="zoneStyle" aria-label="Walls">${styles.join('')}</select>${zoneInfoHint(
+        'Every building made in this zone gets these walls. Left as it is, the map\'s own choice is used.')}</div>
     ${presetBox}
     <p class="hint">Leave a box empty and the map's own setting is used there.</p>
-    ${zoneMeta.settings.map(s => `<label class="zone-row"
-      data-find="${escapeHtml(s.id)}"><span>${escapeHtml(SETTING_LABELS[s.id]
-        ? SETTING_LABELS[s.id][0] : s.id)}</span>
+    ${zoneMeta.settings.map(s => `<div class="zone-row zone-setting"
+      data-find="${escapeHtml(s.id)}">${zoneInfoName(SETTING_LABELS[s.id]
+        ? SETTING_LABELS[s.id][0] : s.id, SETTING_LABELS[s.id] && SETTING_LABELS[s.id][1])}
       ${zoneSwitchable(s)
         // On or off, and a third state the number box could not say: leave it
         // to the map. A zone sets what is different about it, not everything.
-        ? `<select data-zone-key="${s.id}"
+        ? `<select data-zone-key="${s.id}" aria-label="${escapeHtml(SETTING_LABELS[s.id] ? SETTING_LABELS[s.id][0] : s.id)}"
              class="${zone.settings[s.id] !== undefined ? 'zone-set' : ''}">
-           <option value="">As the map is</option>
+           <option value="">${zoneMapWord(s)}</option>
            <option value="1"${zone.settings[s.id] === 1 ? ' selected' : ''}>On</option>
            <option value="0"${zone.settings[s.id] === 0 ? ' selected' : ''}>Off</option>
            </select>`
-        : `<input type="number" data-zone-key="${s.id}" min="${s.min}" max="${s.max}"
-             step="${s.int ? 1 : 0.05}" placeholder="${s.default}"
+        : `<input type="number" data-zone-key="${s.id}" aria-label="${escapeHtml(SETTING_LABELS[s.id] ? SETTING_LABELS[s.id][0] : s.id)}" min="${s.min}" max="${s.max}"
+             step="${s.int ? 1 : 0.05}" placeholder="${zoneMapValue(s)}"
              class="${zone.settings[s.id] !== undefined ? 'zone-set' : ''}"
              value="${zone.settings[s.id] !== undefined ? zone.settings[s.id] : ''}">`}
-      </label>`).join('')}`;
+      ${zoneInfoHint(SETTING_LABELS[s.id] && SETTING_LABELS[s.id][1])}</div>`).join('')}`;
+  // Each setting's description behind its (i), as in Properties.
+  box.querySelectorAll('.zone-setting').forEach(wireSettingInfo);
 
   document.getElementById('zoneName').addEventListener('input', ev => {
     zone.name = ev.target.value; zoneDirty(true); drawZoneList();
@@ -1136,7 +1257,7 @@ function drawZoneEditor() {
       drawZoneList();
     });
   }
-  runListSearch('zoneEditor');
+  markZoneEditor();
   for (const input of box.querySelectorAll('[data-zone-key]')) {
     input.addEventListener(input.tagName === 'SELECT' ? 'change' : 'input', ev => {
       const key = ev.target.dataset.zoneKey;
@@ -1247,8 +1368,18 @@ document.getElementById('zoneList').addEventListener('click', ev => {
     zoneEd.remove(zoneList[parseInt(drop.dataset.drop, 10)].layer);
     return;
   }
-  const row = ev.target.closest('li[data-i]');
-  if (row) zonePick(parseInt(row.dataset.i, 10));
+  // The heading opens its zone, or folds it if it is the open one; a click in
+  // the open zone's settings is not a click on the zone.
+  const head = ev.target.closest('.zone-head');
+  if (!head) return;
+  const i = parseInt(head.parentElement.dataset.i, 10);
+  zonePick(i === zonePicked ? -1 : i);
+});
+document.getElementById('zoneList').addEventListener('keydown', ev => {
+  const head = ev.target.closest('.zone-head');
+  if (!head || (ev.key !== 'Enter' && ev.key !== ' ')) return;
+  ev.preventDefault();
+  head.click();
 });
 
 // ...and the other way round: the row under the pointer lights its zone up on

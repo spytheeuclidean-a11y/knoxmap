@@ -6,6 +6,7 @@
 // with the page enforcing last week's bounds.
 
 const SETTING_LABELS = {
+  terrain_only:        ['Terrain only (no buildings)', 'Generates terrain, roads, railways, water and vegetation without placing any buildings.'],
   zombies_per_resident:['Zombies per person', 'Each person who lived or worked here becomes this many zombies.'],
   m2_per_person:       ['Living space (m²)', 'Per resident. Less space means more crowded homes, so more zombies. About 50 in a city, 45 in a town, 60 in a suburb.'],
   spawn_density:       ['Horde cap', 'Most zombies one 10×10 m spot can hold. Vanilla towns peak at 10.'],
@@ -69,12 +70,63 @@ async function loadSettings() {
   buildSettingsForm(settingsMeta.current);
 }
 
-// Settings that belong together are drawn as a card of their own, the most
-// used on show and the rest behind Advanced. A key named here is drawn in its
-// card; any other key in the list as before, so a new group is a table entry.
+// The settings are drawn as tabs, one card each: what a tab is mostly used
+// for on show, the rest behind its own Advanced. A key named nowhere here
+// still appears, in an Other tab, so a new knob is never lost; putting it in
+// its place is a table entry. A part is a block of the page's own fields
+// (.tab-part in index.html) shown at the top of its tab; a partEnd, after
+// the tab's main settings.
 const SETTING_GROUPS = {
+  map: {
+    title: 'Map',
+    icon: '🗺️',
+    part: 'map',
+    partEnd: 'map-area',
+    main: ['terrain_only'],
+    advanced: [],
+  },
+  gameplay: {
+    title: 'Gameplay',
+    icon: '🧟',
+    main: ['zombies_per_resident', 'spawn_density', 'guaranteed_rifle'],
+    advanced: [
+      ['Zombies', ['m2_per_person']],
+      ['Vehicles', ['parking_density']],
+    ],
+  },
+  roads: {
+    title: 'Roads',
+    icon: '🛣️',
+    main: ['true_map', 'straight_roads', 'align_streets'],
+    advanced: [
+      ['Layout', ['rotate_degrees', 'include_proposed_roads', 'seed']],
+    ],
+  },
+  buildings: {
+    title: 'Buildings',
+    icon: '🏘️',
+    main: ['max_buildings', 'fill_gaps', 'height_mix', 'max_levels', 'arch_style',
+           'vanilla_tiles'],
+    advanced: [
+      ['Which footprints', ['min_size', 'max_size', 'fill_frontage', 'building_alignment']],
+      ['Flats', ['apartment_footprint', 'apartment_chance']],
+      ['Look', ['neighbourhood_tiles', 'style_oddity']],
+      ['Rooms', ['room_solver', 'room_size']],
+      ['Basements', ['basement_share', 'max_basement_depth']],
+      ['Hospitals', ['hospitals', 'hospitals_place_missing']],
+    ],
+  },
+  land: {
+    title: 'Land',
+    icon: '⛰️',
+    main: ['landcover', 'elevation', 'winter_look'],
+    advanced: [
+      ['Details', ['max_relief', 'climate_flavor', 'ne_context']],
+    ],
+  },
   forest: {
     title: 'Forest',
+    icon: '🌲',
     preview: true,
     main: ['forest_density', 'forest_thickets', 'forest_stand_m', 'forest_stand_variety',
            'forest_edge_m'],
@@ -83,14 +135,13 @@ const SETTING_GROUPS = {
                  'forest_keep_meadows', 'forest_seed']],
       ['Around the woods', ['forest_house_clearing_m', 'forest_big_trees', 'forest_groves',
                             'forest_wild_growth', 'forest_shrubland']],
-      ['Everywhere', ['tree_density', 'landcover', 'winter_look']],
+      ['Everywhere', ['tree_density']],
     ],
   },
 };
 // The preview's sample land has land cover all over it, as a map with
 // WorldCover does, and these do nothing there.
-const NOT_IN_PREVIEW = new Set(['forest_groves', 'forest_wild_growth', 'landcover',
-                                'winter_look']);
+const NOT_IN_PREVIEW = new Set(['forest_groves', 'forest_wild_growth']);
 
 function groupKeys(group) {
   return [...group.main, ...group.advanced.flatMap(([, keys]) => keys)];
@@ -105,6 +156,32 @@ document.addEventListener('click', e => {
     open.querySelector('.setting-info')?.setAttribute('aria-expanded', 'false');
   }
 });
+
+// The (i) of a one-line setting: its tooltip on hover, focus or a tap.
+function wireSettingInfo(wrap) {
+  const info = wrap.querySelector('.setting-info');
+  if (!info) return;
+  // Opened near the bottom of its scrolling panel, the tooltip would run
+  // out of sight, so there it opens upwards.
+  const aim = () => {
+    const pane = wrap.closest('.ws-pnl-body, .ws-tools-body') || document.documentElement;
+    const below = pane.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
+    wrap.classList.toggle('hint-up', below < 110);
+  };
+  info.addEventListener('mouseenter', aim);
+  info.addEventListener('focus', aim);
+  info.addEventListener('click', () => {
+    const open = wrap.classList.toggle('hint-open');
+    info.setAttribute('aria-expanded', String(open));
+  });
+  info.addEventListener('blur', () => {
+    wrap.classList.remove('hint-open');
+    info.setAttribute('aria-expanded', 'false');
+  });
+}
+// The rows written in the page itself (Only what I draw, Draw areas as boxes)
+// get the same.
+document.querySelectorAll('.tab-part .setting-compact, #sketch .setting-compact').forEach(wireSettingInfo);
 
 function settingElement(key, label, hint, values, compact = false) {
   const [lo, hi] = settingsMeta.limits[key];
@@ -143,7 +220,7 @@ function settingElement(key, label, hint, values, compact = false) {
   const head = isSwitch
     ? `<label class="switch"><input type="checkbox" role="switch"
          data-key="${key}" aria-label="${label}"${values[key] ? ' checked' : ''}>
-       <span class="switch-track"></span></label>`
+       <span class="switch-track" aria-hidden="true"><span class="sw-on">On</span><span class="sw-off">Off</span></span></label>`
     : isSeed || isChoice ? ''
     : `<output class="setting-val">${values[key]}</output>`;
   if (compact) {
@@ -159,24 +236,7 @@ function settingElement(key, label, hint, values, compact = false) {
       ${control}
       ${head}
       <span class="setting-hint" role="tooltip">${hint}</span>`;
-    const info = wrap.querySelector('.setting-info');
-    // Opened near the bottom of its scrolling panel, the tooltip would run
-    // out of sight, so there it opens upwards.
-    const aim = () => {
-      const pane = wrap.closest('.ws-pnl-body') || document.documentElement;
-      const below = pane.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
-      wrap.classList.toggle('hint-up', below < 110);
-    };
-    info.addEventListener('mouseenter', aim);
-    info.addEventListener('focus', aim);
-    info.addEventListener('click', () => {
-      const open = wrap.classList.toggle('hint-open');
-      info.setAttribute('aria-expanded', String(open));
-    });
-    info.addEventListener('blur', () => {
-      wrap.classList.remove('hint-open');
-      info.setAttribute('aria-expanded', 'false');
-    });
+    wireSettingInfo(wrap);
     return wrap;
   }
   wrap.innerHTML = `
@@ -254,10 +314,18 @@ function settingGroup(name, group, values) {
     parent.appendChild(el);
   };
   if (group.preview) card.appendChild(forestPreview(card, group));
+  const part = group.part && document.querySelector(`.tab-part[data-part="${group.part}"]`);
+  if (part) card.appendChild(part);
+  // Nothing of the generator's in it, nothing to reset.
+  if (!groupKeys(group).length) card.querySelector('.group-reset').hidden = true;
   group.main.forEach(key => add(card, key));
+  const end = group.partEnd && document.querySelector(`.tab-part[data-part="${group.partEnd}"]`);
+  if (end) card.appendChild(end);
   const advanced = document.createElement('details');
   advanced.className = 'setting-group-advanced';
-  advanced.innerHTML = '<summary>Advanced</summary>';
+  const many = group.advanced.flatMap(([, keys]) => keys)
+    .filter(key => key in settingsMeta.defaults && SETTING_LABELS[key]).length;
+  advanced.innerHTML = `<summary><span>Advanced</span><span class="adv-count">${many}</span></summary>`;
   for (const [title, keys] of group.advanced) {
     const head = document.createElement('div');
     head.className = 'setting-subhead';
@@ -274,7 +342,7 @@ function settingGroup(name, group, values) {
     if (advanced.dataset.searchOpened) { delete advanced.dataset.searchOpened; return; }
     try { localStorage.setItem(remember, advanced.open ? '1' : '0'); } catch (e) { /* no storage */ }
   });
-  card.appendChild(advanced);
+  if (group.advanced.length) card.appendChild(advanced);
   card.querySelector('.group-reset').addEventListener('click', () => resetGroup(card, group));
   return card;
 }
@@ -294,35 +362,144 @@ function resetGroup(card, group) {
   }
 }
 
+// Which tab is open is remembered in this browser, as each Advanced is.
+const TAB_KEY = 'knoxmap.settings.tab';
+
+function settingTabs() {
+  const tabs = Object.entries(SETTING_GROUPS);
+  const listed = new Set(tabs.flatMap(([, group]) => groupKeys(group)));
+  const rest = Object.keys(SETTING_LABELS)
+    .filter(key => key in settingsMeta.defaults && !listed.has(key));
+  if (rest.length) tabs.push(['other', { title: 'Other', icon: '⚙️', main: rest, advanced: [] }]);
+  return tabs;
+}
+
 function buildSettingsForm(values) {
   const body = document.getElementById('advanced-body');
+  // The page's own fields are kept, not rebuilt: back to their holder first.
+  const parts = document.getElementById('settingsParts');
+  for (const part of body.querySelectorAll('.tab-part')) parts.appendChild(part);
   body.innerHTML = '';
-  const groupOf = {};
-  for (const [name, group] of Object.entries(SETTING_GROUPS)) {
-    for (const key of groupKeys(group)) groupOf[key] = name;
+  const bar = document.createElement('div');
+  bar.className = 'setting-tabs';
+  bar.setAttribute('role', 'tablist');
+  bar.setAttribute('aria-label', 'Settings');
+  body.appendChild(bar);
+  for (const [name, group] of settingTabs()) {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'setting-tab';
+    tab.id = `setting-tab-${name}`;
+    tab.dataset.tab = name;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', `setting-panel-${name}`);
+    // The emoji is its own element, so the name stays a line to translate.
+    tab.innerHTML = `<span class="setting-tab-icon" aria-hidden="true">${group.icon || ''}</span>`
+      + `<span class="setting-tab-name">${group.title}</span>`
+      + '<span class="setting-tab-dot" title="Changed from the defaults for this kind of place" hidden></span>'
+      + '<span class="setting-tab-count"></span>';
+    tab.addEventListener('click', () => {
+      // A tab picked mid-search is the user done searching.
+      const find = document.getElementById('settingFind');
+      if (find && find.value) {
+        find.value = '';
+        find.dispatchEvent(new Event('input'));
+      }
+      openSettingTab(name, true);
+    });
+    bar.appendChild(tab);
+    const card = settingGroup(name, group, values);
+    card.id = `setting-panel-${name}`;
+    card.setAttribute('role', 'tabpanel');
+    card.setAttribute('aria-labelledby', tab.id);
+    body.appendChild(card);
   }
-  const placed = new Set();
-  for (const [key, [label, hint]] of Object.entries(SETTING_LABELS)) {
-    if (!(key in settingsMeta.defaults)) continue;   // knob has been removed
-    const name = groupOf[key];
-    if (!name) {
-      body.appendChild(settingElement(key, label, hint, values));
-    } else if (!placed.has(name)) {
-      // The card goes where the first of its keys would have.
-      placed.add(name);
-      body.appendChild(settingGroup(name, SETTING_GROUPS[name], values));
-    }
-  }
+  bar.addEventListener('keydown', e => {
+    const tabs = [...bar.querySelectorAll('.setting-tab')];
+    const at = tabs.indexOf(document.activeElement);
+    if (at < 0) return;
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = tabs[(to + tabs.length) % tabs.length];
+    next.focus();
+    next.click();
+  });
+  let open = null;
+  try { open = localStorage.getItem(TAB_KEY); } catch (e) { /* no storage */ }
+  openSettingTab(body.querySelector(`[data-tab="${open}"]`) ? open : settingTabs()[0][0]);
   fx.wireSettings(body);
+  markChangedTabs();
   runListSearch('advanced-body');
-  const topTerrain = document.getElementById('terrainOnlyToggle');
-  if (topTerrain) topTerrain.checked = !!values.terrain_only;
+}
+
+function openSettingTab(name, remember = false) {
+  const body = document.getElementById('advanced-body');
+  for (const tab of body.querySelectorAll('.setting-tab')) {
+    const on = tab.dataset.tab === name;
+    tab.classList.toggle('is-on', on);
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+  }
+  for (const card of body.querySelectorAll('.setting-group')) {
+    card.classList.toggle('is-on', card.dataset.group === name);
+  }
+  if (remember) {
+    try { localStorage.setItem(TAB_KEY, name); } catch (e) { /* no storage */ }
+  }
+}
+
+// A dot on a tab that holds a setting moved off the kind of place's value, so
+// a change is not lost behind a tab or a closed Advanced; and the setting's
+// name marked where it is.
+function differs(el, want) {
+  if (want === undefined) return false;
+  if (el.type === 'checkbox') return el.checked !== !!want;
+  if (el.tagName === 'SELECT') return el.value !== String(want);
+  if (el.value.trim() === '') return false;
+  return Math.abs(parseFloat(el.value) - Number(want)) > 1e-9;
+}
+
+function markChangedTabs() {
+  if (!settingsMeta) return;
+  const body = document.getElementById('advanced-body');
+  const preset = settingsMeta.presets[document.getElementById('preset').value]
+    || settingsMeta.defaults;
+  for (const card of body.querySelectorAll('.setting-group')) {
+    let moved = false;
+    for (const el of card.querySelectorAll('[data-key]')) {
+      // The setting's own name says so too, bold and yellow.
+      const off = differs(el, preset[el.dataset.key] ?? settingsMeta.defaults[el.dataset.key]);
+      el.closest('.setting')?.classList.toggle('is-changed', off);
+      moved ||= off;
+    }
+    // Only what I draw is the page's own switch, off unless asked for.
+    for (const own of card.querySelectorAll('#drawnOnly')) {
+      own.closest('.setting')?.classList.toggle('is-changed', own.checked);
+      moved ||= own.checked;
+    }
+    const dot = body.querySelector(`#setting-tab-${card.dataset.group} .setting-tab-dot`);
+    if (dot) dot.hidden = !moved;
+  }
+}
+
+// While the settings are searched every tab shows what it matched, with a
+// count on its tab; an empty box is back to the one open tab.
+function showSearchAcrossTabs(query) {
+  const body = document.getElementById('advanced-body');
+  const searching = Boolean(query.trim());
+  body.classList.toggle('searching', searching);
+  for (const card of body.querySelectorAll('.setting-group')) {
+    const count = body.querySelector(`#setting-tab-${card.dataset.group} .setting-tab-count`);
+    if (!count) continue;
+    const n = card.querySelectorAll('.setting:not(.out-of-search)').length;
+    count.textContent = searching ? String(n) : '';
+    count.parentElement.classList.toggle('found-none', searching && !n);
+  }
 }
 
 function readSettings() {
   const out = { preset: document.getElementById('preset').value };
-  const topTerrain = document.getElementById('terrainOnlyToggle');
-  if (topTerrain) out.terrain_only = topTerrain.checked ? 1 : 0;
   for (const el of document.querySelectorAll('#advanced-body [data-key]')) {
     // A switch is on or off, and sends the 1 or 0 the generator reads.
     if (el.type === 'checkbox') {
@@ -503,8 +680,10 @@ async function reapply() {
 // container, which is not.
 document.getElementById('advanced-body').addEventListener('input', showReapply);
 document.getElementById('advanced-body').addEventListener('change', showReapply);
-const topTerrainEl = document.getElementById('terrainOnlyToggle');
-if (topTerrainEl) topTerrainEl.addEventListener('change', showReapply);
+document.getElementById('advanced-body').addEventListener('input', markChangedTabs);
+document.getElementById('advanced-body').addEventListener('change', markChangedTabs);
+document.getElementById('advanced-body').addEventListener('listsearch',
+  e => showSearchAcrossTabs(e.detail.query));
 
 document.getElementById('preset').addEventListener('change', () => {
   if (!settingsMeta) return;
