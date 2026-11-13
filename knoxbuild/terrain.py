@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from generator import pz_colors as C
+
 from .rules import Rule, Ruleset
 
 # Bottom of the stack first. Layers not listed go after these, by name.
@@ -93,6 +95,13 @@ def ground_layers(land: np.ndarray, veg: np.ndarray, rules: Ruleset, pal: Palett
     # Colours as single numbers, and only the rules whose colour is in the picture at all
     # (a window holds a handful of the 148).
     land_key, veg_key = colour_keys(land), colour_keys(veg)
+    no_veg_keys = {
+        _key(c) for c in (
+            C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT, C.DARKEST_ASPHALT,
+            C.PALE_CONCRETE, C.DARK_POTHOLE, C.LIGHT_POTHOLE, C.WATER,
+        )
+    }
+    no_veg_land = np.isin(land_key, list(no_veg_keys))
     in_land, in_veg = set(np.unique(land_key).tolist()), set(np.unique(veg_key).tolist())
     for n, rule in enumerate(rules.rules):
         key = _key(rule.color)
@@ -103,6 +112,8 @@ def ground_layers(land: np.ndarray, veg: np.ndarray, rules: Ruleset, pal: Palett
         mask = (land_key if rule.bitmap == 0 else veg_key) == key
         if rule.condition is not None:
             mask &= land_key == _key(rule.condition)
+        if rule.bitmap == 1 and rule.layer == "0_Vegetation":
+            mask &= ~no_veg_land
         paint(rule, mask, n)
     return layers
 
