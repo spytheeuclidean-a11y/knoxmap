@@ -409,7 +409,7 @@ body.rotate-dragging * {
 .setting.is-changed input[type="range"] { accent-color: var(--changed); }
 .setting.is-changed .setting-val { color: var(--changed); }
 .setting.is-changed select, .setting.is-changed .seed-row input { border-color: var(--changed); color: var(--changed); }
-.setting.is-changed .switch .switch-track { border-color: var(--changed); background: var(--warn-soft); }
+.setting.is-changed .switch .switch-track { border-color: var(--changed); background: var(--warn-soft); color: var(--changed); }
 .setting.is-changed .switch .switch-track::after { background: var(--changed); }
 .setting-tab-dot[hidden] { display: none; }
 .setting-tab-count { font-family: var(--mono); font-size: 11px; color: var(--faint); }
@@ -479,16 +479,22 @@ body.rotate-dragging * {
 .switch { position: relative; flex: none; cursor: pointer; line-height: 0; }
 .switch input { position: absolute; inset: 0; width: 100%; height: 100%;
   margin: 0; opacity: 0; cursor: pointer; }
-.switch-track { display: block; width: 34px; height: 18px; border-radius: 9px;
-  background: var(--field); border: 1px solid var(--line-strong);
-  transition: background .12s, border-color .12s; }
-.switch-track::after { content: ""; display: block; width: 12px; height: 12px;
-  margin: 2px; border-radius: 50%; background: var(--muted);
-  transition: transform .12s, background .12s; }
-.switch input:checked + .switch-track { background: var(--accent-soft);
-  border-color: var(--accent); }
-.switch input:checked + .switch-track::after { background: var(--accent);
-  transform: translateX(16px); }
+/* The switch says what it is set to, On or Off, beside its knob: a slide
+   alone did not read as on or off. The words are in the markup, so they are
+   translated; the pill grows to fit a longer one. */
+.switch-track { position: relative; display: inline-flex; align-items: center; box-sizing: border-box;
+  min-width: 50px; height: 20px; padding: 0 7px 0 21px; border-radius: 10px;
+  background: var(--field); border: 1px solid var(--line-strong); color: var(--muted);
+  font: 700 9px/1 var(--font); letter-spacing: .06em; text-transform: uppercase;
+  transition: background .12s, border-color .12s, padding .12s; }
+.switch-track::after { content: ""; position: absolute; top: 2px; left: 2px; width: 14px; height: 14px;
+  border-radius: 50%; background: var(--muted); transition: left .12s, background .12s; }
+.switch-track .sw-on { display: none; }
+.switch input:checked + .switch-track { background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); padding: 0 21px 0 7px; }
+.switch input:checked + .switch-track::after { background: var(--accent); left: calc(100% - 16px); }
+.switch input:checked + .switch-track .sw-on { display: inline; }
+.switch input:checked + .switch-track .sw-off { display: none; }
 .switch input:focus-visible + .switch-track { outline: 2px solid var(--accent);
   outline-offset: 2px; }
 .switch:hover .switch-track { border-color: var(--accent); }

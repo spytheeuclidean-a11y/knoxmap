@@ -188,7 +188,7 @@ function settingElement(key, label, hint, values, compact = false) {
   const head = isSwitch
     ? `<label class="switch"><input type="checkbox" role="switch"
          data-key="${key}" aria-label="${label}"${values[key] ? ' checked' : ''}>
-       <span class="switch-track"></span></label>`
+       <span class="switch-track" aria-hidden="true"><span class="sw-on">On</span><span class="sw-off">Off</span></span></label>`
     : isSeed || isChoice ? ''
     : `<output class="setting-val">${values[key]}</output>`;
   if (compact) {
