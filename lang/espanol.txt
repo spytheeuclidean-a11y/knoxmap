@@ -1045,3 +1045,19 @@ Zoom out (Wheel down) = Reducir zoom (Rueda abajo)
 🔲 Selected area = 🔲 Área seleccionada
 🪑 Furnished interiors = 🪑 Interiores amueblados
 🪑 Interiors = 🪑 Interiores
+
+# The settings' tabs
+Gameplay = Juego
+Zombies = Zombis
+Vehicles = Vehículos
+Roads = Carreteras
+Layout = Trazado
+Which footprints = Qué huellas
+Flats = Pisos
+Look = Aspecto
+Rooms = Habitaciones
+Land = Terreno
+Details = Detalles
+Other = Otros
+Settings = Ajustes
+Changed from the defaults for this kind of place = Cambiado respecto a los valores de este tipo de lugar

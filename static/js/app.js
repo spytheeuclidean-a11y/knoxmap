@@ -2610,6 +2610,8 @@ function runListSearch(boxId) {
     }
   }
   found.input.classList.toggle('found-nothing', Boolean(words.length) && !shown);
+  // A list drawn in parts (the settings' tabs) shows its matches its own way.
+  box.dispatchEvent(new CustomEvent('listsearch', { detail: { query: found.query } }));
 }
 
 // Every list in the window long enough to be worth searching. The last number

@@ -19,7 +19,7 @@ ADVANCED = [
                "forest_keep_meadows", "forest_seed"]),
     ("Around the woods", ["forest_house_clearing_m", "forest_big_trees", "forest_groves",
                           "forest_wild_growth", "forest_shrubland"]),
-    ("Everywhere", ["tree_density", "landcover", "winter_look"]),
+    ("Everywhere", ["tree_density"]),
 ]
 UI_LINES = ["Forest", "Reset", "Advanced", "Shape", "Around the woods", "Everywhere",
             "Not shown in the picture.", "About {setting}"]
@@ -33,7 +33,9 @@ def block(name):
 
 class ForestCard(unittest.TestCase):
     def test_the_table(self):
-        groups = block("SETTING_GROUPS")
+        groups = re.search(r"\n  forest: \{(.*?)\n  \},", block("SETTING_GROUPS"), re.S)
+        self.assertIsNotNone(groups, "no forest tab in SETTING_GROUPS")
+        groups = groups.group(1)
         main = re.search(r"main: \[(.*?)\]", groups, re.S).group(1)
         self.assertEqual(re.findall(r"'(\w+)'", main), MAIN)
         for title, keys in ADVANCED:

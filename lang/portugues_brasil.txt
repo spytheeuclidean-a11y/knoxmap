@@ -785,3 +785,19 @@ Scrub on open ground = Arbustos em terreno aberto
 Trees and bushes scattered over open grass where there is no land cover data. = Árvores e arbustos espalhados pela grama aberta onde não há dados de cobertura do solo.
 Shrubland and marsh = Arbustal e brejo
 How thickly the land cover's shrubland, grass tufts and marsh are planted. = Com que densidade são plantados o arbustal, os tufos de grama e o brejo da cobertura do solo.
+
+# The settings' tabs
+Gameplay = Jogabilidade
+Zombies = Zumbis
+Vehicles = Veículos
+Roads = Estradas
+Layout = Traçado
+Which footprints = Quais contornos
+Flats = Apartamentos
+Look = Aparência
+Rooms = Cômodos
+Land = Terreno
+Details = Detalhes
+Other = Outros
+Settings = Configurações
+Changed from the defaults for this kind of place = Alterado em relação ao padrão deste tipo de lugar

@@ -611,3 +611,22 @@ Trees and bushes scattered over open grass where there is no land cover data. = 
 Shrubland and marsh = Кустарники и болота
 How thickly the land cover's shrubland, grass tufts and marsh are planted. = Насколько густо засажены кустарники, пучки травы и болота из данных о покрове.
 Forests = Леса
+
+# The settings' tabs
+Gameplay = Игра
+Zombies = Зомби
+Vehicles = Машины
+Roads = Дороги
+Layout = Планировка
+Buildings = Здания
+Which footprints = Какие контуры
+Flats = Квартиры
+Look = Облик
+Rooms = Комнаты
+Basements = Подвалы
+Hospitals = Больницы
+Land = Местность
+Details = Подробности
+Other = Прочее
+Settings = Настройки
+Changed from the defaults for this kind of place = Изменено относительно значений для этого типа места

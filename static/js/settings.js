@@ -69,10 +69,46 @@ async function loadSettings() {
   buildSettingsForm(settingsMeta.current);
 }
 
-// Settings that belong together are drawn as a card of their own, the most
-// used on show and the rest behind Advanced. A key named here is drawn in its
-// card; any other key in the list as before, so a new group is a table entry.
+// The settings are drawn as tabs, one card each: what a tab is mostly used
+// for on show, the rest behind its own Advanced. A key named nowhere here
+// still appears, in an Other tab, so a new knob is never lost; putting it in
+// its place is a table entry.
 const SETTING_GROUPS = {
+  gameplay: {
+    title: 'Gameplay',
+    main: ['zombies_per_resident', 'spawn_density', 'guaranteed_rifle'],
+    advanced: [
+      ['Zombies', ['m2_per_person']],
+      ['Vehicles', ['parking_density']],
+    ],
+  },
+  roads: {
+    title: 'Roads',
+    main: ['true_map', 'straight_roads', 'align_streets'],
+    advanced: [
+      ['Layout', ['rotate_degrees', 'include_proposed_roads', 'seed']],
+    ],
+  },
+  buildings: {
+    title: 'Buildings',
+    main: ['max_buildings', 'fill_gaps', 'height_mix', 'max_levels', 'arch_style',
+           'vanilla_tiles'],
+    advanced: [
+      ['Which footprints', ['min_size', 'max_size', 'fill_frontage', 'building_alignment']],
+      ['Flats', ['apartment_footprint', 'apartment_chance']],
+      ['Look', ['neighbourhood_tiles', 'style_oddity']],
+      ['Rooms', ['room_solver', 'room_size']],
+      ['Basements', ['basement_share', 'max_basement_depth']],
+      ['Hospitals', ['hospitals', 'hospitals_place_missing']],
+    ],
+  },
+  land: {
+    title: 'Land',
+    main: ['landcover', 'elevation', 'winter_look'],
+    advanced: [
+      ['Details', ['max_relief', 'climate_flavor', 'ne_context']],
+    ],
+  },
   forest: {
     title: 'Forest',
     preview: true,
@@ -83,14 +119,13 @@ const SETTING_GROUPS = {
                  'forest_keep_meadows', 'forest_seed']],
       ['Around the woods', ['forest_house_clearing_m', 'forest_big_trees', 'forest_groves',
                             'forest_wild_growth', 'forest_shrubland']],
-      ['Everywhere', ['tree_density', 'landcover', 'winter_look']],
+      ['Everywhere', ['tree_density']],
     ],
   },
 };
 // The preview's sample land has land cover all over it, as a map with
 // WorldCover does, and these do nothing there.
-const NOT_IN_PREVIEW = new Set(['forest_groves', 'forest_wild_growth', 'landcover',
-                                'winter_look']);
+const NOT_IN_PREVIEW = new Set(['forest_groves', 'forest_wild_growth']);
 
 function groupKeys(group) {
   return [...group.main, ...group.advanced.flatMap(([, keys]) => keys)];
@@ -274,7 +309,7 @@ function settingGroup(name, group, values) {
     if (advanced.dataset.searchOpened) { delete advanced.dataset.searchOpened; return; }
     try { localStorage.setItem(remember, advanced.open ? '1' : '0'); } catch (e) { /* no storage */ }
   });
-  card.appendChild(advanced);
+  if (group.advanced.length) card.appendChild(advanced);
   card.querySelector('.group-reset').addEventListener('click', () => resetGroup(card, group));
   return card;
 }
@@ -294,29 +329,126 @@ function resetGroup(card, group) {
   }
 }
 
+// Which tab is open is remembered in this browser, as each Advanced is.
+const TAB_KEY = 'knoxmap.settings.tab';
+
+function settingTabs() {
+  const tabs = Object.entries(SETTING_GROUPS);
+  const listed = new Set(tabs.flatMap(([, group]) => groupKeys(group)));
+  const rest = Object.keys(SETTING_LABELS)
+    .filter(key => key in settingsMeta.defaults && !listed.has(key));
+  if (rest.length) tabs.push(['other', { title: 'Other', main: rest, advanced: [] }]);
+  return tabs;
+}
+
 function buildSettingsForm(values) {
   const body = document.getElementById('advanced-body');
   body.innerHTML = '';
-  const groupOf = {};
-  for (const [name, group] of Object.entries(SETTING_GROUPS)) {
-    for (const key of groupKeys(group)) groupOf[key] = name;
+  const bar = document.createElement('div');
+  bar.className = 'setting-tabs';
+  bar.setAttribute('role', 'tablist');
+  bar.setAttribute('aria-label', 'Settings');
+  body.appendChild(bar);
+  for (const [name, group] of settingTabs()) {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'setting-tab';
+    tab.id = `setting-tab-${name}`;
+    tab.dataset.tab = name;
+    tab.setAttribute('role', 'tab');
+    tab.setAttribute('aria-controls', `setting-panel-${name}`);
+    tab.innerHTML = `<span class="setting-tab-name">${group.title}</span>`
+      + '<span class="setting-tab-dot" title="Changed from the defaults for this kind of place" hidden></span>'
+      + '<span class="setting-tab-count"></span>';
+    tab.addEventListener('click', () => {
+      // A tab picked mid-search is the user done searching.
+      const find = document.getElementById('settingFind');
+      if (find && find.value) {
+        find.value = '';
+        find.dispatchEvent(new Event('input'));
+      }
+      openSettingTab(name, true);
+    });
+    bar.appendChild(tab);
+    const card = settingGroup(name, group, values);
+    card.id = `setting-panel-${name}`;
+    card.setAttribute('role', 'tabpanel');
+    card.setAttribute('aria-labelledby', tab.id);
+    body.appendChild(card);
   }
-  const placed = new Set();
-  for (const [key, [label, hint]] of Object.entries(SETTING_LABELS)) {
-    if (!(key in settingsMeta.defaults)) continue;   // knob has been removed
-    const name = groupOf[key];
-    if (!name) {
-      body.appendChild(settingElement(key, label, hint, values));
-    } else if (!placed.has(name)) {
-      // The card goes where the first of its keys would have.
-      placed.add(name);
-      body.appendChild(settingGroup(name, SETTING_GROUPS[name], values));
-    }
-  }
+  bar.addEventListener('keydown', e => {
+    const tabs = [...bar.querySelectorAll('.setting-tab')];
+    const at = tabs.indexOf(document.activeElement);
+    if (at < 0) return;
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1, Home: 0, End: tabs.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = tabs[(to + tabs.length) % tabs.length];
+    next.focus();
+    next.click();
+  });
+  let open = null;
+  try { open = localStorage.getItem(TAB_KEY); } catch (e) { /* no storage */ }
+  openSettingTab(body.querySelector(`[data-tab="${open}"]`) ? open : settingTabs()[0][0]);
   fx.wireSettings(body);
+  markChangedTabs();
   runListSearch('advanced-body');
   const topTerrain = document.getElementById('terrainOnlyToggle');
   if (topTerrain) topTerrain.checked = !!values.terrain_only;
+}
+
+function openSettingTab(name, remember = false) {
+  const body = document.getElementById('advanced-body');
+  for (const tab of body.querySelectorAll('.setting-tab')) {
+    const on = tab.dataset.tab === name;
+    tab.classList.toggle('is-on', on);
+    tab.setAttribute('aria-selected', String(on));
+    tab.tabIndex = on ? 0 : -1;
+  }
+  for (const card of body.querySelectorAll('.setting-group')) {
+    card.classList.toggle('is-on', card.dataset.group === name);
+  }
+  if (remember) {
+    try { localStorage.setItem(TAB_KEY, name); } catch (e) { /* no storage */ }
+  }
+}
+
+// A dot on a tab that holds a setting moved off the kind of place's value, so
+// a change is not lost behind a tab or a closed Advanced.
+function differs(el, want) {
+  if (want === undefined) return false;
+  if (el.type === 'checkbox') return el.checked !== !!want;
+  if (el.tagName === 'SELECT') return el.value !== String(want);
+  if (el.value.trim() === '') return false;
+  return Math.abs(parseFloat(el.value) - Number(want)) > 1e-9;
+}
+
+function markChangedTabs() {
+  if (!settingsMeta) return;
+  const body = document.getElementById('advanced-body');
+  const preset = settingsMeta.presets[document.getElementById('preset').value]
+    || settingsMeta.defaults;
+  for (const card of body.querySelectorAll('.setting-group')) {
+    const moved = [...card.querySelectorAll('[data-key]')]
+      .some(el => differs(el, preset[el.dataset.key] ?? settingsMeta.defaults[el.dataset.key]));
+    const dot = body.querySelector(`#setting-tab-${card.dataset.group} .setting-tab-dot`);
+    if (dot) dot.hidden = !moved;
+  }
+}
+
+// While the settings are searched every tab shows what it matched, with a
+// count on its tab; an empty box is back to the one open tab.
+function showSearchAcrossTabs(query) {
+  const body = document.getElementById('advanced-body');
+  const searching = Boolean(query.trim());
+  body.classList.toggle('searching', searching);
+  for (const card of body.querySelectorAll('.setting-group')) {
+    const count = body.querySelector(`#setting-tab-${card.dataset.group} .setting-tab-count`);
+    if (!count) continue;
+    const n = card.querySelectorAll('.setting:not(.out-of-search)').length;
+    count.textContent = searching ? String(n) : '';
+    count.parentElement.classList.toggle('found-none', searching && !n);
+  }
 }
 
 function readSettings() {
@@ -503,6 +635,10 @@ async function reapply() {
 // container, which is not.
 document.getElementById('advanced-body').addEventListener('input', showReapply);
 document.getElementById('advanced-body').addEventListener('change', showReapply);
+document.getElementById('advanced-body').addEventListener('input', markChangedTabs);
+document.getElementById('advanced-body').addEventListener('change', markChangedTabs);
+document.getElementById('advanced-body').addEventListener('listsearch',
+  e => showSearchAcrossTabs(e.detail.query));
 const topTerrainEl = document.getElementById('terrainOnlyToggle');
 if (topTerrainEl) topTerrainEl.addEventListener('change', showReapply);
 
