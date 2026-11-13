@@ -232,7 +232,10 @@
       </select>
       <!-- Zones (Tools, Zones) set some of these differently in parts of the
            map; this says so, and opens them. -->
-      <button type="button" id="zonesNotice" class="zones-notice" hidden></button>
+      <details id="zonesNotice" class="zones-notice" hidden>
+        <summary><span aria-hidden="true">🧩</span> <span class="zones-notice-what"></span></summary>
+        <ul class="zones-notice-list"></ul>
+      </details>
       <input type="search" id="settingFind" class="list-search" hidden
              autocomplete="off" placeholder="Search the settings">
       <!-- The tabs: filled from /api/settings so the page never holds a second,

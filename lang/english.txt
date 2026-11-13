@@ -687,6 +687,7 @@ Open a map, then load what it was built from. Click a building and it says wheth
 Open a map, then load what it was built from. Click anything to remove it or say what it really is; drag its corners to move it. Generate map again and the change is in. = Open a map, then load what it was built from. Click anything to remove it or say what it really is; drag its corners to move it. Generate map again and the change is in.
 Open in WorldEd = Open in WorldEd
 Open it in the tabs again = Open it in the tabs again
+Open it under Tools, Zones = Open it under Tools, Zones
 Open link = Open link
 Open maps = Open maps
 Open or generate a map first. = Open or generate a map first.

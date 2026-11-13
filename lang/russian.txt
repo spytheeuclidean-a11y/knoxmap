@@ -669,3 +669,4 @@ As the map is (Off) = Как на карте (Выкл)
 One zone changes settings in part of the map = Одна зона меняет настройки в части карты
 {n} zones change settings in parts of the map = Зон, меняющих настройки в частях карты: {n}
 Properties = Свойства
+Open it under Tools, Zones = Открыть в «Инструменты», «Зоны»

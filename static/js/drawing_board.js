@@ -1043,19 +1043,39 @@ function zoneSummary(zone) {
 // list is redrawn for every keystroke in a zone's name, so a row that is
 // already there is updated in place: rebuilding it would take the editor,
 // and the box being typed in, out of the page.
-// How many zones set something of their own, said over the settings in
+// The zones that set something of their own, said over the settings in
 // Properties: they are what those settings are not, in parts of the map.
+// Opened, it lists each one and what it sets; a zone there opens it in the
+// Zones tab.
+function zoneSets(zone) {
+  const bits = Object.entries(zone.settings || {}).map(([k, v]) => {
+    const name = SETTING_LABELS[k] ? SETTING_LABELS[k][0] : k;
+    const meta = (zoneMeta && zoneMeta.settings || []).find(s => s.id === k);
+    return `${name} ${meta && zoneSwitchable(meta) ? (v ? 'On' : 'Off') : v}`;
+  });
+  if (zone.wall_style) bits.push(`Walls ${zone.wall_style}`);
+  if ((zone.presets || []).length) bits.push(`${zone.presets.length} hand-built`);
+  return bits;
+}
 function showZonesNotice() {
   const note = document.getElementById('zonesNotice');
   if (!note) return;
-  const n = zoneList.filter(z => Object.keys(z.settings || {}).length
-    || z.wall_style || (z.presets || []).length).length;
-  note.hidden = !n;
-  note.textContent = n === 1 ? 'One zone changes settings in part of the map'
-    : `${n} zones change settings in parts of the map`;
+  const setting = zoneList.map((z, i) => [z, i]).filter(([z]) => zoneSets(z).length);
+  note.hidden = !setting.length;
+  note.querySelector('.zones-notice-what').textContent = setting.length === 1
+    ? 'One zone changes settings in part of the map'
+    : `${setting.length} zones change settings in parts of the map`;
+  note.querySelector('.zones-notice-list').innerHTML = setting.map(([z, i]) =>
+    `<li><button type="button" data-zone-open="${i}" title="Open it under Tools, Zones">
+       <b>${escapeHtml(z.name || 'Zone ' + (i + 1))}</b>
+       <span>${escapeHtml(zoneSets(z).join(' · '))}</span></button></li>`).join('');
 }
-document.getElementById('zonesNotice').addEventListener('click', () =>
-  document.querySelector('.ws-tool-tabs [data-tool="zone"]')?.click());
+document.getElementById('zonesNotice').addEventListener('click', ev => {
+  const open = ev.target.closest('[data-zone-open]');
+  if (!open) return;
+  document.querySelector('.ws-tool-tabs [data-tool="zone"]')?.click();
+  zonePick(parseInt(open.dataset.zoneOpen, 10));
+});
 
 function drawZoneList() {
   showZonesNotice();

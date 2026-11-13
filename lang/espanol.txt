@@ -1090,3 +1090,4 @@ As the map is (On) = Como el mapa (Activado)
 As the map is (Off) = Como el mapa (Desactivado)
 One zone changes settings in part of the map = Una zona cambia la configuración en parte del mapa
 {n} zones change settings in parts of the map = {n} zonas cambian la configuración en partes del mapa
+Open it under Tools, Zones = Ábrela en Herramientas, Zonas
