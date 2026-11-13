@@ -34,7 +34,9 @@ const sketchEd = KnoxDraw.create(map, {
   onStart: () => { zoneEd.stop(); disarmAreaToolbar(); },
   onChange: () => { showSketchCount(); refreshSketchTools(); },
 });
-refreshSketchTools = KnoxDraw.toolbar(document.getElementById('sketchTools'), sketchEd);
+refreshSketchTools = KnoxDraw.toolbar(document.getElementById('sketchTools'), sketchEd, { rect: false });
+// Draw areas as boxes: the Add tab's switch for the editor's rectangle mode.
+document.getElementById('sketchRect').addEventListener('change', ev => sketchEd.setRect(ev.target.checked));
 
 // What each category looks like while it is being drawn. Close enough to the
 // finished map to recognise, not so close it is mistaken for it.

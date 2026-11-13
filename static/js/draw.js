@@ -448,12 +448,14 @@
   // The same row of buttons everywhere. They follow the editor's state, so
   // Undo is dimmed when there is nothing to undo and Duplicate when nothing is
   // picked, wherever the row happens to be.
-  function toolbar(container, ed) {
+  // With { rect: false } the row leaves out Rectangle, for a page that offers
+  // it as a switch of its own (the Add tab's Draw areas as boxes).
+  function toolbar(container, ed, { rect = true } = {}) {
     const defs = [
       ['undo', 'Undo', 'Ctrl+Z', () => ed.undo()],
       ['redo', 'Redo', 'Ctrl+Shift+Z', () => ed.redo()],
-      ['rect', 'Rectangle', 'Draw areas as a rectangle by dragging',
-        () => ed.setRect(!ed.rect)],
+      ...(rect ? [['rect', 'Rectangle', 'Draw areas as a rectangle by dragging',
+        () => ed.setRect(!ed.rect)]] : []),
       ['edit', 'Move and reshape', 'Drag corners; arrow keys nudge a picked shape',
         () => ed.setEditing(!ed.editing)],
       ['dupe', 'Duplicate', 'Copy the picked shape', () => ed.duplicate()],
@@ -476,7 +478,7 @@
       buttons.dupe.disabled = !s.picked;
       buttons.clear.disabled = !s.count;
       buttons.edit.classList.toggle('on', s.editing);
-      buttons.rect.classList.toggle('on', ed.rect);
+      if (buttons.rect) buttons.rect.classList.toggle('on', ed.rect);
     }
     return refresh;
   }

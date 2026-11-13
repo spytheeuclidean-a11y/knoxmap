@@ -339,6 +339,16 @@
           kerbs and parked cars; a house gets rooms, loot and people.</p>
         <!-- What is picked on the map, always shown: No selection until then. -->
         <div id="sketchPicked" class="edit-selected is-empty"><span class="hint">No selection</span></div>
+        <div class="setting setting-compact setting-switch sketch-rect">
+          <span class="setting-name">Draw areas as boxes<button type="button" class="setting-info"
+            aria-label="About Draw areas as boxes" aria-expanded="false">i</button></span>
+          <label class="switch"><input type="checkbox" role="switch" id="sketchRect"
+            aria-label="Draw areas as boxes"><span class="switch-track" aria-hidden="true"><span
+            class="sw-on">On</span><span class="sw-off">Off</span></span></label>
+          <span class="setting-hint" role="tooltip">On, a house, a park or a field is drawn by dragging
+            out a box. Off, by clicking each of its corners. Roads and paths are always clicked point
+            by point.</span>
+        </div>
         <input type="search" id="sketchFind" class="list-search" hidden
                autocomplete="off" placeholder="Search what to draw">
         <div id="sketchPalette" class="sketch-palette"></div>

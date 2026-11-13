@@ -820,3 +820,6 @@ Cancel = Cancelar
 No selection = Nada selecionado
 About Only what I draw = Sobre Só o que eu desenho
 Nothing is downloaded, so a place that is not on OpenStreetMap can be built from what is drawn under Add. = Nada é baixado, então dá para construir um lugar que não está no OpenStreetMap com o que for desenhado em Adicionar.
+Draw areas as boxes = Desenhar áreas como caixas
+About Draw areas as boxes = Sobre Desenhar áreas como caixas
+On, a house, a park or a field is drawn by dragging out a box. Off, by clicking each of its corners. Roads and paths are always clicked point by point. = Ligado, uma casa, um parque ou um campo é desenhado arrastando uma caixa. Desligado, clicando em cada um dos seus cantos. Ruas e caminhos são sempre clicados ponto a ponto.

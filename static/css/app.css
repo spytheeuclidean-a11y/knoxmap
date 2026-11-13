@@ -396,14 +396,20 @@ body.rotate-dragging * {
 /* The settings' tabs (buildSettingsForm in settings.js): a bar that wraps to
    a second row in a narrow panel, and only the open tab's card shown -
    except while searching, when every tab shows what it matched. */
-.setting-tabs { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0 0; }
+/* The tabs are the main division of each panel, Tools and Properties: a
+   bar of their own, the open one filled with the accent. */
+.setting-tabs { display: flex; flex-wrap: wrap; gap: 3px; margin: 8px 0 0; padding: 3px;
+  background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; }
 .setting-tab { flex: 1 1 30%; display: inline-flex; align-items: center; justify-content: center;
-  gap: 5px; padding: 5px 8px; font-size: 12px; color: var(--muted); cursor: pointer;
-  background: transparent; border: 1px solid var(--line); border-radius: 6px; }
-.setting-tab:hover { color: var(--text); border-color: var(--line-strong); }
-.setting-tab.is-on { color: var(--text); border-color: var(--accent); font-weight: 600; }
+  gap: 5px; padding: 7px 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+  background: transparent; border: 0; border-radius: 6px; transition: background .12s, color .12s; }
+.setting-tab:hover { color: var(--text); background: var(--hover); }
+.setting-tab.is-on { color: var(--accent-ink); background: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
+.setting-tab.is-on .setting-tab-count { color: var(--accent-ink); opacity: .8; }
 .setting-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .setting-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--changed); }
+.setting-tab.is-on .setting-tab-dot { box-shadow: 0 0 0 1.5px var(--accent-ink); }
 /* A setting moved off the kind of place's value (markChangedTabs). */
 .setting.is-changed > .setting-name, .setting.is-changed .setting-head .setting-name { font-weight: 700; color: var(--changed); }
 .setting.is-changed input[type="range"] { accent-color: var(--changed); }
@@ -729,6 +735,7 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 #sketchPicked .hint { color: var(--text); font-weight: 600; font-size: 13px; }
 #sketchPicked.is-empty { padding: 5px 10px; border: 1px dashed var(--line); background: none; }
 #sketchPicked.is-empty .hint { color: var(--faint); font-weight: 400; font-size: 12px; }
+.sketch-rect { margin: 0 0 8px; }
 /* Why the clicked building is not on the map. Its own line under the row,
    because the remedy is a sentence and not a label. */
 .why { flex: 1 1 100%; font-size: 12px; line-height: 1.45; margin-top: 2px;

@@ -173,8 +173,9 @@ function wireSettingInfo(wrap) {
     info.setAttribute('aria-expanded', 'false');
   });
 }
-// The rows written in the page itself (Only what I draw) get the same.
-document.querySelectorAll('.tab-part .setting-compact').forEach(wireSettingInfo);
+// The rows written in the page itself (Only what I draw, Draw areas as boxes)
+// get the same.
+document.querySelectorAll('.tab-part .setting-compact, #sketch .setting-compact').forEach(wireSettingInfo);
 
 function settingElement(key, label, hint, values, compact = false) {
   const [lo, hi] = settingsMeta.limits[key];
