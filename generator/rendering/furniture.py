@@ -18,6 +18,9 @@ from ..osm import ROAD_HIERARCHY_BY_CODE
 GRIME_SHARE = 0.0
 # Roads at least this wide get a faded edge line down each side.
 EDGE_LINE_MIN_WIDTH = 5
+# Straight edge runs shorter than this are staircase steps on a diagonal road;
+# placing axis-aligned white edge lines on them leaves broken jagged dashes.
+EDGE_LINE_MIN_RUN = 6
 CRACK_SHARE = 0.012
 LITTER_SHARE = 0.002
 LAMP_EVERY = 18
@@ -103,6 +106,32 @@ HYDRANT_EVERY = 38
 DRAIN_EVERY = 24
 
 
+def _long_runs(mask, min_len: int, axis: int):
+    """Keep only contiguous True runs of length >= min_len along `axis`."""
+    import numpy as np
+
+    if min_len <= 1:
+        return mask
+    h, w = mask.shape
+    if (axis == 1 and w < min_len) or (axis == 0 and h < min_len):
+        return np.zeros_like(mask)
+    starts = mask.copy()
+    for offset in range(1, min_len):
+        if axis == 1:
+            starts[:, :-offset] &= mask[:, offset:]
+            starts[:, -offset:] = False
+        else:
+            starts[:-offset, :] &= mask[offset:, :]
+            starts[-offset:, :] = False
+    out = starts.copy()
+    for offset in range(1, min_len):
+        if axis == 1:
+            out[:, offset:] |= starts[:, :-offset]
+        else:
+            out[offset:, :] |= starts[:-offset, :]
+    return out
+
+
 def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                             road_hierarchy: Image.Image | None = None,
                             buildings: Image.Image | None = None) -> dict:
@@ -134,7 +163,7 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     driveable = is_colour(ground, (C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
                                   C.DARKEST_ASPHALT))
     pavement = is_colour(ground, (C.PALE_CONCRETE,))
-    roadside = pavement | is_colour(
+    roadside = is_colour(
         ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS, C.PAVING,
                  C.DIRT_ROWS_H, C.DIRT_ROWS_V))
     # Hydrants, bins and mailboxes stand on the grass or paving beside the
@@ -190,9 +219,12 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     across[:i, :] = False
             side_a = np.zeros_like(asphalt); side_b = np.zeros_like(asphalt)
             side_a[:, 1:] = asphalt[:, :-1]; side_b[:, :-1] = asphalt[:, 1:]
-        # Straight edges only: the road continues along the line both ways.
-        pick = asphalt & outside & across & side_a & side_b & empty
-        diag_kerbs[colour] = asphalt & outside & across & (side_a | side_b) & ~pick
+        # Straight edges only: the road continues along the line both ways, and
+        # the run is long enough not to be a staircase step on a diagonal road.
+        candidate = asphalt & outside & across
+        long_edge = _long_runs(candidate, EDGE_LINE_MIN_RUN, 0 if dx else 1)
+        pick = long_edge & side_a & side_b & empty
+        diag_kerbs[colour] = candidate & (side_a | side_b) & ~pick
         vp[pick] = colour
         empty &= ~pick
         edge_lines += int(pick.sum())
@@ -254,6 +286,22 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     return x, y
         return None
 
+    def off_the_pavement(gx, gy, sx, sy):
+        """First free non-sidewalk roadside tile off the kerb."""
+        x1, y1 = gx + sx, gy + sy
+        x2, y2 = gx + 2 * sx, gy + 2 * sy
+        if (0 <= x1 < w and 0 <= y1 < h and 0 <= x2 < w and 0 <= y2 < h
+                and pavement[y2, x2] and empty[y1, x1]
+                and not driveable[y1, x1] and roadside[y1, x1]):
+            return x1, y1
+        for n in range(2, 6):
+            x, y = gx + n * sx, gy + n * sy
+            if not (0 <= x < w and 0 <= y < h) or driveable[y, x]:
+                return None
+            if empty[y, x] and roadside[y, x]:
+                return x, y
+        return None
+
     for edge, (sx, sy), lamp in straight:
         kerb_mask = np.all(vp == edge, axis=2) | diag_kerbs[edge]
         ys, xs = np.nonzero(kerb_mask)
@@ -296,6 +344,11 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     px, py = spot
                     if near_buildings is not None and not near_buildings[py, px]:
                         continue
+                elif what in ("speed", "lamp", "pole"):
+                    spot = off_the_pavement(gx, gy, sx, sy)
+                    if spot is None:
+                        continue
+                    px, py = spot
                 if colour is None or not (0 <= px < w and 0 <= py < h):
                     continue
                 # Speed signs keep a spacing per facing: the north-south roads,

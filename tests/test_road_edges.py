@@ -93,3 +93,14 @@ class PavementAgainstGrass(unittest.TestCase):
         im.putpixel((10, 18), PALE_CONCRETE)    # one square of pavement in lawn
         tidy(im)
         self.assertNotEqual(im.getpixel((10, 18)), PALE_CONCRETE)
+    def test_a_one_tile_pavement_spike_into_grass_is_shaved(self):
+        im = self.band()
+        im.putpixel((10, 16), PALE_CONCRETE)    # 1-tile spike jutting into grass
+        tidy(im)
+        self.assertEqual(im.getpixel((10, 16)), MEDIUM_GRASS)
+
+    def test_a_one_tile_grass_notch_in_pavement_is_filled(self):
+        im = self.band()
+        im.putpixel((10, 15), MEDIUM_GRASS)     # 1-tile notch in pavement edge
+        tidy(im)
+        self.assertEqual(im.getpixel((10, 15)), PALE_CONCRETE)

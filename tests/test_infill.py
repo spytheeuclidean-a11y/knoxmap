@@ -40,9 +40,10 @@ def in_hole(feats):
     return [f for f, p in zip(feats, polys(feats)) if 109 < p.bounds[0] < 184]
 
 
-def fill(buildings, roads=(), **buckets):
+def fill(buildings, roads=(), extend_ends=True, **buckets):
     roads = list(roads) or [street()]
-    return _infill_frontage({"road_minor": roads, **buckets}, [], buildings, PROJ)
+    return _infill_frontage({"road_minor": roads, **buckets}, [], buildings, PROJ,
+                            extend_ends=extend_ends)
 
 
 class Houses(unittest.TestCase):
@@ -84,6 +85,10 @@ class Houses(unittest.TestCase):
         one_end = row(40, 4, 18, 15, 130, 142)
         made = fill(one_end)
         self.assertLessEqual(len(made), 3)
+
+    def test_true_gaps_only_does_not_extend_row_ends(self):
+        one_end = row(40, 4, 18, 15, 130, 142)
+        self.assertEqual(fill(one_end, extend_ends=False), [])
 
     def test_a_church_beside_the_gap_says_nothing(self):
         scene = self.scene()

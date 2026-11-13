@@ -242,7 +242,7 @@ def paint_crossings(veg, landscape, buckets, proj) -> dict:
             if existing in _KERB_TILES:
                 veg_px[cx, cy] = C.VEG_NOTHING
                 return True
-            if existing != C.VEG_NOTHING:
+            if existing != C.VEG_NOTHING and existing not in _LINE_TILES:
                 return False
         return False
 

@@ -162,12 +162,9 @@ def floor_options(kind: str, of_kind: dict, mansion: bool = False) -> list[str]:
             if o in C.EXTRA_FLOORS]
 
 
-# Flat roofs carry plant: bare tar from edge to edge read as unfinished. One
-# air-conditioning unit per ROOF_AC_EVERY tiles of roof, a vent per
-# ROOF_VENT_EVERY, and a hatch, kept off the edges and off each other.
+# Flat roofs carry a few rooftop AC units, kept off the edges and well spaced.
 ROOF_MIN_TILES = 60
-ROOF_AC_EVERY = 90
-ROOF_VENT_EVERY = 60
+ROOF_AC_EVERY = 300
 
 
 def _rooftop(grid: list[list[int]], width: int, height: int,
@@ -180,20 +177,16 @@ def _rooftop(grid: list[list[int]], width: int, height: int,
     if area < ROOF_MIN_TILES or not tiles:
         return []
     rng = random.Random(f"{seed}:{width}:{height}:{area}")
-    # Only the air-conditioning unit stands on a roof. Every other tile in
-    # rooftop_furniture (the vents at 014/015, the hatch at 016/022/023) is
-    # attachedCeiling or a wall-mounted Conditioner, and the game hangs a
-    # ceiling tile from the ceiling of the level it sits on - on the roof floor
-    # that is a storey above the roof, so they floated over the building. The
-    # count is kept, so a roof still carries as many pieces as it did.
-    wanted = ["roof_ac"] * (1 + max(1, area // ROOF_AC_EVERY)
-                            + area // ROOF_VENT_EVERY)
+    # Only the air-conditioning unit stands on a roof (vents/hatches in
+    # rooftop_furniture are attachedCeiling/wall-mounted and floated above the
+    # roof). Keep the count sparse so roofs look realistic rather than cluttered.
+    wanted = ["roof_ac"] * max(1, area // ROOF_AC_EVERY)
     taken: set[tuple[int, int]] = set()
     out = []
     rng.shuffle(tiles)
     for role in wanted:
         for x, y in tiles:
-            if any((x + dx, y + dy) in taken for dx in (-1, 0, 1) for dy in (-1, 0, 1)):
+            if any(abs(x - ox) <= 3 and abs(y - oy) <= 3 for ox, oy in taken):
                 continue
             taken.add((x, y))
             out.append((role, x, y, rng.choice(("W", "N"))))

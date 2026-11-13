@@ -64,6 +64,8 @@ class Settings:
     forest_density: float = 1.0
 
     # --- buildings -------------------------------------------------------
+    # Generate terrain, roads, railways, water and vegetation only (no buildings).
+    terrain_only: int = 0
     seed: int = 1
     # Rebuild every address the map has (1), or read the map for what is
     # there and lay the housing out to suit the game (0).
@@ -261,10 +263,11 @@ LIMITS = {
     "m2_per_person": (10.0, 150.0),
     "tree_density": (0.0, 3.0),
     "forest_density": (0.0, 3.0),
+    "terrain_only": (0, 1),
     "seed": (0, 2 ** 31 - 1),
     "true_map": (0, 1),
     "fill_gaps": (0, 1),
-    "fill_frontage": (0, 1),
+    "fill_frontage": (0, 2),
     "guaranteed_rifle": (0, 1),
     # MIN_ROOM in layout.py is 3, and a building has to hold at least one room
     # plus its walls. MAX_BUILDING_DIMENSION in the reader is 300.

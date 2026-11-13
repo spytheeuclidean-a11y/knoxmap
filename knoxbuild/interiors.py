@@ -82,6 +82,12 @@ _LIKE = {
     "movierental": ("bookstore", {"wall": ["shop_shelf"]}),
     "gunstore": ("toolstore", {"rows": "shop_display", "wall": ["metal_rack"]}),
     "gardenstore": ("toolstore", {"front": ["plant", "plant"], "wall": ["shop_shelf_wood", "plant"]}),
+    "armysurplus": ("toolstore", {"rows": "metal_rack", "wall": ["clothes_rack", "metal_rack"],
+                                  "front": ["shop_display"]}),
+    "hunting": ("toolstore", {"rows": "metal_rack", "wall": ["clothes_rack", "shop_shelf_wood"],
+                              "front": ["shop_display"]}),
+    "artstore": ("generalstore", {"wall": ["shop_shelf_wood", "metal_rack"], "front": ["painting"]}),
+    "petstore": ("generalstore", {"wall": ["shop_shelf", "shop_shelf_wood"], "front": ["shop_bin"]}),
     "furniturestore": ("generalstore", {"rows": "bookcases", "wall": ["wardrobe", "dresser", "sofa"],
                                         "back": ["double_bed", "wardrobe2"], "front": ["armchair"]}),
     # The units Knox County's mall is let out to. clothesstore is the game's

@@ -628,7 +628,6 @@ def main(argv: list[str]) -> int:
                     break
             else:
                 places.append((x, y))
-
         def runs_out(x: int, y: int) -> bool:
             """Tarmac for a road's length one way and none the other: the end of
             a road, as opposed to a hundred metres along one."""

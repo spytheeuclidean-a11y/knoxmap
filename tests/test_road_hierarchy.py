@@ -198,9 +198,9 @@ class RoadHierarchyTests(unittest.TestCase):
         motorway_stalls = sum(zone.kind == "ParkingStall" for zone in motorway_zones)
         self.assertGreater(local_stalls, motorway_stalls)
 
-    def test_kerbside_bays_get_a_wheel_stop_at_their_ends(self):
-        """The concrete blocks that close a bay: painted into the vegetation
-        bitmap across the mouth of the bay, on the tarmac only."""
+    def test_kerbside_bays_do_not_place_wheel_stops_on_roads(self):
+        """Kerbside parking zones stay invisible; no concrete wheel-stop curbs
+        are painted onto roads or paths."""
         with TemporaryDirectory() as directory:
             ground_path = f"{directory}/map.bmp"
             veg_path = f"{directory}/map_veg.bmp"
@@ -221,20 +221,7 @@ class RoadHierarchyTests(unittest.TestCase):
 
         self.assertTrue(any(zone.kind == "ParkingStall" for zone in zones), "no bays")
         stops = painted & (set(renderer.C.PARKING_BLOCK_X) | set(renderer.C.PARKING_BLOCK_Y))
-        self.assertTrue(stops, "no wheel stop was laid")
-        # A block is one sprite in three squares, so a whole one is all three
-        # colours of its group: never a lone square of concrete.
-        groups = ((renderer.C.PARKING_BLOCK_X, 1), (renderer.C.PARKING_BLOCK_Y, 0))
-        self.assertTrue(any(set(group) <= painted for group, _axis in groups),
-                        "no stop was laid whole")
-        # And every stop that starts is finished: the block is one sprite.
-        for group, axis in groups:
-            for y, x in np.argwhere(np.all(veg == group[0], axis=2)):
-                rest = [(x + k * axis, y + k * (1 - axis)) for k in (1, 2)]
-                with self.subTest(block=(int(x), int(y))):
-                    self.assertTrue(all(np.all(veg[cy, cx] == group[k + 1])
-                                        for k, (cx, cy) in enumerate(rest)),
-                                    "a wheel stop was laid half-finished")
+        self.assertFalse(stops, "wheel stops should not be laid on roads or paths")
 
     def test_commercial_frontage_prefers_higher_order_road_at_equal_distance(self):
         with TemporaryDirectory() as directory:

@@ -960,7 +960,7 @@ const SETTING_LABELS = {
   forest_density:      ['Forests', 'Scales every wood, on top of Woodland: the ones the mapper drew and the tree cover WorldCover finds. Thick forest round a thinly planted town, or the other way about.'],
   seed:                ['Seed', 'Same seed and area gives the same town again.'],
   fill_gaps:           ['Fill gaps from Microsoft footprints', 'On adds the buildings OpenStreetMap has not got, from Microsoft’s machine-detected building footprints, same licence. Downloads about 30 MB per tile on the first run, nothing to install. Worth it where your town is half missing from OSM; elsewhere it adds sheds. Falls back to Overture (needs DuckDB) if Microsoft cannot be reached.'],
-  fill_frontage:       ['Fill gaps in streets', 'On builds the buildings missing from a street that has buildings either side of the gap: the shop missing from a row of shops, the houses from a run of houses. They are made like their neighbours, same width, depth, set-back and storeys, and only where there is room: never across a road, on water, in a park or a wood. Uses nothing but the map itself, so it costs no download. Off leaves the gaps as OpenStreetMap has them.'],
+  fill_frontage:       ['Fill gaps in streets', 'Builds buildings missing from a street that has buildings beside the gap, matching their neighbours (width, depth, set-back, storeys) where there is room. Choose whether to also extend the ends of rows or only fill gaps between existing buildings.'],
   true_map:            ['True map generation', 'On builds every address as mapped. Off keeps the real roads, rivers, woods and terrain, but leaves out half the houses and grows the rest into proper homes with yards. Named places are always built, at the game’s size.'],
   guaranteed_rifle:    ['Guaranteed rifle', 'On leaves one military rifle on the map: in an army building if there is one, else the police station, else a gun shop, else a house on the edge of town. A real town has no checkpoints for one to spawn in.'],
   min_size:            ['Smallest building', 'Buildings narrower than this many tiles are left out.'],
@@ -1049,10 +1049,14 @@ function buildSettingsForm(values) {
   }
   fx.wireSettings(body);
   runListSearch('advanced-body');
+  const topTerrain = document.getElementById('terrainOnlyToggle');
+  if (topTerrain) topTerrain.checked = !!values.terrain_only;
 }
 
 function readSettings() {
   const out = { preset: document.getElementById('preset').value };
+  const topTerrain = document.getElementById('terrainOnlyToggle');
+  if (topTerrain) out.terrain_only = topTerrain.checked ? 1 : 0;
   for (const el of document.querySelectorAll('#advanced-body [data-key]')) {
     // A switch is on or off, and sends the 1 or 0 the generator reads.
     if (el.type === 'checkbox') {
@@ -1233,6 +1237,8 @@ async function reapply() {
 // container, which is not.
 document.getElementById('advanced-body').addEventListener('input', showReapply);
 document.getElementById('advanced-body').addEventListener('change', showReapply);
+const topTerrainEl = document.getElementById('terrainOnlyToggle');
+if (topTerrainEl) topTerrainEl.addEventListener('change', showReapply);
 
 document.getElementById('preset').addEventListener('change', () => {
   if (!settingsMeta) return;
@@ -2580,6 +2586,7 @@ function renderResults(data) {
       <div class="tile"><div class="v"><span data-count="${data.cellsX}">0</span><small>×</small><span
         data-count="${data.cellsY}">0</span></div><div class="k">cells</div></div>
       ${fx.tile(data.featureCount, '', 'osm features')}
+      ${data.fromStreetInfill ? fx.tile(data.fromStreetInfill, '', 'street infill') : ''}
     </div>`;
   fx.countUp(info);
 

@@ -56,7 +56,17 @@ def wait_for(port: int, timeout: float = 20.0) -> bool:
     return False
 
 
+def _ensure_stdio() -> None:
+    """pythonw.exe / windowed launches leave sys.stdout and sys.stderr as None;
+    redirect them to os.devnull before colorama or logging wraps them."""
+    if sys.stdout is None:
+        sys.stdout = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+    if sys.stderr is None:
+        sys.stderr = open(os.devnull, "w", encoding="utf-8")  # noqa: SIM115
+
+
 def main() -> int:
+    _ensure_stdio()
     import knoxlog
     knoxlog.setup("window")
     import updater
@@ -136,7 +146,10 @@ def end_jobs(grace: float = 15.0) -> None:
         child.terminate()
     knoxlog.log.info("window closed: running jobs stopped")
     import logging
-    logging.shutdown()
+    try:
+        logging.shutdown()
+    except Exception:  # noqa: BLE001 - pythonw has None stdout/stderr under colorama
+        pass
     os._exit(0)
 
 

@@ -243,19 +243,52 @@ def api_iso_info(name: str):
         except Exception:
             pass
 
+    w_tiles = int(info.get("width_tiles") or 0)
+    h_tiles = int(info.get("height_tiles") or 0)
+    picture_boxes = {}
+    if w_tiles > 0 and h_tiles > 0:
+        from knoxbuild.picture import SIZE, _scale_for, _within_budget
+
+        def _box_for(bx: int, by: int, bw: int, bh: int) -> dict[str, int]:
+            sc = _scale_for(bw, bh, SIZE)
+            rx, ry, rw, rh = _within_budget(bx, by, bw, bh, sc)
+            return {"x": rx, "y": ry, "w": rw, "h": rh}
+
+        close = min(320, max(120, min(w_tiles, h_tiles) // 3))
+        mx = max(0, w_tiles // 2 - close // 2)
+        my = max(0, h_tiles // 2 - close // 2)
+        town_box = _box_for(0, 0, w_tiles, h_tiles)
+        middle_box = _box_for(mx, my, close, close)
+        picture_boxes["town"] = town_box
+        picture_boxes["close"] = middle_box
+        picture_boxes["inside"] = (
+            town_box if (pics_dir / "inside_town.png").is_file() else middle_box
+        )
+
     return jsonify({
         "name": map_dir.name,
         "compiled": compiled,
-        "width_tiles": int(info.get("width_tiles") or 0),
-        "height_tiles": int(info.get("height_tiles") or 0),
+        "width_tiles": w_tiles,
+        "height_tiles": h_tiles,
         "cells_x": int(info.get("cells_x") or 0),
         "cells_y": int(info.get("cells_y") or 0),
         "building_count": int(info.get("building_count") or 0),
         "focus_x": focus_x,
         "focus_y": focus_y,
         "pictures": pictures,
+        "picture_boxes": picture_boxes,
         "cells": cells_list,
     })
+
+
+_ISO_PROGRESS: dict[str, tuple[int, str]] = {}
+
+
+@bp.route("/api/iso-progress/<name>")
+def api_iso_progress(name: str):
+    """Live progress of an in-flight 2.5D isometric render for `name`."""
+    pct, stage = _ISO_PROGRESS.get(name, (0, ""))
+    return jsonify({"pct": pct, "stage": stage})
 
 
 @bp.route("/api/iso-render/<name>")
@@ -270,6 +303,9 @@ def api_iso_render(name: str):
 
     from tools import render_lots
     from knoxbuild.picture import _trim, picture as make_picture
+
+    def on_progress(pct: int, stage: str) -> None:
+        _ISO_PROGRESS[name] = (max(0, min(99, int(pct))), stage)
 
     # Scale parameter (1.0 = native in-game zoom)
     try:
@@ -317,11 +353,14 @@ def api_iso_render(name: str):
             return send_file(target_path, mimetype="image/png")
         # Otherwise generate full picture
         try:
+            _ISO_PROGRESS[name] = (1, "Starting full-map 2.5D render…")
             target_path.parent.mkdir(parents=True, exist_ok=True)
-            make_picture(map_dir, target_path, roofs=roofs)
+            make_picture(map_dir, target_path, roofs=roofs, progress=on_progress)
+            _ISO_PROGRESS.pop(name, None)
             if target_path.is_file():
                 return send_file(target_path, mimetype="image/png")
         except Exception as exc:
+            _ISO_PROGRESS.pop(name, None)
             return failed(f"Could not draw picture: {exc}", 500, exc)
         return jsonify({"error": "Could not render picture."}), 500
 
@@ -338,8 +377,12 @@ def api_iso_render(name: str):
         return send_file(cache_file, mimetype="image/png")
 
     try:
-        drawn = render_lots.render(str(map_dir), x, y, w, h, max_level=max_level, scale=scale)
+        _ISO_PROGRESS[name] = (1, "Starting 2.5D sector render…")
+        drawn = render_lots.render(
+            str(map_dir), x, y, w, h, max_level=max_level, scale=scale, progress=on_progress
+        )
     except Exception as exc:
+        _ISO_PROGRESS.pop(name, None)
         return failed(f"Render failed: {exc}", 500, exc)
 
     if drawn is None:
@@ -351,12 +394,60 @@ def api_iso_render(name: str):
         height = (w + h) * quarter + 2 * TW
         drawn = Image.new("RGBA", (width, height), (24, 26, 28, 255))
 
+    _ISO_PROGRESS[name] = (96, "Trimming & saving PNG…")
     trimmed = _trim(drawn)
     try:
         trimmed.save(cache_file, "PNG")
+        _ISO_PROGRESS.pop(name, None)
         return send_file(cache_file, mimetype="image/png")
     except Exception as exc:
+        _ISO_PROGRESS.pop(name, None)
         return failed(f"Saving render failed: {exc}", 500, exc)
+
+
+@bp.route("/api/iso-delete/<name>", methods=["POST"])
+def api_iso_delete(name: str):
+    """Delete cached 2.5D isometric image(s) so they can be regenerated."""
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Unknown map."}), 404
+    data = request.get_json(silent=True) or {}
+    mode = str(data.get("mode") or "").strip().lower()
+    box = data.get("box")
+    pics_dir = map_dir / "pictures"
+    cache_dir = pics_dir / "cache"
+    targets: list[Path] = []
+    if mode == "town":
+        targets.append(pics_dir / "town.png")
+    elif mode == "close":
+        targets.append(pics_dir / "close.png")
+    elif mode == "inside":
+        targets.extend([pics_dir / "inside_town.png", pics_dir / "inside.png"])
+    elif mode == "sector":
+        if cache_dir.is_dir():
+            if isinstance(box, (list, tuple)) and len(box) == 4:
+                try:
+                    bx, by, bw, bh = [int(v) for v in box]
+                    targets.extend(cache_dir.glob(f"iso_{bx}_{by}_{bw}_{bh}_*.png"))
+                except (TypeError, ValueError):
+                    targets.extend(cache_dir.glob("iso_*.png"))
+            else:
+                targets.extend(cache_dir.glob("iso_*.png"))
+    else:
+        return jsonify({"error": "Unknown mode."}), 400
+    if mode == "close" and cache_dir.is_dir() and isinstance(box, (list, tuple)) and len(box) == 4:
+        try:
+            bx, by, bw, bh = [int(v) for v in box]
+            targets.extend(cache_dir.glob(f"iso_{bx}_{by}_{bw}_{bh}_*.png"))
+        except (TypeError, ValueError):
+            pass
+
+    deleted = []
+    for p in targets:
+        if p.is_file():
+            p.unlink()
+            deleted.append(p.name)
+    return jsonify({"deleted": deleted})
 
 
 @bp.route("/api/save", methods=["POST"])
@@ -417,3 +508,72 @@ def download_all(map_name: str):
     buf.seek(0)
     return send_file(buf, mimetype="application/zip", as_attachment=True,
                      download_name=f"{safe}.zip")
+
+
+@bp.route("/api/road-inspector/<name>")
+def api_road_inspector(name: str):
+    """Serve the generated ground or road-details bitmap as a PNG for inspection."""
+    import numpy as np
+    from PIL import Image
+
+    from generator import pz_colors as C
+
+    map_dir = _map_dir(name)
+    if map_dir is None:
+        return jsonify({"error": "Unknown map."}), 404
+
+    layer = request.args.get("layer", "ground")
+    if layer not in ("ground", "details"):
+        return jsonify({"error": "layer must be ground or details"}), 400
+
+    src = map_dir / (f"{map_dir.name}.bmp" if layer == "ground" else f"{map_dir.name}_veg.bmp")
+    if not src.is_file():
+        return jsonify({"error": f"{src.name} has not been generated yet."}), 404
+
+    cache_dir = map_dir / "pictures" / "cache"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    mtime = src.stat().st_mtime_ns
+    cache_file = cache_dir / f"roadinsp_{layer}_{mtime}.png"
+    if cache_file.is_file():
+        return send_file(cache_file, mimetype="image/png")
+
+    with Image.open(src) as im:
+        rgb = im.convert("RGB")
+
+    if layer == "ground":
+        rgb.save(cache_file, "PNG")
+        return send_file(cache_file, mimetype="image/png")
+
+    arr = np.asarray(rgb)
+    h, w = arr.shape[:2]
+    rgba = np.zeros((h, w, 4), dtype=np.uint8)
+    non_empty = np.any(arr != 0, axis=2)
+    rgba[non_empty, :3] = arr[non_empty]
+    rgba[non_empty, 3] = 140
+
+    def _paint_group(colours, out_rgba):
+        mask = np.zeros((h, w), dtype=bool)
+        for col in colours:
+            mask |= np.all(arr == np.array(col, dtype=np.uint8), axis=2)
+        rgba[mask] = out_rgba
+
+    _paint_group((C.KERB_W, C.KERB_N, C.KERB_S, C.KERB_E,
+                  C.KERB_NW, C.KERB_SW, C.KERB_NE, C.KERB_SE), (0, 230, 255, 255))
+    _paint_group((C.KERB_DNW_0, C.KERB_DNW_1, C.KERB_DNE_0, C.KERB_DNE_1,
+                  C.KERB_DSW_0, C.KERB_DSW_1, C.KERB_DSE_0, C.KERB_DSE_1),
+                 (80, 170, 255, 255))
+    _paint_group((C.LINE_WHITE_N, C.LINE_WHITE_W,
+                  C.EDGE_LINE_N, C.EDGE_LINE_S, C.EDGE_LINE_W, C.EDGE_LINE_E),
+                 (255, 255, 255, 255))
+    _paint_group((C.LINE_YELLOW_N, C.LINE_YELLOW_W), (255, 220, 40, 255))
+    props = (
+        C.LAMP_N, C.LAMP_S, C.LAMP_W, C.LAMP_E, C.HYDRANT, C.BIN, C.MAILBOX,
+        C.STORM_DRAIN, C.UTILITY_POLE, C.MANHOLE,
+        C.KIOSK_N, C.KIOSK_E, C.KIOSK_S, C.KIOSK_W,
+        C.POSTBOX_N, C.POSTBOX_E, C.POSTBOX_S, C.POSTBOX_W,
+        *C.BENCH_X, *C.BENCH_Y, *C.PARKING_BLOCK_X, *C.PARKING_BLOCK_Y,
+    )
+    _paint_group(props, (255, 130, 30, 255))
+
+    Image.fromarray(rgba, "RGBA").save(cache_file, "PNG")
+    return send_file(cache_file, mimetype="image/png")

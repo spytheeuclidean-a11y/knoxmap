@@ -1,0 +1,53 @@
+<?xml version='1.0' encoding='utf-8'?>
+<world version="1.0" width="3" height="3">
+ <BMPToTMX>
+  <tmxexportdir path="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx" />
+  <rulesfile path="" />
+  <blendsfile path="" />
+  <mapbasefile path="" />
+  <assign-maps-to-world checked="true" />
+  <warn-unknown-colors checked="true" />
+  <compress checked="true" />
+  <copy-pixels checked="true" />
+  <update-existing checked="false" />
+ </BMPToTMX>
+ <TMXToBMP>
+  <mainImage generate="true" />
+  <vegetationImage generate="true" />
+  <buildingsImage path="" generate="false" />
+ </TMXToBMP>
+ <GenerateLots>
+  <exportdir path="C:/KnoxMap/rust/knoxlots/fixtures/extra/wallW/lots" />
+  <ZombieSpawnMap path="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/door_ZombieSpawnMap.bmp" />
+  <TileDefFolder path="" />
+  <worldOrigin origin="70,0" />
+  <numberOfThreads count="1" />
+ </GenerateLots>
+ <LuaSettings>
+  <spawnPointsFile path="spawnpoints.lua" />
+  <worldObjectsFile path="objects.lua" />
+ </LuaSettings>
+  <objecttype name="ParkingStall" />
+  <objecttype name="TownZone" />
+  <objectgroup name="ParkingStall" color="#ff007f" defaulttype="ParkingStall" />
+  <objectgroup name="TownZone" color="#aa0000" defaulttype="TownZone" />
+ <bmp path="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/door.bmp" x="0" y="0" width="3" height="3" />
+ <cell x="0" y="0" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_70_0.tmx">
+  <lot x="40" y="40" level="0" width="8" height="8" map="buildings/building.tbx" /></cell>
+ <cell x="0" y="1" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_70_1.tmx">
+ </cell>
+ <cell x="0" y="2" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_70_2.tmx">
+ </cell>
+ <cell x="1" y="0" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_71_0.tmx">
+ </cell>
+ <cell x="1" y="1" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_71_1.tmx">
+ </cell>
+ <cell x="1" y="2" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_71_2.tmx">
+ </cell>
+ <cell x="2" y="0" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_72_0.tmx">
+ </cell>
+ <cell x="2" y="1" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_72_1.tmx">
+ </cell>
+ <cell x="2" y="2" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/bx/door/tmx/door_72_2.tmx">
+ </cell>
+</world>

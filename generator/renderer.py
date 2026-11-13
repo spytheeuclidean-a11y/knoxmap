@@ -126,6 +126,14 @@ CLIMATE_TINT = {
 _WINTER_GROUND = (210, 214, 218)
 
 
+def _colour_mask(ground, colours) -> "np.ndarray":
+    """Which pixels of `ground` are one of `colours`."""
+    mask = np.zeros(ground.shape[:2], dtype=bool)
+    for colour in colours:
+        mask |= np.all(ground == np.array(colour, dtype=ground.dtype), axis=2)
+    return mask
+
+
 def _paint_climate(landscape: Image.Image, climate: dict,
                    winter_look: str = "auto") -> None:
     """Tint the ground for its real climate: dry, cold, lush or default."""
@@ -307,6 +315,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            straight_roads: int = 4,
            include_proposed_roads: int = 0,
            fill_frontage: int = 0,
+           terrain_only: int = 0,
            landcover_for=None,
            climate=None,
            winter_look: str = "auto",
@@ -321,7 +330,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     if road_layout in (1, 4):
         # Every road in straight runs at 45-degree steps (octilinear.py).
         from .octilinear import straighten_roads
-        straighten_roads(features, proj, classify, _is_polygon, clean=(road_layout == 4))
+        straighten_roads(features, proj, classify, _is_polygon, clean=True)
     elif road_layout in ROAD_LAYOUTS:
         # Routed on vanilla's lattice (roadgraph/route.py), and saved: Build and
         # the paper map read the roads back rather than routing them again.
@@ -424,28 +433,33 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                                if id(f) not in lifted.not_buildings]
 
     # Streets where every home is an address point and not a drawn building.
-    addressed = _houses_from_addresses(features, building_feats, proj)
-    if addressed:
-        building_feats = building_feats + addressed
-        buckets["building"] = buckets.get("building", []) + addressed
-
-    # Buildings for the gaps in a row, from the ones beside them
-    # (generator/rendering/infill.py). After the addresses, so a numbered
-    # house that was just put down is a neighbour like any other.
     infilled: list[OSMFeature] = []
     sheds: list[OSMFeature] = []
-    if fill_frontage:
-        infilled = _infill_frontage(buckets, vegetation_feats, building_feats,
-                                    proj, clip)
-        if infilled:
-            building_feats = building_feats + infilled
-            buckets["building"] = buckets.get("building", []) + infilled
-    # A shed or garage behind some of the houses, whether or not the gaps are
-    # filled: a yard has one either way.
-    sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
-    if sheds:
-        building_feats = building_feats + sheds
-        buckets["building"] = buckets.get("building", []) + sheds
+    if terrain_only:
+        building_feats = []
+        buckets["building"] = []
+    else:
+        addressed = _houses_from_addresses(features, building_feats, proj)
+        if addressed:
+            building_feats = building_feats + addressed
+            buckets["building"] = buckets.get("building", []) + addressed
+
+        # Buildings for the gaps in a row, from the ones beside them
+        # (generator/rendering/infill.py). After the addresses, so a numbered
+        # house that was just put down is a neighbour like any other.
+        if fill_frontage:
+            infilled = _infill_frontage(
+                buckets, vegetation_feats, building_feats,
+                proj, clip, extend_ends=(int(fill_frontage) != 2))
+            if infilled:
+                building_feats = building_feats + infilled
+                buckets["building"] = buckets.get("building", []) + infilled
+        # A shed or garage behind some of the houses, whether or not the gaps are
+        # filled: a yard has one either way.
+        sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
+        if sheds:
+            building_feats = building_feats + sheds
+            buckets["building"] = buckets.get("building", []) + sheds
 
     def ground_rings(feat: OSMFeature) -> list[list[tuple[float, float]]]:
         rings = _feature_coords_px(feat, proj)
@@ -493,7 +507,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                             pave_side = max(1, round((s_m - v_m) / meters_per_tile))
                             r_v = (w_road + 2 * verge_side - 1) / 2.0
                             r_s = r_v + pave_side
-                            if int(r_s * 1.41421356) - int((r_v * 1.41421356) + 0.999999) + 1 < 2:
+                            if int(r_s * 1.41421356) - int((r_v * 1.41421356) + 0.999999) + 1 < 4:
                                 pave_side += 1
                             w_stroke = w_road + 2 * (verge_side + pave_side)
                         strokes.append((w_stroke, ground_rings(feat)))
@@ -647,6 +661,13 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             if len(ring) >= 3:
                 mask_draw.polygon(ring, fill=255)
     _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask)
+    # The last word on the ground edge belongs to the smoother: a lamp's square
+    # and the passes after the road details can leave a verge square standing
+    # between two pavements, which in the game is a lawn in the sidewalk.
+    _smooth_road_edges(landscape, (C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
+                                   C.DARKEST_ASPHALT, C.DARK_POTHOLE,
+                                   C.LIGHT_POTHOLE),
+                       _colour_mask)
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:

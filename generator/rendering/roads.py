@@ -155,8 +155,19 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
                           _shifted(road, 2, 0) | _shifted(road, -2, 0) |
                           _shifted(road, 0, 2) | _shifted(road, 0, -2))
             mend = verge & (breaks_h | breaks_v) & near_road2
+            # Shave 1-tile pavement spikes jutting into grass (3+ grass
+            # neighbours) and fill 1-tile grass notches in a pavement edge
+            # (3+ pavement neighbours).
+            verge_count = np.zeros(pave.shape, dtype=np.uint8)
+            verge_count[:, 1:] += verge[:, :-1]
+            verge_count[:, :-1] += verge[:, 1:]
+            verge_count[1:, :] += verge[:-1, :]
+            verge_count[:-1, :] += verge[1:, :]
+            pave_bump = pave & (verge_count >= 3)
+            pave_notch = verge & (ortho_count >= 3)
             if not notch.any() and not bump.any() and not lonep.any() \
-                    and not mend.any():
+                    and not mend.any() and not pave_bump.any() \
+                    and not pave_notch.any():
                 break
             # A filled notch takes the tarmac of the road beside it.
             ys, xs = np.nonzero(notch)
@@ -192,10 +203,20 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
                             if beside not in paved:
                                 ground[y, x] = beside
                                 break
-            if mend.any():
-                mys, mxs = np.nonzero(mend)
+            if mend.any() or pave_notch.any():
+                mys, mxs = np.nonzero(mend | pave_notch)
                 for y, x in zip(mys, mxs):
                     ground[y, x] = C.PALE_CONCRETE
+            if pave_bump.any():
+                pys, pxs = np.nonzero(pave_bump)
+                for y, x in zip(pys, pxs):
+                    ground[y, x] = C.MEDIUM_GRASS
+                    for dy, dx in ((0, -1), (-1, 0), (0, 1), (1, 0)):
+                        yy, xx = y + dy, x + dx
+                        if 0 <= yy < ground.shape[0] and 0 <= xx < ground.shape[1] \
+                                and verge[yy, xx]:
+                            ground[y, x] = ground[yy, xx]
+                            break
         rows = slice(y0 - top, y0 - top + (y1 - y0))
         landscape.paste(Image.fromarray(ground[rows]), (0, y0))
 

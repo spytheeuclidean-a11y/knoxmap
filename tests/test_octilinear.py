@@ -110,6 +110,28 @@ class StraighteningKnowsWhenToStop(unittest.TestCase):
         for arm in arms:
             self.assertIn(arm.geometry[0], on_the_ring)
 
+    def test_two_runs_a_tile_apart_become_one_straight_run(self):
+        # What a street that shifts sideways by a tile looks like after the fit.
+        from generator.octilinear import _de_dogleg, _tidy
+        stepped = [(0, 0), (20, 0), (20, 1), (40, 1)]
+        self.assertEqual(_tidy(_de_dogleg(stepped)), [(0, 0), (40, 0)])
+
+    def test_a_real_corner_is_left_alone(self):
+        from generator.octilinear import _de_dogleg, _tidy
+        corner = [(0, 0), (20, 0), (20, 1), (40, 1), (40, 30)]
+        self.assertEqual(_tidy(_de_dogleg(corner)),
+                         [(0, 0), (40, 0), (40, 30)])
+
+    def test_diagonal_runs_a_tile_apart_become_one_straight_run(self):
+        from generator.octilinear import _de_dogleg, _tidy
+        stepped = [(0, 0), (15, 15), (16, 15), (31, 30)]
+        self.assertEqual(_tidy(_de_dogleg(stepped)), [(0, 0), (30, 30)])
+
+    def test_diagonal_runs_two_tiles_apart_become_one_straight_run(self):
+        from generator.octilinear import _de_dogleg, _tidy
+        stepped = [(0, 0), (15, 15), (17, 15), (32, 30)]
+        self.assertEqual(_tidy(_de_dogleg(stepped)), [(0, 0), (30, 30)])
+
 
 if __name__ == "__main__":
     unittest.main()

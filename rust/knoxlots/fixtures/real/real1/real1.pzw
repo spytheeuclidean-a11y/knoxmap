@@ -1,0 +1,342 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<world version="1.0" width="2" height="2">
+ <BMPToTMX>
+  <tmxexportdir path="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/real/real1/tmx"/>
+  <rulesfile path=""/>
+  <blendsfile path=""/>
+  <mapbasefile path=""/>
+  <assign-maps-to-world checked="true"/>
+  <warn-unknown-colors checked="true"/>
+  <compress checked="true"/>
+  <copy-pixels checked="true"/>
+  <update-existing checked="false"/>
+ </BMPToTMX>
+ <TMXToBMP>
+  <mainImage generate="true"/>
+  <vegetationImage generate="true"/>
+  <buildingsImage path="" generate="false"/>
+ </TMXToBMP>
+ <GenerateLots>
+  <exportdir path="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/real/real1/lots"/>
+  <ZombieSpawnMap path="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--KnoxMap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/real/real1/real1_ZombieSpawnMap.bmp"/>
+  <TileDefFolder path=""/>
+  <worldOrigin origin="70,0"/>
+  <numberOfThreads count="4"/>
+ </GenerateLots>
+ <LuaSettings>
+  <spawnPointsFile path="spawnpoints.lua"/>
+  <worldObjectsFile path="objects.lua"/>
+ </LuaSettings>
+  <objecttype name="ParkingStall"/>
+  <objecttype name="TownZone"/>
+  <objectgroup name="ParkingStall" color="#ff007f" defaulttype="ParkingStall"/>
+  <objectgroup name="TownZone" color="#aa0000" defaulttype="TownZone"/>
+ <bmp path="real1.bmp" x="0" y="0" width="2" height="2"/>
+ <cell x="0" y="0" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--knoxmap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/real/real1/tmx/real1_70_0.tmx">
+  <lot x="181" y="41" level="0" width="25" height="29" map="buildings/real1_0031.tbx"/>
+  <lot x="103" y="54" level="0" width="186" height="240" map="buildings/real1_fences_0_0.tbx"/>
+  <lot x="288" y="56" level="0" width="12" height="12" map="buildings/real1_0029.tbx"/>
+  <lot x="276" y="69" level="0" width="12" height="12" map="buildings/real1_0030.tbx"/>
+  <lot x="266" y="81" level="0" width="8" height="11" map="buildings/real1_0107.tbx"/>
+  <lot x="248" y="88" level="0" width="18" height="12" map="buildings/real1_0106.tbx"/>
+  <lot x="131" y="93" level="0" width="25" height="23" map="buildings/real1_0013.tbx"/>
+  <lot x="156" y="113" level="0" width="18" height="21" map="buildings/real1_0015.tbx"/>
+  <lot x="281" y="115" level="0" width="17" height="15" map="buildings/real1_0033.tbx"/>
+  <lot x="176" y="121" level="0" width="19" height="23" map="buildings/real1_0014.tbx"/>
+  <lot x="46" y="125" level="0" width="23" height="21" map="buildings/real1_0024.tbx"/>
+  <lot x="266" y="127" level="0" width="14" height="12" map="buildings/real1_0032.tbx"/>
+  <lot x="197" y="142" level="0" width="15" height="19" map="buildings/real1_0028.tbx"/>
+  <lot x="185" y="152" level="0" width="12" height="15" map="buildings/real1_0026.tbx"/>
+  <lot x="170" y="171" level="0" width="13" height="14" map="buildings/real1_0027.tbx"/>
+  <lot x="55" y="231" level="0" width="22" height="19" map="buildings/real1_0016.tbx"/>
+  <lot x="157" y="238" level="0" width="24" height="21" map="buildings/real1_0004.tbx"/>
+  <lot x="81" y="258" level="0" width="22" height="14" map="buildings/real1_0096.tbx"/>
+  <lot x="172" y="269" level="0" width="22" height="15" map="buildings/real1_0097.tbx"/>
+  <lot x="91" y="272" level="0" width="24" height="19" map="buildings/real1_0017.tbx"/>
+  <lot x="287" y="274" level="0" width="9" height="11" map="buildings/real1_0108.tbx"/>
+  <lot x="223" y="298" level="0" width="10" height="12" map="buildings/real1_0008.tbx"/>
+  <lot x="80" y="58" level="0" width="218" height="213" map="buildings/real1_lights_0_0.tbx"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="213" y="282" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="216" y="282" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="222" y="282" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="207" y="294" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="192" y="299" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="201" y="299" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="207" y="299" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="88" y="4" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="102" y="18" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="116" y="32" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="130" y="46" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="144" y="60" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="102" y="74" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="158" y="74" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="88" y="88" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="172" y="88" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="74" y="102" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="186" y="102" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="200" y="116" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="214" y="130" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="242" y="158" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="256" y="172" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="270" y="186" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="18" y="256" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="130" y="256" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="144" y="270" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="228" y="284" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="242" y="284" level="0" width="3" height="5"/>
+  <object name="" group="TownZone" type="TownZone" x="38" y="33" level="0" width="262" height="267"/>
+ </cell>
+ <cell x="0" y="1" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--knoxmap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/real/real1/tmx/real1_70_1.tmx">
+  <lot x="202" y="8" level="0" width="21" height="31" map="buildings/real1_0001.tbx"/>
+  <lot x="234" y="16" level="0" width="42" height="44" map="buildings/real1_0000.tbx"/>
+  <lot x="72" y="43" level="0" width="192" height="194" map="buildings/real1_fences_0_1.tbx"/>
+  <lot x="160" y="47" level="0" width="17" height="7" map="buildings/real1_0081.tbx"/>
+  <lot x="121" y="51" level="0" width="6" height="11" map="buildings/real1_0085.tbx"/>
+  <lot x="127" y="54" level="0" width="59" height="57" map="buildings/real1_0018.tbx"/>
+  <lot x="107" y="61" level="0" width="14" height="15" map="buildings/real1_0084.tbx"/>
+  <lot x="285" y="68" level="0" width="15" height="17" map="buildings/real1_0007.tbx"/>
+  <lot x="94" y="74" level="0" width="12" height="14" map="buildings/real1_0083.tbx"/>
+  <lot x="271" y="82" level="0" width="14" height="17" map="buildings/real1_0006.tbx"/>
+  <lot x="79" y="85" level="0" width="15" height="16" map="buildings/real1_0082.tbx"/>
+  <lot x="186" y="88" level="0" width="4" height="11" map="buildings/real1_0080.tbx"/>
+  <lot x="201" y="100" level="0" width="24" height="23" map="buildings/real1_0019.tbx"/>
+  <lot x="226" y="130" level="0" width="56" height="51" map="buildings/real1_0012.tbx"/>
+  <lot x="81" y="137" level="0" width="13" height="13" map="buildings/real1_0086.tbx"/>
+  <lot x="169" y="138" level="0" width="17" height="15" map="buildings/real1_0095.tbx"/>
+  <lot x="153" y="153" level="0" width="23" height="25" map="buildings/real1_0079.tbx"/>
+  <lot x="297" y="166" level="0" width="26" height="24" map="buildings/real1_0010.tbx"/>
+  <lot x="191" y="179" level="0" width="22" height="13" map="buildings/real1_0090.tbx"/>
+  <lot x="128" y="181" level="0" width="22" height="16" map="buildings/real1_0093.tbx"/>
+  <lot x="299" y="190" level="0" width="39" height="35" map="buildings/real1_0022.tbx"/>
+  <lot x="175" y="192" level="0" width="26" height="18" map="buildings/real1_0089.tbx"/>
+  <lot x="112" y="197" level="0" width="20" height="14" map="buildings/real1_0087.tbx"/>
+  <lot x="76" y="199" level="0" width="11" height="12" map="buildings/real1_0094.tbx"/>
+  <lot x="224" y="199" level="0" width="15" height="13" map="buildings/real1_0091.tbx"/>
+  <lot x="163" y="210" level="0" width="8" height="9" map="buildings/real1_0088_00.tbx"/>
+  <lot x="171" y="210" level="0" width="9" height="10" map="buildings/real1_0088_01.tbx"/>
+  <lot x="180" y="212" level="0" width="8" height="9" map="buildings/real1_0088_02.tbx"/>
+  <lot x="247" y="214" level="0" width="14" height="13" map="buildings/real1_0092.tbx"/>
+  <lot x="83" y="2" level="0" width="216" height="214" map="buildings/real1_lights_0_1.tbx"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="298" y="51" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="298" y="54" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="191" y="122" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="194" y="122" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="200" y="12" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="270" y="12" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="298" y="40" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="200" y="54" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="186" y="138" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="214" y="138" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="242" y="138" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="200" y="152" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="284" y="166" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="270" y="180" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="158" y="194" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="242" y="194" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="256" y="194" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="46" y="208" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="116" y="236" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="102" y="250" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="88" y="264" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="74" y="278" level="0" width="3" height="5"/>
+  <object name="" group="TownZone" type="TownZone" x="68" y="0" level="0" width="232" height="235"/>
+ </cell>
+ <cell x="1" y="0" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--knoxmap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/real/real1/tmx/real1_71_0.tmx">
+  <lot x="88" y="66" level="0" width="14" height="13" map="buildings/real1_0101.tbx"/>
+  <lot x="14" y="79" level="0" width="217" height="221" map="buildings/real1_fences_1_0.tbx"/>
+  <lot x="100" y="79" level="0" width="19" height="16" map="buildings/real1_0102.tbx"/>
+  <lot x="198" y="86" level="0" width="19" height="14" map="buildings/real1_0098.tbx"/>
+  <lot x="152" y="87" level="0" width="17" height="13" map="buildings/real1_0065.tbx"/>
+  <lot x="56" y="88" level="0" width="13" height="15" map="buildings/real1_0100.tbx"/>
+  <lot x="10" y="89" level="0" width="13" height="14" map="buildings/real1_0105.tbx"/>
+  <lot x="2" y="103" level="0" width="12" height="11" map="buildings/real1_0034.tbx"/>
+  <lot x="139" y="105" level="0" width="10" height="11" map="buildings/real1_0066.tbx"/>
+  <lot x="76" y="106" level="0" width="17" height="16" map="buildings/real1_0099.tbx"/>
+  <lot x="177" y="108" level="0" width="13" height="11" map="buildings/real1_0046.tbx"/>
+  <lot x="121" y="114" level="0" width="18" height="10" map="buildings/real1_0067.tbx"/>
+  <lot x="33" y="115" level="0" width="18" height="16" map="buildings/real1_0104.tbx"/>
+  <lot x="165" y="122" level="0" width="10" height="9" map="buildings/real1_0045.tbx"/>
+  <lot x="107" y="124" level="0" width="21" height="13" map="buildings/real1_0068.tbx"/>
+  <lot x="210" y="127" level="0" width="11" height="10" map="buildings/real1_0060.tbx"/>
+  <lot x="54" y="131" level="0" width="15" height="18" map="buildings/real1_0103.tbx"/>
+  <lot x="155" y="131" level="0" width="9" height="9" map="buildings/real1_0044.tbx"/>
+  <lot x="101" y="137" level="0" width="14" height="10" map="buildings/real1_0069.tbx"/>
+  <lot x="198" y="137" level="0" width="14" height="11" map="buildings/real1_0059.tbx"/>
+  <lot x="138" y="150" level="0" width="10" height="7" map="buildings/real1_0047.tbx"/>
+  <lot x="124" y="165" level="0" width="12" height="9" map="buildings/real1_0043.tbx"/>
+  <lot x="195" y="166" level="0" width="11" height="8" map="buildings/real1_0005.tbx"/>
+  <lot x="36" y="170" level="0" width="35" height="34" map="buildings/real1_0025.tbx"/>
+  <lot x="165" y="170" level="0" width="12" height="9" map="buildings/real1_0058.tbx"/>
+  <lot x="113" y="176" level="0" width="12" height="11" map="buildings/real1_0042.tbx"/>
+  <lot x="160" y="180" level="0" width="10" height="8" map="buildings/real1_0057.tbx"/>
+  <lot x="101" y="190" level="0" width="12" height="11" map="buildings/real1_0041.tbx"/>
+  <lot x="144" y="191" level="0" width="12" height="12" map="buildings/real1_0056.tbx"/>
+  <lot x="182" y="197" level="0" width="12" height="9" map="buildings/real1_0054.tbx"/>
+  <lot x="90" y="205" level="0" width="13" height="11" map="buildings/real1_0040.tbx"/>
+  <lot x="129" y="205" level="0" width="14" height="12" map="buildings/real1_0061.tbx"/>
+  <lot x="165" y="213" level="0" width="15" height="12" map="buildings/real1_0053.tbx"/>
+  <lot x="80" y="218" level="0" width="12" height="10" map="buildings/real1_0039.tbx"/>
+  <lot x="149" y="228" level="0" width="17" height="14" map="buildings/real1_0052.tbx"/>
+  <lot x="69" y="232" level="0" width="10" height="9" map="buildings/real1_0038.tbx"/>
+  <lot x="62" y="242" level="0" width="8" height="7" map="buildings/real1_0037.tbx"/>
+  <lot x="129" y="248" level="0" width="15" height="14" map="buildings/real1_0051.tbx"/>
+  <lot x="56" y="249" level="0" width="9" height="7" map="buildings/real1_0036.tbx"/>
+  <lot x="50" y="256" level="0" width="11" height="14" map="buildings/real1_0035.tbx"/>
+  <lot x="164" y="260" level="0" width="13" height="12" map="buildings/real1_0048.tbx"/>
+  <lot x="107" y="266" level="0" width="15" height="17" map="buildings/real1_0050.tbx"/>
+  <lot x="148" y="274" level="0" width="18" height="18" map="buildings/real1_0049.tbx"/>
+  <lot x="78" y="279" level="0" width="22" height="41" map="buildings/real1_0055.tbx"/>
+  <lot x="11" y="92" level="0" width="205" height="169" map="buildings/real1_lights_1_0.tbx"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="44" y="297" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="153" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="156" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="162" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="165" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="168" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="171" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="174" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="3" y="180" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="144" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="147" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="153" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="156" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="159" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="171" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="174" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="8" y="177" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="156" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="159" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="162" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="165" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="168" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="174" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="177" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="180" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="20" y="183" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="25" y="162" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="25" y="180" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="292" y="32" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="264" y="60" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="12" y="74" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="222" y="74" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="236" y="88" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="102" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="54" y="116" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="208" y="116" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="68" y="130" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="264" y="144" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="12" y="158" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="166" y="158" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="236" y="172" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="138" y="186" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="222" y="186" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="68" y="200" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="208" y="200" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="194" y="214" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="256" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="138" y="270" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="284" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="54" y="284" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="298" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="110" y="298" level="0" width="3" height="5"/>
+  <object name="" group="TownZone" type="TownZone" x="0" y="58" level="0" width="229" height="242"/>
+ </cell>
+ <cell x="1" y="1" map="C:/Users/TheTaZe/AppData/Local/Temp/claude/C--knoxmap/cf336669-7001-42fe-9302-983424f5daee/scratchpad/real/real1/tmx/real1_71_1.tmx">
+  <lot x="146" y="0" level="0" width="96" height="228" map="buildings/real1_fences_1_1.tbx"/>
+  <lot x="128" y="21" level="0" width="32" height="40" map="buildings/real1_0064.tbx"/>
+  <lot x="85" y="57" level="0" width="27" height="40" map="buildings/real1_0075.tbx"/>
+  <lot x="176" y="69" level="0" width="15" height="31" map="buildings/real1_0063.tbx"/>
+  <lot x="195" y="82" level="0" width="20" height="41" map="buildings/real1_0062.tbx"/>
+  <lot x="20" y="87" level="0" width="17" height="9" map="buildings/real1_0021_00.tbx"/>
+  <lot x="20" y="96" level="0" width="17" height="9" map="buildings/real1_0021_01.tbx"/>
+  <lot x="20" y="105" level="0" width="16" height="9" map="buildings/real1_0021_02.tbx"/>
+  <lot x="148" y="112" level="0" width="15" height="22" map="buildings/real1_0074.tbx"/>
+  <lot x="20" y="114" level="0" width="16" height="8" map="buildings/real1_0021_03.tbx"/>
+  <lot x="20" y="122" level="0" width="16" height="9" map="buildings/real1_0021_04.tbx"/>
+  <lot x="69" y="128" level="0" width="11" height="15" map="buildings/real1_0011.tbx"/>
+  <lot x="163" y="128" level="0" width="15" height="19" map="buildings/real1_0073.tbx"/>
+  <lot x="20" y="131" level="0" width="16" height="9" map="buildings/real1_0021_05.tbx"/>
+  <lot x="20" y="140" level="0" width="15" height="9" map="buildings/real1_0021_06.tbx"/>
+  <lot x="62" y="143" level="0" width="28" height="36" map="buildings/real1_0020.tbx"/>
+  <lot x="186" y="156" level="0" width="17" height="17" map="buildings/real1_0072.tbx"/>
+  <lot x="206" y="173" level="0" width="9" height="9" map="buildings/real1_0071.tbx"/>
+  <lot x="214" y="183" level="0" width="13" height="15" map="buildings/real1_0070.tbx"/>
+  <lot x="106" y="192" level="0" width="34" height="35" map="buildings/real1_0002.tbx"/>
+  <lot x="219" y="210" level="0" width="13" height="15" map="buildings/real1_0009.tbx"/>
+  <lot x="7" y="225" level="0" width="41" height="32" map="buildings/real1_0078.tbx"/>
+  <lot x="80" y="23" level="0" width="140" height="190" map="buildings/real1_lights_1_1.tbx"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="36" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="39" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="42" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="45" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="48" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="51" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="54" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="57" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="60" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="10" y="63" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="15" y="27" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="15" y="30" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="15" y="42" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="15" y="48" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="15" y="54" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="15" y="57" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="15" y="60" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="6" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="12" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="21" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="24" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="27" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="30" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="33" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="27" y="39" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="32" y="0" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="32" y="6" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="32" y="9" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="32" y="18" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="32" y="24" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="44" y="3" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="44" y="6" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="159" y="199" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="164" y="193" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="164" y="196" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="164" y="202" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="164" y="205" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="181" y="255" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="181" y="258" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="193" y="240" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="193" y="243" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="198" y="231" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="198" y="234" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="198" y="237" level="0" width="5" height="3"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="12" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="68" y="12" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="26" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="82" y="26" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="40" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="110" y="54" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="12" y="68" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="124" y="68" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="152" y="96" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="110" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="166" y="110" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="124" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="12" y="138" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="40" y="138" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="110" y="138" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="26" y="152" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="208" y="152" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="222" y="166" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="82" y="180" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="236" y="180" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="250" y="194" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="264" y="208" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="138" y="222" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="166" y="222" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="278" y="222" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="180" y="236" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="292" y="236" level="0" width="3" height="5"/>
+  <object name="" group="ParkingStall" type="ParkingStall" x="194" y="250" level="0" width="3" height="5"/>
+  <object name="" group="TownZone" type="TownZone" x="0" y="13" level="0" width="240" height="252"/>
+ </cell>
+</world>
