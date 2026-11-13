@@ -30,10 +30,7 @@ To see where the tests do not reach yet:
 
 Coverage is report-only in CI: the number is the point, not a threshold.
 
-`selftest.py` needs no internet, game or map tools. `python tools/selftest.py
---fast` (or `-x`) skips the two checks that build the whole town a second time
-- the giant outline and the knoxlots basement compile - which are most of its
-seventeen minutes; CI and a release run the full set. If you changed how
+`selftest.py` needs no internet, game or map tools. If you changed how
 buildings or roads look, also generate a small real area and look at it with
 `tools\render_ground.py`, or better, in the game, and include a screenshot.
 
