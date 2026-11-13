@@ -5,7 +5,8 @@
 //
 //   menu bar   File Edit View Map Build Help, the place search, the credit
 //   options    what the chosen tool can do
-//   tools      Move, Area, Add to this area, Zones, Change what is here
+//   tools      a panel on the left, a tab for each way of working on the map:
+//              Area, Add to this area, Zones, Change what is here, Build
 //   tabs       Home, the maps open in this window, a new one being drawn
 //   steps      Generate > Buildings > Compile > Install > Publish check, and one
 //              button that does whatever comes next
@@ -33,7 +34,7 @@
     draft: false,            // a new map is being drawn, not yet generated
     tabs: [],                // maps open in this window, by name
     popped: [],              // maps popped out into their own windows
-    tool: 'move',
+    tool: 'area',
     view: 'place',           // 'place' (the real map) or 'world' (the game's)
     pop: null,               // the step whose card is open
   };
@@ -103,9 +104,12 @@
   $('setupCard').after(options);
 
   // Work area: tools | tabs, steps and map | splitter | panels.
-  const tools = make('div', 'ws-tools');
-  tools.setAttribute('role', 'toolbar');
+  const tools = make('section', 'ws-tools-pnl');
+  tools.id = 'wsTools';
   tools.setAttribute('aria-label', 'Tools');
+  tools.innerHTML = `<div class="ws-tools-head">Tools</div><div class="ws-tools-body">
+    <div class="setting-tabs ws-tool-tabs" role="tablist" aria-label="Tools"></div>
+    <div class="ws-tool-panes"></div></div>`;
   const center = make('div', 'ws-center');
   const tabs = make('div', 'ws-tabs');
   tabs.setAttribute('aria-label', 'Open maps');
@@ -189,8 +193,7 @@
   const mapProps = make('div', 'ws-mapprops');
   mapProps.style.cssText = 'display:flex;flex-direction:column;gap:10px';
   // Part two: the tool's own panel, when a tool has one.
-  const toolProps = make('div', 'ws-toolpanel');
-  propsBody.append(mapProps, toolProps);
+  propsBody.append(mapProps);
   mapProps.append(make('div', 'ws-sub-h', 'Map settings'));
   for (const node of [...styleCard.children]) {
     if (node.matches('h2') || node.id === 'steamLibraries' || node.id === 'zomboidFolderBox') continue;
@@ -201,7 +204,7 @@
     if (node.id === 'landmark-panel') places.querySelector('.ws-legend-body').append(node);
     else mapProps.append(node);
   }
-  for (const id of ['sketch', 'zonesPanel', 'editMap', 'handBuilt']) holder.append($(id));
+  holder.append($('handBuilt'));
   // The Generate button and the drawing board's button are pressed from here.
   holder.append(genCard, makeCard);
   // Setup checks and preferences open as dialogs.
@@ -384,50 +387,112 @@
   }
 
   // =========================== tools ===========================
+  // A tab each, in the Tools panel on the left; under it, that tool's own
+  // controls. The map's drawing buttons are pressed from the Area tab, so
+  // the map itself keeps only what a drawing in progress shows (Finish,
+  // Cancel, Save).
   const TOOLS = [
-    { id: 'move', key: 'V', title: 'Move: drag the map, scroll to zoom',
-      svg: '<path d="M5 3l12 6-5 2-2 5z"/>' },
-    { id: 'area', key: 'A', title: 'Area: draw what to make, as a rectangle, a polygon, a circle or freehand',
-      svg: '<rect x="4" y="5" width="16" height="14" rx="1" stroke-dasharray="3 2"/>' },
-    '-',
-    { id: 'draw', key: 'D', title: 'Add to this area: a street, a house, a park… built like a real one',
-      svg: '<path d="M4 20l4-1 11-11-3-3L5 16z"/><path d="M14 6l3 3"/>' },
-    { id: 'zone', key: 'Z', title: 'Zones: a part of the map with settings of its own',
-      svg: '<path d="M4 6h7v6H4zM13 12h7v6h-7z"/><path d="M11 9h4v3"/>' },
-    { id: 'change', key: 'E', title: 'Change what is already here: remove or reshape what the map was built from',
-      svg: '<path d="M4 7h16M4 12h10M4 17h7"/><path d="m16 15 4 4M20 15l-4 4"/>' },
-    '-',
-    { id: 'builder', key: 'B', title: 'Build a building by hand', once: () => click('builderOpen'),
-      svg: '<path d="M4 11 12 4l8 7v9H4z"/><path d="M10 20v-5h4v5"/>' },
-    { id: 'board', title: 'Draw a map from scratch, on a blank sheet', once: () => click('boardOpen'),
-      svg: '<path d="M4 4h16v16H4z"/><path d="M8 16l3-6 3 4 2-3"/>' },
+    { id: 'area', key: 'A', label: 'Area', title: 'Draw what to make, as a rectangle, a polygon, a circle or freehand' },
+    { id: 'draw', key: 'D', label: 'Add', title: 'Add to this area: a street, a house, a park… built like a real one',
+      panel: 'sketch' },
+    { id: 'zone', key: 'Z', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
+      panel: 'zonesPanel' },
+    { id: 'change', key: 'E', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
+      panel: 'editMap' },
+    { id: 'make', key: 'B', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
   ];
-  const TOOL_PANEL = { draw: 'sketch', zone: 'zonesPanel', change: 'editMap' };
-  const TOOL_TITLE = { move: 'Properties', area: 'Properties', draw: 'Add to this area', zone: 'Zones', change: 'Change what is here' };
-
-  function renderTools() {
-    tools.innerHTML = TOOLS.map(t => t === '-' ? '<hr>'
-      : `<button type="button" data-tool="${t.id}" class="${ws.tool === t.id ? 'on' : ''}"
-          ${ws.home && !t.once ? 'disabled' : ''} title="${esc(t.title)}${t.key ? ` (${t.key})` : ''}">
-          <svg viewBox="0 0 24 24">${t.svg}</svg></button>`).join('');
+  const toolTabs = tools.querySelector('.ws-tool-tabs');
+  const toolPanes = tools.querySelector('.ws-tool-panes');
+  const TOOL_PANE = {
+    area: `<p class="hint">Draw the area to make. Drag it to move it; drag the handle above it to turn it.</p>
+      <div class="ws-draw-btns">
+        <button type="button" class="btn" data-draw="rectangle" title="Drag out a box"><span aria-hidden="true">▭</span> Rectangle</button>
+        <button type="button" class="btn" data-draw="polygon" title="Click its corners one by one; click the first again to finish"><span aria-hidden="true">⬠</span> Polygon</button>
+        <button type="button" class="btn" data-draw="circle" title="Drag out from the middle"><span aria-hidden="true">◯</span> Circle</button>
+        <button type="button" class="btn" data-draw="lasso" title="Drag round the area you want"><span aria-hidden="true">✎</span> Freehand</button>
+      </div>
+      <div class="ws-draw-btns">
+        <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save on the map">Reshape</button>
+        <button type="button" class="btn btn-small" data-opt="corners">Type the corners</button>
+        <button type="button" class="btn btn-small" data-opt="clear">Clear the area</button>
+      </div>`,
+    make: `<p class="hint">A building of your own, room by room, to place on a map.</p>
+      <button type="button" class="btn" data-once="builderOpen">Build a building by hand</button>
+      <p class="hint">A map with nothing real under it: roads, houses and land drawn on a blank sheet.</p>
+      <button type="button" class="btn" data-once="boardOpen">Draw a map from scratch</button>`,
+  };
+  for (const t of TOOLS) {
+    const tab = make('button', 'setting-tab', esc(t.label));
+    tab.type = 'button';
+    tab.dataset.tool = t.id;
+    tab.title = `${t.title} (${t.key})`;
+    tab.setAttribute('role', 'tab');
+    toolTabs.appendChild(tab);
+    const pane = make('div', 'ws-tool-pane ws-toolpanel', TOOL_PANE[t.id] || '');
+    pane.dataset.toolPane = t.id;
+    pane.setAttribute('role', 'tabpanel');
+    if (t.panel) { const node = $(t.panel); node.open = true; pane.appendChild(node); }
+    toolPanes.appendChild(pane);
+  }
+  const DRAW_BUTTON = {
+    rectangle: '.leaflet-draw-draw-rectangle', polygon: '.leaflet-draw-draw-polygon',
+    circle: '.leaflet-draw-draw-circle', lasso: '.lasso-btn', edit: '.leaflet-draw-edit-edit',
+  };
+  function areaOption(opt) {
+    if (opt === 'corners') {
+      // The corners are in Properties, on its Map tab.
+      document.querySelector('#advanced-body .setting-tab[data-tab="map"]')?.click();
+      $('south').scrollIntoView({ block: 'center' });
+      $('south').focus();
+    }
+    if (opt === 'clear') {
+      drawnItems.clearLayers();
+      if (typeof removeRotateHandle === 'function') removeRotateHandle();
+      currentRect = null;
+      if (typeof clearBboxFields === 'function') clearBboxFields();
+      render();
+    }
   }
   tools.addEventListener('click', e => {
-    const b = e.target.closest('[data-tool]');
-    if (!b || b.disabled) return;
-    const t = TOOLS.find(x => x !== '-' && x.id === b.dataset.tool);
-    if (t.once) t.once(); else setTool(t.id);
+    const tab = e.target.closest('.ws-tool-tabs [data-tool]');
+    if (tab) return setTool(tab.dataset.tool);
+    const draw = e.target.closest('[data-draw]');
+    if (draw) map.getContainer().querySelector(DRAW_BUTTON[draw.dataset.draw])?.click();
+    const opt = e.target.closest('[data-opt]');
+    if (opt) areaOption(opt.dataset.opt);
+    const once = e.target.closest('[data-once]');
+    if (once) click(once.dataset.once);
   });
+  toolTabs.addEventListener('keydown', e => {
+    const all = [...toolTabs.children], at = all.indexOf(document.activeElement);
+    const to = { ArrowRight: at + 1, ArrowLeft: at - 1 }[e.key];
+    if (at < 0 || to === undefined) return;
+    e.preventDefault();
+    const next = all[(to + all.length) % all.length];
+    next.focus(); next.click();
+  });
+  function renderTools() {
+    // Nothing to work on at Home: the panel steps aside for it.
+    const atHome = !!ws.home;
+    if (body.classList.contains('ws-at-home') !== atHome) {
+      body.classList.toggle('ws-at-home', atHome);
+      requestAnimationFrame(() => map.invalidateSize());
+    }
+    for (const tab of toolTabs.children) {
+      const on = tab.dataset.tool === ws.tool;
+      tab.classList.toggle('is-on', on);
+      tab.setAttribute('aria-selected', String(on));
+      tab.tabIndex = on ? 0 : -1;
+    }
+    const area = toolPanes.querySelector('[data-tool-pane="area"]');
+    area.querySelector('[data-opt="clear"]').disabled = !currentRect;
+    area.querySelector('[data-draw="edit"]').disabled = !currentRect;
+  }
   function setTool(id, quiet) {
     if (ws.home && !quiet) showMap();
     if (ws.view !== 'place') setView('place');
     ws.tool = id;
-    body.classList.toggle('tool-area', id === 'area');
-    for (const n of [...toolProps.children]) holder.appendChild(n);
-    const p = TOOL_PANEL[id];
-    mapProps.hidden = !!p;
-    if (p) { const node = $(p); node.open = true; toolProps.appendChild(node); }
-    props.querySelector('.ttl').textContent = TOOL_TITLE[id] || 'Properties';
-    if (props.classList.contains('shut')) props.classList.remove('shut');
+    for (const pane of toolPanes.children) pane.hidden = pane.dataset.toolPane !== id;
     if (id === 'zone' && typeof drawZoneList === 'function') drawZoneList();
     render();
   }
@@ -438,31 +503,16 @@
       + 'Click to put it somewhere else; Standalone plays it on its own.</span>';
     else if (ws.view === 'iso') h = '<b>In-game 2.5D</b><span>2.5D isometric view of your town and furnished buildings. Pan and zoom with the mouse.</span>';
     else h = {
-      move: '<b>Move</b><span>Drag to look around, scroll to zoom. Pick a tool on the left to draw.</span>',
-      area: `<b>Area</b><span>Draw it with the buttons on the map’s left edge: rectangle, polygon, circle, or ✎ freehand.
-        Drag the box to move it; drag the handle above it to turn it.</span><span class="sep"></span>
-        <button type="button" class="btn btn-small" data-opt="corners">Type the corners</button>
-        <button type="button" class="btn btn-small" data-opt="clear" ${currentRect ? '' : 'disabled'}>Clear the area</button>`,
-      draw: '<b>Add to this area</b><span>Pick what to draw in the panel on the right, then draw it on the map.</span>',
-      zone: '<b>Zones</b><span>Press Draw a zone on the right, draw it on the map, then give it its own settings.</span>',
+      area: '<b>Area</b><span>Draw it with the buttons under Tools on the left: rectangle, polygon, circle or freehand. Drag the box to move it; drag the handle above it to turn it.</span>',
+      draw: '<b>Add to this area</b><span>Pick what to draw under Tools on the left, then draw it on the map.</span>',
+      zone: '<b>Zones</b><span>Press Draw a zone under Tools on the left, draw it on the map, then give it its own settings.</span>',
+      make: '<b>Build</b><span>Build a building by hand, or draw a map from scratch on a blank sheet.</span>',
       change: '<b>Change what is here</b><span>Load what the map was built from, then click a building to see whether it was built and why not - or anything at all to remove it or say what it really is.</span>',
     }[ws.tool];
     if (runningMap && runningMap === currentMap && ['area', 'draw', 'zone', 'change'].includes(ws.tool))
       h = `<span class="lock">This map is busy. Editing it now would not reach the step that is running.</span> ${h}`;
     options.innerHTML = h;
   }
-  options.addEventListener('click', e => {
-    const b = e.target.closest('[data-opt]');
-    if (!b) return;
-    if (b.dataset.opt === 'corners') { $('south').scrollIntoView({ block: 'center' }); $('south').focus(); }
-    if (b.dataset.opt === 'clear') {
-      drawnItems.clearLayers();
-      if (typeof removeRotateHandle === 'function') removeRotateHandle();
-      currentRect = null;
-      if (typeof clearBboxFields === 'function') clearBboxFields();
-      render();
-    }
-  });
 
   // =========================== tabs and Home ===========================
   function renderTabs() {
@@ -629,7 +679,8 @@
           <button type="button" class="btn btn-primary" id="wsHomeGo">Search</button></div>
         <p class="hint" style="margin:6px 0 0">For your own home, type the street and number, then press Enter.</p>
         <div class="ws-or"><button type="button" class="ws-link" id="wsHomeDraw">Or draw the area on the map yourself</button>
-          <button type="button" class="ws-link" id="wsHomeBoard">Draw a map from scratch</button></div></div>
+          <button type="button" class="ws-link" id="wsHomeBoard">Draw a map from scratch</button>
+          <button type="button" class="ws-link" id="wsHomeBuilder">Build a building by hand</button></div></div>
       <div class="ws-cols">
         <section><h2>Your maps</h2><div class="ws-card" id="wsHomeMaps"></div></section>
         <section style="display:grid;gap:16px">
@@ -657,6 +708,7 @@
     $('wsHomeSearch').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     $('wsHomeDraw').addEventListener('click', newMap);
     $('wsHomeBoard').addEventListener('click', () => click('boardOpen'));
+    $('wsHomeBuilder').addEventListener('click', () => click('builderOpen'));
     $('wsHomeSetup').addEventListener('click', () => { dialog('Check my setup', [$('healthCard')]); click('healthBtn'); });
     // "Open" in the list opens a tab; the list itself is app.js's (loadMaps).
     new MutationObserver(() => { const none = $('wsNoMaps'); if (none && $('mapList').children.length) none.remove(); })
@@ -827,7 +879,6 @@
       world.innerHTML = '<h3 style="margin:0 0 8px">Place it in the game’s world</h3>';
       world.appendChild($('placePanel'));
       world.hidden = false;
-      if (ws.tool !== 'move') { ws.tool = 'move'; body.classList.remove('tool-area'); }
       if (typeof drawWorld === 'function') requestAnimationFrame(drawWorld);
     } else if (v === 'iso') {
       if (place && !place.contains($('placePanel'))) place.appendChild($('placePanel'));
@@ -1019,8 +1070,8 @@
     else if (e.key === 'F5') { e.preventDefault(); const n = nextAction(); if (n && n.run) n.run(); }
     else if (e.key === 'Escape' && !dlg.hidden) closeDialog();
     else if (!e.ctrlKey && !e.altKey && !e.metaKey && !ws.home) {
-      const t = TOOLS.find(x => x !== '-' && x.key && x.key.toLowerCase() === k);
-      if (t) { if (t.once) t.once(); else setTool(t.id); }
+      const t = TOOLS.find(x => x.key.toLowerCase() === k);
+      if (t) setTool(t.id);
     }
   });
 
@@ -1030,7 +1081,7 @@
   // The old first-run tip: Home and the steps row say it now.
   if ($('map-hint')) $('map-hint').hidden = true;
   refreshMyMaps();
-  setTool('move', true);
+  setTool('area', true);
   goHome();
   // A link that opens a place (?preset= or ?q=) goes straight to the map.
   const params = new URLSearchParams(location.search);

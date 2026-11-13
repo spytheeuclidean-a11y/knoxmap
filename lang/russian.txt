@@ -634,3 +634,19 @@ Map = Карта
 Area = Область
 On = Вкл
 Off = Выкл
+
+# The Tools panel
+Tools = Инструменты
+Add = Добавить
+Change = Изменить
+Zones = Зоны
+Rectangle = Прямоугольник
+Polygon = Многоугольник
+Circle = Круг
+Freehand = От руки
+Reshape = Изменить форму
+Type the corners = Ввести углы
+Clear the area = Очистить область
+Draw the area to make. Drag it to move it; drag the handle above it to turn it. = Нарисуй область для карты. Перетащи её, чтобы сдвинуть; потяни за ручку над ней, чтобы повернуть.
+A building of your own, room by room, to place on a map. = Своё здание, комната за комнатой, чтобы поставить на карту.
+A map with nothing real under it: roads, houses and land drawn on a blank sheet. = Карта без настоящего места под ней: дороги, дома и земля, нарисованные на чистом листе.

@@ -1061,3 +1061,15 @@ Details = Detalles
 Other = Otros
 Settings = Ajustes
 Changed from the defaults for this kind of place = Cambiado respecto a los valores de este tipo de lugar
+
+# The Tools panel
+Tools = Herramientas
+Add = Añadir
+Change = Cambiar
+Polygon = Polígono
+Circle = Círculo
+Freehand = A mano alzada
+Reshape = Cambiar forma
+Draw the area to make. Drag it to move it; drag the handle above it to turn it. = Dibuja el área que quieres hacer. Arrástrala para moverla; arrastra el asa de arriba para girarla.
+A building of your own, room by room, to place on a map. = Un edificio propio, habitación por habitación, para poner en un mapa.
+A map with nothing real under it: roads, houses and land drawn on a blank sheet. = Un mapa sin nada real debajo: calles, casas y terreno dibujados en una hoja en blanco.

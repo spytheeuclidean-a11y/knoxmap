@@ -80,18 +80,24 @@ body.ws-loading > * { visibility: hidden; }
 .ws-options .lock { color: var(--warn); }
 
 /* ---- the work area --------------------------------------------------------- */
-.ws main { display: grid; grid-template-columns: 44px minmax(0, 1fr) 5px var(--dock-w, 340px);
+.ws main { display: grid; grid-template-columns: var(--tools-w, 280px) minmax(0, 1fr) 5px var(--dock-w, 340px);
   height: auto; min-height: 0; }
-.ws-tools { background: var(--panel); border-right: 1px solid var(--line); display: flex;
-  flex-direction: column; align-items: center; gap: 3px; padding: 8px 0; }
-.ws-tools button { width: 32px; height: 32px; border: 0; border-radius: 5px; background: none;
-  cursor: pointer; display: grid; place-items: center; color: var(--muted); }
-.ws-tools button:not(:disabled):hover { background: var(--hover); color: var(--text); }
-.ws-tools button.on { background: var(--accent-soft); color: var(--accent); }
-.ws-tools button:disabled { opacity: .35; cursor: default; }
-.ws-tools svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7;
-  stroke-linecap: round; stroke-linejoin: round; }
-.ws-tools hr { width: 22px; border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+/* At Home there is nothing to work on, and the Tools panel steps aside. */
+.ws.ws-at-home main { grid-template-columns: minmax(0, 1fr) 5px var(--dock-w, 340px); }
+.ws.ws-at-home .ws-tools-pnl { display: none; }
+/* Tools: the panel on the left (shell.js), a tab for each tool. */
+.ws-tools-pnl { background: var(--bg); border-right: 1px solid var(--line); display: flex;
+  flex-direction: column; min-width: 0; min-height: 0; }
+.ws-tools-head { padding: 7px 10px; font-size: 12px; font-weight: 600; color: var(--text);
+  border-bottom: 1px solid var(--line); background: var(--panel); }
+.ws-tools-body { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 0 10px 10px; }
+.ws-tool-tabs { margin-bottom: 10px; }
+.ws-tool-pane { display: flex; flex-direction: column; gap: 8px; }
+.ws-tool-pane[hidden] { display: none; }
+.ws-tool-pane > .hint { margin: 0; }
+.ws-draw-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ws-draw-btns .btn { justify-content: center; text-align: center; }
+.ws-tool-pane > .btn { align-self: stretch; }
 
 /* A column again: the tabs, steps and upgrade note come and go, and the map
    takes whatever height they leave. */
@@ -99,7 +105,10 @@ body.ws-loading > * { visibility: hidden; }
 .ws-center > * { flex: none; }
 .ws #map-pane { flex: 1 1 auto; min-height: 0; }
 /* Leaflet's own draw buttons show only with the Area tool. */
-.ws:not(.tool-area) .leaflet-draw, .ws:not(.tool-area) .lasso-control { display: none; }
+/* The map's drawing buttons are pressed from the Tools panel's Area tab; the
+   map keeps only what a drawing in progress shows: Finish, Cancel, Save. */
+.ws .leaflet-draw-toolbar, .ws .lasso-control { visibility: hidden; }
+.ws .leaflet-draw-actions { visibility: visible; }
 
 /* tabs */
 .ws-tabs { display: flex; align-items: flex-end; gap: 2px; padding: 4px 8px 0; background: var(--bg);
@@ -363,7 +372,8 @@ body.ws-loading > * { visibility: hidden; }
 .ws-holder { display: none !important; }
 
 @media (max-width: 860px) {
-  .ws main { grid-template-columns: 44px minmax(0, 1fr); }
+  .ws main, .ws.ws-at-home main { grid-template-columns: minmax(0, 1fr); }
+  .ws-tools-pnl { display: none; }
   .ws #controls, .ws-vsplit, .ws .byline { display: none; }
   .ws-cols { grid-template-columns: 1fr; }
 }
