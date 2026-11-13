@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parent.parent
 APP = "\n".join(p.read_text(encoding="utf-8")
                 for p in sorted((ROOT / "static" / "js").glob("*.js")))
 TABS = ["map", "gameplay", "roads", "buildings", "land", "forest"]
-UI_LINES = ["Map", "Gameplay", "Roads", "Buildings", "Land", "Forest", "Other", "Settings",
+UI_LINES = ["Map", "Area", "This map", "Gameplay", "Roads", "Buildings", "Land", "Forest", "Other", "Settings",
             "Advanced", "Reset", "Changed from the defaults for this kind of place"]
 LANGS = ("english", "espanol", "portugues_brasil", "russian")
 
@@ -69,6 +69,10 @@ class SettingTabs(unittest.TestCase):
         # No collapser left around the settings, and no second terrain switch.
         self.assertNotIn('<details id="advanced"', html)
         self.assertNotIn("terrainOnlyToggle", html + APP)
+        # The area's corners and numbers are in the Map tab.
+        map_part = html[html.index('data-part="map"'):]
+        for id_ in ("south", "west", "north", "east", "coordsApply", "area-stats", "mapName"):
+            self.assertIn(f'id="{id_}"', map_part, id_)
 
     def test_search_reaches_the_tabs(self):
         self.assertIn("new CustomEvent('listsearch'", APP)

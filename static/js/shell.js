@@ -165,26 +165,32 @@
     return p;
   }
   const props = panel('wsProps', 'Properties');
-  const layers = panel('wsLayers', 'Layers');
+  // Layers is a legend floating on the map, over its bottom-left corner; Home,
+  // the game's world and the 2.5D view cover it, as it is only of the map.
+  const layers = make('section', 'ws-legend');
+  layers.id = 'wsLayers';
+  layers.setAttribute('aria-label', 'Layers');
+  layers.innerHTML = `<div class="ws-legend-head"><button class="tw" aria-label="Fold" type="button">▾</button>
+    <span class="ttl">Layers</span></div><div class="ws-legend-body"></div>`;
   const propsBody = props.querySelector('.ws-pnl-body');
-  props.querySelector('.ws-pnl-body').style.height = '58vh';
   // On the page before anything moves into them: app.js finds its controls by id.
-  controls.prepend(props, layers);
+  controls.prepend(props);
+  pane.appendChild(layers);
 
-  // Properties, part one: the area and the map's settings.
+  // Properties, part one: the map's settings - the area is in their Map tab -
+  // and the list of named places under them.
   const mapProps = make('div', 'ws-mapprops');
   mapProps.style.cssText = 'display:flex;flex-direction:column;gap:10px';
   // Part two: the tool's own panel, when a tool has one.
   const toolProps = make('div', 'ws-toolpanel');
   propsBody.append(mapProps, toolProps);
-  mapProps.append(make('div', 'ws-sub-h', 'Area'));
-  for (const node of [...areaCard.children]) {
-    if (node.matches('h2') || node.id === 'presetsPanel') continue;
-    mapProps.append(node);
-  }
   mapProps.append(make('div', 'ws-sub-h', 'Map settings'));
   for (const node of [...styleCard.children]) {
     if (node.matches('h2') || node.id === 'steamLibraries' || node.id === 'zomboidFolderBox') continue;
+    mapProps.append(node);
+  }
+  for (const node of [...areaCard.children]) {
+    if (node.matches('h2') || node.id === 'presetsPanel') continue;
     mapProps.append(node);
   }
   for (const id of ['sketch', 'zonesPanel', 'editMap', 'handBuilt']) holder.append($(id));
@@ -842,7 +848,7 @@
       n: () => '' },
   ];
   function renderLayers() {
-    const b = layers.querySelector('.ws-pnl-body');
+    const b = layers.querySelector('.ws-legend-body');
     b.innerHTML = '<ul class="ws-layers">' + LAYERS.map(l => {
       const on = map.hasLayer(l.layer());
       return `<li><button type="button" class="eye ${on ? '' : 'off'}" data-layer="${l.key}"
@@ -870,16 +876,16 @@
   }
   function dockPanel(p) { p.classList.remove('ws-float'); p.style.left = p.style.top = p.style.width = p.style.height = ''; controls.appendChild(p); }
   function resetLayout() {
-    for (const p of [props, layers]) { p.hidden = false; dockPanel(p); }
-    controls.append(props, layers);
+    props.hidden = false; dockPanel(props);
+    controls.append(props);
+    layers.hidden = false; layers.classList.remove('shut');
     document.documentElement.style.removeProperty('--dock-w');
-    props.querySelector('.ws-pnl-body').style.height = '58vh';
-    layers.querySelector('.ws-pnl-body').style.height = '';
+    props.querySelector('.ws-pnl-body').style.height = '';
     for (const n of [...ws.popped]) dockDoc(n, false);
   }
   document.addEventListener('click', e => {
-    const tw = e.target.closest('.ws-pnl .tw');
-    if (tw) tw.closest('.ws-pnl').classList.toggle('shut');
+    const tw = e.target.closest('.ws-pnl .tw, .ws-legend .tw');
+    if (tw) tw.closest('.ws-pnl, .ws-legend').classList.toggle('shut');
     const pop = e.target.closest('[data-pop-panel]');
     if (pop) { const p = pop.closest('.ws-pnl'); p.classList.contains('ws-float') ? dockPanel(p) : floatPanel(p, 40, 30); }
   });
@@ -952,7 +958,7 @@
   });
   document.addEventListener('dblclick', e => {
     if (e.target === vsplit) { document.documentElement.style.removeProperty('--dock-w'); map.invalidateSize(); }
-    if (e.target.classList.contains('ws-grip')) e.target.previousElementSibling.style.height = e.target.closest('#wsProps') ? '58vh' : '';
+    if (e.target.classList.contains('ws-grip')) e.target.previousElementSibling.style.height = '';
   });
 
   // =========================== status bar ===========================

@@ -801,3 +801,4 @@ Details = Detalhes
 Other = Outros
 Settings = Configurações
 Changed from the defaults for this kind of place = Alterado em relação ao padrão deste tipo de lugar
+This map = Este mapa

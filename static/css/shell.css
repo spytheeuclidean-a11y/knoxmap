@@ -293,6 +293,9 @@ body.ws-loading > * { visibility: hidden; }
 .ws #controls { padding: 0; gap: 0; overflow-y: auto; display: flex; flex-direction: column; border-left: 0; }
 .ws #controls.drop-here { outline: 2px dashed var(--accent); outline-offset: -4px; background: var(--accent-soft); }
 .ws-pnl { border-bottom: 1px solid var(--line); background: var(--bg); display: flex; flex-direction: column; min-height: 0; }
+/* Docked, Properties fills the column, until its grip gives it a height. */
+.ws #controls > #wsProps:has(> .ws-pnl-body:not([style*="height"])) { flex: 1 1 auto; }
+.ws #controls > #wsProps > .ws-pnl-body:not([style*="height"]) { flex: 1 1 0; }
 .ws-pnl-head { display: flex; align-items: center; gap: 6px; padding: 5px 6px 5px 8px; background: var(--panel);
   font-weight: 600; font-size: 12px; user-select: none; cursor: grab; touch-action: none; }
 .ws-pnl-head .tw { background: none; border: 0; cursor: pointer; color: var(--muted); padding: 0 2px; }
@@ -322,7 +325,18 @@ body.ws-loading > * { visibility: hidden; }
 .ws-toolpanel > details { border: 0; }
 .ws-toolpanel > details > summary { display: none; }
 
-/* layers */
+/* layers: a legend over the map's bottom-left corner (shell.js). Under Home,
+   the world and the 2.5D view (1045+), over the map's own panes. */
+.ws-legend { position: absolute; left: 10px; bottom: 22px; z-index: 900; min-width: 190px; max-width: 260px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow);
+  font-size: 12px; }
+.ws-legend-head { display: flex; align-items: center; gap: 4px; padding: 3px 8px 3px 4px; color: var(--muted);
+  font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+.ws-legend-head .tw { background: none; border: 0; color: var(--muted); cursor: pointer; width: 18px; padding: 0; }
+.ws-legend-body { padding: 0 8px 8px; display: flex; flex-direction: column; gap: 6px; }
+.ws-legend.shut .ws-legend-body { display: none; }
+.ws-legend.shut .tw { transform: rotate(-90deg); }
+.ws-legend .ws-layers li { padding: 1px 2px; }
 .ws-layers { list-style: none; margin: 0; padding: 0; }
 .ws-layers li { display: flex; align-items: center; gap: 7px; padding: 3px 4px; border-radius: 4px; }
 .ws-layers .eye { background: none; border: 0; color: var(--muted); cursor: pointer; width: 20px; padding: 0; font-size: 14px; }
