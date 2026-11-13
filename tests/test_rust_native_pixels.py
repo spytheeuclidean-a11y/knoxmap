@@ -11,7 +11,7 @@ from PIL import Image, ImageFilter
 
 from generator import pz_colors as C
 from generator import renderer
-from generator.rendering import furniture, native_pixels, vegetation
+from generator.rendering import native_pixels, vegetation
 from generator.roadgraph import rustsearch
 from tools.regression_maps import LAT_PER_M, LON_PER_M, SOUTH, WEST, scenario_features
 

@@ -1,9 +1,14 @@
 """Zone detection (ParkingStall and TownZone) for Project KnoxMap."""
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 
 from .settings import Settings
+
+if TYPE_CHECKING:
+    from .world import Zone
 
 STALL_W, STALL_H = 3, 5
 CAR_PARK_LANE = 17            # two rows of 5, and a 7-tile lane
