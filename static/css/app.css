@@ -395,6 +395,46 @@ body.rotate-dragging * {
   color: var(--faint); margin: 12px 0 6px; }
 .setting-note { display: block; font-size: 11px; color: var(--faint); font-style: italic; }
 
+/* A card's settings, one line each: name and (i), slider, number. What the
+   setting does is a tooltip on the (i) (settingElement in app.js). */
+/* Pinned to the top of the scrolling panel; -8px and the matching padding
+   cover the panel's own top padding (.ws-pnl-body), or rows would show
+   through above it. Its size follows the panel's height (forestPreview). */
+.setting-group .forest-preview { position: sticky; top: -8px; z-index: 3;
+  background: var(--panel); margin: -8px 0 6px; padding: 8px 0 4px; }
+.setting-group .forest-preview img { margin: 0 auto; }
+.setting-group-head { margin-bottom: 8px; }
+.setting-group .setting-subhead { margin: 8px 0 3px; }
+.setting-group-advanced > summary { margin: 4px 0 2px; }
+.setting-compact { position: relative; display: grid; align-items: center;
+  grid-template-columns: 12.6em minmax(0, 1fr) 2.4em; column-gap: 5px;
+  margin-bottom: 2px; min-height: 24px; font-size: 12px; }
+.setting-compact .setting-name { line-height: 1.2; }
+.setting-compact .setting-info { margin-left: 4px; vertical-align: 1px; }
+.setting-compact input[type="range"] { width: 100%; margin: 0; }
+.setting-compact .setting-val { text-align: right; font-size: 12px; }
+.setting-compact.setting-wide > select,
+.setting-compact.setting-wide > .seed-row { grid-column: 2 / 4; margin: 0; }
+.setting-compact.setting-wide select { font-size: 12px; padding: 2px 4px; }
+.setting-compact .seed-row input { min-width: 0; flex: 1; padding: 2px 6px; font-size: 12px; }
+.setting-compact.setting-switch .switch { grid-column: 3; justify-self: end; }
+.setting-info { flex: none; width: 15px; height: 15px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--line-strong); background: transparent; color: var(--muted);
+  font: italic 600 10px/13px Georgia, serif; text-align: center; cursor: help; }
+.setting-info:hover, .setting-info:focus-visible { color: var(--text); border-color: var(--accent); }
+.setting-compact.not-in-preview .setting-info { border-style: dashed; }
+.setting-compact .setting-hint { display: none; position: absolute; z-index: 10;
+  top: 100%; left: 0; right: 0; margin-top: 2px; padding: 6px 8px;
+  font-size: 12px; line-height: 1.35; color: var(--text); background: var(--field);
+  border: 1px solid var(--line-strong); border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .45); pointer-events: none; }
+.setting-compact:has(.setting-info:hover) .setting-hint,
+.setting-compact:has(.setting-info:focus-visible) .setting-hint,
+.setting-compact.hint-open .setting-hint { display: block; }
+/* Near the bottom of the panel it opens upwards instead (settingElement). */
+.setting-compact.hint-up .setting-hint { top: auto; bottom: 100%; margin: 0 0 2px; }
+.setting-compact .setting-hint .setting-note { display: inline; margin-left: 2px; }
+
 /* A setting that is only ever on or off gets a switch in its heading, where
    the number used to be, instead of a slider two positions wide. */
 .switch { position: relative; flex: none; cursor: pointer; line-height: 0; }

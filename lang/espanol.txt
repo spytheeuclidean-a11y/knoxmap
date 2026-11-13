@@ -42,6 +42,7 @@ A new map, not generated yet = Un mapa nuevo, aún no generado
 A newer KnoxMap is out = Hay una versión más nueva de KnoxMap
 A sample of forest with these settings = Una muestra de bosque con estos ajustes
 About KnoxMap = Acerca de KnoxMap
+About {setting} = Acerca de {setting}
 about {a} h = aprox. {a} h
 about {a} min = aprox. {a} min
 Add to this area = Añadir a esta área

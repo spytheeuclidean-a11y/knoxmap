@@ -19,7 +19,7 @@ ADVANCED = [
     ("Everywhere", ["tree_density", "landcover", "winter_look"]),
 ]
 UI_LINES = ["Forest", "Reset", "Advanced", "Shape", "Around the woods", "Everywhere",
-            "Not shown in the picture."]
+            "Not shown in the picture.", "About {setting}"]
 
 
 def block(name):

@@ -584,6 +584,7 @@ Shape = Форма
 Around the woods = Вокруг леса
 Everywhere = Везде
 Not shown in the picture. = На картинке не видно.
+About {setting} = О настройке «{setting}»
 300 m of woods, a road, houses and a field, as these settings draw them. = 300 м леса, дорога, дома и поле - так, как их рисуют эти настройки.
 Thickets = Чащи
 How much of a wood is a wall of trees. 1 is a tenth of it. = Какая часть леса - стена деревьев. 1 - десятая часть.

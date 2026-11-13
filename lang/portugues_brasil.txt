@@ -533,6 +533,7 @@ Winter look: snow and bare trees. = Visual de inverno: neve e árvores peladas.
 # A área de trabalho nova: menus, abas, Início, a linha de passos e os painéis.
 A new map, not generated yet = Um mapa novo, ainda não gerado
 About KnoxMap = Sobre o KnoxMap
+About {setting} = Sobre {setting}
 Added by hand = Adicionado à mão
 After a zombie setting changed: seconds, no rebuild = Depois de mudar uma configuração de zumbis: segundos, sem reconstruir
 After building = Depois de construir

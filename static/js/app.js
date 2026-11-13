@@ -1043,7 +1043,17 @@ function groupKeys(group) {
   return [...group.main, ...group.advanced.flatMap(([, keys]) => keys)];
 }
 
-function settingElement(key, label, hint, values) {
+// A tooltip opened with a tap closes at a tap anywhere else: a browser that
+// does not focus a clicked button (Safari) never sends the (i) a blur.
+document.addEventListener('click', e => {
+  for (const open of document.querySelectorAll('.setting-compact.hint-open')) {
+    if (open.contains(e.target)) continue;
+    open.classList.remove('hint-open');
+    open.querySelector('.setting-info')?.setAttribute('aria-expanded', 'false');
+  }
+});
+
+function settingElement(key, label, hint, values, compact = false) {
   const [lo, hi] = settingsMeta.limits[key];
   const isInt = settingsMeta.types
     ? settingsMeta.types[key] === 'int'
@@ -1083,6 +1093,39 @@ function settingElement(key, label, hint, values) {
        <span class="switch-track"></span></label>`
     : isSeed || isChoice ? ''
     : `<output class="setting-val">${values[key]}</output>`;
+  if (compact) {
+    // A card's settings are one line each - name, slider, number - so the
+    // whole card and its picture fit on the screen together. What a setting
+    // does is behind the (i), shown on hover, focus or a tap; it stays in
+    // the page so the settings search still finds a setting by it.
+    wrap.classList.add('setting-compact');
+    if (isSeed || isChoice) wrap.classList.add('setting-wide');
+    wrap.innerHTML = `
+      <span class="setting-name">${label}<button type="button" class="setting-info"
+        aria-label="About ${label}" aria-expanded="false">i</button></span>
+      ${control}
+      ${head}
+      <span class="setting-hint" role="tooltip">${hint}</span>`;
+    const info = wrap.querySelector('.setting-info');
+    // Opened near the bottom of its scrolling panel, the tooltip would run
+    // out of sight, so there it opens upwards.
+    const aim = () => {
+      const pane = wrap.closest('.ws-pnl-body') || document.documentElement;
+      const below = pane.getBoundingClientRect().bottom - wrap.getBoundingClientRect().bottom;
+      wrap.classList.toggle('hint-up', below < 110);
+    };
+    info.addEventListener('mouseenter', aim);
+    info.addEventListener('focus', aim);
+    info.addEventListener('click', () => {
+      const open = wrap.classList.toggle('hint-open');
+      info.setAttribute('aria-expanded', String(open));
+    });
+    info.addEventListener('blur', () => {
+      wrap.classList.remove('hint-open');
+      info.setAttribute('aria-expanded', 'false');
+    });
+    return wrap;
+  }
   wrap.innerHTML = `
     <div class="setting-head"><span class="setting-name">${label}</span>
       ${head}</div>
@@ -1097,8 +1140,10 @@ function settingElement(key, label, hint, values) {
 function forestPreview(card, group) {
   const fig = document.createElement('figure');
   fig.className = 'forest-preview';
-  fig.innerHTML = `<img alt="A sample of forest with these settings" width="300" height="300">
-    <figcaption>300 m of woods, a road, houses and a field, as these settings draw them.</figcaption>`;
+  // Sticky: it stays at the top of the panel while the card's own sliders
+  // scroll under it, so a slider far down Advanced still has its picture.
+  fig.innerHTML = `<img alt="A sample of forest with these settings" width="300" height="300"
+    title="300 m of woods, a road, houses and a field, as these settings draw them.">`;
   const img = fig.querySelector('img');
   const keys = groupKeys(group).filter(k => !NOT_IN_PREVIEW.has(k));
   let timer = null;
@@ -1118,6 +1163,23 @@ function forestPreview(card, group) {
     timer = setTimeout(refresh, 150);
   });
   setTimeout(refresh, 0);       // once the card's sliders are in it
+  // Pinned at the top of the panel, the picture would leave a short panel
+  // no room for the sliders it shows, so it takes at most under half the
+  // panel's height, never less than 120 px; a taller panel gets a bigger one.
+  if (typeof ResizeObserver === 'function') {
+    let pane = null;
+    const fit = () => {
+      if (!pane || !pane.clientHeight) return;
+      const size = Math.max(120, Math.min(300, Math.round(pane.clientHeight * 0.45)));
+      img.style.maxWidth = `${size}px`;
+    };
+    const watch = new ResizeObserver(fit);
+    const attach = () => {
+      pane = fig.closest('.ws-pnl-body');
+      if (pane) { watch.observe(pane); fit(); } else setTimeout(attach, 200);
+    };
+    setTimeout(attach, 0);
+  }
   return fig;
 }
 
@@ -1130,9 +1192,11 @@ function settingGroup(name, group, values) {
   const add = (parent, key) => {
     if (!(key in settingsMeta.defaults) || !SETTING_LABELS[key]) return;
     const [label, hint] = SETTING_LABELS[key];
-    const el = settingElement(key, label, hint, values);
+    const el = settingElement(key, label, hint, values, true);
     if (NOT_IN_PREVIEW.has(key)) {
-      el.insertAdjacentHTML('beforeend', '<span class="setting-note">Not shown in the picture.</span>');
+      el.classList.add('not-in-preview');
+      el.querySelector('.setting-hint').insertAdjacentHTML('beforeend',
+        ' <span class="setting-note">Not shown in the picture.</span>');
     }
     parent.appendChild(el);
   };

@@ -51,6 +51,7 @@ A new map, not generated yet = A new map, not generated yet
 A newer KnoxMap is out = A newer KnoxMap is out
 A sample of forest with these settings = A sample of forest with these settings
 About KnoxMap = About KnoxMap
+About {setting} = About {setting}
 about {a} h = about {a} h
 about {a} min = about {a} min
 Add to this area = Add to this area
