@@ -473,7 +473,7 @@ def _generate(data):
         from_addresses = applied.get("houses_from_addresses", 0)
         applied["sketch_hash"] = _sketch_signature(drawn)
         applied["drawn_only"] = drawn_only
-        applied["houses_infilled"] = int(result.summary.get("houses_infilled", 0))
+        applied["houses_infilled"] = int(gaps.get("added", 0))
         knoxfiles.write(str(map_dir / f"{map_name}_info.json"), applied)
     except (OSError, ValueError):
         pass
@@ -503,7 +503,7 @@ def _generate(data):
         # footprints or Overture, whichever answered - and when it added
         # nothing, why not, in a sentence the window can show as it stands.
         "fromGapFill": gaps.get("added", 0),
-        "fromStreetInfill": int(result.summary.get("houses_infilled", 0)),
+        "fromStreetInfill": int(gaps.get("added", 0)),
         "gapFillWhy": gaps.get("error") or gaps.get("why") or "",
         # What the optional data layers did (knoxdata/): which applied, the
         # suggested preset from real land cover, and the region/climate read.
