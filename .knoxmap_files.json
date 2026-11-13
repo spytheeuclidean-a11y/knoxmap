@@ -126,6 +126,7 @@
     "knoxbuild/lua/guncache.lua",
     "knoxbuild/lua/resetloot.lua",
     "knoxbuild/mapstate.py",
+    "knoxbuild/mixer.py",
     "knoxbuild/picture.py",
     "knoxbuild/placement.py",
     "knoxbuild/population.py",

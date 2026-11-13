@@ -1,3 +1,28 @@
+## Unreleased
+
+- **The ceiling, shared out** (`knoxbuild/mixer.py`). *Most buildings* said
+  how many a map may hold; these say how they are chosen.
+
+  *Mix of buildings* is percentages by kind -
+  `house=40,shop=15,industrial=13` - so a map can be made to feel like a
+  place with a high street rather than an estate, without touching what the
+  ground really is. `preset` takes a typical town's shares. The names people
+  use work too: farm is barn, warehouse is industrial.
+
+  *Share between towns* spreads that total evenly over the towns and
+  villages instead of the map as one lump. A box with two cities and ten
+  villages has nearly all its footprints in the cities, so a ceiling used to
+  take the villages away first: measured on one map, five settlements got
+  193, 16, 12, 6 and 1 buildings; shared, they get 107, 77, 57, 44 and 9.
+
+  Neither is a promise and neither can be, because a map can only keep
+  buildings that are on it. Ask for 15% shops where OpenStreetMap has
+  twenty and you get twenty - so what a kind or a town cannot use is handed
+  to those that can, and the total asked for is still built. The log says
+  what was asked against what the ground had (`industrial: 78 asked, 0 kept
+  (the map has 0)`), because otherwise a share that cannot be filled looks
+  like the setting being ignored.
+
 ## 1.8.5.9
 
 - **Setup could not download the map tools** (`knoxmap_setup.py`). The map

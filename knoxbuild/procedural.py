@@ -367,8 +367,32 @@ def _spread(items: list[tuple], gap: float) -> list[int]:
     return out
 
 
-def cap(items: list[tuple], limit: int) -> set[int]:
+def cap(items: list[tuple], limit: int, budgets: dict | None = None,
+        group_of: dict | None = None) -> set[int]:
     """Which buildings to keep when the map may hold only so many.
+
+    `budgets` and `group_of` share the ceiling out rather than applying it
+    to the map as one lump: a number per group and the group each building
+    belongs to (knoxbuild/mixer.py works both out). Each group is then
+    thinned to its own number by the rule below, which is what keeps a
+    village a village instead of a ceiling taking the villages away first
+    and leaving the cities whole.
+    """
+    if budgets and group_of:
+        by_group: dict = {}
+        for item in items:
+            by_group.setdefault(group_of.get(item[0]), []).append(item)
+        kept: set[int] = set()
+        for key, group in sorted(by_group.items(), key=lambda kv: str(kv[0])):
+            want = int(budgets.get(key, 0))
+            if want > 0:
+                kept |= cap(group, want)
+        return kept
+    return _cap_one(items, limit)
+
+
+def _cap_one(items: list[tuple], limit: int) -> set[int]:
+    """The ceiling over one set of buildings.
 
     Somebody wanting a big map to travel across does not want it paved with
     houses, and "about half" is not a number anyone can ask for. The

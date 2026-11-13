@@ -109,6 +109,18 @@ class Settings:
     # spaced out until the count fits, so what goes is spread over the whole
     # map (knoxbuild/procedural.cap). Fewer buildings is also the one
     # setting that reliably makes a map faster to build and to play.
+    # How that ceiling is shared out by kind of building, as percentages:
+    # "house=40,shop=15,industrial=13". Empty keeps whatever the map's own
+    # mix is. The word "preset" takes a typical town's shares
+    # (knoxbuild/mixer.PRESET_MIX). A share the map cannot fill - 450 shops
+    # where OpenStreetMap has 20 - is handed to the kinds that can, so the
+    # total asked for is still built.
+    building_mix: str = ""
+    # Share the ceiling evenly between the towns and villages on the map
+    # rather than over the map as one lump. A box with two cities and ten
+    # villages has nearly all its footprints in the cities, so a ceiling
+    # takes the villages away first and leaves ten hamlets of three houses.
+    spread_buildings: int = 1
     max_buildings: int = 0
     min_size: int = 3            # skip footprints narrower than this, in tiles
     # and larger than this. It was 60, which threw away the largest
@@ -221,6 +233,14 @@ class Settings:
                 if value in enum_options[name]:
                     kept[name] = value
                 continue
+            if name == "building_mix":
+                # Checked by parsing it: anything that yields no shares at
+                # all is junk and the map keeps its own mix.
+                from .mixer import parse as _parse_mix
+                value = str(raw).strip()
+                if not value or _parse_mix(value):
+                    kept[name] = value
+                continue
             if name == "region_override":
                 # "auto" or a short country code; anything else keeps the default.
                 value = str(raw).strip()
@@ -281,6 +301,7 @@ LIMITS = {
     # 0 is no ceiling; the top end is past the largest town anybody has
     # built with this, so the number is the mapper's to choose.
     "max_buildings": (0, 200000),
+    "spread_buildings": (0, 1),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),
     # Build 42 has 32 levels above ground (WorldEd's MAX_WORLD_LEVELS is 64,

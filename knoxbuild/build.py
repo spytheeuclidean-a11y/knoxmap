@@ -1380,8 +1380,41 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                         and max(ys) > 0 and min(ys) < proj.height)
 
             on_map = [c for c in cands if _on_map(c)]
+            # The ceiling is shared out rather than applied to the map as
+            # one lump: by kind where a mix was asked for, and between the
+            # towns so a box with two cities and ten villages does not come
+            # back as two cities and ten hamlets (knoxbuild/mixer.py).
+            from . import mixer
+            mix = mixer.parse(settings.building_mix)
+            places = []
+            if settings.spread_buildings:
+                places = [pl for pl in knoxfiles.read(
+                    os.path.join(out_dir, f"{map_name}_places.json"),
+                    "the towns and villages on the map", default=[]) or []
+                    if pl.get("tile_x") is not None]
+            budgets = group_of = None
+            if mix or places:
+                where = {c.index: (mixer.nearest_place(*_mid(c), places)
+                                   if places else "") for c in on_map}
+                budgets, group_of = mixer.budgets(
+                    [(c.index, c.kind, where[c.index]) for c in on_map],
+                    int(settings.max_buildings), mix, bool(places))
             keep = cap([(c.index, *_mid(c), c.width, c.landmark)
-                        for c in on_map], int(settings.max_buildings))
+                        for c in on_map], int(settings.max_buildings),
+                       budgets, group_of)
+            if mix:
+                asked = {cat: int(settings.max_buildings * share)
+                         for cat, share in mix.items()}
+                had = collections.Counter(mixer.category_of(c.kind) for c in on_map)
+                got = collections.Counter(mixer.category_of(c.kind)
+                                          for c in on_map if c.index in keep)
+                thinning["mix_report"] = [
+                    f"{cat}: {asked[cat]} asked, {got.get(cat, 0)} kept"
+                    + (f" (the map has {had.get(cat, 0)})"
+                       if had.get(cat, 0) < asked[cat] else "")
+                    for cat in sorted(asked, key=lambda c: -asked[c])]
+            if places:
+                thinning["places"] = len(places)
             for c in on_map:
                 if c.index not in keep:
                     note_left_out(geo["features"][c.index], "over the limit")
@@ -2074,6 +2107,13 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         print(f"  held to {settings.max_buildings} buildings: "
               f"{thinning['capped']} more left out, spread over the map, "
               f"landmarks kept")
+    # What a mix asked for against what the map could give it. Without this
+    # line, asking for 15% shops on a map with twenty of them looks like the
+    # setting being ignored rather than the ground running out.
+    for line in thinning.get("mix_report") or ():
+        print(f"    {line}")
+    if thinning.get("places"):
+        print(f"  shared between {thinning['places']} towns and villages")
     print(f"  storeys from nearby : {from_near}")
     storeys = _c.Counter(r["levels"] for r in rows)
     print(f"  storeys             : {dict(sorted(storeys.items()))}")
