@@ -89,6 +89,7 @@
     "generator/roadgraph/templates.py",
     "generator/sketch.py",
     "generator/structures.py",
+    "generator/vanilla_grid.py",
     "knoxbuild/__init__.py",
     "knoxbuild/__main__.py",
     "knoxbuild/areas.py",

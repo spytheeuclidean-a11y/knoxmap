@@ -109,7 +109,8 @@ def read_rgb(path: str, crop: tuple[int, int] | None = None,
     if key is not None and key in _RGB_CACHE:
         cached = _RGB_CACHE[key]
         out = cached[:crop[0], :crop[1]] if crop else cached
-        return out[::step, ::step] if step > 1 else out
+        out = out[::step, ::step] if step > 1 else out
+        return out.copy()
 
     arr = _fast(path, 24, crop, step)
     if arr is None:
@@ -121,8 +122,9 @@ def read_rgb(path: str, crop: tuple[int, int] | None = None,
     if key is not None and crop is None and step == 1 and arr.nbytes <= _RGB_CACHE_MAX_BYTES:
         if len(_RGB_CACHE) >= 2:
             _RGB_CACHE.pop(next(iter(_RGB_CACHE)))
-        arr.setflags(write=False)
-        _RGB_CACHE[key] = arr
+        cached_copy = arr.copy()
+        cached_copy.setflags(write=False)
+        _RGB_CACHE[key] = cached_copy
     return arr
 
 

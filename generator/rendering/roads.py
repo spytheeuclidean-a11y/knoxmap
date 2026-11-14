@@ -407,39 +407,47 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
                                       bx + ox, by + oy, width))
     if not marks:
         return
+
     colour_for = {("yellow", "N"): C.LINE_YELLOW_N, ("yellow", "W"): C.LINE_YELLOW_W,
                   ("white", "N"): C.LINE_WHITE_N, ("white", "W"): C.LINE_WHITE_W}
-    ground_px = landscape.load()
-    veg_px = veg.load()
-
-    def road_at(x, y):
-        return 0 <= x < w and 0 <= y < h and ground_px[x, y] in asphalt
+    road = is_colour(np.asarray(landscape), asphalt)
+    veg_arr = np.asarray(veg).copy()
 
     for style, edge, ax, ay, bx, by, width in marks:
         steps = int(max(abs(bx - ax), abs(by - ay)))
-        for i in range(steps + 1):
-            t = i / steps if steps else 0
-            # The line sits on the edge between two tiles, so the road's
-            # middle is rounded to the nearest tile boundary.
-            x = int(round(ax + (bx - ax) * t))
-            y = int(round(ay + (by - ay) * t))
-            along = x if edge == "N" else y
-            if style == "white" and (along // 3) % 2:
-                continue
-            if not (road_at(x, y) and (road_at(x, y - 1) if edge == "N" else road_at(x - 1, y))):
-                continue
-            # At a junction the tarmac runs on across the line; a line through
-            # the middle of a crossroads is wrong, so stop short of it.
-            run = 0
-            for k in range(1, int(width) + 4):
-                if edge == "N":
-                    run += road_at(x, y - k) + road_at(x, y + k - 1)
-                else:
-                    run += road_at(x - k, y) + road_at(x + k - 1, y)
-            if run > width + 3:
-                continue
-            if veg_px[x, y] == C.VEG_NOTHING:
-                veg_px[x, y] = colour_for[(style, edge)]
+        t = np.linspace(0.0, 1.0, steps + 1) if steps else np.array([0.0])
+        xs = np.rint(ax + (bx - ax) * t).astype(np.intp)
+        ys = np.rint(ay + (by - ay) * t).astype(np.intp)
+        keep = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
+        if style == "white":
+            along = xs if edge == "N" else ys
+            keep &= ((along // 3) % 2) == 0
+        if not keep.any():
+            continue
+        xs, ys = xs[keep], ys[keep]
+        if edge == "N":
+            on_road = road[ys, xs] & (ys > 0) & road[np.maximum(0, ys - 1), xs]
+        else:
+            on_road = road[ys, xs] & (xs > 0) & road[ys, np.maximum(0, xs - 1)]
+        if not on_road.any():
+            continue
+        xs, ys = xs[on_road], ys[on_road]
+        run = np.zeros(len(xs), dtype=np.int32)
+        for k in range(1, int(width) + 4):
+            if edge == "N":
+                run += np.where(ys >= k, road[np.maximum(0, ys - k), xs], 0)
+                run += np.where(ys + k - 1 < h, road[np.minimum(h - 1, ys + k - 1), xs], 0)
+            else:
+                run += np.where(xs >= k, road[ys, np.maximum(0, xs - k)], 0)
+                run += np.where(xs + k - 1 < w, road[ys, np.minimum(w - 1, xs + k - 1)], 0)
+        ok = run <= width + 3
+        if not ok.any():
+            continue
+        xs, ys = xs[ok], ys[ok]
+        free = np.all(veg_arr[ys, xs] == C.VEG_NOTHING, axis=1)
+        if free.any():
+            veg_arr[ys[free], xs[free]] = colour_for[(style, edge)]
+    veg.paste(Image.fromarray(veg_arr))
 
 
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],

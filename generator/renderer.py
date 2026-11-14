@@ -14,6 +14,9 @@ from __future__ import annotations
 
 import logging
 import os
+import shutil
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -339,6 +342,9 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     if road_layout == 0:
         from .mapped_roads import clean_mapped_roads
         clean_mapped_roads(features, proj, classify, _is_polygon)
+    elif road_layout == 5:
+        from .vanilla_grid import apply_vanilla_grid
+        apply_vanilla_grid(features, proj, classify, _is_polygon)
     elif road_layout in (1, 4):
         # Every road in straight runs at 45-degree steps (octilinear.py).
         from .octilinear import straighten_roads
@@ -356,6 +362,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape, tick=tick)
         knoxfiles.write(graph_path(output_dir, map_name), graph)
         apply_road_graph(features, graph, proj)
+    t_render0 = time.perf_counter()
     # A drawn polygon, circle or real outline rather than a rectangle: the map
     # still covers its bounding box in whole cells, but only what lies inside
     # the shape is built.
@@ -565,6 +572,11 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # does not know the farmyard is there (generator/rendering/homesteads.py).
     footprints = [ring for f in building_feats if _is_polygon(f)
                   for ring in _feature_coords_px(f, proj) if len(ring) >= 3]
+    building_mask = Image.new("L", (proj.width, proj.height), 0)
+    mask_draw = ImageDraw.Draw(building_mask)
+    for ring in footprints:
+        mask_draw.polygon(ring, fill=255)
+    building_bool = np.asarray(building_mask) > 0
     yards = None
     try:
         yards = keep_yards_clear(landscape, landcover_grid, owned, footprints,
@@ -616,6 +628,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             _log.warning("worldcover planting skipped: %s: %s", type(exc).__name__, exc)
             owned = None
 
+    t_ground = time.perf_counter()
     knoxstop.check(should_stop, "the terrain")
     # The woods the mapper drew take both dials; the gardens and the scrub
     # over open ground take the overall one only.
@@ -641,8 +654,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         if owned is not None:
             wet |= owned & np.isin(landcover_grid, (90, 95))
         if wet.any():
-            paint_pools(landscape, vegetation, proj, wet,
-                        _polygon_mask(building_feats, proj))
+            paint_pools(landscape, vegetation, proj, wet, building_bool)
     except Exception as exc:            # noqa: BLE001 - never lose a map to it
         _log.warning("pools skipped: %s: %s", type(exc).__name__, exc)
     _paint_parks(vegetation, landscape, buckets.get("park", []), proj,
@@ -664,26 +676,14 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                      buckets.get("park", []), building_feats, proj,
                      density=tree_density, wood_mult=fp.big_trees)
     _clear_building_vegetation(vegetation, building_feats, proj)
+    t_veg = time.perf_counter()
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj)
     hierarchy_image = _road_hierarchy_image(buckets, proj)
     # Where the buildings are, so a hydrant, a bin or a mailbox only stands
     # where it has something to serve.
-    building_mask = Image.new("L", (proj.width, proj.height), 0)
-    mask_draw = ImageDraw.Draw(building_mask)
-    for feat in building_feats:
-        for ring in _feature_coords_px(feat, proj):
-            if len(ring) >= 3:
-                mask_draw.polygon(ring, fill=255)
     _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask)
-    # The last word on the ground edge belongs to the smoother: a lamp's square
-    # and the passes after the road details can leave a verge square standing
-    # between two pavements, which in the game is a lawn in the sidewalk.
-    _smooth_road_edges(landscape, (C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
-                                   C.DARKEST_ASPHALT, C.DARK_POTHOLE,
-                                   C.LIGHT_POTHOLE),
-                       _colour_mask)
-    _clear_road_vegetation(vegetation, landscape)
+    t_details = time.perf_counter()
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:
@@ -736,17 +736,32 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # (knoxfiles.py). A map's ground is hundreds of megabytes and the window
     # can be closed while it is going down, which used to leave half a file
     # that the build then read as the map.
-    knoxfiles.save(landscape, landscape_path, format="BMP")
-    knoxfiles.save(vegetation, veg_path, format="BMP")
-    knoxfiles.save(hierarchy_image, road_hierarchy_path, format="BMP")
-    # The ground as drawn, before knoxbuild paints front paths into it
-    # (knoxbuild/yards.py), so building again starts from clean ground.
-    knoxfiles.save(landscape, os.path.join(output_dir, f"{map_name}_ground_base.bmp"),
-                   format="BMP")
-    knoxfiles.save(vegetation, os.path.join(output_dir, f"{map_name}_veg_base.bmp"),
-                   format="BMP")
-    knoxfiles.save(spawn_map, spawn_path, format="BMP")
-    knoxfiles.save(preview, preview_path, format="PNG")
+    t_save0 = time.perf_counter()
+    ground_base_path = os.path.join(output_dir, f"{map_name}_ground_base.bmp")
+    veg_base_path = os.path.join(output_dir, f"{map_name}_veg_base.bmp")
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        save_tasks = [
+            pool.submit(knoxfiles.save, landscape, landscape_path, format="BMP"),
+            pool.submit(knoxfiles.save, vegetation, veg_path, format="BMP"),
+            pool.submit(knoxfiles.save, hierarchy_image, road_hierarchy_path, format="BMP"),
+            pool.submit(knoxfiles.save, spawn_map, spawn_path, format="BMP"),
+            pool.submit(knoxfiles.save, preview, preview_path, format="PNG"),
+        ]
+        for fut in save_tasks:
+            fut.result()
+        copy_tasks = [
+            pool.submit(shutil.copy2, landscape_path, ground_base_path),
+            pool.submit(shutil.copy2, veg_path, veg_base_path),
+        ]
+        for fut in copy_tasks:
+            fut.result()
+    _log.info(
+        "render %s (%dx%d): ground %.2fs, veg %.2fs, details %.2fs, save %.2fs, total %.2fs",
+        map_name, proj.width, proj.height,
+        t_ground - t_render0, t_veg - t_ground,
+        t_details - t_veg, time.perf_counter() - t_save0,
+        time.perf_counter() - t_render0,
+    )
 
     knoxfiles.write(buildings_path, _buildings_geojson(building_feats, indoor_feats))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_areas.geojson"),

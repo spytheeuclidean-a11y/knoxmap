@@ -227,7 +227,8 @@ class Setting(unittest.TestCase):
         self.assertEqual(Settings().straight_roads, 0)
         self.assertEqual(Settings.from_dict({"straight_roads": 3}).straight_roads, 3)
         self.assertEqual(Settings.from_dict({"straight_roads": 4}).straight_roads, 4)
-        self.assertEqual(Settings.from_dict({"straight_roads": 9}).straight_roads, 4)
+        self.assertEqual(Settings.from_dict({"straight_roads": 5}).straight_roads, 5)
+        self.assertEqual(Settings.from_dict({"straight_roads": 9}).straight_roads, 5)
         self.assertEqual(set(renderer.ROAD_LAYOUTS.values()), set(modes.PRESETS))
 
     def test_build_reads_the_saved_roads_back(self):
