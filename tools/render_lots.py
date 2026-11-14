@@ -28,10 +28,13 @@ Cells are 256 tiles; the map's tile 0,0 is world tile (world origin cell x 300).
 """
 from __future__ import annotations
 
+from collections import OrderedDict
 import os
 import re
 import struct
+import subprocess
 import sys
+import tempfile
 
 from PIL import Image
 
@@ -46,11 +49,25 @@ CHUNKS = 32
 CHUNK = 8
 LEVEL_PX = 96          # screen height of one storey at 1x
 
-# Persistent module-level cache for decoded tile sheets and resized sprites
-_SHEETS: dict[str, Image.Image | None] = {}
-_MAX_SHEETS = 32
-_SPRITE_CACHE: dict[tuple[str, int], Image.Image | None] = {}
-_MAX_SPRITE_CACHE = 8192
+# Persistent module-level LRU cache for decoded tile sheets and resized sprites
+_SHEETS: OrderedDict[str, Image.Image | None] = OrderedDict()
+_MAX_SHEETS = 48
+_SPRITE_CACHE: OrderedDict[tuple[str, int], tuple | None] = OrderedDict()
+_MAX_SPRITE_CACHE = 16384
+
+
+def _lru_get(cache: OrderedDict, key):
+    if key in cache:
+        cache.move_to_end(key)
+        return True, cache[key]
+    return False, None
+
+
+def _lru_put(cache: OrderedDict, key, value, limit: int) -> None:
+    cache[key] = value
+    cache.move_to_end(key)
+    while len(cache) > limit:
+        cache.popitem(last=False)
 
 
 def read_header(path: str) -> tuple[list[str], int, int]:
@@ -117,6 +134,133 @@ def read_squares(pack: str, names: list[str], lo: int, hi: int,
     }
 
 
+def _sprite_for(name: str, tw: int, tiles_dir):
+    import numpy as np
+
+    key = (name, tw)
+    hit, cached = _lru_get(_SPRITE_CACHE, key)
+    if hit:
+        return cached
+    resample = Image.BILINEAR if tw <= 16 else Image.LANCZOS
+    entry = None
+    m = re.match(r"^(.*)_(\d+)$", name)
+    if m:
+        sheet_name, idx = m.group(1), int(m.group(2))
+        # A broadleaf tree is stored as its bare picture (sizes 0-3) and
+        # the game draws the season's; the picture shows summer, which is
+        # four rows of four on: bare, snow, spring, summer.
+        if sheet_name in SUMMER_SHEETS and idx < 4:
+            idx += 12
+        shit, sheet = _lru_get(_SHEETS, sheet_name)
+        if not shit:
+            path = tiles_dir / f"{sheet_name}.png"
+            sheet = Image.open(path).convert("RGBA") if path.exists() else None
+            _lru_put(_SHEETS, sheet_name, sheet, _MAX_SHEETS)
+        if sheet is not None:
+            cols = max(1, sheet.width // 128)
+            cx, cy = (idx % cols) * 128, (idx // cols) * 256
+            if cy + 256 <= sheet.height:
+                im = sheet.crop((cx, cy, cx + 128, cy + 256)).resize((tw, tw * 2), resample)
+                bbox = im.getbbox()
+                if bbox is not None:
+                    ox, oy, x1, y1 = bbox
+                    rgba_u8 = np.ascontiguousarray(im.crop(bbox), dtype=np.uint8)
+                    arr = rgba_u8.astype(np.uint16)
+                    a = arr[:, :, 3:4]
+                    opaque = bool(np.all(rgba_u8[:, :, 3] == 255))
+                    entry = (ox, oy, x1 - ox, y1 - oy, arr[:, :, :3] * a, 255 - a, opaque, rgba_u8)
+    _lru_put(_SPRITE_CACHE, key, entry, _MAX_SPRITE_CACHE)
+    return entry
+
+
+def _write_sprite_bank(path: str, names: list[str], tw: int, tiles_dir) -> int:
+    entries = []
+    for name in names:
+        sp = _sprite_for(name, tw, tiles_dir)
+        if sp is not None:
+            ox, oy, sw, sh, _pre, _inv, opaque, rgba_u8 = sp
+            entries.append((name.encode("utf-8"), ox, oy, sw, sh, 1 if opaque else 0, rgba_u8.tobytes()))
+    with open(path, "wb") as fh:
+        fh.write(b"SPR1")
+        fh.write(struct.pack("<I", len(entries)))
+        for bname, ox, oy, sw, sh, opaque, raw in entries:
+            fh.write(struct.pack("<H", len(bname)))
+            fh.write(bname)
+            fh.write(struct.pack("<hhhhB", ox, oy, sw, sh, opaque))
+            fh.write(raw)
+    return len(entries)
+
+
+def _render_rust(lots: str, ox: int, oy: int, X: int, Y: int, W: int, H: int,
+                 tw: int, max_level: int | None, skip_blends: bool,
+                 tiles_dir, progress=None) -> tuple[bool, Image.Image | None]:
+    """Use the Rust `knoxlots` binary when built. Returns (handled, image_or_none)."""
+    if os.environ.get("KNOXMAP_PYTHON_RENDER") == "1":
+        return False, None
+    try:
+        from tools.compile_map import knoxlots_exe
+        exe = knoxlots_exe()
+    except Exception:
+        exe = None
+    if exe is None:
+        return False, None
+
+    kw = {}
+    if os.name == "nt":
+        kw["creationflags"] = subprocess.CREATE_NO_WINDOW
+
+    if progress:
+        progress(2, "Scanning compiled tile names…")
+    tl = subprocess.run(
+        [str(exe), "tile-list", lots, str(ox), str(oy), str(X), str(Y), str(W), str(H)],
+        capture_output=True, text=True, **kw,
+    )
+    if tl.returncode != 0:
+        return False, None
+    names = [line for line in tl.stdout.splitlines() if line]
+    if not names:
+        return True, None
+
+    with tempfile.TemporaryDirectory() as tmp:
+        spr_path = os.path.join(tmp, "sprites.bin")
+        raw_path = os.path.join(tmp, "canvas.raw")
+        if progress:
+            progress(5, f"Preparing {len(names)} tile sprites…")
+        _write_sprite_bank(spr_path, names, tw, tiles_dir)
+        cmd = [str(exe), "render", lots, spr_path, raw_path,
+               str(ox), str(oy), str(X), str(Y), str(W), str(H), str(tw)]
+        if max_level is not None:
+            cmd.extend(["--max-level", str(max_level)])
+        if skip_blends:
+            cmd.append("--skip-blends")
+        proc = subprocess.Popen(
+            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace", **kw,
+        )
+        assert proc.stderr is not None
+        for line in proc.stderr:
+            if progress and line.startswith("PROGRESS "):
+                parts = line.rstrip("\r\n").split(" ", 2)
+                if len(parts) == 3:
+                    try:
+                        progress(int(parts[1]), parts[2])
+                    except ValueError:
+                        pass
+        rc = proc.wait()
+        if rc == 3:
+            return True, None
+        if rc != 0 or not os.path.isfile(raw_path):
+            return False, None
+        with open(raw_path, "rb") as fh:
+            hdr = fh.read(16)
+            if len(hdr) != 16 or hdr[:4] != b"RAW1":
+                return False, None
+            cw, ch, _pad = struct.unpack("<III", hdr[4:16])
+            rgb_bytes = fh.read()
+        im = Image.frombuffer("RGB", (cw, ch), rgb_bytes, "raw", "RGB", 0, 1).convert("RGBA")
+        return True, im
+
+
 def render(map_dir: str, X: int, Y: int, W: int, H: int,
            max_level: int | None = None, scale: float = 1.0,
            world: bool = False, progress=None) -> Image.Image | None:
@@ -139,6 +283,16 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
         box = _project_box(os.path.join(map_dir, f"{name}.pzw")) or WORLD_ORIGIN_CELLS
         ox, oy = box[0] * 300, box[1] * 300
         lots = os.path.join(map_dir, "lots")
+    tiles_dir = knoxpaths.mapping_tools_dir() / "Tiles" / "2x"
+    tw = max(4, round(64 * scale))
+    skip_blends = (scale < 0.25)
+
+    handled, rust_img = _render_rust(
+        lots, ox, oy, X, Y, W, H, tw, max_level, skip_blends, tiles_dir, progress=progress,
+    )
+    if handled:
+        return rust_img
+
     # Stream populated squares directly into per-level buckets (sorted in-place
     # and freed level-by-level) instead of holding both a giant dict and a
     # sorted copy of every square in RAM.
@@ -148,7 +302,6 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
     wx0, wy0 = ox + X, oy + Y
     # At very small scales (broad county/town overviews), individual grass blend
     # overlays are sub-pixel and skipping them cuts out over a million alpha-blends.
-    skip_blends = (scale < 0.25)
     cxs = range(wx0 // CELL, (wx0 + W - 1) // CELL + 1)
     cys = range(wy0 // CELL, (wy0 + H - 1) // CELL + 1)
     total_cells = max(1, len(cxs) * len(cys))
@@ -199,47 +352,12 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
 
     import numpy as np
 
-    tiles_dir = knoxpaths.mapping_tools_dir() / "Tiles" / "2x"
-    resample = Image.BILINEAR if max(4, round(64 * scale)) <= 16 else Image.LANCZOS
-
     def sprite_for(name: str):
-        key = (name, TW)
-        if key in _SPRITE_CACHE:
-            return _SPRITE_CACHE[key]
-        entry = None
-        m = re.match(r"^(.*)_(\d+)$", name)
-        if m:
-            sheet_name, idx = m.group(1), int(m.group(2))
-            # A broadleaf tree is stored as its bare picture (sizes 0-3) and
-            # the game draws the season's; the picture shows summer, which is
-            # four rows of four on: bare, snow, spring, summer.
-            if sheet_name in SUMMER_SHEETS and idx < 4:
-                idx += 12
-            if sheet_name not in _SHEETS:
-                if len(_SHEETS) >= _MAX_SHEETS:
-                    _SHEETS.clear()
-                path = tiles_dir / f"{sheet_name}.png"
-                _SHEETS[sheet_name] = Image.open(path).convert("RGBA") if path.exists() else None
-            sheet = _SHEETS[sheet_name]
-            if sheet is not None:
-                cols = max(1, sheet.width // 128)
-                cx, cy = (idx % cols) * 128, (idx // cols) * 256
-                if cy + 256 <= sheet.height:
-                    im = sheet.crop((cx, cy, cx + 128, cy + 256)).resize((TW, TW * 2), resample)
-                    bbox = im.getbbox()
-                    if bbox is not None:
-                        ox, oy, x1, y1 = bbox
-                        arr = np.asarray(im.crop(bbox), dtype=np.uint16)
-                        a = arr[:, :, 3:4]
-                        entry = (ox, oy, x1 - ox, y1 - oy, arr[:, :, :3] * a, 255 - a)
-        if len(_SPRITE_CACHE) >= _MAX_SPRITE_CACHE:
-            _SPRITE_CACHE.clear()
-        _SPRITE_CACHE[key] = entry
-        return entry
+        return _sprite_for(name, tw, tiles_dir)
 
     # Sprites are shrunk before they are stacked, so a whole district can be
     # drawn: at full size two square kilometres is a 96,000-pixel-wide image.
-    TW = max(4, round(64 * scale))
+    TW = tw
     half, quarter, level_px = TW // 2, TW // 4, round(LEVEL_PX * TW / 64)
     width = (W + H) * half + TW
     height = (W + H) * quarter + 2 * TW + (top + 1) * level_px
@@ -269,7 +387,7 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
                 sp = sprite_for(name)
                 if sp is None:
                     continue
-                ox, oy, sw, sh, pre_rgb, inv_a = sp
+                ox, oy, sw, sh, pre_rgb, inv_a, opaque, rgba_u8 = sp
                 x0, y0 = px + ox, py + oy
                 x1, y1 = x0 + sw, y0 + sh
                 if x1 <= 0 or y1 <= 0 or x0 >= width or y0 >= height:
@@ -281,11 +399,17 @@ def render(map_dir: str, X: int, Y: int, W: int, H: int,
                 cx0, cy0 = x0 + sx0, y0 + sy0
                 cx1, cy1 = x0 + sx1, y0 + sy1
                 dst = canvas[cy0:cy1, cx0:cx1]
-                if sx0 == 0 and sy0 == 0 and sx1 == sw and sy1 == sh:
-                    t = pre_rgb + dst * inv_a
+                if opaque:
+                    if sx0 == 0 and sy0 == 0 and sx1 == sw and sy1 == sh:
+                        dst[:] = rgba_u8[:, :, :3]
+                    else:
+                        dst[:] = rgba_u8[sy0:sy1, sx0:sx1, :3]
                 else:
-                    t = pre_rgb[sy0:sy1, sx0:sx1] + dst * inv_a[sy0:sy1, sx0:sx1]
-                dst[:] = (t + (t >> 8) + 1) >> 8
+                    if sx0 == 0 and sy0 == 0 and sx1 == sw and sy1 == sh:
+                        t = pre_rgb + dst * inv_a
+                    else:
+                        t = pre_rgb[sy0:sy1, sx0:sx1] + dst * inv_a[sy0:sy1, sx0:sx1]
+                    dst[:] = (t + (t >> 8) + 1) >> 8
         del rows
     return Image.fromarray(canvas, "RGB").convert("RGBA")
 

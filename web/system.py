@@ -226,8 +226,8 @@ def _setup_report() -> dict:
         {"id": "compiler", "ok": bool(cli), "label": "Patched map compiler",
          "fix": f"Run {setup}, or compile by hand with Open in WorldEd."},
         {"id": "game", "ok": bool(game), "label": "Project Zomboid install",
-         "fix": ("Put the folder your Steam games are in under Steam libraries "
-                 f"above - the game's own folder works too - or run {setup} and "
+         "fix": ("Put the folder your Steam games are in under Edit, Steam "
+                 f"libraries - the game's own folder works too - or run {setup} and "
                  "paste the path when it asks."
                  + (" On a Mac the game lives inside ProjectZomboid.app; that "
                     "path is fine, and so is anything above it."
@@ -477,7 +477,7 @@ def api_settings():
         "types": {f.name: ("enum" if f.name in (
                               "building_alignment", "arch_style", "height_mix",
                               "landcover", "elevation", "hospitals", "winter_look")
-                           else "text" if f.name == "region_override"
+                           else "text" if f.name in ("region_override", "building_mix")
                            else "int" if f.type in (int, "int") else "float")
                   for f in fields(Settings)},
         "options": {
@@ -591,6 +591,37 @@ def _mod_uses_erika(mod_root) -> bool:
         return False
     return False
 
+
+@bp.route("/api/forest-preview")
+def api_forest_preview():
+    """A sample of forest drawn with these forest settings, for the sliders."""
+    import math
+
+    from generator.rendering.forest_preview import preview_png
+    from knoxbuild.settings import LIMITS
+
+    defaults = Settings()
+
+    def value(key):
+        default = float(getattr(defaults, key))
+        try:
+            v = float(request.args.get(key, default))
+        except (TypeError, ValueError):
+            v = default
+        if not math.isfinite(v):
+            v = default
+        lo, hi = LIMITS[key]
+        return min(max(v, lo), hi)
+
+    from generator.rendering.forest_params import FIELD_FOR_SETTING, ForestParams
+
+    whole = {"forest_seed", "forest_stand_m", "forest_edge_m", "forest_house_clearing_m"}
+    params = ForestParams(**{
+        field: (int(round(value(key))) if key in whole else round(value(key), 2))
+        for key, field in FIELD_FOR_SETTING.items()})
+    png = preview_png(round(value("tree_density"), 2), round(value("forest_density"), 2),
+                      params)
+    return send_file(io.BytesIO(png), mimetype="image/png", max_age=3600)
 
 @bp.route("/api/install", methods=["POST"])
 def api_install():

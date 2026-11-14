@@ -18,7 +18,7 @@ import numpy as np
 
 BOTTOM_LEVEL = -32
 
-LARGE_KINDS = {"school", "medical", "civic", "police", "mall", "industrial"}
+LARGE_KINDS = {"school", "medical", "civic", "police", "fire", "fire_police", "mall", "industrial"}
 CHURCH_MIN_M2 = 600
 LARGE_TWO_LEVELS_M2 = 3_000
 INSTALLATION_SITE_M2 = 50_000          # an industrial site this big goes deep
@@ -441,7 +441,21 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
     sx, sy, d, lane, door = spot
     here = (sx - spec.dx, sy - spec.dy, d)
     core = _core(*here)
-    mask = spec.mask.tolist()
+    # Keep only the 4-connected component of spec.mask reachable from the
+    # stairs, so narrow-waisted footprints never leave isolated basement rooms.
+    reach = np.zeros_like(spec.mask, dtype=bool)
+    mh, mw = spec.mask.shape
+    q = [(cx, cy) for cx, cy in _run(*here)
+         if 0 <= cx < mw and 0 <= cy < mh and spec.mask[cy, cx]]
+    for cx, cy in q:
+        reach[cy, cx] = True
+    while q:
+        cx, cy = q.pop()
+        for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+            if 0 <= nx < mw and 0 <= ny < mh and spec.mask[ny, nx] and not reach[ny, nx]:
+                reach[ny, nx] = True
+                q.append((nx, ny))
+    mask = (reach if reach.any() else spec.mask).tolist()
     kind, finished = (f"basement_{spec.kind}", False)
     if spec.tier == "house" and spec.kind in ("house", None):
         kind, finished = _house_basement(seed)
@@ -460,6 +474,13 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
     ground.furniture = [f for f in ground.furniture if _is_wall_piece(f[0])
                         or not (set(_cells_for(f[0], f[1], f[2], f[3])) & clear)]
     ground.holes |= set(_top(sx, sy, d)[1:])
+    # _wall_off carves a new hall room (and may move a wall switch into it),
+    # so ensure every ground-floor room still has a light switch.
+    from .layout.assemble import _relight, _wall_edge
+    blocked_edges = (ground.railing | ground.open_edge
+                     | {_wall_edge(dx, dy, dd) for dx, dy, dd in ground.doors}
+                     | {_wall_edge(wx, wy, wd) for wx, wy, wd in ground.windows})
+    _relight(ground, set(range(1, len(ground.rooms) + 1)), blocked_edges)
     return Basement(building, spec.dx, spec.dy, spec.levels, finished)
 
 

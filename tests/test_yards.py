@@ -196,6 +196,94 @@ class Variation(unittest.TestCase):
     def test_a_house_gets_the_same_yard_every_time(self):
         self.assertEqual(yard_plan(42, 17), yard_plan(42, 17))
 
+    def test_terraced_edge_obstacle_still_gets_inset_back_yard_and_front_details(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((40, 60), dtype=bool)
+            ground = np.full((40, 60, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[28:32, :] = C.PALE_CONCRETE
+            ground[32:36, :] = C.MEDIUM_ASPHALT
+            veg = np.full((40, 60, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+            rows = []
+            # Three closely spaced terraced houses with front doors facing south (y=20)
+            # and a 1-tile obstacle along one side of the back yard.
+            for idx, bx in enumerate((6, 16, 26)):
+                _building(os.path.join(out, "buildings"), f"h{idx}.tbx", door=(3, 6, "N"))
+                occupied[14:20, bx:bx + SIZE] = True
+                occupied[10:14, bx] = True  # blocks side=0 on the west corner
+                rows.append({"kind": "house", "file": f"h{idx}.tbx",
+                             "tile_x": bx, "tile_y": 14, "width": SIZE, "height": SIZE})
+            _paths, fences = paint_paths(out, "m", rows, occupied)
+            # At least one house should get a fenced inset back yard despite the corner block.
+            self.assertTrue(any(yard_plan(6 + 10 * n, 14)[1] for n in range(3)))
+            self.assertGreater(len(fences), 0)
+            veg_after = np.asarray(Image.open(os.path.join(out, "m_veg.bmp")))
+            colours = {tuple(c) for c in veg_after.reshape(-1, 3)}
+            self.assertIn(C.FLOWERS, colours)
+
+
+class MultiDoorAndInfillFrontPaths(unittest.TestCase):
+    @staticmethod
+    def _write_doors_tbx(folder, name, doors):
+        rows = "\n".join(",".join(["1"] * SIZE) for _ in range(SIZE))
+        objs = "".join(
+            f'<object type="door" x="{x}" y="{y}" dir="{d}"/>'
+            for x, y, d in doors
+        )
+        with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
+            f.write(f"<building><floor><rooms>\n{rows}\n</rooms>{objs}</floor></building>")
+
+    def test_blocked_first_door_falls_back_to_street_facing_door(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((30, 30), dtype=bool)
+            ground = np.full((30, 30, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[22:25, :] = C.PALE_CONCRETE
+            ground[25:28, :] = C.MEDIUM_ASPHALT
+            veg = np.full((30, 30, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            # First door at north wall (blocked by occupied), second door at south wall facing street
+            self._write_doors_tbx(os.path.join(out, "buildings"), "multi.tbx",
+                                  [(3, 0, "N"), (3, 6, "N")])
+            occupied[10:16, 10:16] = True
+            occupied[9, 13] = True  # block the first door's outside tile
+            rows = [{"kind": "house", "file": "multi.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": SIZE, "height": SIZE}]
+            paths, _ = paint_paths(out, "m", rows, occupied)
+            self.assertEqual(paths, 1)
+            after = np.asarray(Image.open(os.path.join(out, "m.bmp")))
+            # South door at (13, 16) should have a paved stoop and a paved route to y=21
+            self.assertNotEqual(tuple(after[16, 13]), C.MEDIUM_GRASS)
+            self.assertTrue(any(tuple(after[21, x]) != C.MEDIUM_GRASS for x in range(10, 20)))
+
+    def test_infill_shop_with_two_front_doors_gets_paths_to_street(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((30, 30), dtype=bool)
+            ground = np.full((30, 30, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[22:25, :] = C.PALE_CONCRETE
+            ground[25:28, :] = C.MEDIUM_ASPHALT
+            veg = np.full((30, 30, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            self._write_doors_tbx(os.path.join(out, "buildings"), "shop.tbx",
+                                  [(1, 6, "N"), (4, 6, "N")])
+            occupied[10:16, 10:16] = True
+            rows = [{"kind": "shop", "file": "shop.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": SIZE, "height": SIZE}]
+            paths, _ = paint_paths(out, "m", rows, occupied)
+            self.assertEqual(paths, 1)
+            after = np.asarray(Image.open(os.path.join(out, "m.bmp")))
+            self.assertNotEqual(tuple(after[16, 11]), C.MEDIUM_GRASS)
+            self.assertNotEqual(tuple(after[21, 11]), C.MEDIUM_GRASS)
+            self.assertNotEqual(tuple(after[16, 14]), C.MEDIUM_GRASS)
+            self.assertNotEqual(tuple(after[21, 14]), C.MEDIUM_GRASS)
+
 
 if __name__ == "__main__":
     unittest.main()

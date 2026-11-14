@@ -81,6 +81,8 @@
       <p>You can make terrain and buildings already. To compile maps for the game,
         run <b id="setupScript">Setup.bat</b> once:</p>
       <ul class="setup-list" id="setupList"></ul>
+      <button type="button" id="setupDismiss" class="setup-dismiss" title="Dismiss until something else is missing"
+              aria-label="Dismiss">✕</button>
     </section>
 
     <section class="panel" id="healthCard">
@@ -201,21 +203,20 @@
            also a way to draw it: type four degrees and the box appears,
            which is how somebody who knows exactly where their map ends
            starts from the numbers instead of the mouse. -->
-      <div class="coords">
-        <label>S <input type="number" step="0.000001" id="south"
-                        placeholder="-90 to 90"></label>
-        <label>W <input type="number" step="0.000001" id="west"
-                        placeholder="-180 to 180"></label>
-        <label>N <input type="number" step="0.000001" id="north"
-                        placeholder="-90 to 90"></label>
-        <label>E <input type="number" step="0.000001" id="east"
-                        placeholder="-180 to 180"></label>
-        <button type="button" id="coordsApply" class="btn btn-small">Use these
-          corners</button>
-      </div>
-      <div id="coordsNote" class="hint"></div>
-      <div id="area-stats" class="empty">
-        <div class="empty-state">Nothing selected yet.</div>
+      <div id="coordsBox" class="coords-box">
+        <div class="coords">
+          <label>S <input type="number" step="0.000001" id="south"
+                          placeholder="-90 to 90"></label>
+          <label>W <input type="number" step="0.000001" id="west"
+                          placeholder="-180 to 180"></label>
+          <label>N <input type="number" step="0.000001" id="north"
+                          placeholder="-90 to 90"></label>
+          <label>E <input type="number" step="0.000001" id="east"
+                          placeholder="-180 to 180"></label>
+          <button type="button" id="coordsApply" class="btn btn-small">Use these
+            corners</button>
+        </div>
+        <div id="coordsNote" class="hint"></div>
       </div>
       <div id="landmark-panel">
         <button id="landmarksBtn" class="btn" disabled>List named places in the area</button>
@@ -225,63 +226,83 @@
 
     <section class="panel" data-card="style">
       <h2>2. Settings</h2>
-      <label class="field">Map name
-        <input type="text" id="mapName" value="" placeholder="leave blank for an automatic name"/>
-      </label>
-      <label class="field">Scale (metres per tile)
-        <input type="number" id="metersPerTile" list="metersPerTileOptions"
-               value="1" min="0.5" max="100" step="0.25" inputmode="decimal"
-               title="Metres of the real place in one game tile, to the quarter metre. 1 is recommended; 1 to 8 is the usual range. 0.5 doubles the detail on a small area, and 1.5 is the middle ground between a town at full size and one at half."/>
-        <datalist id="metersPerTileOptions">
-          <option value="0.5" label="0.5 m per tile (small areas, twice the detail)"></option>
-          <option value="1" label="1 m per tile (recommended)"></option>
-          <option value="1.5" label="1.5 m per tile (two thirds the size)"></option>
-          <option value="2" label="2 m per tile"></option>
-          <option value="3" label="3 m per tile"></option>
-          <option value="4" label="4 m per tile"></option>
-          <option value="6" label="6 m per tile"></option>
-          <option value="8" label="8 m per tile (whole regions)"></option>
-        </datalist>
-      </label>
-
-      <div class="field-label">Kind of place</div>
-      <div class="preset-cards" id="presetCards" role="radiogroup" aria-label="Kind of place">
-        <button type="button" class="preset-card is-on" data-preset="town" role="radio" aria-checked="true">Town</button>
-        <button type="button" class="preset-card" data-preset="suburb" role="radio" aria-checked="false">Suburb</button>
-        <button type="button" class="preset-card" data-preset="city" role="radio" aria-checked="false">City</button>
-        <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
-      </div>
       <select id="preset" hidden>
         <option value="town" selected>Town</option>
         <option value="suburb">Suburb</option>
         <option value="city">City</option>
         <option value="rural">Rural</option>
       </select>
-
-      <div class="setting setting-switch" style="margin: 8px 0;">
-        <div class="setting-head">
-          <span class="setting-name">Terrain only (no buildings)</span>
-          <label class="switch"><input type="checkbox" role="switch"
-            id="terrainOnlyToggle" aria-label="Terrain only (no buildings)">
-            <span class="switch-track"></span></label>
-        </div>
-        <span class="setting-hint">Generates terrain, roads, railways, water and vegetation without placing any buildings.</span>
-      </div>
-
-      <details id="advanced">
-        <summary>More settings</summary>
-        <input type="search" id="settingFind" class="list-search" hidden
-               autocomplete="off" placeholder="Search the settings">
-        <div id="advanced-body">
-          <!-- Filled from /api/settings so the page never holds a second,
-               drifting copy of the limits. -->
-        </div>
-        <button type="button" id="resetSettings" class="linkish">Reset to the defaults for this kind of place</button>
-        <!-- Shown once a map is open: which of these knobs have been moved
-             since it was made, and a button to put them into it without
-             drawing the box or setting everything a second time. -->
-        <div id="reapply" class="reapply" hidden></div>
+      <!-- Zones (Tools, Zones) set some of these differently in parts of the
+           map; this says so, and opens them. -->
+      <details id="zonesNotice" class="zones-notice" hidden>
+        <summary><span aria-hidden="true">🧩</span> <span class="zones-notice-what"></span></summary>
+        <ul class="zones-notice-list"></ul>
       </details>
+      <!-- Warnings about the whole map (its size), at the top. -->
+      <div id="areaWarnings" class="area-warnings"></div>
+      <!-- Shown once a map is open: which of these knobs have been moved
+           since it was made, and a button to put them into it without
+           drawing the box or setting everything a second time. -->
+      <div id="reapply" class="reapply" hidden></div>
+      <input type="search" id="settingFind" class="list-search" hidden
+             autocomplete="off" placeholder="Search the settings">
+      <!-- The tabs: filled from /api/settings so the page never holds a second,
+           drifting copy of the limits. -->
+      <div id="advanced-body"></div>
+      <!-- Parts of a tab that are fields of the page rather than settings of
+           the generator; buildSettingsForm puts each into its tab. -->
+      <div id="settingsParts" hidden>
+        <div class="tab-part" data-part="map">
+          <label class="field setting setting-static">Map name
+            <input type="text" id="mapName" value="" placeholder="leave blank for an automatic name"/>
+          </label>
+          <label class="field setting setting-static">Scale (metres per tile)
+            <input type="number" id="metersPerTile" list="metersPerTileOptions"
+                   value="1" min="0.5" max="100" step="0.25" inputmode="decimal"
+                   title="Metres of the real place in one game tile, to the quarter metre. 1 is recommended; 1 to 8 is the usual range. 0.5 doubles the detail on a small area, and 1.5 is the middle ground between a town at full size and one at half."/>
+            <datalist id="metersPerTileOptions">
+              <option value="0.5" label="0.5 m per tile (small areas, twice the detail)"></option>
+              <option value="1" label="1 m per tile (recommended)"></option>
+              <option value="1.5" label="1.5 m per tile (two thirds the size)"></option>
+              <option value="2" label="2 m per tile"></option>
+              <option value="3" label="3 m per tile"></option>
+              <option value="4" label="4 m per tile"></option>
+              <option value="6" label="6 m per tile"></option>
+              <option value="8" label="8 m per tile (whole regions)"></option>
+            </datalist>
+          </label>
+          <div class="setting setting-static">
+            <div class="field-label">Kind of place</div>
+            <div class="preset-cards" id="presetCards" role="radiogroup" aria-label="Kind of place">
+              <button type="button" class="preset-card is-on" data-preset="town" role="radio" aria-checked="true">Town</button>
+              <button type="button" class="preset-card" data-preset="suburb" role="radio" aria-checked="false">Suburb</button>
+              <button type="button" class="preset-card" data-preset="city" role="radio" aria-checked="false">City</button>
+              <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
+            </div>
+          </div>
+          <!-- Drawn like the generated settings' switches (settingElement). -->
+          <div class="setting setting-static setting-compact setting-switch">
+            <span class="setting-name">Only what I draw<button type="button" class="setting-info"
+              aria-label="About Only what I draw" aria-expanded="false">i</button></span>
+            <label class="switch"><input type="checkbox" role="switch" id="drawnOnly"
+              aria-label="Only what I draw"><span class="switch-track" aria-hidden="true"><span
+              class="sw-on">On</span><span class="sw-off">Off</span></span></label>
+            <span class="setting-hint" role="tooltip">Nothing is downloaded, so a place that is not on
+              OpenStreetMap can be built from what is drawn under Features.</span>
+          </div>
+        </div>
+        <!-- After the tab's own settings: the area, its corners and what it
+             comes to. -->
+        <div class="tab-part" data-part="map-area">
+          <div class="setting-subhead">Extent</div>
+          <div class="setting setting-static">
+            <div id="area-stats" class="empty">
+              <div class="empty-state">Nothing selected yet.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="button" id="resetSettings" class="linkish">Reset to the defaults for this kind of place</button>
 
       <details id="steamLibraries">
         <summary>Steam libraries</summary>
@@ -322,18 +343,26 @@
         it - for a town that is not anywhere.</p>
 
       <details id="sketch">
-        <summary>Add to this area <span class="count" id="sketchCount"></span></summary>
+        <summary>Features <span class="count" id="sketchCount"></span></summary>
         <p class="hint">Pick what to draw, then draw it on the map. It is built
           exactly as a surveyed one would be - a street gets its pavement,
           kerbs and parked cars; a house gets rooms, loot and people.</p>
+        <!-- What is picked on the map, always shown: No selection until then. -->
+        <div id="sketchTools" class="sketch-actions"></div>
+        <div id="sketchPicked" class="edit-selected is-empty"><span class="hint">No selection</span></div>
+        <div class="setting setting-compact setting-switch sketch-rect">
+          <span class="setting-name">Draw areas as boxes<button type="button" class="setting-info"
+            aria-label="About Draw areas as boxes" aria-expanded="false">i</button></span>
+          <label class="switch"><input type="checkbox" role="switch" id="sketchRect"
+            aria-label="Draw areas as boxes"><span class="switch-track" aria-hidden="true"><span
+            class="sw-on">On</span><span class="sw-off">Off</span></span></label>
+          <span class="setting-hint" role="tooltip">On, a house, a park or a field is drawn by dragging
+            out a box. Off, by clicking each of its corners. Roads and paths are always clicked point
+            by point.</span>
+        </div>
         <input type="search" id="sketchFind" class="list-search" hidden
                autocomplete="off" placeholder="Search what to draw">
         <div id="sketchPalette" class="sketch-palette"></div>
-        <label class="check"><input type="checkbox" id="drawnOnly">
-          Only what I draw <span class="hint">- nothing is downloaded, so a
-          place that is not on OpenStreetMap can be built</span></label>
-        <div id="sketchTools" class="sketch-actions"></div>
-        <div id="sketchPicked" class="edit-selected" hidden></div>
         <div id="sketchNote" class="hint"></div>
       </details>
 
@@ -342,17 +371,15 @@
         <p class="hint">Draw a part of the map and give it its own settings -
           a town centre that is taller and thick with zombies, an estate all
           in one brick, a quiet edge. Anything outside every zone is built to
-          the settings above.</p>
+          the settings in Properties.</p>
         <div class="sketch-actions">
           <button type="button" id="zoneDraw" class="btn">Draw a zone</button>
           <button type="button" id="zoneSave" class="btn" disabled>Save zones</button>
         </div>
         <div id="zoneTools" class="sketch-actions"></div>
-        <input type="search" id="zoneFind" class="list-search" hidden
-               autocomplete="off" placeholder="Search the zones">
+        <!-- One foldable item per zone; the open one holds its settings
+             (zoneEditor, moved into it by drawZoneList). -->
         <ul id="zoneList" class="zone-list"></ul>
-        <input type="search" id="zoneSettingFind" class="list-search" hidden
-               autocomplete="off" placeholder="Search this zone's settings">
         <div id="zoneEditor" class="zone-editor" hidden></div>
         <div id="zoneNote" class="hint"></div>
       </details>
@@ -462,8 +489,8 @@
           <div id="censusAudit" class="census-audit" hidden></div>
           <div class="census-actions">
             <button id="recountBtn" class="btn btn-small" type="button">Recount</button>
-            <span id="censusNote" class="step-note">Change the zombie settings under More settings,
-              then recount. No need to rebuild.</span>
+            <span id="censusNote" class="step-note">Change the zombie settings in Properties, on
+              the Gameplay tab, then recount. No need to rebuild.</span>
           </div>
         </div>
       </div>

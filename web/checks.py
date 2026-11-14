@@ -186,7 +186,12 @@ BUILD_BASE_BYTES = 300e6
 # steps a change really needs. tests/test_render_settings.py checks it against
 # what generate() actually reads, so the two cannot drift apart.
 RENDER_SETTINGS = ["align_streets", "rotate_degrees", "straight_roads", "include_proposed_roads",
-                   "tree_density", "forest_density", "fill_gaps", "fill_frontage",
+                   "tree_density", "forest_density", "forest_stand_m", "forest_edge_m",
+                   "forest_thickets", "forest_stand_variety", "forest_raggedness",
+                   "forest_edge_wobble", "forest_spill_thick", "forest_keep_meadows",
+                   "forest_seed", "forest_house_clearing_m", "forest_big_trees",
+                   "forest_groves", "forest_wild_growth", "forest_shrubland",
+                   "fill_gaps", "fill_frontage",
                    "terrain_only",
                    # Enrichment layers (knoxdata/): they colour the ground and
                    # tag buildings, so changing one redraws the map.

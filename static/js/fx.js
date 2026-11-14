@@ -245,7 +245,12 @@ const fx = (() => {
     });
     root.querySelectorAll('.dice').forEach(d => {
       d.addEventListener('click', () => {
-        d.parentElement.querySelector('input').value = Math.floor(Math.random() * 999999) + 1;
+        const input = d.parentElement.querySelector('input');
+        input.value = Math.floor(Math.random() * 999999) + 1;
+        // Setting a value from code fires nothing, and the Forest preview and
+        // the re-apply notice both listen for the change.
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
       });
     });
   }

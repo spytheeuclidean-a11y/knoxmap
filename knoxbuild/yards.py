@@ -39,7 +39,10 @@ DRIVE_THERE_TILES = 3
 # Who gets a front path, a stoop and a porch light. Only houses get the drive
 # and the yard: flats and public buildings have lots of their own. On Piqua
 # 91% of the flats had no way to the street before this.
-FRONT_PATH_KINDS = ("house", "apartment", "church", "civic", "medical", "library")
+FRONT_PATH_KINDS = (
+    "house", "apartment", "church", "civic", "medical", "library",
+    "shop", "office", "restaurant", "school", "hotel", "police", "fire", "fire_police",
+)
 DRIVE_WIDTH = 3
 DRIVE_EXTRA = 5          # how far the drive runs past the front of the house
 YARD_DEPTH = 9           # back yard, from the back wall to the back fence
@@ -190,6 +193,91 @@ def _pave_patio(ground, veg, crossable, claimed, cells, colour=C.PAVING_STONE):
     return paved
 
 
+def _find_walk(sx: int, sy: int, dx: int, dy: int, w: int, h: int,
+               paved_at, free, drive_tiles: set):
+    """Shortest walk from (sx, sy) to paved_at/drive, preferring straight runs."""
+    if not free(sx, sy):
+        return None, None
+    prev = {(sx, sy): None}
+    queue = deque([(sx, sy, 0)])
+    end = None
+    order = [(dx, dy)] + [d for d in ((1, 0), (-1, 0), (0, 1), (0, -1)) if d != (dx, dy)]
+    while queue:
+        x, y, n = queue.popleft()
+        if paved_at[y * w + x]:
+            end = (x, y)
+            break
+        if n >= WALK_MAX_TILES:
+            continue
+        for ddx, ddy in order:
+            nx, ny = x + ddx, y + ddy
+            if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in prev \
+                    and (paved_at[ny * w + nx] or free(nx, ny)):
+                prev[(nx, ny)] = (x, y)
+                queue.append((nx, ny, n + 1))
+    if end is None:
+        return None, None
+    walk = []
+    step = prev[end]
+    while step is not None:
+        walk.append(step)
+        step = prev[step]
+    if walk and end not in drive_tiles:
+        straight_walk = []
+        for t in range(max(len(walk) + 4, 1)):
+            if t >= WALK_MAX_TILES:
+                break
+            tx, ty = sx + dx * t, sy + dy * t
+            if not (0 <= tx < w and 0 <= ty < h):
+                break
+            if paved_at[ty * w + tx]:
+                if straight_walk:
+                    end = (tx, ty)
+                    walk = list(reversed(straight_walk))
+                break
+            if not free(tx, ty):
+                break
+            straight_walk.append((tx, ty))
+    return walk, end
+
+
+def _paint_walk_and_stoop(walk: list, end: tuple[int, int],
+                          sx: int, sy: int, px: int, py: int,
+                          w: int, h: int, free, paint,
+                          paved_at, road_at, drive_tiles: set) -> None:
+    """Paint a front walk, smooth 90-degree corners, apron, and stoop."""
+    for x, y in walk:
+        paint(x, y, C.PAVING_STONE)
+    full_walk = [end] + walk
+    for i in range(1, len(full_walk) - 1):
+        ax, ay = full_walk[i - 1]
+        cx, cy = full_walk[i]
+        bx, by = full_walk[i + 1]
+        if ax != bx and ay != by:
+            for kx, ky in ((ax, by), (bx, ay)):
+                if free(kx, ky):
+                    paint(kx, ky, C.PAVING_STONE)
+                    break
+    if walk and end not in drive_tiles:
+        mx, my = walk[0]
+        ex, ey = end
+        tx, ty = ex - mx, ey - my
+        lx, ly = -ty, tx
+        for s in (-1, 1):
+            slx, sly = s * lx, s * ly
+            nx, ny = ex + slx, ey + sly
+            dx_step, dy_step = ex + tx + slx, ey + ty + sly
+            if free(nx, ny) and 0 <= dx_step < w and 0 <= dy_step < h \
+                    and (paved_at[dy_step * w + dx_step] or road_at[dy_step * w + dx_step]):
+                paint(nx, ny, C.PALE_CONCRETE)
+                paved_at[ny * w + nx] = True
+                if free(mx + slx, my + sly):
+                    paint(mx + slx, my + sly, C.PAVING_STONE)
+    for k in (-1, 1):
+        if free(sx + px * k, sy + py * k):
+            paint(sx + px * k, sy + py * k, C.PAVING_STONE)
+
+
 def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 drives: list | None = None,
                 lights: list | None = None,
@@ -287,9 +375,19 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         doors = door_lists[row["file"]]
         if not doors:
             continue
-        ox, oy, ix, iy = doors[0]
         bx0, by0 = row["tile_x"], row["tile_y"]
         bw, bh = row["width"], row["height"]
+        # Pick the first outside door that can actually reach the street/paving
+        # so a blocked back/side door at doors[0] never strands the building.
+        primary = doors[0]
+        for cand in doors:
+            cox, coy, cix, ciy = cand
+            w_cand, _ = _find_walk(bx0 + cox, by0 + coy, cox - cix, coy - ciy,
+                                   w, h, paved_at, free, set())
+            if w_cand is not None:
+                primary = cand
+                break
+        ox, oy, ix, iy = primary
         sx, sy = bx0 + ox, by0 + oy
         dx, dy = ox - ix, oy - iy          # out of the door, towards the street
         px, py = -dy, dx                   # along the front of the house
@@ -376,88 +474,46 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         # The path, shortest way to the pavement or the drive, straight out of
         # the door first. It never crosses ground already painted for another
         # building: a neighbour's stoop, patio or vegetable bed.
-        prev = {(sx, sy): None}
-        queue = deque([(sx, sy, 0)])
-        end = None
-        order = [(dx, dy)] + [d for d in ((1, 0), (-1, 0), (0, 1), (0, -1)) if d != (dx, dy)]
-        while queue:
-            x, y, n = queue.popleft()
-            if paved_at[y * w + x]:
-                end = (x, y)
-                break
-            if n >= WALK_MAX_TILES:
-                continue
-            for ddx, ddy in order:
-                nx, ny = x + ddx, y + ddy
-                if 0 <= nx < w and 0 <= ny < h and (nx, ny) not in prev \
-                        and (paved_at[ny * w + nx] or free(nx, ny)):
-                    prev[(nx, ny)] = (x, y)
-                    queue.append((nx, ny, n + 1))
+        walk, end = _find_walk(sx, sy, dx, dy, w, h, paved_at, free, drive_tiles)
         if end is None:
             continue
-        walk = []
-        step = prev[end]
-        while step is not None:
-            walk.append(step)
-            step = prev[step]
-        # If a straight path out of the door reaches the sidewalk or drive within
-        # a few steps of the BFS route, prefer the straight line over an L-dogleg.
-        if walk and end not in drive_tiles:
-            straight_walk = []
-            for t in range(max(len(walk) + 4, 1)):
-                if t >= WALK_MAX_TILES:
-                    break
-                tx, ty = sx + dx * t, sy + dy * t
-                if not (0 <= tx < w and 0 <= ty < h):
-                    break
-                if paved_at[ty * w + tx]:
-                    if straight_walk:
-                        end = (tx, ty)
-                        walk = list(reversed(straight_walk))
-                    break
-                if not free(tx, ty):
-                    break
-                straight_walk.append((tx, ty))
-        for x, y in walk:
-            paint(x, y, C.PAVING_STONE)
-        # Fill 90-degree path corners and diagonal sidewalk pockets so grass
-        # edge-blends never cut across the walk or where it meets the pavement.
-        full_walk = [end] + walk
-        for i in range(1, len(full_walk) - 1):
-            ax, ay = full_walk[i - 1]
-            cx, cy = full_walk[i]
-            bx, by = full_walk[i + 1]
-            if ax != bx and ay != by:
-                for kx, ky in ((ax, by), (bx, ay)):
-                    if free(kx, ky):
-                        paint(kx, ky, C.PAVING_STONE)
-                        break
-        if walk and end not in drive_tiles:
-            mx, my = walk[0]
-            ex, ey = end
-            tx, ty = ex - mx, ey - my
-            lx, ly = -ty, tx
-            for s in (-1, 1):
-                slx, sly = s * lx, s * ly
-                nx, ny = ex + slx, ey + sly
-                dx_step, dy_step = ex + tx + slx, ey + ty + sly
-                if free(nx, ny) and 0 <= dx_step < w and 0 <= dy_step < h \
-                        and (paved_at[dy_step * w + dx_step] or road_at[dy_step * w + dx_step]):
-                    paint(nx, ny, C.PALE_CONCRETE)
-                    paved_at[ny * w + nx] = True
-                    if free(mx + slx, my + sly):
-                        paint(mx + slx, my + sly, C.PAVING_STONE)
-        # A stoop: the slab either side of the door step as well.
-        for k in (-1, 1):
-            if free(sx + px * k, sy + py * k):
-                paint(sx + px * k, sy + py * k, C.PAVING_STONE)
+        _paint_walk_and_stoop(walk, end, sx, sy, px, py, w, h,
+                              free, paint, paved_at, road_at, drive_tiles)
+        # Connect any additional street-facing doors (e.g. multi-entrance
+        # infill shops/apartments or corner-lot houses) to the pavement too.
+        for extra in doors:
+            if extra == primary:
+                continue
+            eox, eoy, eix, eiy = extra
+            esx, esy = bx0 + eox, by0 + eoy
+            edx, edy = eox - eix, eoy - eiy
+            if (edx, edy) == (-dx, -dy):
+                continue  # back door facing away from the street
+            ewalk, eend = _find_walk(esx, esy, edx, edy, w, h, paved_at, free, drive_tiles)
+            if eend is not None:
+                _paint_walk_and_stoop(ewalk, eend, esx, esy, -edy, edx, w, h,
+                                      free, paint, paved_at, road_at, drive_tiles)
+        # Front-yard flower beds flanking the stoop and an occasional kerbside
+        # bin opposite the mailbox so street fronts read as lived-in homes.
+        frng = random.Random((bx0 * 2654435761) ^ (by0 * 2246822519) ^ 0x517CC1B7)
+        if home and veg is not None and frng.random() < 0.60:
+            for k in (-2, 2, -3, 3):
+                fx, fy = sx + px * k, sy + py * k
+                if free(fx, fy) and tuple(ground[fy, fx]) not in LAWNLESS:
+                    put(fx, fy, C.FLOWERS)
         # The mailbox, beside the path where it reaches the street.
         if home and walk and end not in drive_tiles:
             mx, my = walk[0]
+            mb_side = None
             for k in (1, -1):
                 if free(mx + px * k, my + py * k):
                     put(mx + px * k, my + py * k, C.MAILBOX)
+                    mb_side = k
                     break
+            if mb_side is not None and veg is not None and frng.random() < 0.35:
+                bx_, by_ = mx - px * mb_side, my - py * mb_side
+                if free(bx_, by_) and tuple(ground[by_, bx_]) not in LAWNLESS:
+                    put(bx_, by_, C.BIN)
         if not home:
             dressed += 1
             continue
@@ -475,9 +531,15 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         want_depth = max(YARD_MIN_DEPTH,
                          YARD_DEPTH - random.Random((bx0 * 31 + by0) ^ 0xA5A5)
                          .choice((0, 0, 1, 1, 2, 3)))
-        for side in (YARD_SIDE, 1, 0):
-            u0 = (bx0 if dy else by0) - side
-            width = (bw if dy else bh) + 2 * side
+        base_u0 = bx0 if dy else by0
+        base_w = bw if dy else bh
+        candidates = [(base_u0 - side, base_w + 2 * side) for side in (YARD_SIDE, 1, 0)]
+        if base_w >= 5:
+            candidates += [(base_u0 + 1, base_w - 1), (base_u0, base_w - 1),
+                           (base_u0 + 1, base_w - 2)]
+        for u0, width in candidates:
+            if width < 3:
+                continue
 
             def at(u, v, u0=u0):
                 """World tile u along the back wall, v rows back from it."""

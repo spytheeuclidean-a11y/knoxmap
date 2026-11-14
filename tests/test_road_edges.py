@@ -104,3 +104,56 @@ class PavementAgainstGrass(unittest.TestCase):
         im.putpixel((10, 15), MEDIUM_GRASS)     # 1-tile notch in pavement edge
         tidy(im)
         self.assertEqual(im.getpixel((10, 15)), PALE_CONCRETE)
+
+
+class DiagonalKerbs(unittest.TestCase):
+    def test_shallow_horizontal_step_gets_no_diagonal_kerb(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from generator import pz_colors as C
+        from generator.rendering.roads import _paint_road_details
+
+        w, h = 32, 20
+        landscape = Image.new("RGB", (w, h), C.MEDIUM_GRASS)
+        veg = Image.new("RGB", (w, h), C.VEG_NOTHING)
+        # Road steps down by 1 tile at x=16, with concrete pavement below it.
+        for x in range(w):
+            road_y = 6 if x < 16 else 7
+            for y in range(road_y - 3, road_y + 1):
+                landscape.putpixel((x, y), C.MEDIUM_ASPHALT)
+            for y in range(road_y + 1, road_y + 4):
+                landscape.putpixel((x, y), C.PALE_CONCRETE)
+        diag_colours = {
+            C.KERB_DNW_0, C.KERB_DNW_1, C.KERB_DNE_0, C.KERB_DNE_1,
+            C.KERB_DSW_0, C.KERB_DSW_1, C.KERB_DSE_0, C.KERB_DSE_1,
+        }
+        with mock.patch("generator.rendering.furniture._rule_ready", return_value=True):
+            _paint_road_details(veg, landscape, {}, SimpleNamespace(meters_per_tile=1.0))
+        found = {veg.getpixel((x, y)) for y in range(h) for x in range(w)} & diag_colours
+        self.assertFalse(found, f"unexpected diagonal kerbs on shallow step: {found}")
+
+    def test_forty_five_degree_edge_gets_no_diagonal_kerbs(self):
+        from types import SimpleNamespace
+        from unittest import mock
+
+        from generator import pz_colors as C
+        from generator.rendering.roads import _paint_road_details
+
+        w, h = 24, 24
+        landscape = Image.new("RGB", (w, h), C.MEDIUM_GRASS)
+        veg = Image.new("RGB", (w, h), C.VEG_NOTHING)
+        # 45-degree diagonal road along y == x with pavement below-right.
+        for x in range(4, 20):
+            for d in range(3):
+                landscape.putpixel((x, x - d), C.MEDIUM_ASPHALT)
+            for d in range(1, 4):
+                landscape.putpixel((x, x + d), C.PALE_CONCRETE)
+        diag_colours = {
+            C.KERB_DNW_0, C.KERB_DNW_1, C.KERB_DNE_0, C.KERB_DNE_1,
+            C.KERB_DSW_0, C.KERB_DSW_1, C.KERB_DSE_0, C.KERB_DSE_1,
+        }
+        with mock.patch("generator.rendering.furniture._rule_ready", return_value=True):
+            _paint_road_details(veg, landscape, {}, SimpleNamespace(meters_per_tile=1.0))
+        found = {veg.getpixel((x, y)) for y in range(h) for x in range(w)} & diag_colours
+        self.assertFalse(found, f"unexpected diagonal kerbs on 45-degree road edge: {found}")

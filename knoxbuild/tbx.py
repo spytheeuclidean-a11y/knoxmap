@@ -110,7 +110,8 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
         steep_block = len(rects) >= MANY_WING_RECTS and across > MANY_WING_PEAK30_MAX
         if not roof30 or across < 3 or (not gable_only and (
-                steep_block or across > PEAK30_MAX_ACROSS + 2 or across < PEAK_MIN_TILES)):
+                steep_block or across > PEAK30_MAX_ACROSS or across % 2 == 0
+                or across < PEAK_MIN_TILES)):
             cap = dict(_NO_CAPS)
             if along_x:
                 cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]

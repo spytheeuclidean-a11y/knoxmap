@@ -19,6 +19,7 @@ import knoxlog
 import knoxstop
 from generator import edits as mapedits
 from generator import osm, renderer, sketch
+from generator.rendering.forest_params import ForestParams
 from knoxbuild import mapstate
 from knoxbuild.settings import Settings
 
@@ -430,6 +431,20 @@ def _generate(data):
             spawn_density=settings.spawn_density,
             tree_density=settings.tree_density,
             forest_density=settings.forest_density,
+            forest_params=ForestParams(
+                stand_m=settings.forest_stand_m, edge_m=settings.forest_edge_m,
+                thickets=settings.forest_thickets,
+                stand_variety=settings.forest_stand_variety,
+                raggedness=settings.forest_raggedness,
+                edge_wobble=settings.forest_edge_wobble,
+                spill_thick=settings.forest_spill_thick,
+                keep_meadows=settings.forest_keep_meadows,
+                seed=settings.forest_seed,
+                house_clearing_m=settings.forest_house_clearing_m,
+                big_trees=settings.forest_big_trees,
+                groves=settings.forest_groves,
+                wild_growth=settings.forest_wild_growth,
+                shrubland=settings.forest_shrubland),
             rotation=rotation,
             osm_cache=osm_cache_name,
             osm_bbox=osm_bbox,

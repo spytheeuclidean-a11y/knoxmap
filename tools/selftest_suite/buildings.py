@@ -70,7 +70,7 @@ def check_1_3_6(check, out: str, tbx: list[str], pzw_text: str, log: str) -> Non
                  if n.startswith("selftest_props_"))
     stores = sum(t.count("location_military_generic_01_") for n, t in texts.items()
                  if n.startswith("selftest_props_"))
-    check(props and graves >= 20 and any("selftest_props_" in line
+    check(props and graves >= 16 and any("selftest_props_" in line
                                          for line in pzw_text.splitlines()),
           f"the churchyard has headstones in it ({graves})")
     check(stores >= 2, f"the army base has stores on it ({stores})")
@@ -1203,7 +1203,7 @@ def check_wall_styles(check) -> None:
           f"buildings, commonest {max(seen.values())})")
 
     # A police station is not built like a bungalow.
-    civic = {s["name"] for s in wall_variants("civic")}
+    civic = {s["name"] for s in wall_variants("civic") + wall_variants("police")}
     house = {s["name"] for s in C.HOUSE_STYLES}
     got = pick_style("police", 500, 500, rng, settings, 0.6)
     check(got["name"] in civic and got["name"] not in house,

@@ -42,14 +42,14 @@ class Settings:
     # where the automatic answer is wrong, or where there are two grids and
     # the mapper wants to pick which one wins.
     rotate_degrees: float = 0.0
-    # How the roads are laid: as mapped (0); in straight runs along the tiles
-    # and on 45-degree diagonals, like Knox County's (1); routed in vanilla
-    # B42's sixteen directions with its own street shapes and curves (2); or
-    # that, with built-up streets kept on the grid and off the buildings (3);
+    # How the roads are laid: as mapped (0, the default); in straight runs along
+    # the tiles and on 45-degree diagonals, like Knox County's (1); routed in
+    # vanilla B42's sixteen directions with its own street shapes and curves (2);
+    # or that, with built-up streets kept on the grid and off the buildings (3);
     # or Knox County straight with the short kinks between runs squared off and
-    # a street kept to one grid line or one diagonal (4, the default).
+    # a street kept to one grid line or one diagonal (4).
     # 2 and 3 take minutes on a town (generator/roadgraph).
-    straight_roads: int = 4
+    straight_roads: int = 0
     include_proposed_roads: int = 0
 
     # --- terrain ---------------------------------------------------------
@@ -62,6 +62,25 @@ class Settings:
     # - and a map wanted thick woods round a thinly planted town had no way
     # to say so.
     forest_density: float = 1.0
+    # How a wood is laid out (generator/rendering/forest_shape.py): how big its
+    # stands and clearings are, and how far in from its edge it thins out.
+    forest_stand_m: int = 60
+    forest_edge_m: int = 30
+    # The rest of the Forest card (generator/rendering/forest_params.py says
+    # what each does). Each default is the value the code had before it was a
+    # knob, so the defaults draw the map they always did.
+    forest_thickets: float = 1.0
+    forest_stand_variety: float = 0.0
+    forest_raggedness: float = 0.25
+    forest_edge_wobble: float = 0.4
+    forest_spill_thick: float = 0.4
+    forest_keep_meadows: float = 0.33
+    forest_seed: int = 2207
+    forest_house_clearing_m: int = 20
+    forest_big_trees: float = 1.0
+    forest_groves: float = 1.0
+    forest_wild_growth: float = 1.0
+    forest_shrubland: float = 1.0
 
     # --- buildings -------------------------------------------------------
     # Generate terrain, roads, railways, water and vegetation only (no buildings).
@@ -109,6 +128,18 @@ class Settings:
     # spaced out until the count fits, so what goes is spread over the whole
     # map (knoxbuild/procedural.cap). Fewer buildings is also the one
     # setting that reliably makes a map faster to build and to play.
+    # How that ceiling is shared out by kind of building, as percentages:
+    # "house=40,shop=15,industrial=13". Empty keeps whatever the map's own
+    # mix is. The word "preset" takes a typical town's shares
+    # (knoxbuild/mixer.PRESET_MIX). A share the map cannot fill - 450 shops
+    # where OpenStreetMap has 20 - is handed to the kinds that can, so the
+    # total asked for is still built.
+    building_mix: str = ""
+    # Share the ceiling evenly between the towns and villages on the map
+    # rather than over the map as one lump. A box with two cities and ten
+    # villages has nearly all its footprints in the cities, so a ceiling
+    # takes the villages away first and leaves ten hamlets of three houses.
+    spread_buildings: int = 1
     max_buildings: int = 0
     min_size: int = 3            # skip footprints narrower than this, in tiles
     # and larger than this. It was 60, which threw away the largest
@@ -221,6 +252,14 @@ class Settings:
                 if value in enum_options[name]:
                     kept[name] = value
                 continue
+            if name == "building_mix":
+                # Checked by parsing it: anything that yields no shares at
+                # all is junk and the map keeps its own mix.
+                from .mixer import parse as _parse_mix
+                value = str(raw).strip()
+                if not value or _parse_mix(value):
+                    kept[name] = value
+                continue
             if name == "region_override":
                 # "auto" or a short country code; anything else keeps the default.
                 value = str(raw).strip()
@@ -263,6 +302,20 @@ LIMITS = {
     "m2_per_person": (10.0, 150.0),
     "tree_density": (0.0, 3.0),
     "forest_density": (0.0, 3.0),
+    "forest_stand_m": (20, 200),
+    "forest_edge_m": (0, 60),
+    "forest_thickets": (0.0, 3.0),
+    "forest_stand_variety": (0.0, 1.0),
+    "forest_raggedness": (0.0, 1.0),
+    "forest_edge_wobble": (0.0, 1.0),
+    "forest_spill_thick": (0.0, 1.0),
+    "forest_keep_meadows": (0.0, 1.0),
+    "forest_seed": (0, 999999),
+    "forest_house_clearing_m": (0, 40),
+    "forest_big_trees": (0.0, 3.0),
+    "forest_groves": (0.0, 3.0),
+    "forest_wild_growth": (0.0, 3.0),
+    "forest_shrubland": (0.0, 3.0),
     "terrain_only": (0, 1),
     "seed": (0, 2 ** 31 - 1),
     "true_map": (0, 1),
@@ -281,6 +334,7 @@ LIMITS = {
     # 0 is no ceiling; the top end is past the largest town anybody has
     # built with this, so the number is the mapper's to choose.
     "max_buildings": (0, 200000),
+    "spread_buildings": (0, 1),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),
     # Build 42 has 32 levels above ground (WorldEd's MAX_WORLD_LEVELS is 64,

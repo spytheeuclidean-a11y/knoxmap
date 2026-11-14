@@ -145,6 +145,7 @@ def write(out_dir: str, map_name: str, proj, info: dict,
         replay(feats, proj, classify, _is_polygon, info, out_dir, map_name)
     clip = shape_px(info.get("shape"), proj)
     streets: dict[str, list[tuple[LineString, float]]] = {}
+    road_lines: dict[tuple[str, float], list[LineString]] = {}
     railways = []
     for feat in feats:
         if feat.kind == "node":
@@ -165,10 +166,7 @@ def write(out_dir: str, map_name: str, proj, info: dict,
                         continue
                     line = max(parts, key=lambda g: g.length)
             width_tiles = _way_width_m(feat, cat) / metres_per_tile
-            strip = line.buffer(width_tiles / 2, cap_style=2, join_style=2)
-            poly = _clean(strip)
-            if poly is not None:
-                features.append((poly, "highway", HIGHWAY_VALUE[cat]))
+            road_lines.setdefault((HIGHWAY_VALUE[cat], round(width_tiles, 2)), []).append(line)
             name = (feat.tags.get("name") or "").strip()
             if name and cat in NAMED_CLASSES:
                 streets.setdefault(name, []).append((line, width_tiles))
@@ -192,6 +190,18 @@ def write(out_dir: str, map_name: str, proj, info: dict,
                 if poly is not None and poly.area >= MIN_PLACE_TILES:
                     spot = poly.representative_point()
                     labels.append((name, "text-place", PLACE_SCALE, spot.x, spot.y))
+
+    for (hw_value, width_tiles), lines in road_lines.items():
+        merged = linemerge(unary_union(lines)) if len(lines) > 1 else lines[0]
+        parts = [merged] if isinstance(merged, LineString) else [
+            g for g in getattr(merged, "geoms", []) if isinstance(g, LineString)
+        ]
+        for line in parts:
+            poly = _clean(line.simplify(SIMPLIFY).buffer(
+                width_tiles / 2, cap_style=2, join_style=2
+            ))
+            if poly is not None:
+                features.append((poly, "highway", hw_value))
 
     from generator.rendering.rails import rail_paths
     for path in rail_paths(railways, proj):

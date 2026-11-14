@@ -14,6 +14,8 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::io::{self, BufWriter, Read, Write};
 
+mod box_any;
+mod clear_road_veg;
 mod rails;
 mod woodland;
 
@@ -574,6 +576,14 @@ fn read_tables(r: &mut Reader<impl Read>) -> Tables {
 fn main() {
     if std::env::args().nth(1).as_deref() == Some("--woodland") {
         woodland::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--clear-road-veg") {
+        clear_road_veg::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--box-any") {
+        box_any::run();
         return;
     }
     if std::env::args().nth(1).as_deref() == Some("--rails") {

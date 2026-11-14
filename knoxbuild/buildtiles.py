@@ -279,8 +279,10 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
                 else:
                     walls[(x, y)] = wall_tiles(x, y, kind)
             elif (x, y) not in wall_furniture and west(x, y - 1) and north(x - 1, y):
+                kind_at[(x, y)] = "SouthEast"
                 walls[(x, y)] = wall_tiles(x, y, "SouthEast")
             elif (x, y) in custom_ends:
+                kind_at[(x, y)] = "SouthEast"
                 walls[(x, y)] = wall_tiles(x, y, "SouthEast", end=True)
 
     for pos, items in wall_furniture.items():
@@ -466,7 +468,8 @@ def level_layers(b: Building, z: int) -> dict[tuple[int, int], list[tuple[str, s
                     # A west wall and a north wall are different walls: two buildings that
                     # meet at a corner each put one of them on the same square, and one
                     # channel between them kept only whichever was laid last.
-                    channel = {"West": "walls_west", "North": "walls_north"}.get(kind_at.get(pos), layer)
+                    channel = {"West": "walls_west", "North": "walls_north",
+                               "SouthEast": "walls_se"}.get(kind_at.get(pos), layer)
                     if tile in trim_names:
                         channel = "wall_trim_north" if tile in north_trim else "wall_trim_west"
                     elif tile in grime_names:
@@ -485,9 +488,10 @@ def level_tiles(b: Building, z: int) -> dict[tuple[int, int], list[str]]:
 # Which earlier wall channels a new wall takes the place of. A west wall and a north wall
 # on one square are two walls and both stay; anything else on the "walls" channel (a
 # corner piece, an end post) replaces what was there, as WorldEd's own output does.
-WALL_REPLACES = {"walls": {"walls", "walls_west", "walls_north"},
-                 "walls_west": {"walls", "walls_west"},
-                 "walls_north": {"walls", "walls_north"}}
+WALL_REPLACES = {"walls": {"walls", "walls_west", "walls_north", "walls_se"},
+                 "walls_se": {"walls_se"},
+                 "walls_west": {"walls", "walls_west", "walls_se"},
+                 "walls_north": {"walls", "walls_north", "walls_se"}}
 
 
 # Walls, fences, gates, railings and hedges are structure: a later lot's piece on the same
@@ -530,6 +534,18 @@ def compose_lots(lots) -> dict[tuple[int, int, int], list[str]]:
                     old = world.get(pos, [])
                     if "floor" in channels:     # a floor tile (a flat roof is one) takes the square
                         old = []
+                    elif any(layer == "floor" for layer, _ in old):
+                        # A neighbouring lot's outside wall must not paint exterior
+                        # siding over an earlier lot's interior room wall.
+                        existing = {layer for layer, _ in old if layer in ("walls_west", "walls_north")}
+                        if existing:
+                            skip = set(existing) | {"walls_se"}
+                            if "walls_west" in existing:
+                                skip |= {"wall_trim_west", "wall_grime_west"}
+                            if "walls_north" in existing:
+                                skip |= {"wall_trim_north", "wall_grime_north"}
+                            new = [(layer, tile) for layer, tile in new if layer not in skip]
+                            channels = {layer for layer, _ in new}
                     replaced = set().union(*(WALL_REPLACES.get(c, {c}) for c in channels)) if channels else set()
                     # An earlier wall survives a later lot's prop on its square, but a later
                     # lot's own wall replaces it, as WorldEd does where two buildings overlap.

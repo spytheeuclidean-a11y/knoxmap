@@ -103,7 +103,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         y1 = min(h, y0 + strip)
         top, bottom = max(0, y0 - 1), min(h, y1 + 1)
         ground = np.asarray(landscape.crop((0, top, w, bottom))).copy()
-        for _ in range(2):
+        for _ in range(6):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
             verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
@@ -112,9 +112,15 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
             notch[:, 1:-1] |= road[:, :-2] & road[:, 2:]
             notch &= road_border
+            border_count = np.zeros(road.shape, dtype=np.uint8)
+            border_count[:, 1:] += road_border[:, :-1]
+            border_count[:, :-1] += road_border[:, 1:]
+            border_count[1:, :] += road_border[:-1, :]
+            border_count[:-1, :] += road_border[1:, :]
             bump = np.zeros_like(road)
             bump[1:-1, :] |= road_border[:-2, :] & road_border[2:, :]
             bump[:, 1:-1] |= road_border[:, :-2] & road_border[:, 2:]
+            bump |= border_count >= 3
             bump &= road
             # A pavement tile with no pavement beside it orthogonally is one
             # step of a diagonal edge, and on its own it draws as a lip that
@@ -265,16 +271,6 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
     # tiles either side of a seam still see their neighbours.
     kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
                 3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
-    # The diagonal pair, only where the rules their colours need are written: a
-    # colour with no rule behind it is dropped with a warning, and an install
-    # that has not been set up since they were added has neither.
-    from .furniture import _rule_ready
-    diag_kerb = {
-        "NW": (C.KERB_DNW_0, C.KERB_DNW_1),
-        "NE": (C.KERB_DNE_0, C.KERB_DNE_1),
-        "SW": (C.KERB_DSW_0, C.KERB_DSW_1),
-        "SE": (C.KERB_DSE_0, C.KERB_DSE_1),
-    } if _rule_ready("Kerb diag NW 0") else None
     strip = 1024
     for y0 in range(0, h, strip):
         y1 = min(h, y0 + strip)
@@ -296,33 +292,6 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
         out = existing.copy()
         for bits, colour in kerb_for.items():
             out[(sides == bits) & free] = colour
-        # A kerb on a diagonal edge. `sides` is zero on a pavement square whose
-        # tarmac is diagonal to it rather than beside it, and the square kerbs
-        # cannot draw that edge - they step with the tarmac. The game's own 2x
-        # pieces follow the diagonal, so a street at 45 degrees gets a kerb
-        # running along it instead of a staircase of square ones.
-        if diag_kerb:
-            road_r, pave_r = road[rows], pave[rows]
-            # The pieces are 2x tiles - 128x256, two squares wide and two tall -
-            # so one of them covers the square beside it as well. Painting every
-            # pavement square drew each one twice, overlapping by half, which is
-            # what a doubled, angled mess of white lines is in game.
-
-            y_idx = np.arange(sides.shape[0])[:, None]
-            x_idx = np.arange(sides.shape[1])[None, :]
-            even = (y_idx % 2 == 0) & (x_idx % 2 == 0)
-            for name, (dy, dx) in (("NW", (-1, -1)), ("NE", (-1, 1)),
-                                   ("SW", (1, -1)), ("SE", (1, 1))):
-                beside_diag = _shifted(road_r, dy, dx)
-                pick = (sides == 0) & beside_diag & pave_r & free & even
-                if not pick.any():
-                    continue
-                first, second = diag_kerb[name]
-                ys_, xs_ = np.nonzero(pick)
-                for y, x in zip(ys_, xs_):
-                    # two pieces per direction: they take turns along the edge,
-                    # which is how the 2x art lines up with the tile grid.
-                    out[y, x] = first if (x // 2 + y // 2) % 2 == 0 else second
         veg.paste(Image.fromarray(out), (0, y0))
 
     # Crossings go down before the lane lines, which only paint on squares

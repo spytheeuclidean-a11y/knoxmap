@@ -110,6 +110,17 @@ class TerrainTests(unittest.TestCase):
         self.assertEqual(stack_order({"0_Vegetation", "0_Floor", "0_Zed", "0_Curbs"}),
                          ["0_Floor", "0_Curbs", "0_Vegetation", "0_Zed"])
 
+    def test_no_vegetation_on_road_or_paving(self):
+        from generator import pz_colors as C
+
+        land = self.land.copy()
+        veg = self.veg.copy()
+        land[12:16, 12:16] = C.MEDIUM_ASPHALT
+        land[16:18, 12:16] = C.PALE_CONCRETE
+        veg[12:18, 12:16] = (255, 0, 0)
+        out = self.run_layers(land=land, veg=veg)
+        self.assertTrue((out["0_Vegetation"][12:18, 12:16] == "").all())
+
 
 class CellSourceTests(unittest.TestCase):
     def words(self, data, names):

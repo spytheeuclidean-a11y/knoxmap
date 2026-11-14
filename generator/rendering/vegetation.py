@@ -17,18 +17,21 @@ import knoxstop
 def _paint_vegetation(veg: Image.Image, landscape: Image.Image,
                       feats: list[OSMFeature], proj: Projector,
                       density: float = 1.0, should_stop=None,
-                      extra_forest=None) -> None:
+                      extra_forest=None, stand_m: float = 60.0,
+                      edge_m: float = 30.0, params=None) -> None:
     _paint_vegetation_extras(veg, landscape, feats, proj)
     _paint_woodland(veg, landscape,
                     [f for f in feats if classify(f.tags, _is_polygon(f)) in
                      {"forest", "scrub", "tree_single"}], proj, density, should_stop,
-                    extra_forest=extra_forest)
+                    extra_forest=extra_forest, stand_m=stand_m, edge_m=edge_m,
+                    params=params)
 
 
 def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                     feats: list[OSMFeature], proj: Projector,
                     density: float = 1.0, should_stop=None,
-                    extra_forest=None) -> None:
+                    extra_forest=None, stand_m: float = 60.0,
+                    edge_m: float = 30.0, params=None) -> None:
     """Paint trees on the vegetation bitmap.
 
     Forest polygons get full density (TREES), scrub becomes bushes+trees,
@@ -40,10 +43,16 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
     sparse becomes nothing - and above 1 it does the reverse. Which matters
     because trees are cover: a map buried in forest plays completely
     differently from the same map with hedgerows.
+
+    Then the forests - the polygons and WorldCover's tree cover, not single
+    trees or scrub - are shaped into stands, thin patches and clearings that
+    thin out towards their edge (generator/rendering/forest_shape.py).
     """
     knoxstop.check(should_stop, 'the woodland')
     mask = Image.new("L", veg.size, 0)
     mask_draw = ImageDraw.Draw(mask)
+    forest_only = Image.new("L", veg.size, 0)
+    forest_draw = ImageDraw.Draw(forest_only)
     scrub_mask = Image.new("L", veg.size, 0)
     scrub_draw = ImageDraw.Draw(scrub_mask)
 
@@ -55,6 +64,7 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
                 for ring in rings:
                     if len(ring) >= 3:
                         mask_draw.polygon(ring, fill=255)
+                        forest_draw.polygon(ring, fill=255)
         elif cat == "scrub":
             if _is_polygon(feat):
                 for ring in rings:
@@ -71,6 +81,8 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
         import numpy as np
         mask = Image.fromarray(np.maximum(np.asarray(mask),
                                           extra_forest.astype(np.uint8) * 255), "L")
+        forest_only = Image.fromarray(np.maximum(np.asarray(forest_only),
+                                                 extra_forest.astype(np.uint8) * 255), "L")
 
     # Build a "border band" of the forest mask so we can paint edges lighter.
     eroded = mask.filter(ImageFilter.MinFilter(5))
@@ -91,9 +103,23 @@ def _paint_woodland(veg: Image.Image, landscape: Image.Image,
         return GRADES[min(max(i + shift, 0), len(GRADES) - 1)]
 
     w, h = veg.size
-    if w*h >= woodland.MIN_PIXELS and woodland.paint(veg, landscape, mask, eroded, scrub_mask,
-                                       graded(C.TREES_DARK_GRASS), graded(C.TREES), should_stop):
-        return
+    if not (w*h >= woodland.MIN_PIXELS and woodland.paint(
+            veg, landscape, mask, eroded, scrub_mask, graded(C.TREES_DARK_GRASS),
+            graded(C.TREES), should_stop)):
+        _paint_woodland_tiles(veg_px, mask_px, eroded_px, scrub_px, land_px, w, h,
+                              graded, should_stop)
+    # Stands, thin patches and clearings, thinning to the edge.
+    import numpy as np
+    from .forest_shape import shape_forest
+    forest = np.asarray(forest_only) > 0
+    if forest.any():
+        shape_forest(veg, landscape, forest, density, stand_m, edge_m,
+                     proj.meters_per_tile, params, young_trees=tree_rules_ready())
+
+
+def _paint_woodland_tiles(veg_px, mask_px, eroded_px, scrub_px, land_px, w, h,
+                          graded, should_stop) -> None:
+    """The woodland a tile at a time, where the native worker cannot."""
     for y in range(h):
         if y % 256 == 0:
             knoxstop.check(should_stop, 'the woodland')
@@ -165,15 +191,12 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
                     elif cat == "cemetery":
-                        # A few flowers between the graves, not instead of
-                        # them: the headstones themselves go in later, as
-                        # props (knoxbuild/props.py).
-                        roll = rng.random()
-                        if roll < 0.012:
+                        # Sparse shade trees only; headstones, paths and plazas
+                        # go in later via knoxbuild/props.py (which clears veg
+                        # wherever a plot or walkway lands).
+                        if rng.random() < 0.008:
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
-                        elif roll < 0.04:
-                            vp[x, y] = C.FLOWERS
                     else:
                         if rng.random() < 0.35:
                             vp[x, y] = C.DENSE_BUSHES_GRASS
@@ -512,13 +535,26 @@ def _clear_building_vegetation(veg: Image.Image, feats: list[OSMFeature],
 
 
 def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None:
-    """Keep mapped woodland and scrub off every rasterized road surface."""
+    """Keep trees, scrub, and grass off every rasterized road, sidewalk, rail, and water tile."""
     import numpy as np
     from ..rail_tiles import RAIL_RULES
+    from . import native_pixels
 
-    road_colours = np.array((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
-                             C.DARKEST_ASPHALT, C.DARK_POTHOLE,
-                             C.LIGHT_POTHOLE) + tuple(colour for _, colour, _ in RAIL_RULES), dtype=np.uint8)
+    road_tuple = ((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
+                   C.DARKEST_ASPHALT, C.PALE_CONCRETE, C.DARK_POTHOLE,
+                   C.LIGHT_POTHOLE, C.WATER)
+                  + tuple(colour for _, colour, _ in RAIL_RULES))
+    veg_tuple = (C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
+                 C.GRASS_ON_DARK, C.SHORT_GRASS, C.LOT_OF_GRASS_AND_TREES,
+                 C.BUSHES_TREES_DARK_GRASS, C.BUSHES, C.DENSE_BUSHES_GRASS,
+                 C.FLOWERS, C.BOULDERS, C.ROCKS,
+                 C.TREE_BIG, C.TREE_HUGE, C.TREE_GIANT, C.TREE_SMALL)
+    if native_pixels.clear_road_vegetation(
+        veg, landscape, road_tuple, veg_tuple, C.VEG_NOTHING
+    ):
+        return
+    road_colours = np.array(road_tuple, dtype=np.uint8)
+    veg_colours = np.array(veg_tuple, dtype=np.uint8)
     width, height = landscape.size
     for top in range(0, height, 256):
         bottom = min(height, top + 256)
@@ -529,7 +565,13 @@ def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None:
         if not road.any():
             continue
         vegetation = np.array(veg.crop((0, top, width, bottom)))
-        vegetation[road] = C.VEG_NOTHING
+        is_veg = np.zeros(ground.shape[:2], dtype=bool)
+        for colour in veg_colours:
+            is_veg |= np.all(vegetation == colour, axis=2)
+        clear = road & is_veg
+        if not clear.any():
+            continue
+        vegetation[clear] = C.VEG_NOTHING
         veg.paste(Image.fromarray(vegetation), (0, top))
 
 
@@ -737,7 +779,7 @@ class _Canopy:
 def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
                      wood_feats: list[OSMFeature], park_feats: list[OSMFeature],
                      building_feats: list[OSMFeature], proj: Projector,
-                     density: float = 1.0) -> dict:
+                     density: float = 1.0, wood_mult: float = 1.0) -> dict:
     """Grow some of the trees already planted into big ones.
 
     Every tree on the vegetation bitmap is one tile, and so was every tree in
@@ -745,6 +787,10 @@ def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
     across and need a square kept clear around them, so they are chosen here,
     out of the trees the passes above planted, once all of them are down and it
     can be seen what stands next to what.
+
+    wood_mult multiplies the chances in woods and on wild ground (Big trees):
+    woods from land cover are not OSM forest features and get the wild mix.
+    Parks and gardens keep theirs.
 
     Returns how many of each kind went in."""
     import numpy as np
@@ -788,26 +834,27 @@ def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
     if parks is not None:
         deep = max(1, int(round(PARK_EDGE_M / proj.meters_per_tile)))
         belt = parks & _box_any(~parks, deep)
-        rounds.append((belt, PARK_BELT_BIG_TREES))
-        rounds.append((parks & ~belt, PARK_BIG_TREES))
+        rounds.append((belt, PARK_BELT_BIG_TREES, 1.0))
+        rounds.append((parks & ~belt, PARK_BIG_TREES, 1.0))
         rest &= ~parks
     if woods is not None:
-        rounds.append((woods & rest, WOOD_BIG_TREES))
+        rounds.append((woods & rest, WOOD_BIG_TREES, wood_mult))
         rest &= ~woods
     if gardens is not None:
-        rounds.append((gardens & rest, GARDEN_BIG_TREES))
+        rounds.append((gardens & rest, GARDEN_BIG_TREES, 1.0))
         rest &= ~gardens
-    rounds.append((rest, WILD_BIG_TREES))
+    rounds.append((rest, WILD_BIG_TREES, wood_mult))
 
     rng = np.random.default_rng(0x7E3E5)
     px = veg.load()
-    for where, mix in rounds:
+    for where, mix, mult in rounds:
         here = tree & where
         if not here.any():
             continue
         for colour, every, chance in mix:
             side = C.BIG_TREE_ROOM[colour]
-            for x, y in _block_picks(here, every, rng, min(1.0, chance * density)):
+            for x, y in _block_picks(here, every, rng,
+                                    min(1.0, chance * density * mult)):
                 box = canopy.room(x, y, side)
                 if box is None:
                     continue

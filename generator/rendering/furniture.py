@@ -174,9 +174,16 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                                C.PAVING))
     near_buildings = None
     if buildings is not None:
+        from . import native_pixels
+
         mask = buildings if buildings.mode == "L" else buildings.convert("L")
-        reach = ImageFilter.MaxFilter(2 * NEAR_BUILDING_TILES + 1)
-        near_buildings = np.asarray(mask.filter(reach)) > 0
+        mw, mh = mask.size
+        raw = native_pixels.box_any(mask.tobytes(), mw, mh, NEAR_BUILDING_TILES)
+        if raw is not None:
+            near_buildings = np.frombuffer(raw, dtype=bool).reshape(mh, mw).copy()
+        else:
+            reach = ImageFilter.MaxFilter(2 * NEAR_BUILDING_TILES + 1)
+            near_buildings = np.asarray(mask.filter(reach)) > 0
     counts = {}
 
     # Edge lines: tarmac with the road's edge on exactly one side and enough
