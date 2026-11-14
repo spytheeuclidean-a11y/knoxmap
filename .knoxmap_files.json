@@ -211,6 +211,7 @@
     "rust/knoxroute/src/clear_road_veg.rs",
     "rust/knoxroute/src/main.rs",
     "rust/knoxroute/src/rails.rs",
+    "rust/knoxroute/src/smooth_roads.rs",
     "rust/knoxroute/src/woodland.rs",
     "setup.sh",
     "static/css/app.css",

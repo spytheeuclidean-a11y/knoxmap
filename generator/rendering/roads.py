@@ -95,6 +95,14 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
     along a line becomes road, and a road tile with pavement on both sides
     becomes pavement.
     """
+    from . import native_pixels
+
+    verge_pal = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
+    if native_pixels.smooth_road_edges(
+        landscape, asphalt, C.PALE_CONCRETE, C.MEDIUM_GRASS, verge_pal
+    ):
+        return
+
     import numpy as np
 
     w, h = landscape.size

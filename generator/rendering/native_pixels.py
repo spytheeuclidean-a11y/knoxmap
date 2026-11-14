@@ -130,3 +130,82 @@ def box_any(mask_bytes: bytes, width: int, height: int, radius: int) -> bytes | 
             "native box-any unavailable; using Python: %s", exc
         )
         return None
+
+
+def smooth_road_edges(
+    landscape: Image.Image,
+    asphalt,
+    pave_rgb: tuple[int, int, int],
+    medium_grass_rgb: tuple[int, int, int],
+    verge_colours,
+) -> bool:
+    """Smooth 1-tile notches and bumps on road/pavement edges in Rust."""
+    binary = exe()
+    width, height = landscape.size
+    if binary is None or width * height < MIN_CLEAR_PIXELS:
+        return False
+    if not 0 < width <= 32768 or not height or landscape.mode != "RGB":
+        return False
+
+    strip = min(1024, max(1, 33_554_432 // width))
+    strips = (height + strip - 1) // strip
+    asphalt_bytes = bytes(int(v) for c in asphalt for v in c)
+    verge_bytes = bytes(int(v) for c in verge_colours for v in c)
+    header = (
+        b"KRS1"
+        + struct.pack("<II", strips, len(asphalt))
+        + asphalt_bytes
+        + bytes(int(v) for v in pave_rgb)
+        + bytes(int(v) for v in medium_grass_rgb)
+        + struct.pack("<I", len(verge_colours))
+        + verge_bytes
+    )
+
+    try:
+        with subprocess.Popen(
+            [binary, "--smooth-roads"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ) as proc:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                try:
+                    for y0 in range(0, height, strip):
+                        y1 = min(height, y0 + strip)
+                        top, bottom = max(0, y0 - 1), min(height, y1 + 1)
+                        in_box = (0, top, width, bottom)
+                        in_h = bottom - top
+                        out_h = y1 - y0
+                        out_y0 = y0 - top
+                        payload = (
+                            (header if y0 == 0 else b"")
+                            + struct.pack("<IIII", width, in_h, out_y0, out_h)
+                            + landscape.crop(in_box).tobytes()
+                        )
+                        future = pool.submit(
+                            _exchange, proc, payload, 4 + 3 * width * out_h, b"KRS1"
+                        )
+                        deadline = time.monotonic() + TIMEOUT_S
+                        while True:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError("native smooth-roads worker timed out")
+                            try:
+                                result = future.result(timeout=min(0.1, remaining))
+                                break
+                            except FutureTimeout:
+                                continue
+                        landscape.paste(
+                            Image.frombytes("RGB", (width, out_h), result), (0, y0)
+                        )
+                finally:
+                    if proc.poll() is None:
+                        proc.kill()
+                        proc.wait()
+    except (OSError, RuntimeError, TimeoutError, subprocess.SubprocessError) as exc:
+        logging.getLogger(__name__).warning(
+            "native smooth-roads unavailable; using Python: %s", exc
+        )
+        return False
+    return True

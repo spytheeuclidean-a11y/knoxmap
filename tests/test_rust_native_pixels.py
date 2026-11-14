@@ -76,6 +76,39 @@ class NativePixelsParity(unittest.TestCase):
             vegetation._clear_road_vegetation(veg_rs, land)
         self.assertEqual(veg_py.tobytes(), veg_rs.tobytes())
 
+    def test_smooth_road_edges_matches_python(self):
+        from generator.rendering import roads
+
+        w, h = 128, 1100
+        rng = np.random.default_rng(7)
+        pal = np.array([
+            C.MEDIUM_GRASS, C.DARK_GRASS, C.LIGHT_GRASS,
+            C.PALE_CONCRETE, C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
+        ], dtype=np.uint8)
+        land_py = Image.fromarray(pal[rng.integers(0, len(pal), (h, w))], "RGB")
+        land_rs = land_py.copy()
+        asphalt = (C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT,
+                   C.DARK_POTHOLE, C.LIGHT_POTHOLE)
+
+        def is_colour(ground, colours):
+            mask = np.zeros(ground.shape[:2], dtype=bool)
+            for colour in colours:
+                mask |= np.all(ground == colour, axis=2)
+            return mask
+
+        with mock.patch.object(native_pixels, "exe", return_value=None):
+            roads._smooth_road_edges(land_py, asphalt, is_colour)
+        orig_smooth = native_pixels.smooth_road_edges
+
+        def checked_smooth(*args, **kwargs):
+            ok = orig_smooth(*args, **kwargs)
+            self.assertTrue(ok, "native smooth_road_edges fell back to Python")
+            return ok
+
+        with mock.patch.object(native_pixels, "smooth_road_edges", side_effect=checked_smooth):
+            roads._smooth_road_edges(land_rs, asphalt, is_colour)
+        self.assertEqual(land_py.tobytes(), land_rs.tobytes())
+
     def test_full_render_matches_python_bit_for_bit(self):
         feats = scenario_features("village")
         with tempfile.TemporaryDirectory() as td:
