@@ -209,3 +209,87 @@ def smooth_road_edges(
         )
         return False
     return True
+
+
+def paint_kerbs(
+    veg: Image.Image,
+    landscape: Image.Image,
+    asphalt,
+    pave_colour: tuple[int, int, int],
+    kerb_colours: tuple[tuple[int, int, int], ...],
+) -> bool:
+    """Paint straight and corner kerbs onto ``veg`` in Rust, or return False for Python."""
+    binary = exe()
+    width, height = landscape.size
+    if binary is None or width * height < MIN_CLEAR_PIXELS:
+        return False
+    if not 0 < width <= MAX_STRIP_PIXELS or not height:
+        return False
+    if veg.size != (width, height) or veg.mode != "RGB" or landscape.mode != "RGB":
+        return False
+    if len(kerb_colours) != 8:
+        return False
+
+    strip = min(1024, max(1, MAX_STRIP_PIXELS // width))
+    strips = (height + strip - 1) // strip
+    asphalt_bytes = bytes(int(v) for c in asphalt for v in c)
+    pave_bytes = bytes(int(v) for v in pave_colour)
+    kerb_bytes = bytes(int(v) for c in kerb_colours for v in c)
+    header = (
+        b"KRK1"
+        + struct.pack("<II", strips, len(asphalt))
+        + asphalt_bytes
+        + pave_bytes
+        + kerb_bytes
+    )
+
+    try:
+        with subprocess.Popen(
+            [binary, "--paint-kerbs"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        ) as proc:
+            with ThreadPoolExecutor(max_workers=1) as pool:
+                try:
+                    for y0 in range(0, height, strip):
+                        y1 = min(height, y0 + strip)
+                        top, bottom = max(0, y0 - 1), min(height, y1 + 1)
+                        in_box = (0, top, width, bottom)
+                        out_box = (0, y0, width, y1)
+                        in_h = bottom - top
+                        out_h = y1 - y0
+                        out_y0 = y0 - top
+                        payload = (
+                            (header if y0 == 0 else b"")
+                            + struct.pack("<IIII", width, in_h, out_y0, out_h)
+                            + landscape.crop(in_box).tobytes()
+                            + veg.crop(out_box).tobytes()
+                        )
+                        future = pool.submit(
+                            _exchange, proc, payload, 4 + 3 * width * out_h, b"KRK1"
+                        )
+                        deadline = time.monotonic() + TIMEOUT_S
+                        while True:
+                            remaining = deadline - time.monotonic()
+                            if remaining <= 0:
+                                raise TimeoutError("native paint-kerbs worker timed out")
+                            try:
+                                result = future.result(timeout=min(0.1, remaining))
+                                break
+                            except FutureTimeout:
+                                continue
+                        veg.paste(
+                            Image.frombytes("RGB", (width, out_h), result), (0, y0)
+                        )
+                finally:
+                    if proc.poll() is None:
+                        proc.kill()
+                        proc.wait()
+    except (OSError, RuntimeError, TimeoutError, subprocess.SubprocessError) as exc:
+        logging.getLogger(__name__).warning(
+            "native paint-kerbs unavailable; using Python: %s", exc
+        )
+        return False
+    return True

@@ -416,11 +416,14 @@ def _generate(data):
     # "Routing the roads" for days with nothing to say why. Said, so the window
     # can say it too.
     from generator.roadgraph import rustsearch
-    slow_roads = int(settings.straight_roads) == 3 and not rustsearch.available()
+    native_ok = rustsearch.available()
+    slow_roads = int(settings.straight_roads) == 3 and not native_ok
     if slow_roads:
         log.warning("generate %s: the road router (knoxroute) was not found - routing the "
                     "roads in Python, which is far slower", map_name)
-    _set_progress(map_name, stage="render", features=len(features), slowRoads=slow_roads)
+    _set_progress(map_name, stage="render", features=len(features),
+                  slowRoads=slow_roads, nativeAccelerated=native_ok)
+    t_render_start = time.time()
 
     try:
         result = renderer.render(
@@ -478,9 +481,11 @@ def _generate(data):
             f"the memory of 1 m. Everything downloaded is kept, so a second run "
             f"starts from the OpenStreetMap data already on disk.", 507)
 
+    render_time = time.time() - t_render_start
+    total_time = time.time() - t0
     _write_readme(map_dir, map_name, result)
     _set_progress(map_name, stage="done")
-    mapstate.stamp(str(map_dir), "generate", took=time.time() - t0)
+    mapstate.stamp(str(map_dir), "generate", took=total_time)
     from_addresses = 0
     try:
         with open(map_dir / f"{map_name}_info.json", encoding="utf-8") as f:
@@ -506,6 +511,9 @@ def _generate(data):
         "featureCount": len(features),
         "rotation": round(rotation, 1),
         "osmSeconds": round(osm_time, 2),
+        "renderSeconds": round(render_time, 2),
+        "totalSeconds": round(total_time, 2),
+        "nativeAccelerated": native_ok,
         # What Overture put in that OpenStreetMap had not got, so the window
         # can say whether turning it on was worth it here.
         # What the window warned about and the mapper went ahead with anyway,

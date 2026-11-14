@@ -109,6 +109,40 @@ class NativePixelsParity(unittest.TestCase):
             roads._smooth_road_edges(land_rs, asphalt, is_colour)
         self.assertEqual(land_py.tobytes(), land_rs.tobytes())
 
+    def test_paint_kerbs_matches_python(self):
+        from generator.rendering import roads
+
+        w, h = 128, 1100
+        rng = np.random.default_rng(11)
+        pal = np.array([
+            C.MEDIUM_GRASS, C.PALE_CONCRETE, C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
+        ], dtype=np.uint8)
+        land = Image.fromarray(pal[rng.integers(0, len(pal), (h, w))], "RGB")
+        veg_pal = np.array([C.VEG_NOTHING, C.TREES, C.BUSHES], dtype=np.uint8)
+        veg_py = Image.fromarray(veg_pal[rng.integers(0, len(veg_pal), (h, w))], "RGB")
+        veg_rs = veg_py.copy()
+        asphalt = (C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT,
+                   C.DARK_POTHOLE, C.LIGHT_POTHOLE)
+
+        def is_colour(ground, colours):
+            mask = np.zeros(ground.shape[:2], dtype=bool)
+            for colour in colours:
+                mask |= np.all(ground == colour, axis=2)
+            return mask
+
+        with mock.patch.object(native_pixels, "exe", return_value=None):
+            roads._paint_kerbs(veg_py, land, asphalt, is_colour)
+        orig_kerbs = native_pixels.paint_kerbs
+
+        def checked_kerbs(*args, **kwargs):
+            ok = orig_kerbs(*args, **kwargs)
+            self.assertTrue(ok, "native paint_kerbs fell back to Python")
+            return ok
+
+        with mock.patch.object(native_pixels, "paint_kerbs", side_effect=checked_kerbs):
+            roads._paint_kerbs(veg_rs, land, asphalt, is_colour)
+        self.assertEqual(veg_py.tobytes(), veg_rs.tobytes())
+
     def test_full_render_matches_python_bit_for_bit(self):
         feats = scenario_features("village")
         with tempfile.TemporaryDirectory() as td:

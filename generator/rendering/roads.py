@@ -305,6 +305,43 @@ def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector, sho
         paint_track(draw, ring, should_stop)
 
 
+def _paint_kerbs(veg: Image.Image, landscape: Image.Image, asphalt, is_colour) -> None:
+    """Paint straight and corner kerbs where pavement meets road."""
+    from . import native_pixels
+
+    kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
+                3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
+    kerb_tuple = tuple(kerb_for[bits] for bits in (1, 2, 4, 8, 3, 5, 10, 12))
+    if native_pixels.paint_kerbs(veg, landscape, asphalt, C.PALE_CONCRETE, kerb_tuple):
+        return
+
+    import numpy as np
+
+    w, h = landscape.size
+    strip = 1024
+    for y0 in range(0, h, strip):
+        y1 = min(h, y0 + strip)
+        top, bottom = max(0, y0 - 1), min(h, y1 + 1)
+        ground = np.asarray(landscape.crop((0, top, w, bottom)))
+        road = is_colour(ground, asphalt)
+        pave = is_colour(ground, (C.PALE_CONCRETE,))
+        sides = np.zeros(road.shape, dtype=np.uint8)
+        sides[:, 1:] |= road[:, :-1] * np.uint8(1)     # road to the west
+        sides[1:, :] |= road[:-1, :] * np.uint8(2)     # road to the north
+        sides[:-1, :] |= road[1:, :] * np.uint8(4)     # road to the south
+        sides[:, :-1] |= road[:, 1:] * np.uint8(8)     # road to the east
+        sides[~pave] = 0
+        sides = _real_kerbs(sides)
+        rows = slice(y0 - top, y0 - top + (y1 - y0))
+        sides = sides[rows]
+        existing = np.asarray(veg.crop((0, y0, w, y1)))
+        free = (existing.reshape(-1, 3).max(axis=1) == 0).reshape(sides.shape)
+        out = existing.copy()
+        for bits, colour in kerb_for.items():
+            out[(sides == bits) & free] = colour
+        veg.paste(Image.fromarray(out), (0, y0))
+
+
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,
                         buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
     """Kerbs where pavement meets the road, and lines down two-lane roads.
@@ -330,33 +367,7 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
         return mask
 
     _smooth_road_edges(landscape, asphalt, is_colour)
-
-    # Kerbs, a strip at a time, each strip read with a row of overlap so the
-    # tiles either side of a seam still see their neighbours.
-    kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
-                3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
-    strip = 1024
-    for y0 in range(0, h, strip):
-        y1 = min(h, y0 + strip)
-        top, bottom = max(0, y0 - 1), min(h, y1 + 1)
-        ground = np.asarray(landscape.crop((0, top, w, bottom)))
-        road = is_colour(ground, asphalt)
-        pave = is_colour(ground, (C.PALE_CONCRETE,))
-        sides = np.zeros(road.shape, dtype=np.uint8)
-        sides[:, 1:] |= road[:, :-1] * np.uint8(1)     # road to the west
-        sides[1:, :] |= road[:-1, :] * np.uint8(2)     # road to the north
-        sides[:-1, :] |= road[1:, :] * np.uint8(4)     # road to the south
-        sides[:, :-1] |= road[:, 1:] * np.uint8(8)     # road to the east
-        sides[~pave] = 0
-        sides = _real_kerbs(sides)
-        rows = slice(y0 - top, y0 - top + (y1 - y0))
-        sides = sides[rows]
-        existing = np.asarray(veg.crop((0, y0, w, y1)))
-        free = (existing.reshape(-1, 3).max(axis=1) == 0).reshape(sides.shape)
-        out = existing.copy()
-        for bits, colour in kerb_for.items():
-            out[(sides == bits) & free] = colour
-        veg.paste(Image.fromarray(out), (0, y0))
+    _paint_kerbs(veg, landscape, asphalt, is_colour)
 
     # Crossings go down before the lane lines, which only paint on squares
     # nothing else has taken: a centre line drawn through a crossing is a line
