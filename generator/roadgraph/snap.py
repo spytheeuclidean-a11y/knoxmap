@@ -50,6 +50,7 @@ from __future__ import annotations
 import bisect
 import heapq
 import itertools
+import logging
 import math
 import time
 
@@ -618,6 +619,8 @@ def snap(nodes: dict, links: list, town: np.ndarray | None = None, log=print, pi
         if i in straight:
             target = [corner[a], corner[b]]   # squared: one straight run between its junctions
         path = None
+        t0, s0 = time.perf_counter(), STATES["searched"]
+        f0, r0, p0 = STATES["fields"], STATES["rust"], STATES["python"]
         # One of vanilla's own street shapes, if one fits (templates.py).
         short_end = b in dead and shapely.LineString(l.pts).length < TEMPLATE_MIN_END
         if i not in straight and hs is not None and not short_end:
@@ -630,7 +633,7 @@ def snap(nodes: dict, links: list, town: np.ndarray | None = None, log=print, pi
             if fitted is not None:
                 path = fitted[0]
                 shapes_used[fitted[1]] = shapes_used.get(fitted[1], 0) + 1
-        t0, s0 = time.perf_counter(), STATES["searched"]
+        template_s = time.perf_counter() - t0
         for wide, run in ((1, want), (1.5, want), (2, 2), (3, 1)):
             if path is not None:
                 break
@@ -660,8 +663,12 @@ def snap(nodes: dict, links: list, town: np.ndarray | None = None, log=print, pi
                 log(f"  link {i} ({l.cls}, ways {l.ways[:2]}): routed with the jog rule let go")
         took = time.perf_counter() - t0
         if took > SLOW_LINK_S:
-            log(f"  link {i} ({l.cls}, ways {l.ways[:2]}): {took:.0f} s, "
-                f"{STATES['searched'] - s0:,} states{'' if path is not None else ' (not routed)'}")
+            field_s = STATES["fields"] - f0
+            log(f"  link {i} ({l.cls}, ways {l.ways[:2]}): {took:.1f} s "
+                f"(templates {template_s:.1f} s, fields {field_s:.1f} s, "
+                f"search and retries {took - template_s - field_s:.1f} s; "
+                f"{STATES['rust'] - r0} Rust, {STATES['python'] - p0} Python, "
+                f"{STATES['searched'] - s0:,} states){'' if path is not None else ' (not routed)'}")
         if path is None:
             failed.append(i)
             log(f"  link {i} ({l.cls}, ways {l.ways[:2]}): no path")
@@ -980,7 +987,7 @@ def _shift(p, h: int, amount: int):
     return (p[0] - amount * dy, p[1])
 
 
-STATES = {"searched": 0}     # states searched, for the slow-link log
+STATES = {"searched": 0, "rust": 0, "python": 0, "fallbacks": 0, "fields": 0.0}
 
 
 # Which engine runs the search: "rust" (the same search in rust/knoxroute - see
@@ -1022,7 +1029,10 @@ def _rust_search(**kw):
             got, _ = _ROUTER.search(**kw, trace=400)
             TRACE_TO.extend(got)
         return _ROUTER.search(**kw)
-    except (OSError, RuntimeError):
+    except (OSError, RuntimeError) as exc:
+        if not STATES["fallbacks"]:
+            logging.getLogger("knoxmap").warning("knoxroute failed; using Python for this search: %s", exc)
+        STATES["fallbacks"] += 1
         # A binary that will not start, or one that died mid-pipe, is no reason to
         # fail the map: the search below takes over, and the next call tries a
         # fresh process.
@@ -1046,9 +1056,12 @@ def _route(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach=0, town
     then leaning on the estimate GREEDY times (MAX_STATES); `limit` for
     both instead, if given."""
     tries = LADDER if limit is None else ((1.0, limit), (GREEDY, limit))
+    if s == g:
+        return None
+    fields = _search_fields(pts, s, g, wide, run_min, town, band_town, alpha_town, free_town, near, road_width)
     for lean, cap in tries:
         path = _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town, beta,
-                       band_town, alpha_town, free_town, lean, cap, near, road_width, stops)
+                       band_town, alpha_town, free_town, lean, cap, near, road_width, stops, fields=fields)
         if path is not None:
             return path
     return None
@@ -1071,18 +1084,10 @@ def _dist_field(line, gx, gy, far):
     return out
 
 
-def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town, beta,
-            band_town, alpha_town, free_town, lean, limit, near=None, road_width=None, stops=(),
-            trace=None):
-    """One A* search for _route: the estimate times `lean`, `limit` states.
-
-    With `trace` (a list), the first five hundred states it pops are appended to
-    it - (estimate, cost, x, y, heading, run, last turn) - so another engine's
-    search can be compared with it step for step. See rust/knoxroute."""
-    width = run_min                                  # min_run is the road's width (4 at least)
-    road_w = road_width or run_min                   # the jog rule's width (its gap is from the edge)
-    if s == g:
-        return None
+def _search_fields(pts, s, g, wide, run_min, town, band_town, alpha_town, free_town, near, road_w):
+    """Prepare the cost window once for the heuristic retries of a single route."""
+    started = time.perf_counter()
+    road_w = road_w or run_min
     pts = [s] + list(pts[1:-1]) + [g]
     line = shapely.LineString(pts)
     far = (BAND_OPEN if town is not None else band_town) * wide
@@ -1126,8 +1131,6 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
         if JOG is not None:
             run_here = np.where(cdens >= JOG_DENSITY, JOG_RUN * run_here, run_here)
     jog_on = JOG is not None and COST is not None
-    # Near its own ends a road may cross what is taken (it joins it there).
-    end_r = run_min + 4
     # Occupancy: building squares under the carriageway, per tile of road.
     occw = None
     if OCC is not None and OCC_WEIGHT > 0:
@@ -1142,18 +1145,8 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
     if jog_on and JOG.get("plots") is None:
         CH, CW = JOG["dist"].shape
         gap = JOG["dist"][np.clip(gy, 0, CH - 1), np.clip(gx, 0, CW - 1)] > road_w / 2 + JOG_GAP
-        turnable = ((cdens < JOG_DENSITY) | gap).tolist()
+        turnable = (cdens < JOG_DENSITY) | gap
 
-    turn_pts = (s, g, *stops)
-    turn_reach = max(JOG_END, road_w)
-
-    def may_turn(x, y, hd):
-        """turn_ok, read off that field."""
-        if turnable is None:
-            return turn_ok(x, y, hd, road_w, s, g, stops)
-        if turnable[y - y0][x - x0]:
-            return True
-        return min(math.dist((x, y), q) for q in turn_pts) <= turn_reach
     # The way the real line runs (degrees) at the point of it nearest each
     # corner: a step may not go more than 90 degrees from it, so a road never
     # doubles back on itself (with room to wander it would rather loop round
@@ -1171,13 +1164,38 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
         way[flat] = np.degrees(np.arctan2(shapely.get_y(p1) - shapely.get_y(p0),
                                           shapely.get_x(p1) - shapely.get_x(p0))) % 360
 
+    STATES["fields"] += time.perf_counter() - started
+    return x0, y0, x1, y1, weight, way, run_here, cdens, occw, turnable, jog_on
+
+
+def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town, beta,
+            band_town, alpha_town, free_town, lean, limit, near=None, road_width=None, stops=(),
+            trace=None, *, fields=None):
+    """One A* search for _route: the estimate times `lean`, `limit` states.
+
+    With `trace` (a list), the first five hundred states it pops are appended to
+    it - (estimate, cost, x, y, heading, run, last turn) - so another engine's
+    search can be compared with it step for step. See rust/knoxroute."""
+    width = run_min                                  # min_run is the road's width (4 at least)
+    road_w = road_width or run_min                   # the jog rule's width (its gap is from the edge)
+    if s == g:
+        return None
+    if fields is None:
+        fields = _search_fields(pts, s, g, wide, run_min, town, band_town, alpha_town, free_town, near, road_w)
+    x0, y0, x1, y1, weight, way, run_here, cdens, occw, turnable, jog_on = fields
+    end_r = run_min + 4
+
+    turn_pts = (s, g, *stops)
+    turn_reach = max(JOG_END, road_w)
+
+    def may_turn(x, y, hd):
+        """turn_ok, read off that field."""
+        if turnable is None:
+            return turn_ok(x, y, hd, road_w, s, g, stops)
+        if turnable[y - y0][x - x0]:
+            return True
+        return min(math.dist((x, y), q) for q in turn_pts) <= turn_reach
     notch = beta * TURN_SHARE                # a turn of one notch
-    # Read per corner, often, in the search below: plain lists are quicker
-    # than a numpy array, and this is a few seconds' work even on the widest
-    # window.
-    weight_l, way_l, run_l = weight.tolist(), way.tolist(), run_here.tolist()
-    dens_l = None if cdens is None else cdens.tolist()
-    occ_l = None if occw is None else occw.tolist()
     taken_get = taken.get
     INF = math.inf
     reach_short = reach * math.sqrt(2)
@@ -1243,24 +1261,35 @@ def _search(pts, s, g, h_start, h_arrive, wide, run_min, taken, me, reach, town,
         if not all(steppable(g[0] - dx * j, g[1] - dy * j, h_arrive)
                    for j in range(-(-end_run // SPAN[h_arrive]))):
             return None
-    if BACKEND == "rust" and trace is None and turnable is not None:
-        # The same search, out of process: all the ground work above is done, so
-        # only the pops move. It keeps the mask's turn rule, which is the cost
-        # mode's - any other mode stays in the loop below rather than guess at
-        # turn_ok. Tracing stays here, where the analysis is.
+    if BACKEND == "rust" and trace is None and (not jog_on or turnable is not None):
+        # With no frontage rule every reachable corner can turn. The custom
+        # plot-boundary rule depends on heading, so it still needs Python.
         win_w, win_h = x1 - x0 + 1, y1 - y0 + 1
+        # A point outside the window could otherwise alias a tile in another row.
+        occupied = [(x, y, owner) for (x, y), owner in taken.items()
+                    if x0 <= x <= x1 and y0 <= y <= y1]
         got = _rust_search(
             x0=x0, y0=y0, w=win_w, h=win_h, s=s, g=g, h_start=h_start, h_arrive=h_arrive,
             reach=reach, run_min=run_min, cap=cap, end_run=end_run, end_r=end_r,
             road_width=road_w, beta=beta, lean=lean, limit=limit, weight=weight, way=way,
             dens=cdens, occ=occw, turnable=turnable, run_here=run_here,
-            taken_idx=np.fromiter(((q[1] - y0) * win_w + (q[0] - x0) for q in taken),
-                                  "<i4", len(taken)),
-            taken_owner=np.fromiter(taken.values(), "<i4", len(taken)), me=me, stops=stops)
+            taken_idx=np.fromiter(((y - y0) * win_w + x - x0 for x, y, _ in occupied),
+                                  "<i4", len(occupied)),
+            taken_owner=np.fromiter((owner for _, _, owner in occupied), "<i4", len(occupied)),
+            me=me, stops=stops)
         if got is not _UNAVAILABLE:
             path, states = got
             STATES["searched"] += states
+            STATES["rust"] += 1
             return path
+    STATES["python"] += 1
+    turnable = None if turnable is None else turnable.tolist()
+    # Read per corner, often, in the search below: plain lists are quicker
+    # than a numpy array, and this is a few seconds' work even on the widest
+    # window.
+    weight_l, way_l, run_l = weight.tolist(), way.tolist(), run_here.tolist()
+    dens_l = None if cdens is None else cdens.tolist()
+    occ_l = None if occw is None else occw.tolist()
     starts = [(s[0], s[1], hd, run_min - end_run, 0) for hd in (range(N) if h_start is None else [h_start])]
     best = {st: 0.0 for st in starts}
     best_get = best.get
