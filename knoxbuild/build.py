@@ -1716,7 +1716,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                          unit_uses, hotel, entrances_by_unit[n], profile,
                          unit_mapped[n],
                          btag in ("garage", "garages")
-                         or special in ("garage", "fire", "fire_police"),
+                         or special in ("garage", "fire", "fire_police",
+                                        "industrial", "barn"),
                          preset_file))
             outline = px if len(units) == 1 else [
                 (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
