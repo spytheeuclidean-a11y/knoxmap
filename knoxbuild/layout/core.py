@@ -789,7 +789,12 @@ MANSION_EXTRA = {
              "sidetable", "bookshelf"],
     "dining": ["painting", "painting", "plant", "lamp", "rug_wide", "clock",
                "bookshelf"],
-    "office": ["erika_shelves_2", "erika_shelves_6", "bookshelf", "bookshelf",
+    # A static wishlist may only name roles every tool set has (#130): naming
+    # erika_shelves_* here dressed a vanilla build's study in tiles a bare
+    # install lacks, so WorldEd refused the cell and the map would not compile.
+    # Erika's richer shelving still arrives when the mod is installed, through
+    # the _erika_ready() substitution in furnishing.py (bookshelf -> ERIKA_SHELVES).
+    "office": ["bookshelf", "bookshelf", "bookshelf", "bookshelf",
                "painting", "plant", "clock"],
     "bedroom": ["painting", "painting", "plant", "lamp", "mirror", "bookshelf",
                 "rug_small"],
