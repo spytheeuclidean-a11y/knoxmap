@@ -343,7 +343,8 @@ def _paint_kerbs(veg: Image.Image, landscape: Image.Image, asphalt, is_colour) -
 
 
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,
-                        buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+                        buckets: dict[str, list[OSMFeature]], proj: Projector,
+                        smooth_edges: bool = True) -> None:
     """Kerbs where pavement meets the road, and lines down two-lane roads.
 
     Asphalt ran straight into the pavement with nothing between them, and a
@@ -366,7 +367,8 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
             mask |= same
         return mask
 
-    _smooth_road_edges(landscape, asphalt, is_colour)
+    if smooth_edges:
+        _smooth_road_edges(landscape, asphalt, is_colour)
     _paint_kerbs(veg, landscape, asphalt, is_colour)
 
     # Crossings go down before the lane lines, which only paint on squares

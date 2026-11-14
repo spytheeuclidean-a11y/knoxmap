@@ -60,6 +60,36 @@ class VanillaGridLayoutTests(unittest.TestCase):
         )
         self.assertTrue(has_diag)
 
+    def test_diagonal_90_bend_chamfers_to_axis_leg(self):
+        ramp = osm.OSMFeature(
+            5, "way", {"highway": "motorway_link"},
+            [(10.0, 10.0), (40.0, 40.0), (70.0, 10.0)],
+        )
+        vanilla_grid.apply_vanilla_grid(
+            [ramp], self.proj, osm.classify, renderer._is_polygon
+        )
+        self._assert_octilinear(ramp.geometry)
+        has_axis = any(
+            abs(x1 - x0) == 0 or abs(y1 - y0) == 0
+            for (y0, x0), (y1, x1) in zip(ramp.geometry, ramp.geometry[1:])
+        )
+        self.assertTrue(has_axis)
+
+    def test_collapse_micro_legs_removes_tiny_interior_jogs(self):
+        pts = [(0, 0), (30, 0), (32, 2), (62, 2)]
+        cleaned = vanilla_grid._collapse_micro_legs(pts)
+        self._assert_octilinear([(float(y), float(x)) for x, y in cleaned])
+        self.assertLessEqual(len(cleaned), 3)
+
+    def test_collapse_micro_legs_removes_corner_micro_stub(self):
+        # 2-tile horizontal stub (169, 90) -> (171, 90) before vertical leg should
+        # collapse cleanly into a single 45-to-90 vertex (171, 88).
+        pts = [(169, 250), (90, 171), (90, 169), (169, 90), (171, 90), (171, 31)]
+        cleaned = vanilla_grid._collapse_micro_legs(pts)
+        self._assert_octilinear([(float(y), float(x)) for x, y in cleaned])
+        self.assertNotIn((169, 90), cleaned)
+        self.assertIn((171, 88), cleaned)
+
     def test_replay_supports_mode_5(self):
         road = osm.OSMFeature(
             4, "way", {"highway": "residential"},

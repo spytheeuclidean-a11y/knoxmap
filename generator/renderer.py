@@ -588,14 +588,14 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                                 pave_side += 1
                             w_stroke = w_road + 2 * (verge_side + pave_side)
                         strokes.append((w_stroke, ground_rings(feat)))
-                _draw_roads(landscape, strokes, fill)
+                _draw_roads(landscape, strokes, fill, crisp=(road_layout == 5))
         fill = LANDSCAPE_FILL.get(cat)
         if fill is None:
             continue
         if cat in ROAD_WIDTHS_M:
             strokes = [(_pixel_width(_way_width_m(feat, cat), meters_per_tile), ground_rings(feat))
                        for feat in buckets.get(cat, []) if not _is_polygon(feat)]
-            _draw_roads(landscape, strokes, fill)
+            _draw_roads(landscape, strokes, fill, crisp=(road_layout == 5))
         for feat in buckets.get(cat, []):
             if cat == "railway" and not _is_polygon(feat):
                 continue  # the continuous track pass supplies its own ballast
@@ -736,7 +736,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _clear_building_vegetation(vegetation, building_feats, proj)
     t_veg = time.perf_counter()
     _clear_road_vegetation(vegetation, landscape)
-    _paint_road_details(vegetation, landscape, buckets, proj)
+    _paint_road_details(vegetation, landscape, buckets, proj,
+                        smooth_edges=(road_layout != 5))
     hierarchy_image = _road_hierarchy_image(buckets, proj)
     # Where the buildings are, so a hydrant, a bin or a mailbox only stands
     # where it has something to serve.

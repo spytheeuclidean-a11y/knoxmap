@@ -16,8 +16,9 @@ from .osm import OSMFeature
 SIMPLIFY_TOLERANCE_TILES = 3.0
 LOOP_SIMPLIFY_TOLERANCE_TILES = 1.0
 SMALL_LOOP_SPAN_TILES = 18.0
-CHAMFER_TILES = 6
-MIN_CHAMFER_LEG = 8
+CHAMFER_TILES = 8
+MIN_CHAMFER_LEG = 6
+MICRO_LEG_TILES = 3
 
 
 def _snap(pt: tuple[float, float]) -> tuple[int, int]:
@@ -87,7 +88,7 @@ def _route_8way(a: tuple[int, int], b: tuple[int, int],
 
 
 def _chamfer_right_angles(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
-    """Bevel sharp 90-degree interior turns into crisp 45-degree diagonals."""
+    """Bevel sharp 90-degree turns (axis-to-axis and diag-to-diag) into 135-degree bends."""
     if len(pts) < 3:
         return pts
     out: list[tuple[int, int]] = [pts[0]]
@@ -97,8 +98,10 @@ def _chamfer_right_angles(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
         b = pts[i + 1]
         d1 = _dir8(a, p)
         d2 = _dir8(p, b)
-        # Perpendicular axis-aligned legs: (d1 . d2 == 0) and both are orthogonal.
-        if (d1[0] == 0 or d1[1] == 0) and (d2[0] == 0 or d2[1] == 0) and (d1[0] * d2[0] + d1[1] * d2[1] == 0):
+        dot = d1[0] * d2[0] + d1[1] * d2[1]
+        is_axis_90 = (d1[0] == 0 or d1[1] == 0) and (d2[0] == 0 or d2[1] == 0) and dot == 0
+        is_diag_90 = (d1[0] != 0 and d1[1] != 0) and (d2[0] != 0 and d2[1] != 0) and dot == 0
+        if is_axis_90 or is_diag_90:
             l1 = max(abs(p[0] - a[0]), abs(p[1] - a[1]))
             l2 = max(abs(b[0] - p[0]), abs(b[1] - p[1]))
             if l1 >= MIN_CHAMFER_LEG and l2 >= MIN_CHAMFER_LEG:
@@ -112,6 +115,43 @@ def _chamfer_right_angles(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
         out.append(p)
     out.append(pts[-1])
     return out
+
+
+def _collapse_micro_legs(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Smooth tiny <= ``MICRO_LEG_TILES`` interior jogs into clean 8-way bends."""
+    if len(pts) < 4:
+        return pts
+    cur = list(pts)
+    changed = True
+    while changed and len(cur) >= 4:
+        changed = False
+        nxt: list[tuple[int, int]] = [cur[0]]
+        i = 1
+        while i < len(cur) - 2:
+            a, b, c, d = nxt[-1], cur[i], cur[i + 1], cur[i + 2]
+            leg_bc = max(abs(c[0] - b[0]), abs(c[1] - b[1]))
+            if leg_bc <= MICRO_LEG_TILES:
+                bridged = _route_8way(a, d, [], _dir8(a, b))
+                if len(bridged) == 1:
+                    dev = max(_dist_seg(b, a, d), _dist_seg(c, a, d))
+                elif len(bridged) == 2:
+                    mid = bridged[0]
+                    dev = max(
+                        min(_dist_seg(b, a, mid), _dist_seg(b, mid, d)),
+                        min(_dist_seg(c, a, mid), _dist_seg(c, mid, d)),
+                    )
+                else:
+                    dev = 1e9
+                if dev <= MICRO_LEG_TILES + 1.0:
+                    nxt.extend(bridged[:-1])
+                    i += 2
+                    changed = True
+                    continue
+            nxt.append(b)
+            i += 1
+        nxt.extend(cur[i:])
+        cur = _merge_collinear(nxt)
+    return cur
 
 
 def _merge_collinear(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -160,6 +200,7 @@ def _route_stretch(raw_pts: list[tuple[float, float]],
                 routed.append(nxt)
     routed = _merge_collinear(routed)
     if not is_small_loop:
+        routed = _collapse_micro_legs(routed)
         routed = _chamfer_right_angles(routed)
         routed = _merge_collinear(routed)
     return routed

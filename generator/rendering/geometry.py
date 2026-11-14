@@ -104,8 +104,8 @@ def _draw_line(draw: ImageDraw.ImageDraw, rings: list[list[tuple[float, float]]]
                     draw.ellipse((x - r, y - r, x + r, y + r), fill=fill)
 
 
-def _draw_roads(image: Image.Image, strokes, fill) -> None:
-    """Constant-width road strokes, joined across OSM ways with 45-degree bevels."""
+def _draw_roads(image: Image.Image, strokes, fill, crisp: bool = False) -> None:
+    """Constant-width road strokes, joined across OSM ways with bevel or crisp mitre corners."""
     import numpy as np
     from shapely.geometry import LineString
     from shapely.ops import linemerge, unary_union
@@ -128,7 +128,12 @@ def _draw_roads(image: Image.Image, strokes, fill) -> None:
         network = unary_union(lines)
         if network.geom_type == "MultiLineString":
             network = linemerge(network)
-        surface = network.buffer(width / 2, cap_style="round", join_style="bevel")
+        if crisp:
+            surface = network.buffer(
+                width / 2, cap_style="flat", join_style="mitre", mitre_limit=3.0
+            )
+        else:
+            surface = network.buffer(width / 2, cap_style="round", join_style="bevel")
         if surface.is_empty:
             continue
         x0, y0, x1, y1 = surface.bounds
