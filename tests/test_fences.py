@@ -190,5 +190,21 @@ class WhoseFenceItIs(unittest.TestCase):
                         "the yard fence should still be built")
 
 
+class ParkFenceStyleTest(unittest.TestCase):
+    def test_small_park_walls_and_fences_stay_short(self):
+        from knoxbuild.fences import style_for
+
+        self.assertEqual(style_for({"barrier": "wall"}, "park"), "black_metal")
+        self.assertEqual(style_for({"barrier": "fence", "material": "brick"}, "park"),
+                         "black_metal")
+        self.assertEqual(style_for({"barrier": "fence", "material": "wood"}, "park"),
+                         "short_wooden")
+        self.assertEqual(style_for({"barrier": "wall", "height": "0.8"}, None),
+                         "black_metal")
+        # Explicit tall wall outside parks still uses tall_concrete.
+        self.assertEqual(style_for({"barrier": "wall", "height": "2.2"}, None),
+                         "tall_concrete")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -310,6 +310,37 @@ def _road_share(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray) -> float:
     return float((avoid[cy0:cy1, cx0:cx1][m] >= ROAD_WEIGHT).sum()) / float(mask.sum())
 
 
+def _window_sums(grid: np.ndarray, mask: np.ndarray, x0: int, y0: int,
+                 radius: int, full_rect: bool) -> np.ndarray:
+    """Sum ``grid`` under ``mask`` for every shift ``(ox, oy)`` in ``[-radius, radius]``."""
+    map_h, map_w = grid.shape
+    h, w = mask.shape
+    side = 2 * radius + 1
+    win_h, win_w = h + 2 * radius, w + 2 * radius
+    gx0, gy0 = x0 - radius, y0 - radius
+    gx1, gy1 = gx0 + win_w, gy0 + win_h
+    cx0, cy0 = max(0, gx0), max(0, gy0)
+    cx1, cy1 = min(map_w, gx1), min(map_h, gy1)
+    if full_rect:
+        pad = np.zeros((win_h + 1, win_w + 1), dtype=np.int32)
+        if cx1 > cx0 and cy1 > cy0:
+            pad[1 + (cy0 - gy0):1 + (cy1 - gy0), 1 + (cx0 - gx0):1 + (cx1 - gx0)] = (
+                grid[cy0:cy1, cx0:cx1]
+            )
+        ps = pad.cumsum(axis=0).cumsum(axis=1)
+        return (
+            ps[h:h + side, w:w + side]
+            - ps[:side, w:w + side]
+            - ps[h:h + side, :side]
+            + ps[:side, :side]
+        )
+    win = np.zeros((win_h, win_w), dtype=np.int32)
+    if cx1 > cx0 and cy1 > cy0:
+        win[cy0 - gy0:cy1 - gy0, cx0 - gx0:cx1 - gx0] = grid[cy0:cy1, cx0:cx1]
+    views = np.lib.stride_tricks.sliding_window_view(win, (h, w))
+    return np.einsum("yxij,ij->yx", views, mask.astype(np.int32, copy=False))
+
+
 def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
               occupied: np.ndarray) -> tuple[int, int]:
     """Where to put a footprint so it stands off the roads.
@@ -327,30 +358,38 @@ def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
     map_h, map_w = avoid.shape
     h, w = mask.shape
 
-    def cost(ox, oy):
+    def in_bounds(ox: int, oy: int) -> bool:
         ax0, ay0 = x0 + ox, y0 + oy
-        cx0, cy0 = max(0, ax0), max(0, ay0)
-        cx1, cy1 = min(map_w, ax0 + w), min(map_h, ay0 + h)
-        if cx1 <= cx0 or cy1 <= cy0:
-            return None
-        m = mask[cy0 - ay0:cy1 - ay0, cx0 - ax0:cx1 - ax0]
-        return (int(avoid[cy0:cy1, cx0:cx1][m].sum()),
-                int(occupied[cy0:cy1, cx0:cx1][m].sum()))
+        return min(map_w, ax0 + w) > max(0, ax0) and min(map_h, ay0 + h) > max(0, ay0)
 
-    here = cost(0, 0)
-    if here is None or here[0] == 0:
+    if not in_bounds(0, 0):
         return x0, y0
+    cx0, cy0 = max(0, x0), max(0, y0)
+    cx1, cy1 = min(map_w, x0 + w), min(map_h, y0 + h)
+    m0 = mask[cy0 - y0:cy1 - y0, cx0 - x0:cx1 - x0]
+    here_avoid = int(avoid[cy0:cy1, cx0:cx1][m0].sum())
+    if here_avoid == 0:
+        return x0, y0
+    here_occ = int(occupied[cy0:cy1, cx0:cx1][m0].sum())
+
+    full_rect = bool(mask.all())
+    avoid_sums = _window_sums(avoid, mask, x0, y0, NUDGE_TILES, full_rect)
+    occ_sums = _window_sums(occupied, mask, x0, y0, NUDGE_TILES, full_rect)
+
     clear, clear_score = None, float("inf")
-    best, best_score = (0, 0), here[0] * 4 + here[1]
+    best, best_score = (0, 0), here_avoid * 4 + here_occ
     for ox in range(-NUDGE_TILES, NUDGE_TILES + 1):
+        ix = ox + NUDGE_TILES
         for oy in range(-NUDGE_TILES, NUDGE_TILES + 1):
-            c = cost(ox, oy)
-            if c is None:
+            if not in_bounds(ox, oy):
                 continue
+            iy = oy + NUDGE_TILES
+            ca = int(avoid_sums[iy, ix])
+            co = int(occ_sums[iy, ix])
             moved = (abs(ox) + abs(oy)) * 0.5
-            if c[0] == 0 and c[1] + moved < clear_score:
-                clear, clear_score = (ox, oy), c[1] + moved
-            score = c[0] * 4 + c[1] + moved
+            if ca == 0 and co + moved < clear_score:
+                clear, clear_score = (ox, oy), co + moved
+            score = ca * 4 + co + moved
             if score < best_score:
                 best, best_score = (ox, oy), score
     ox, oy = clear if clear is not None else best
@@ -360,14 +399,16 @@ def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
         for r in range(NUDGE_TILES + 1, WIDE_NUDGE_TILES + 1):
             for ox2 in range(-r, r + 1):
                 for oy2 in range(-r, r + 1):
-                    if max(abs(ox2), abs(oy2)) != r:
+                    if max(abs(ox2), abs(oy2)) != r or not in_bounds(ox2, oy2):
                         continue
-                    c = cost(ox2, oy2)
-                    if c is None:
-                        continue
-                    if _road_share(mask, x0 + ox2, y0 + oy2, avoid) <= ROAD_SHARE_MAX:
-                        if found is None or c[1] < found[0]:
-                            found = (c[1], ox2, oy2)
+                    ax0, ay0 = x0 + ox2, y0 + oy2
+                    bx0, by0 = max(0, ax0), max(0, ay0)
+                    bx1, by1 = min(map_w, ax0 + w), min(map_h, ay0 + h)
+                    m = mask[by0 - ay0:by1 - ay0, bx0 - ax0:bx1 - ax0]
+                    if _road_share(mask, ax0, ay0, avoid) <= ROAD_SHARE_MAX:
+                        co = int(occupied[by0:by1, bx0:bx1][m].sum())
+                        if found is None or co < found[0]:
+                            found = (co, ox2, oy2)
             if found:
                 ox, oy = found[1], found[2]
                 break
@@ -488,7 +529,7 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
         if blocked.any():
             by0, by1, bx0, bx1 = _clear_box(mask, blocked)
             mask, fx0, fy0 = _hug(mask[by0:by1, bx0:bx1], fx0 + bx0, fy0 + by0)
-            if mask.sum() < MIN_TILES:
+            if mask.sum() < MIN_TILES or min(mask.shape) < max(3, min_side):
                 return None, "taken"
 
     occupied[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] |= mask

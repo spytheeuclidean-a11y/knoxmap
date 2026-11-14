@@ -137,8 +137,16 @@ ANY_WALL = {"shop_aisle": "shop_shelf", "shop_aisle_red": "shop_shelf_red",
             "shop_display": "shop_counter"}
 # The shops a ground floor may hold when OpenStreetMap does not say which,
 # weighted roughly as Knox County's are.
-STORE_WEIGHTS = {"generalstore": 3, "grocery": 2, "conveniencestore": 3, "clothingstore": 3,
-                 "liquorstore": 1, "pharmacy": 2, "bookstore": 1, "toolstore": 1}
+STORE_WEIGHTS = {
+    "generalstore": 3, "grocery": 2, "conveniencestore": 3, "clothingstore": 3,
+    "liquorstore": 1, "pharmacy": 2, "bookstore": 1, "toolstore": 2,
+    "departmentstore": 2, "electronicsstore": 2, "furniturestore": 1,
+    "housewarestore": 2, "shoestore": 1, "sewingstore": 1, "sportstore": 2,
+    "gardenstore": 1, "bakery": 2, "butcher": 1, "musicstore": 1,
+    "movierental": 1, "giftstore": 1, "toystore": 1, "candystore": 1,
+    "artstore": 1, "petstore": 1, "camerastore": 1, "jewelrystore": 1,
+    "gunstore": 1, "hunting": 1, "armysurplus": 1,
+}
 # Rows of shelving need this much floor, and the rows this much space apart
 # (the shelf and a two-tile aisle).
 MIN_SALES_FLOOR = 20
@@ -230,45 +238,102 @@ def _fits(plan, idx, role, x, y, orient, blocked) -> list[tuple[int, int]] | Non
     return cells
 
 
+def _bay_lane_cells(plan, idx: int, cells: set[tuple[int, int]],
+                    depth_limit: int | None = None) -> set[tuple[int, int]]:
+    """Tiles forming the drive-in / loading lane behind a wide garage bay door."""
+    L = _layout()
+    garage_edges = getattr(plan, "garage_door_tiles", ()) or ()
+    lane: set[tuple[int, int]] = set()
+    for gx, gy, gd in garage_edges:
+        # Step inward from the exterior roll-up edge into room `idx`.
+        if gd == "N":
+            candidates = (((gx, gy), (0, 1)), ((gx, gy - 1), (0, -1)))
+        else:
+            candidates = (((gx, gy), (1, 0)), ((gx - 1, gy), (-1, 0)))
+        for start, (dx, dy) in candidates:
+            if start in cells and L._room_at(plan, start[0] - dx, start[1] - dy) != idx:
+                max_steps = depth_limit if depth_limit is not None else max(plan.width, plan.height)
+                cx, cy = start
+                for _ in range(max_steps):
+                    if (cx, cy) not in cells:
+                        break
+                    lane.add((cx, cy))
+                    cx += dx
+                    cy += dy
+                break
+    return lane
+
+
 def furnish_service_bay(plan, idx: int, room, rng: random.Random,
                         door_tiles: set, keep_clear: set,
                         mechanic: bool = False) -> bool:
-    """Furnish the perimeter of a garage while leaving vehicle bays open."""
+    """Furnish a garage/service bay with workbenches, racks, lockers and a clear drive-in lane."""
     L = _layout()
     cells = _cells(plan, idx, room)
     if len(cells) < MIN_SALES_FLOOR or min(room.w, room.h) < 6:
         return False
     front = _front_side(plan, idx, cells, None)
     frame = Frame(cells, front)
-    blocked = set(keep_clear) | set(door_tiles)
+    lane = _bay_lane_cells(plan, idx, cells)
+    blocked = set(keep_clear) | set(door_tiles) | lane
     for x, y in door_tiles:
         if (x, y) in cells:
             blocked.update((x + dx, y + dy)
                            for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+    # Always keep the central vehicle bay zone unobstructed in addition to the door lane.
+    if frame.length >= 8 and frame.depth >= 8:
+        for a in range(2, frame.length - 2):
+            for d in range(2, frame.depth - 2):
+                blocked.add(frame.xy(a, d))
     placed: set[tuple[int, int]] = set()
 
     def put(role: str, along: int, depth: int, wall: str) -> bool:
+        if role not in C.FURNITURE:
+            return False
+        if role in L.NORTH_WEST_ONLY and wall in ("S", "E"):
+            return False
         x, y = frame.xy(along, depth)
         orient = L._facing(role, wall)
-        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
+        ax, ay = L._wall_anchor(role, x, y, orient, wall)
+        got = _fits(plan, idx, role, ax, ay, orient, blocked | placed)
         if got is None:
             return False
-        plan.furniture.append((role, x, y, orient))
+        plan.furniture.append((role, ax, ay, orient))
         placed.update(got)
         return True
 
     left, right = (("W", "E") if frame.along_x else ("N", "S"))
-    for depth in range(4, frame.depth - 2, 4):
+    # Side walls: alternating tool racking, stacked crates and (in fire bays) gear lockers.
+    for depth in range(3, frame.depth - 2, 3):
         for along, side in ((0, left), (frame.length - 1, right)):
-            put(rng.choice(("metal_rack", "crate")), along, depth, side)
+            if room.kind == "firegarage" and depth <= 4 and side in ("N", "W"):
+                if put("wardrobe", along, depth, side):
+                    continue
+            role = rng.choice(("metal_rack", "crate") if side in ("N", "W")
+                              else ("crate", "counter_2"))
+            if put(role, along, depth, side) and role == "crate" and rng.random() < 0.55:
+                cx, cy = frame.xy(along, depth)
+                plan.furniture.append(("crate_top", cx, cy, L._facing("crate_top", side)))
 
     back = OPPOSITE[front]
     rear_depth = frame.depth - 1
-    if mechanic:
-        put("counter_2", frame.length // 2, rear_depth, back)
+    # Rear workbench run for mechanic/fire bays, staying clear of any centre door/bay lane.
+    if mechanic and frame.length >= 7:
+        for a in range(frame.length // 2 - 1, frame.length // 2 + 2):
+            put("counter_2", a, rear_depth, back)
     for along, role in ((max(1, frame.length // 4), "metal_rack"),
                         (min(frame.length - 2, 3 * frame.length // 4), "crate")):
-        put(role, along, rear_depth, back)
+        if not put(role, along, rear_depth, back):
+            put("crate", along, rear_depth, back)
+    if mechanic and "water_cooler" in C.FURNITURE:
+        for along, side in ((1, left), (frame.length - 2, right)):
+            if put("water_cooler", along, rear_depth, back):
+                break
+    # Corkboard on a free N/W rear or side wall.
+    for wall, a, d in ((back, 1, rear_depth), (left, 0, 2), (right, frame.length - 1, 2)):
+        if wall in ("N", "W"):
+            if _hang(plan, idx, "corkboard", *frame.xy(a, d), wall):
+                break
     return True
 
 
@@ -1297,7 +1362,7 @@ def _put(plan, idx, role, x, y, orient, occupied: set, no_go: set, keeps_open=No
 
 
 def _hang(plan, idx, role, x, y, wall: str) -> bool:
-    """A wall piece on (x, y) against `wall`, unless something hangs there."""
+    """A wall piece on (x, y) against `wall`, unless something hangs or opens there."""
     L = _layout()
     if wall not in ("N", "W") and role in L.NORTH_WEST_ONLY:
         return False
@@ -1308,10 +1373,107 @@ def _hang(plan, idx, role, x, y, wall: str) -> bool:
     if any(L._room_at(plan, cx, cy) != idx for cx, cy in cells):
         return False
     edges = {L._wall_edge(cx, cy, wall) for cx, cy in cells}
-    if edges & plan.wall_pieces:
+    blocked_edges = (plan.wall_pieces | set(plan.doors) | set(plan.open_edge)
+                     | set(getattr(plan, "garage_door_tiles", ())))
+    if edges & blocked_edges:
         return False
     plan.furniture.append((role, x, y, orient))
     plan.wall_pieces.update(edges)
+    return True
+
+
+def _put_group(plan, idx: int, group: list[tuple[str, int, int, str]], ox: int, oy: int,
+               occupied: set, no_go: set, keeps_open=None) -> bool:
+    """Atomically place a relative group of pieces at `(ox, oy)` inside room `idx`."""
+    L = _layout()
+    placed: list[tuple[str, int, int, str]] = []
+    cells_used: set[tuple[int, int]] = set()
+    rug_used: set[tuple[int, int]] = set()
+    solid_used: set[tuple[int, int]] = set()
+    blocked = no_go | occupied
+    for role, dx, dy, wanted in group:
+        if role not in C.FURNITURE:
+            return False
+        orient = L._facing(role, wanted)
+        if orient not in C.FURNITURE[role]:
+            return False
+        x, y = ox + dx, oy + dy
+        extra = cells_used if L._blocks(role) else (cells_used | rug_used)
+        got = _fits(plan, idx, role, x, y, orient, blocked | extra)
+        if got is None:
+            return False
+        placed.append((role, x, y, orient))
+        if L._blocks(role):
+            cells_used.update(got)
+            solid_used.update(got)
+        else:
+            rug_used.update(got)
+    if keeps_open and solid_used and not keeps_open(solid_used):
+        return False
+    plan.furniture.extend(placed)
+    occupied.update(cells_used)
+    return True
+
+
+def _counter_with_register(plan, idx: int, tiles: list[tuple[int, int]], wall_side: str,
+                           occupied: set, no_go: set, keeps_open=None,
+                           role: str = "shop_counter", add_register: bool = True,
+                           add_chair: bool = True) -> bool:
+    """Place a short service counter run with optional register and staff chair behind it."""
+    L = _layout()
+    if role not in C.FURNITURE or not tiles:
+        return False
+    orient = L._facing(role, wall_side)
+    if orient not in C.FURNITURE[role]:
+        return False
+    blocked = no_go | occupied
+    if any(_fits(plan, idx, role, x, y, orient, blocked) is None for x, y in tiles):
+        return False
+    if keeps_open and not keeps_open(set(tiles)):
+        return False
+    for x, y in tiles:
+        plan.furniture.append((role, x, y, orient))
+    occupied.update(tiles)
+    if add_register and "register" in C.FURNITURE:
+        rx, ry = tiles[len(tiles) // 2]
+        reg_o = L._facing("register", wall_side)
+        if reg_o in C.FURNITURE["register"]:
+            plan.furniture.append(("register", rx, ry, reg_o))
+    if add_chair and "office_chair" in C.FURNITURE:
+        bx, by = STEP[wall_side]
+        chair_o = L._facing("office_chair", wall_side)
+        for x, y in tiles:
+            cx, cy = x + bx, y + by
+            if _put(plan, idx, "office_chair", cx, cy, chair_o, occupied, no_go, keeps_open):
+                break
+    return True
+
+
+def _put_desk_set(plan, idx: int, desk_role: str, x: int, y: int, wall_back: str,
+                  occupied: set, no_go: set, keeps_open=None) -> bool:
+    """Place a desk with its office_chair facing it on its open side."""
+    L = _layout()
+    if desk_role not in C.FURNITURE:
+        return False
+    orient = L._facing(desk_role, wall_back)
+    if orient not in C.FURNITURE[desk_role]:
+        return False
+    got = _fits(plan, idx, desk_role, x, y, orient, no_go | occupied)
+    if got is None or (keeps_open and not keeps_open(set(got))):
+        return False
+    sx, sy = STEP[OPPOSITE[orient]]
+    chair_o = L._facing("office_chair", OPPOSITE[orient])
+    chair_spot = next(((cx + sx, cy + sy) for cx, cy in got
+                       if _fits(plan, idx, "office_chair", cx + sx, cy + sy, chair_o,
+                                no_go | occupied | set(got)) is not None), None)
+    if chair_spot is None:
+        return False
+    if keeps_open and not keeps_open(set(got) | {chair_spot}):
+        return False
+    plan.furniture.append((desk_role, x, y, orient))
+    plan.furniture.append(("office_chair", chair_spot[0], chair_spot[1], chair_o))
+    occupied.update(got)
+    occupied.add(chair_spot)
     return True
 
 
@@ -1468,6 +1630,422 @@ def furnish_church(plan, idx: int, room, rng: random.Random, occupied: set, no_g
     if pews < 2:
         return None
     return ["plant", "painting", "shelf"]
+
+
+def furnish_library(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                    keeps_open=None) -> list[str] | None:
+    """Book stack aisles, a circulation desk by the entrance, and study tables."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+
+    # 1. Circulation / checkout counter near the entry end.
+    placed_desk = False
+    if frame.length >= 6 and frame.depth >= 6:
+        run = 3 if frame.length >= 9 else 2
+        for start in (2, frame.length - run - 2, frame.length // 2 - run // 2):
+            if start < 1 or start + run > frame.length - 1:
+                continue
+            tiles = [frame.xy(start + k, 2) for k in range(run)]
+            if _counter_with_register(plan, idx, tiles, back, occupied, no_go, keeps_open):
+                placed_desk = True
+                break
+
+    # 2. Reading tables toward the bright front/windows or inner half.
+    table_role = "dining_table_oak" if "dining_table_oak" in C.FURNITURE else "dining_table"
+    study_group = [(table_role, 1, 1, "W"), ("chair", 0, 1, "W"), ("chair", 3, 1, "E"),
+                   ("chair", 1, 0, "N"), ("chair", 2, 2, "S")]
+    if not frame.along_x:
+        study_group = [(r, dy, dx, L._TURN[o]) for r, dx, dy, o in study_group]
+
+    tables_placed = 0
+    for d in range(2 if not placed_desk else 4, min(frame.depth - 3, 7), 4):
+        for a in range(1, frame.length - 4, 5):
+            ox, oy = min(frame.xy(a + dx, d + dy) for dx in (0, 3) for dy in (0, 2))
+            if _put_group(plan, idx, study_group, ox, oy, occupied, no_go, keeps_open):
+                tables_placed += 1
+
+    # 3. Parallel bookshelf stacks in the deeper half of the floor.
+    stacks = 0
+    stack_start_d = 6 if tables_placed else 3
+    shelf_orient = "W" if frame.along_x else "N"
+    for d in range(stack_start_d, frame.depth - 1, 3):
+        for a in range(2, frame.length - 2):
+            if a == frame.length // 2 and frame.length >= 9:
+                continue  # Keep a central cross-aisle down the stacks.
+            x, y = frame.xy(a, d)
+            stacks += _put(plan, idx, "bookshelf", x, y, shelf_orient, occupied, no_go, keeps_open)
+
+    if stacks + tables_placed < 3:
+        return None
+    return ["bookshelf", "bookshelf", "plant", "clock"]
+
+
+def furnish_theatre(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                    keeps_open=None) -> list[str] | None:
+    """Auditorium rows facing a screen/stage wall with a central aisle and entry counter."""
+    cells = _cells(plan, idx, room)
+    if len(cells) < 28 or min(room.w, room.h) < 6:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+    mid = frame.length // 2
+
+    # Optional concession / ticket counter just inside the entrance when deep enough.
+    if frame.depth >= 9 and frame.length >= 7:
+        tiles = [frame.xy(a, 1) for a in range(1, min(4, frame.length - 3))]
+        _counter_with_register(plan, idx, tiles, back, occupied, no_go, keeps_open,
+                               add_chair=False)
+
+    # Leave the stage/screen apron at depth frame.depth - 2..frame.depth - 1 clear,
+    # and walk rows forward leaving a 2-tile central aisle (mid - 1, mid).
+    aisle = {mid} if frame.length < 9 else {mid - 1, mid}
+    seats = 0
+    start_d = 3 if frame.depth >= 9 else 2
+    for d in range(start_d, frame.depth - 2, 2):
+        for a in range(1, frame.length - 1):
+            if a in aisle:
+                continue
+            x, y = frame.xy(a, d)
+            seats += _put(plan, idx, "chair", x, y, front, occupied, no_go, keeps_open)
+    if seats < 6:
+        return None
+    return ["plant", "painting", "bin"]
+
+
+def furnish_clinic(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                   keeps_open=None) -> list[str] | None:
+    """Exam bays / hospital wards with off-wall beds, washup counter, and doctor desk."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 18 or min(room.w, room.h) < 4:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+
+    bed_role = "bed_plain" if "bed_plain" in C.FURNITURE else "bed"
+    bed_orient = "W" if frame.along_x else "N"
+    if bed_orient not in C.FURNITURE.get(bed_role, {}):
+        bed_orient = next(iter(C.FURNITURE[bed_role]))
+
+    is_ward = room.kind == "medical" and room.area >= 40
+    beds_placed = 0
+    if is_ward:
+        # Spaced hospital ward beds with a bedside table each, keeping central aisles open.
+        for d in range(2, frame.depth - 1, 3):
+            for a in range(1, frame.length - 2, 3):
+                x, y = frame.xy(a, d)
+                if _put(plan, idx, bed_role, x, y, bed_orient, occupied, no_go, keeps_open):
+                    beds_placed += 1
+                    _put(plan, idx, "sidetable" if frame.along_x else "table",
+                         *frame.xy(a + 2 if frame.along_x else a, d),
+                         bed_orient, occupied, no_go, keeps_open)
+    else:
+        # Exam couch in the interior of the room so clinicians can reach both sides.
+        cx, cy = frame.xy(max(1, frame.length // 2 - (1 if bed_orient == "W" else 0)),
+                          max(1, frame.depth // 2 - (1 if bed_orient == "N" else 0)))
+        for ox, oy in ((cx, cy), (cx - 1, cy), (cx, cy - 1), (cx + 1, cy)):
+            if room.x0 < ox < room.x1 and room.y0 < oy < room.y1:
+                if _put(plan, idx, bed_role, ox, oy, bed_orient, occupied, no_go, keeps_open):
+                    beds_placed += 1
+                    break
+
+    # Consultation desk + chair on a corner/wall opposite the exam couch.
+    desk_role = "desk" if "desk" in C.FURNITURE else "desk_dark"
+    desk_placed = False
+    for wall in (back, "W", "N", "E", "S"):
+        if desk_placed:
+            break
+        line = _against(plan, idx, cells, wall)[1:-1]
+        for wx, wy in line:
+            orient = L._facing(desk_role, wall)
+            ax, ay = L._wall_anchor(desk_role, wx, wy, orient, wall)
+            if _put_desk_set(plan, idx, desk_role, ax, ay, wall, occupied, no_go, keeps_open):
+                desk_placed = True
+                break
+
+    # Clinical washup counter + sink along an open wall.
+    for wall in ("N", "W", back):
+        line = _against(plan, idx, cells, wall)[1:-1]
+        for i in range(len(line) - 1):
+            x0, y0 = line[i]
+            x1, y1 = line[i + 1]
+            if abs(x0 - x1) + abs(y0 - y1) != 1:
+                continue
+            if _put(plan, idx, "counter_2", x0, y0, L._facing("counter_2", wall),
+                    occupied, no_go, keeps_open):
+                plan.furniture.append(("sink", x0, y0, L._facing("sink", wall)))
+                _put(plan, idx, "counter_2", x1, y1, L._facing("counter_2", wall),
+                     occupied, no_go, keeps_open)
+                break
+
+    if not beds_placed and not desk_placed:
+        return None
+    return ["filing_cabinet", "chair", "chair", "corkboard", "bin"]
+
+
+def furnish_bank(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                 keeps_open=None) -> list[str] | None:
+    """Teller / post counter across the middle, customer waiting seats in front, desks behind."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+
+    counter_d = max(2, min(frame.depth - 3, frame.depth // 2))
+    span = min(5, max(2, frame.length - 4))
+    start_a = max(1, (frame.length - span) // 2)
+    tiles = [frame.xy(start_a + k, counter_d) for k in range(span)]
+    teller_ok = _counter_with_register(plan, idx, tiles, back, occupied, no_go, keeps_open,
+                                       add_register=True, add_chair=True)
+    if not teller_ok:
+        return None
+
+    # Customer waiting seating in the public front zone.
+    for a in range(1, frame.length - 2, 3):
+        wx, wy = frame.xy(a, 1)
+        if _put(plan, idx, "sofa", wx, wy, front, occupied, no_go, keeps_open):
+            break
+    else:
+        for a in range(1, min(frame.length - 1, 5), 2):
+            _put(plan, idx, "chair", *frame.xy(a, 1), front, occupied, no_go, keeps_open)
+
+    # Manager / clerk desk in the back office zone if depth allows.
+    if frame.depth >= 7:
+        for a in range(1, frame.length - 2):
+            dx, dy = frame.xy(a, frame.depth - 1)
+            orient = L._facing("desk_dark", back)
+            ax, ay = L._wall_anchor("desk_dark", dx, dy, orient, back)
+            if _put_desk_set(plan, idx, "desk_dark", ax, ay, back, occupied, no_go, keeps_open):
+                break
+
+    if room.kind == "post":
+        return ["metal_rack", "crate", "filing_cabinet", "corkboard"]
+    return ["filing_cabinet", "water_cooler", "plant", "corkboard"]
+
+
+def furnish_police(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                   keeps_open=None) -> list[str] | None:
+    """Police hall dispatch counter + waiting bench, or squad desk bullpen with lockers."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 20 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+
+    if room.kind == "policehall":
+        span = min(4, max(2, frame.length - 4))
+        start_a = max(1, (frame.length - span) // 2)
+        d = max(2, frame.depth // 2)
+        tiles = [frame.xy(start_a + k, d) for k in range(span)]
+        if not _counter_with_register(plan, idx, tiles, back, occupied, no_go, keeps_open):
+            return None
+        for a in range(1, min(frame.length - 1, 6), 2):
+            _put(plan, idx, "chair", *frame.xy(a, 1), front, occupied, no_go, keeps_open)
+        return ["corkboard", "water_cooler", "filing_cabinet", "bin"]
+
+    # policeoffice / security: squad workstations + filing/gun lockers.
+    desk = "desk_dark" if "desk_dark" in C.FURNITURE else "desk"
+    group = [(desk, 0, 1, "S"), ("office_chair", 0, 0, "N")]
+    rows, _ = pack_stations(plan, idx, room, group, occupied, no_go, keeps_open)
+    if not rows:
+        for wall in (back, "N", "W"):
+            for wx, wy in _against(plan, idx, cells, wall)[1:-1]:
+                orient = L._facing(desk, wall)
+                ax, ay = L._wall_anchor(desk, wx, wy, orient, wall)
+                if _put_desk_set(plan, idx, desk, ax, ay, wall, occupied, no_go, keeps_open):
+                    break
+            else:
+                continue
+            break
+    if "gun_locker" in C.FURNITURE:
+        for wall in (back, "W", "N"):
+            if any(_put(plan, idx, "gun_locker", x, y, L._facing("gun_locker", wall),
+                        occupied, no_go, keeps_open)
+                   for x, y in _against(plan, idx, cells, wall)[1:-1]):
+                break
+    return ["filing_cabinet", "corkboard", "water_cooler", "bin"]
+
+
+def furnish_daycare(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                    keeps_open=None) -> list[str] | None:
+    """Central play mat & activity tables, supervisor desk, bookshelves and resting cribs."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 20 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+
+    activity = [("shag_rug", 0, 0, "W"), ("round_table", 1, 0, "W"),
+                ("chair", 0, 0, "W"), ("chair", 2, 0, "E")]
+    mid_a, mid_d = max(1, frame.length // 2 - 1), max(1, frame.depth // 2 - 1)
+    ox, oy = frame.xy(mid_a, mid_d)
+    placed = _put_group(plan, idx, activity, ox, oy, occupied, no_go, keeps_open)
+
+    # Crib(s) tucked against an E or S wall where crib sprites exist.
+    cribs = 0
+    if "crib" in C.FURNITURE:
+        for wall in ("S", "E"):
+            if wall not in C.FURNITURE["crib"] or cribs >= 2:
+                continue
+            for x, y in _against(plan, idx, cells, wall)[1:-1:2]:
+                ax, ay = L._wall_anchor("crib", x, y, wall, wall)
+                if _put(plan, idx, "crib", ax, ay, wall, occupied, no_go, keeps_open):
+                    cribs += 1
+                    if cribs >= 2:
+                        break
+    if not placed and not cribs:
+        return None
+    return ["bookshelf", "shelf_2", "desk", "office_chair", "plant", "bin"]
+
+
+def furnish_lobby(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                  keeps_open=None, street: str | None = None) -> list[str] | None:
+    """Front reception counter zoned separately from lounge/waiting seating."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, street)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+
+    # 1. Reception counter facing the street/entrance side.
+    counter_len = 3 if frame.length >= 9 else 2
+    rec_placed = False
+    for d in (min(frame.depth - 2, max(2, frame.depth // 2)), 2):
+        for a in (max(1, frame.length // 2 - counter_len // 2), 1, frame.length - counter_len - 1):
+            if a < 1 or a + counter_len > frame.length - 1:
+                continue
+            tiles = [frame.xy(a + k, d) for k in range(counter_len)]
+            if _counter_with_register(plan, idx, tiles, back, occupied, no_go, keeps_open,
+                                       add_register=True, add_chair=True):
+                rec_placed = True
+                break
+        if rec_placed:
+            break
+
+    # 2. Lounge seating cluster offset toward a corner/opposite side from reception.
+    lounge = [("rug_wide", 0, 1, "W"), ("sofa", 0, 0, "N"), ("coffee_table", 0, 2, "N"),
+              ("armchair", 2, 1, "W")]
+    lounge_placed = False
+    for d in range(1, max(2, frame.depth - 3), 2):
+        for a in (1, max(1, frame.length - 4)):
+            lx, ly = frame.xy(a, d)
+            if _put_group(plan, idx, lounge, lx, ly, occupied, no_go, keeps_open):
+                lounge_placed = True
+                break
+        if lounge_placed:
+            break
+    if not lounge_placed:
+        # Compact waiting bench along a free side wall.
+        for a in range(1, min(frame.length - 1, 6), 2):
+            _put(plan, idx, "chair", *frame.xy(a, 1), front, occupied, no_go, keeps_open)
+
+    if not rec_placed and not lounge_placed:
+        return None
+    wishlist = ["plant", "water_cooler", "vending" if frame.length >= 6 else "chair", "bin"]
+    if plan.kind not in L.ART_FREE_KINDS:
+        wishlist.append("painting")
+    return wishlist
+
+
+def furnish_diningroom(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                       keeps_open=None) -> list[str] | None:
+    """Institutional cafeteria: tray serving counter at one end, long table rows across the hall."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 28 or min(room.w, room.h) < 6:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+    back = OPPOSITE[front]
+
+    # 1. Serving / hot-food counter run along the back end.
+    placed_serve = False
+    if frame.depth >= 7:
+        serve_roles = ["hot_counter", "counter_2", "counter_2", "counter_2"]
+        for start in (max(1, frame.length // 2 - 2), 1):
+            if start + len(serve_roles) > frame.length - 1:
+                continue
+            tiles = [frame.xy(start + k, frame.depth - 1) for k in range(len(serve_roles))]
+            orient = L._facing("counter_2", back)
+            if all(_fits(plan, idx, r, x, y, orient, no_go | occupied)
+                   for r, (x, y) in zip(serve_roles, tiles)):
+                if not keeps_open or keeps_open(set(tiles)):
+                    for r, (x, y) in zip(serve_roles, tiles):
+                        plan.furniture.append((r, x, y, orient))
+                    occupied.update(tiles)
+                    placed_serve = True
+                    break
+
+    # 2. Canteen table rows via pack_stations.
+    group = [("dining_table", 1, 1, "W"), ("chair", 0, 1, "W"), ("chair", 3, 1, "E"),
+             ("chair", 1, 0, "N"), ("chair", 2, 2, "S")]
+    if not frame.along_x:
+        group = [(r, dy, dx, L._TURN[o]) for r, dx, dy, o in group]
+    rows, _ = pack_stations(plan, idx, room, group, occupied, no_go, keeps_open, gap=1, aisle=1)
+    if not rows and not placed_serve:
+        return None
+    return ["vending", "water_cooler", "bin", "plant"]
+
+
+def furnish_industrial_floor(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                             keeps_open=None) -> list[str] | None:
+    """Warehouse / factory floor: loading lane behind bay doors, foreman desk zone, pallet racking."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    lane = _bay_lane_cells(plan, idx, cells)
+    blocked = set(no_go) | lane
+    front = _front_side(plan, idx, cells, None)
+    frame = Frame(cells, front)
+
+    # 1. Foreman / shipping desk near an interior corner away from bay lane.
+    desk_placed = False
+    for wall in ("N", "W", OPPOSITE[front]):
+        if desk_placed:
+            break
+        for wx, wy in _against(plan, idx, cells, wall)[1:-1]:
+            if (wx, wy) in blocked:
+                continue
+            orient = L._facing("desk_dark", wall)
+            ax, ay = L._wall_anchor("desk_dark", wx, wy, orient, wall)
+            if _put_desk_set(plan, idx, "desk_dark", ax, ay, wall, occupied, blocked, keeps_open):
+                desk_placed = True
+                break
+
+    # 2. Racking rows in the interior outside the drive-in / loading lane.
+    rack_orient = "W" if frame.along_x else "N"
+    racks = 0
+    for d in range(2, frame.depth - 2, 3):
+        for a in range(1, frame.length - 2, 3 if rack_orient == "W" else 2):
+            if a in range(frame.length // 2 - 1, frame.length // 2 + 1) and frame.length >= 10:
+                continue  # Central forklift cross-aisle.
+            x, y = frame.xy(a, d)
+            if _put(plan, idx, "metal_rack", x, y, rack_orient, occupied, blocked, keeps_open):
+                racks += 1
+            elif _put(plan, idx, "crate", x, y, "N", occupied, blocked, keeps_open):
+                racks += 1
+                if rng.random() < 0.6 and "crate_top" in C.FURNITURE:
+                    plan.furniture.append(("crate_top", x, y, "N"))
+
+    if racks + int(desk_placed) < 2:
+        return None
+    return ["metal_rack", "crate", "filing_cabinet", "corkboard", "water_cooler"]
 
 
 # ---- who lives here -----------------------------------------------------------
@@ -1660,7 +2238,8 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
                   for cx, cy in L._cells_for(role, x, y, o)}
         spots = [(x, y, side) for x, y, side in on_walls()
                  if side in C.FURNITURE[item] and (x, y) not in taken
-                 and (x, y) not in no_go and not L._narrow(plan.grid, x, y)]
+                 and (x, y) not in no_go and not L._narrow(plan.grid, x, y)
+                 and not (item in L.NORTH_WEST_ONLY and side in ("S", "E"))]
         rng.shuffle(spots)
         if near:
             spots.sort(key=lambda s: min(abs(s[0] - a) + abs(s[1] - b) for a, b in near))
@@ -1680,11 +2259,61 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
             plan.furniture[n] = (item, x, y, L._facing(item, o))
 
     if not home:
+        entry_pts = [t for t, _d, _out in entries]
+        bay_lane = _bay_lane_cells(plan, idx, set(cells))
+        if bay_lane:
+            no_go = set(no_go) | bay_lane
+        nw_walls = on_walls(("N", "W"))
+        counters = ("counter", "shop_counter", "diner_counter")
+        has_role = {f[0] for f in mine}
+
         if room.kind in STORES and rng.random() < SALE_SIGN:
-            floor_spot("sale_sign", near=[t for t, _d, _out in entries])
-        if room.kind.endswith("storage") and plan.kind in BOXED_KINDS:
+            floor_spot("sale_sign", near=entry_pts)
+        if room.kind in STORES and "register" not in has_role:
+            stand("register", free(("shop_counter",)))
+        if room.kind in DINING_ROOMS | COMMERCIAL_KITCHENS | {"breakroom", "bakery"}:
+            if rng.random() < 0.65:
+                stand("coffee_maker", free(counters))
+            if room.kind in {"bakery", "cafe", "cafekitchen", "bakerykitchen", "breakroom"} \
+                    and rng.random() < 0.45:
+                stand("toaster", free(counters))
+        if room.kind in {"lobby", "bank", "post", "policehall", "policeoffice", "office"}:
+            if "phone" not in has_role and rng.random() < 0.65:
+                stand("phone", free(("shop_counter",)))
+        if room.kind in {"clinic", "medical", "medicaloffice", "dentist"}:
+            if not any(f[0].startswith("mirror") for f in mine):
+                hang("mirror_small", [(x, y, o) for role, x, y, o in mine if L._is_sink(role)])
+
+        # Clock, corkboard and wall vents on bare N/W walls (at most one clock).
+        if "clock" not in has_role and room.kind not in {"bathroom", "closet", "elevator"}:
+            chance = 0.7 if room.kind in {
+                "classroom", "secondaryclassroom", "schoollab", "library", "diningroom",
+                "office", "bank", "post", "policeoffice", "clinic", "medical",
+            } else 0.35
+            if rng.random() < chance:
+                hang("clock", nw_walls)
+        if "corkboard" not in has_role and room.kind in {
+            "office", "bank", "post", "policeoffice", "policehall", "breakroom",
+            "library", "workshop", "warehouse",
+        } and rng.random() < 0.5:
+            hang("corkboard", nw_walls)
+        if "wall_vent" not in has_role and rng.random() < 0.25:
+            hang("wall_vent", nw_walls)
+
+        # Waste bins and storage boxes kept off walkways and vehicle bays.
+        if "bin" not in has_role and room.kind not in {
+            "garage", "mechanic", "firegarage", "elevator", "concourse",
+        } and rng.random() < 0.6:
+            floor_spot("bin", near=entry_pts)
+        if (room.kind.endswith("storage") or room.kind in {"warehouse", "factory", "workshop"}) \
+                and (plan.kind in BOXED_KINDS or plan.kind in {"industrial", "shop", "commercial", "medical"}):
             for _ in range(rng.randint(1, 3)):
                 floor_spot(rng.choice(("box", "box_battered")))
+
+        if room.kind in {"lobby", "cafe", "restaurantdining", "bakery", "bookstore"} | set(STORES):
+            for (ix, iy), d, outside in entries:
+                if outside and rng.random() < DOOR_MAT:
+                    _door_mat(plan, idx, ix, iy, d)
         return
 
     if room.kind in ("kitchen", "openplan"):

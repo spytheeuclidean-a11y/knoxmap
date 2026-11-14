@@ -174,16 +174,18 @@ def _assign_shop_floor(plan: Plan, rng: random.Random, street: str | None,
     adj = _neighbours(plan)
     taken = {i for i, _ in fronts}
     backs: list[tuple[int, str]] = []
+    used_fronts: set[str] = set()
     for n, (i, r) in enumerate(fronts):
         if n < len(uses):
             front, back = uses[n]
-        elif uses:
-            # More shop fronts than the map has businesses: the last one
-            # along the street takes the room next door as well.
-            front, back = uses[-1][0], "storage"
         else:
             front = interiors.store_kind(rng)
+            for _ in range(4):
+                if front not in used_fronts:
+                    break
+                front = interiors.store_kind(rng)
             back = "grocerystorage" if front == "grocery" else "storage"
+        used_fronts.add(front)
         r.kind = front
         backs.append((i, back))
     for i, back in backs:
@@ -224,11 +226,11 @@ ROOM_CAP_PER = {
     # A school has one library, one gym, one canteen and one janitor,
     # not one per six rooms: at a cap of 6 a 25-room floor came out with
     # four libraries. These are the rooms a building has exactly one of.
-    "library": 40, "gym": 40, "kitchen": 40, "diningroom": 40,
-    "lobby": 40, "schoollab": 24, "schoolstorage": 24,
-    "sportstorage": 40,
+    "library": 20, "gym": 40, "kitchen": 40, "diningroom": 40,
+    "lobby": 40, "schoollab": 10, "schoolstorage": 16,
+    "sportstorage": 30,
     "bathroom": 10, "hall": 12,
-    "breakroom": 25, "office": 12, "storage": 8, "garage": 15,
+    "breakroom": 15, "office": 10, "storage": 8, "garage": 15,
     "policeoffice": 6, "evidenceroom": 25,
     # A few cells, not a cell block: one room in eight at most, so a
     # 30-room station gets three or four rather than the eleven that a
@@ -495,9 +497,12 @@ NEEDS_CORRIDOR = {"school", "police", "civic", "medical", "fire", "fire_police",
 # restaurant fronts already choose an adjacent back room in _assign_shop_floor.
 BUSINESS_NEIGHBOURS = {
     "school": (("kitchen", "diningroom"), ("gym", "sportstorage"),
-               ("classroom", "schoollab")),
+               ("gym", "lockerroom"), ("classroom", "schoollab"),
+               ("office", "officestorage"), ("office", "breakroom")),
     "church": (("lobby", "church"), ("office", "storage")),
-    "industrial": (("warehouse", "storage"), ("warehouse", "garage")),
+    "industrial": (("warehouse", "toolstore"), ("warehouse", "garage"),
+                   ("office", "officestorage"), ("kitchen", "diningroom"),
+                   ("lockerroom", "bathroom")),
     "barn": (("warehouse", "storage"), ("warehouse", "garage")),
     "military": (("kitchen", "bedroom"), ("armystorage", "office")),
     "castle": (("hall", "church"), ("hall", "kitchen")),

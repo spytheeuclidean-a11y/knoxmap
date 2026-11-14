@@ -104,19 +104,22 @@ def _draw_line(draw: ImageDraw.ImageDraw, rings: list[list[tuple[float, float]]]
                     draw.ellipse((x - r, y - r, x + r, y + r), fill=fill)
 
 
-def _draw_roads(image: Image.Image, strokes, fill) -> None:
-    """Constant-width road strokes, joined across OSM ways with 45-degree bevels."""
+def _draw_roads(image: Image.Image, strokes, fill, crisp: bool = False) -> None:
+    """Constant-width road strokes, joined across OSM ways with bevel or crisp mitre corners."""
     import numpy as np
-    from shapely.geometry import LineString
+    from shapely.geometry import LineString, Point
     from shapely.ops import linemerge, unary_union
 
     groups = {}
+    pt_widths: dict[tuple[float, float], set[int]] = {}
     for width, rings in strokes:
         width = max(1, int(round(width)))
         for ring in rings:
             points = [(round(x, 6), round(y, 6)) for x, y in ring]
             if len(set(points)) > 1:
                 groups.setdefault(width, []).append(points)
+                for p in (points[0], points[-1]):
+                    pt_widths.setdefault((round(p[0], 2), round(p[1], 2)), set()).add(width)
     scale = 4
     strip_h = 512
     for width, rings in groups.items():
@@ -128,7 +131,20 @@ def _draw_roads(image: Image.Image, strokes, fill) -> None:
         network = unary_union(lines)
         if network.geom_type == "MultiLineString":
             network = linemerge(network)
-        surface = network.buffer(width / 2, cap_style="round", join_style="bevel")
+        if crisp:
+            surface = network.buffer(
+                width / 2, cap_style="flat", join_style="mitre", mitre_limit=1.5
+            )
+            bridges = [
+                Point(p[0] + shift, p[1] + shift).buffer(width / 2)
+                for ring in rings
+                for p in (ring[0], ring[-1])
+                if len(pt_widths.get((round(p[0], 2), round(p[1], 2)), ())) > 1
+            ]
+            if bridges:
+                surface = unary_union([surface, *bridges])
+        else:
+            surface = network.buffer(width / 2, cap_style="round", join_style="bevel")
         if surface.is_empty:
             continue
         x0, y0, x1, y1 = surface.bounds

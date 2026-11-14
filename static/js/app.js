@@ -2107,7 +2107,12 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
     if (!res.ok) throw apiError(data, res);
 
     status.className = 'success';
-    status.textContent = `Done in ${data.osmSeconds}s (OSM query). ${data.featureCount} features rendered.`;
+    const timing = data.renderSeconds != null
+      ? `${data.totalSeconds}s (OSM ${data.osmSeconds}s, render ${data.renderSeconds}s`
+        + `${data.nativeAccelerated === false ? ', Python fallback' : data.nativeAccelerated ? ', Rust' : ''})`
+      : `${data.osmSeconds}s (OSM query)`;
+    status.textContent = `Done in ${timing}. ${data.featureCount} features rendered.`;
+    window.dispatchEvent(new CustomEvent('knoxmap:generated', { detail: { mapName: data.mapName } }));
     showGapFill(data, status);
     fx.overlay.done(`${data.featureCount.toLocaleString()} features on the map`);
     fx.step('terrain', 'done');
@@ -2261,9 +2266,15 @@ function startProgress(mapName) {
                            + `${(p.total || 0).toLocaleString()} stretches…`
                            + (p.slowRoads ? ' Slowly: the fast road router (knoxroute) is '
                               + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '') + leftText(p);
+      } else if (p.stage === 'chunks') {
+        status.textContent = `Rendering & stitching chunks — ${(p.done || 0).toLocaleString()} of `
+                           + `${(p.total || 0).toLocaleString()} chunks…` + leftText(p);
       } else if (p.stage === 'render') {
+        const accel = p.nativeAccelerated === false
+          ? ' (Python fallback — knoxroute missing)'
+          : p.nativeAccelerated ? ' (Rust)' : '';
         status.textContent = `Rendering ${p.features.toLocaleString()} features `
-                           + 'into bitmaps…' + leftText(p);
+                           + `into bitmaps${accel}…` + leftText(p);
       }
     } catch (_) { /* the generate call is the source of truth */ }
   }, 1500);

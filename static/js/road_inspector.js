@@ -17,6 +17,49 @@
   let dragX = 0;
   let dragY = 0;
   let currentName = null;
+  let groundReadCtx = null;
+  let detailsReadCtx = null;
+
+  function sampleTileLabel(tx, ty) {
+    const parts = [];
+    if (groundReadCtx) {
+      const p = groundReadCtx.getImageData(tx, ty, 1, 1).data;
+      const hex = ((p[0] << 16) | (p[1] << 8) | p[2]);
+      if (hex === 0x646464 || hex === 0x505050 || hex === 0x464646 || hex === 0x3c3c3c || hex === 0x6e6e6e) {
+        parts.push('Asphalt');
+      } else if (hex === 0x787878) {
+        parts.push('Sidewalk');
+      } else if (hex === 0x75752f || hex === 0x5a6423 || hex === 0x8f883c) {
+        parts.push('Grass');
+      } else if (hex === 0x008aff) {
+        parts.push('Water');
+      } else {
+        parts.push(`Ground rgb(${p[0]},${p[1]},${p[2]})`);
+      }
+    }
+    if (showDetails && detailsReadCtx) {
+      const d = detailsReadCtx.getImageData(tx, ty, 1, 1).data;
+      if (d[3] > 0 && (d[0] || d[1] || d[2])) {
+        const hex = ((d[0] << 16) | (d[1] << 8) | d[2]);
+        if (hex === 0x00e6ff) parts.push('Straight kerb');
+        else if (hex === 0x50aaff) parts.push('Diag kerb');
+        else if (hex === 0xffffff) parts.push('White line / crossing');
+        else if (hex === 0xffdc28) parts.push('Yellow line');
+        else if (hex === 0xff821e) parts.push('Street prop');
+        else parts.push(`Detail rgb(${d[0]},${d[1]},${d[2]})`);
+      }
+    }
+    return parts.join(' + ');
+  }
+
+  function makeReadCtx(img) {
+    const c = document.createElement('canvas');
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(img, 0, 0);
+    return g;
+  }
 
   function ensureOverlay() {
     if (overlay) return;
@@ -25,7 +68,7 @@
     overlay.hidden = true;
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:1200', 'background:#0d0f11',
-      'display:flex', 'flex-direction:column', 'color:#e6e8eb',
+      'display:none', 'flex-direction:column', 'color:#e6e8eb',
       'font-family:inherit',
     ].join(';');
 
@@ -41,7 +84,10 @@
             <input type="checkbox" id="riGrid" checked> Tile grid (&ge;4x)
           </label>
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <input type="number" id="riJumpX" placeholder="x" title="Jump to tile X" style="width:62px;padding:3px 6px;background:#0d0f11;color:#e6e8eb;border:1px solid #2b3036;border-radius:4px;font-size:12px">
+          <input type="number" id="riJumpY" placeholder="y" title="Jump to tile Y" style="width:62px;padding:3px 6px;background:#0d0f11;color:#e6e8eb;border:1px solid #2b3036;border-radius:4px;font-size:12px">
+          <button type="button" class="btn btn-small" id="riJumpBtn">Go</button>
           <button type="button" class="btn btn-small" id="riZoomOut">-</button>
           <span id="riZoomBadge" style="min-width:52px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums">100%</span>
           <button type="button" class="btn btn-small" id="riZoomIn">+</button>
@@ -49,6 +95,7 @@
           <button type="button" class="btn btn-small" id="ri100">1:1</button>
           <button type="button" class="btn btn-small" id="ri400">4x</button>
           <button type="button" class="btn btn-small" id="ri800">8x</button>
+          <button type="button" class="btn btn-small" id="riRefresh" title="Reload bitmaps">Refresh</button>
           <button type="button" class="btn btn-small" id="riClose">Close</button>
         </div>
       </div>
@@ -110,7 +157,8 @@
         const ty = Math.floor((e.clientY - r.top - panY) / scale);
         const el = document.getElementById('riCoords');
         if (tx >= 0 && ty >= 0 && tx < groundImg.naturalWidth && ty < groundImg.naturalHeight) {
-          el.textContent = `Tile (${tx}, ${ty}) · Drag to pan · Scroll to zoom`;
+          const info = sampleTileLabel(tx, ty);
+          el.textContent = `Tile (${tx}, ${ty})${info ? ' · ' + info : ''} · Drag to pan · Scroll to zoom`;
         } else {
           el.textContent = 'Hover over the map · Drag to pan · Scroll to zoom';
         }
@@ -140,21 +188,54 @@
       showGrid = e.target.checked;
       draw();
     });
+    function jumpToInputs() {
+      if (!groundImg || !groundImg.naturalWidth) return;
+      const xEl = document.getElementById('riJumpX');
+      const yEl = document.getElementById('riJumpY');
+      const tx = Number(xEl.value);
+      const ty = Number(yEl.value);
+      if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+      const nextScale = Math.max(scale, 6);
+      scale = Math.max(0.05, Math.min(24, nextScale));
+      panX = viewport.clientWidth / 2 - (tx + 0.5) * scale;
+      panY = viewport.clientHeight / 2 - (ty + 0.5) * scale;
+      draw();
+    }
+
+    document.getElementById('riJumpBtn').addEventListener('click', jumpToInputs);
+    document.getElementById('riJumpX').addEventListener('keydown', e => {
+      if (e.key === 'Enter') jumpToInputs();
+    });
+    document.getElementById('riJumpY').addEventListener('keydown', e => {
+      if (e.key === 'Enter') jumpToInputs();
+    });
     document.getElementById('riZoomIn').addEventListener('click', () => zoomCenter(scale * 1.4));
     document.getElementById('riZoomOut').addEventListener('click', () => zoomCenter(scale / 1.4));
     document.getElementById('riFit').addEventListener('click', fit);
     document.getElementById('ri100').addEventListener('click', () => zoomCenter(1));
     document.getElementById('ri400').addEventListener('click', () => zoomCenter(4));
     document.getElementById('ri800').addEventListener('click', () => zoomCenter(8));
+    document.getElementById('riRefresh').addEventListener('click', () => {
+      if (currentName) window.openRoadInspector(currentName);
+    });
     document.getElementById('riClose').addEventListener('click', close);
+
+    window.addEventListener('knoxmap:generated', e => {
+      const name = e && e.detail && e.detail.mapName;
+      if (overlay && !overlay.hidden && currentName && (!name || name === currentName)) {
+        window.openRoadInspector(currentName);
+      }
+    });
 
     document.addEventListener('keydown', e => {
       if (overlay.hidden) return;
-      if (e.key === 'Escape') close();
-      else if (e.key === '+' || e.key === '=') zoomCenter(scale * 1.3);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === '+' || e.key === '=') zoomCenter(scale * 1.3);
       else if (e.key === '-') zoomCenter(scale / 1.3);
       else if (e.key === '0') fit();
-    });
+    }, true);
   }
 
   function zoomAt(cx, cy, nextScale) {
@@ -231,7 +312,13 @@
   }
 
   function close() {
-    if (overlay) overlay.hidden = true;
+    dragging = false;
+    const viewport = document.getElementById('riViewport');
+    if (viewport) viewport.style.cursor = 'grab';
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.style.display = 'none';
+    }
   }
 
   window.openRoadInspector = function (name) {
@@ -251,8 +338,11 @@
     groundImg = g;
     detailsImg = d;
 
+    groundReadCtx = null;
+    detailsReadCtx = null;
     g.onload = () => {
       if (groundImg !== g) return;
+      groundReadCtx = makeReadCtx(g);
       status.textContent = '';
       dims.textContent = `${name} · ${g.naturalWidth} × ${g.naturalHeight} tiles`;
       fit();
@@ -262,7 +352,10 @@
       status.textContent = `No generated bitmap found for ${name} yet. Run Generate map first.`;
     };
     d.onload = () => {
-      if (detailsImg === d) draw();
+      if (detailsImg === d) {
+        detailsReadCtx = makeReadCtx(d);
+        draw();
+      }
     };
 
     const enc = encodeURIComponent(name);

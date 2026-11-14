@@ -16,7 +16,9 @@ use std::io::{self, BufWriter, Read, Write};
 
 mod box_any;
 mod clear_road_veg;
+mod paint_kerbs;
 mod rails;
+mod smooth_roads;
 mod woodland;
 
 const N: usize = 16;
@@ -588,6 +590,14 @@ fn main() {
     }
     if std::env::args().nth(1).as_deref() == Some("--rails") {
         rails::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--smooth-roads") {
+        smooth_roads::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--paint-kerbs") {
+        paint_kerbs::run();
         return;
     }
     let mut r = Reader { inner: io::stdin() };

@@ -92,17 +92,40 @@ def _fast(path: str, bits_wanted: int, crop, step: int = 1):
     return out
 
 
+_RGB_CACHE: dict[tuple[str, int, int], np.ndarray] = {}
+_RGB_CACHE_MAX_BYTES = 128 * 1024 * 1024
+
+
 def read_rgb(path: str, crop: tuple[int, int] | None = None,
              step: int = 1) -> np.ndarray:
     """The picture as a (height, width, 3) uint8 array. `crop` is (rows, cols);
     `step` keeps every step-th pixel, for a smaller picture of a big map."""
+    try:
+        st = os.stat(path)
+        key = (os.path.abspath(path), st.st_mtime_ns, st.st_size)
+    except OSError:
+        key = None
+
+    if key is not None and key in _RGB_CACHE:
+        cached = _RGB_CACHE[key]
+        out = cached[:crop[0], :crop[1]] if crop else cached
+        out = out[::step, ::step] if step > 1 else out
+        return out.copy()
+
     arr = _fast(path, 24, crop, step)
-    if arr is not None:
-        return arr
-    with Image.open(path) as img:
-        arr = np.array(img.convert("RGB"))
-    arr = arr[:crop[0], :crop[1]] if crop else arr
-    return arr[::step, ::step] if step > 1 else arr
+    if arr is None:
+        with Image.open(path) as img:
+            arr = np.array(img.convert("RGB"))
+        arr = arr[:crop[0], :crop[1]] if crop else arr
+        arr = arr[::step, ::step] if step > 1 else arr
+
+    if key is not None and crop is None and step == 1 and arr.nbytes <= _RGB_CACHE_MAX_BYTES:
+        if len(_RGB_CACHE) >= 2:
+            _RGB_CACHE.pop(next(iter(_RGB_CACHE)))
+        cached_copy = arr.copy()
+        cached_copy.setflags(write=False)
+        _RGB_CACHE[key] = cached_copy
+    return arr
 
 
 def read_gray(path: str, crop: tuple[int, int] | None = None) -> np.ndarray:
