@@ -90,6 +90,23 @@ class VanillaGridLayoutTests(unittest.TestCase):
         self.assertNotIn((169, 90), cleaned)
         self.assertIn((171, 88), cleaned)
 
+    def test_three_way_t_junction_connects_cleanly_at_pin(self):
+        main = osm.OSMFeature(
+            6, "way", {"highway": "primary"},
+            [(40.0, 10.0), (40.0, 50.0), (40.0, 100.0)],
+        )
+        stem = osm.OSMFeature(
+            7, "way", {"highway": "secondary"},
+            [(40.0, 50.0), (90.0, 80.0)],
+        )
+        vanilla_grid.apply_vanilla_grid(
+            [main, stem], self.proj, osm.classify, renderer._is_polygon
+        )
+        self._assert_octilinear(main.geometry)
+        self._assert_octilinear(stem.geometry)
+        self.assertIn((40.0, 50.0), main.geometry)
+        self.assertIn((40.0, 50.0), stem.geometry)
+
     def test_replay_supports_mode_5(self):
         road = osm.OSMFeature(
             4, "way", {"highway": "residential"},

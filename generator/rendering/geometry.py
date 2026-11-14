@@ -130,7 +130,7 @@ def _draw_roads(image: Image.Image, strokes, fill, crisp: bool = False) -> None:
             network = linemerge(network)
         if crisp:
             surface = network.buffer(
-                width / 2, cap_style="flat", join_style="mitre", mitre_limit=3.0
+                width / 2, cap_style="flat", join_style="mitre", mitre_limit=1.5
             )
         else:
             surface = network.buffer(width / 2, cap_style="round", join_style="bevel")
