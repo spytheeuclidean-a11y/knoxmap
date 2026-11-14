@@ -2266,6 +2266,9 @@ function startProgress(mapName) {
                            + `${(p.total || 0).toLocaleString()} stretches…`
                            + (p.slowRoads ? ' Slowly: the fast road router (knoxroute) is '
                               + 'missing. Stop, and pick another Road layout, or update KnoxMap.' : '') + leftText(p);
+      } else if (p.stage === 'chunks') {
+        status.textContent = `Rendering & stitching chunks — ${(p.done || 0).toLocaleString()} of `
+                           + `${(p.total || 0).toLocaleString()} chunks…` + leftText(p);
       } else if (p.stage === 'render') {
         const accel = p.nativeAccelerated === false
           ? ' (Python fallback — knoxroute missing)'

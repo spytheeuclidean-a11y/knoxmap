@@ -424,6 +424,7 @@ def _generate(data):
     _set_progress(map_name, stage="render", features=len(features),
                   slowRoads=slow_roads, nativeAccelerated=native_ok)
     t_render_start = time.time()
+    render_stage = "chunks" if (approx_w // 300) * (approx_h // 300) > 144 else "roads"
 
     try:
         result = renderer.render(
@@ -463,7 +464,7 @@ def _generate(data):
             elevation_span=((layers.report.get("elevation_3dep") or {}).get("span_m")
                             if layers else None),
             should_stop=_stopper(map_name),
-            progress=lambda done, total: _set_progress(map_name, stage="roads", done=done, total=total),
+            progress=lambda done, total: _set_progress(map_name, stage=render_stage, done=done, total=total),
         )
     except knoxstop.Stopped:
         return _stopped(map_name, "generate")

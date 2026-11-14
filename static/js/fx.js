@@ -122,6 +122,12 @@ const fx = (() => {
         $('#gen-detail').textContent = `${(p.done || 0).toLocaleString()} of ${(p.total || 0).toLocaleString()} stretches`
           + (p.slowRoads ? ' · slow: the fast road router is missing' : '');
         $('#gen-bar').style.width = `${Math.round(70 + 12 * (p.done || 0) / Math.max(1, p.total || 1))}%`;
+      } else if (p.stage === 'chunks') {
+        const done = p.done || 0;
+        const total = Math.max(1, p.total || 1);
+        $('#gen-stage').textContent = 'Drawing & stitching chunks';
+        $('#gen-detail').textContent = `${done.toLocaleString()} of ${total.toLocaleString()} chunks`;
+        $('#gen-bar').style.width = `${Math.round(82 + 17 * done / total)}%`;
       } else if (p.stage === 'render') {
         $('#gen-stage').textContent = 'Drawing the terrain';
         $('#gen-detail').textContent = `${(p.features || 0).toLocaleString()} features`;
