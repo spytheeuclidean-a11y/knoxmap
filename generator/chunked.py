@@ -243,7 +243,7 @@ def render_chunked(
     merged_bridges = 0
     merged_monuments = 0
     merged_tiles: list = []
-    seen_struct_tiles: set[tuple[int, int, str]] = set()
+    seen_struct_tiles: set[tuple[int, int, int, str]] = set()
     pad = max(96, halo_tiles)
 
     ckpt_path = os.path.join(output_dir, f".{map_name}_chunks.json")
@@ -269,7 +269,7 @@ def render_chunked(
                 merged_monuments = int(ckpt.get("monuments", 0))
                 merged_tiles = list(ckpt.get("tiles", []))
                 seen_struct_tiles = {
-                    (int(r["x"]), int(r["y"]), r.get("layer", ""))
+                    (int(r[0]), int(r[1]), int(r[2]), r[3])
                     for r in merged_tiles
                 }
                 if os.path.exists(preview_wip_path):
@@ -306,13 +306,14 @@ def render_chunked(
             merged_bridges += int(st.get("bridges", 0))
             merged_monuments += int(st.get("monuments", 0))
             for row in st.get("tiles", []):
-                gx = row["x"] + hx0
-                gy = row["y"] + hy0
+                rx, ry, rz, rlayer, rtile = row
+                gx = int(rx) + hx0
+                gy = int(ry) + hy0
                 if x0 <= gx < x1 and y0 <= gy < y1:
-                    tkey = (gx, gy, row.get("layer", ""))
+                    tkey = (gx, gy, int(rz), rlayer)
                     if tkey not in seen_struct_tiles:
                         seen_struct_tiles.add(tkey)
-                        merged_tiles.append({**row, "x": gx, "y": gy})
+                        merged_tiles.append([gx, gy, int(rz), rlayer, rtile])
 
         w_land.flush()
         w_veg.flush()

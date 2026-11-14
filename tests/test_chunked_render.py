@@ -44,6 +44,14 @@ class ChunkedRenderTests(unittest.TestCase):
                 (SOUTH + 50 * LAT_PER_M, WEST + 50 * LON_PER_M),
             ])],
         ))
+        # Include a bridge so lifted.rows() produces structure tiles.
+        feats.append(osm.OSMFeature(
+            999002, "way", {"highway": "secondary", "bridge": "yes", "layer": "1"},
+            [
+                (SOUTH + 180 * LAT_PER_M, WEST + 80 * LON_PER_M),
+                (SOUTH + 180 * LAT_PER_M, WEST + 160 * LON_PER_M),
+            ],
+        ))
         with tempfile.TemporaryDirectory() as td:
             res = chunked.render_chunked(
                 feats,
