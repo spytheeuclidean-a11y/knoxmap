@@ -7,7 +7,7 @@ from unittest import mock
 import numpy as np
 from PIL import Image
 
-from generator import chunked
+from generator import chunked, osm
 from generator.rendering.noise import global_tile_offset, lattices, smooth_noise
 from tools.regression_maps import LAT_PER_M, LON_PER_M, SOUTH, WEST, scenario_features
 from web.checks import _beyond_this_pc, _too_big_for_memory
@@ -33,7 +33,17 @@ class ChunkedRenderTests(unittest.TestCase):
             self.assertTrue(np.array_equal(np.asarray(Image.open(p8).convert("L")), gray))
 
     def test_render_chunked_stitches_2x2_cells(self):
-        feats = scenario_features("village")
+        feats = list(scenario_features("village"))
+        feats.append(osm.OSMFeature(
+            999001, "relation", {"landuse": "forest"}, [],
+            role_geoms=[("outer", [
+                (SOUTH + 50 * LAT_PER_M, WEST + 50 * LON_PER_M),
+                (SOUTH + 120 * LAT_PER_M, WEST + 50 * LON_PER_M),
+                (SOUTH + 120 * LAT_PER_M, WEST + 120 * LON_PER_M),
+                (SOUTH + 50 * LAT_PER_M, WEST + 120 * LON_PER_M),
+                (SOUTH + 50 * LAT_PER_M, WEST + 50 * LON_PER_M),
+            ])],
+        ))
         with tempfile.TemporaryDirectory() as td:
             res = chunked.render_chunked(
                 feats,

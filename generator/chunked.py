@@ -26,7 +26,7 @@ import knoxstop
 
 from . import pz_colors as C
 from .osm import OSMFeature, classify
-from .rendering.geometry import _is_polygon
+from .rendering.geometry import _feature_coords_px, _is_polygon
 from .rendering.noise import global_tile_offset
 from .rendering.projection import Projector, _inside, shape_px
 
@@ -153,15 +153,8 @@ def _link_or_copy(src: str, dst: str) -> None:
 def _feature_px_bbox(feat: OSMFeature, proj: Projector) -> tuple[float, float, float, float] | None:
     xs: list[float] = []
     ys: list[float] = []
-    if feat.kind == "relation" and feat.members:
-        for pts, _role in feat.members:
-            for lat, lon in pts:
-                px, py = proj.to_px(lat, lon)
-                xs.append(px)
-                ys.append(py)
-    else:
-        for lat, lon in feat.geometry:
-            px, py = proj.to_px(lat, lon)
+    for ring in _feature_coords_px(feat, proj):
+        for px, py in ring:
             xs.append(px)
             ys.append(py)
     if not xs:
