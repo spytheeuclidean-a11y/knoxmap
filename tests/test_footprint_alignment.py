@@ -123,6 +123,18 @@ class BuildingAlignment(unittest.TestCase):
         self.assertEqual([value for value, _label in body["options"]["building_alignment"]],
                          ["real", "smart", "rectilinear", "rectangle"])
 
+    def test_clipped_lot_rejects_thin_sliver(self):
+        from knoxbuild.footprint import place
+
+        occupied = np.zeros((40, 40), dtype=bool)
+        lots = np.zeros((40, 40), dtype=bool)
+        # Existing lot covers rows 12..30, leaving only a 2-tile-deep strip (10..12).
+        lots[12:30, 5:35] = True
+        poly = [(10.0, 10.0), (30.0, 10.0), (30.0, 18.0), (10.0, 18.0)]
+        fp, reason = place(poly, occupied, min_side=3, lots=lots, alignment="rectangle")
+        self.assertIsNone(fp)
+        self.assertEqual(reason, "taken")
+
 
 if __name__ == "__main__":
     unittest.main()

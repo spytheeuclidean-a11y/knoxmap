@@ -152,15 +152,20 @@ def style_for(tags: dict, area: str | None) -> str:
     them, and two-metre metal bars used to come out as the waist-high railing.
     """
     barrier = tags.get("barrier")
-    if barrier in {"wall", "retaining_wall", "city_wall"}:
-        return "tall_concrete"
     metres = height_m(tags)
+    short_park = area in {"park", "playground"} and (metres is None or metres < 1.4)
+    if barrier in {"wall", "retaining_wall", "city_wall"}:
+        if short_park or (metres is not None and metres < 1.4 and barrier != "city_wall"):
+            return "black_metal"
+        return "tall_concrete"
     kind = (tags.get("fence_type") or tags.get("material") or "").lower()
     if kind in {"chain_link", "chain", "mesh"}:
         if metres is not None:
             return by_height("short_chainlink", metres)
         return "tall_chainlink" if area in {"industrial", "military"} else "short_chainlink"
     if kind in {"wood", "wooden", "split_rail", "board", "panel"}:
+        if short_park:
+            return "short_wooden"
         return by_height("tall_wooden", metres)
     if kind in {"picket", "pales"}:
         return by_height("white_picket", metres)
@@ -169,6 +174,8 @@ def style_for(tags: dict, area: str | None) -> str:
     if kind in {"barbed_wire", "electric", "wire"}:
         return "cattle"
     if kind in {"concrete", "brick", "stone", "masonry"}:
+        if short_park or (metres is not None and metres < 1.4):
+            return "black_metal"
         return "tall_concrete"
     return by_height({
         "industrial": "tall_chainlink", "military": "tall_chainlink",

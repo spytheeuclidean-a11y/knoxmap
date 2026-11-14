@@ -488,7 +488,7 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
         if blocked.any():
             by0, by1, bx0, bx1 = _clear_box(mask, blocked)
             mask, fx0, fy0 = _hug(mask[by0:by1, bx0:bx1], fx0 + bx0, fy0 + by0)
-            if mask.sum() < MIN_TILES:
+            if mask.sum() < MIN_TILES or min(mask.shape) < max(3, min_side):
                 return None, "taken"
 
     occupied[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] |= mask

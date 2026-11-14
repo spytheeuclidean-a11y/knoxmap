@@ -105,6 +105,39 @@ class MappedRoadsRevamp(unittest.TestCase):
         self.assertEqual(curve.geometry[-1], (20.0, 50.0))
         self.assertEqual(corner.geometry, [(80.0, 10.0), (80.0, 30.0), (100.0, 30.0)])
 
+    def test_two_tile_bumps_and_notches_are_smoothed_on_road_and_sidewalk(self):
+        im = Image.new("RGB", (24, 24), C.MEDIUM_GRASS)
+        px = im.load()
+        # Horizontal band: sidewalk y in 6..15, road y in 8..13.
+        for y in range(6, 16):
+            for x in range(2, 22):
+                px[x, y] = C.PALE_CONCRETE
+        for y in range(8, 14):
+            for x in range(2, 22):
+                px[x, y] = C.MEDIUM_ASPHALT
+        # Inject a 2-tile-wide asphalt bump at (6..7, 7) and 2-tile notch at (12..13, 8).
+        px[6, 7] = C.MEDIUM_ASPHALT
+        px[7, 7] = C.MEDIUM_ASPHALT
+        px[12, 8] = C.PALE_CONCRETE
+        px[13, 8] = C.PALE_CONCRETE
+        # Inject a 2-tile-wide sidewalk bump at (6..7, 5) and 2-tile notch at (12..13, 6).
+        px[6, 5] = C.PALE_CONCRETE
+        px[7, 5] = C.PALE_CONCRETE
+        px[12, 6] = C.MEDIUM_GRASS
+        px[13, 6] = C.MEDIUM_GRASS
+
+        asphalt = (C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT)
+        _smooth_road_edges(im, asphalt, _is_colour)
+
+        self.assertEqual(px[6, 7], C.PALE_CONCRETE)
+        self.assertEqual(px[7, 7], C.PALE_CONCRETE)
+        self.assertEqual(px[12, 8], C.MEDIUM_ASPHALT)
+        self.assertEqual(px[13, 8], C.MEDIUM_ASPHALT)
+        self.assertEqual(px[6, 5], C.MEDIUM_GRASS)
+        self.assertEqual(px[7, 5], C.MEDIUM_GRASS)
+        self.assertEqual(px[12, 6], C.PALE_CONCRETE)
+        self.assertEqual(px[13, 6], C.PALE_CONCRETE)
+
 
 if __name__ == "__main__":
     unittest.main()

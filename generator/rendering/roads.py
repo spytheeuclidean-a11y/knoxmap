@@ -86,6 +86,56 @@ def _shifted(mask, dy, dx) -> "object":
     return out
 
 
+def _mark_two_tile_bumps(fg, bg, back):
+    """Return a mask of 2-tile-wide, 1-tile-deep ``fg`` teeth jutting into ``bg``."""
+    out = fg & False
+    h, w = fg.shape
+    if h >= 3 and w >= 4:
+        pair = fg[1:-1, 1:-2] & fg[1:-1, 2:-1] & bg[1:-1, :-3] & bg[1:-1, 3:]
+        n = pair & bg[:-2, 1:-2] & bg[:-2, 2:-1] & \
+            back[2:, :-3] & back[2:, 1:-2] & back[2:, 2:-1] & back[2:, 3:]
+        out[1:-1, 1:-2] |= n
+        out[1:-1, 2:-1] |= n
+        s = pair & bg[2:, 1:-2] & bg[2:, 2:-1] & \
+            back[:-2, :-3] & back[:-2, 1:-2] & back[:-2, 2:-1] & back[:-2, 3:]
+        out[1:-1, 1:-2] |= s
+        out[1:-1, 2:-1] |= s
+    if h >= 4 and w >= 3:
+        pair = fg[1:-2, 1:-1] & fg[2:-1, 1:-1] & bg[:-3, 1:-1] & bg[3:, 1:-1]
+        w_m = pair & bg[1:-2, :-2] & bg[2:-1, :-2] & \
+            back[:-3, 2:] & back[1:-2, 2:] & back[2:-1, 2:] & back[3:, 2:]
+        out[1:-2, 1:-1] |= w_m
+        out[2:-1, 1:-1] |= w_m
+        e_m = pair & bg[1:-2, 2:] & bg[2:-1, 2:] & \
+            back[:-3, :-2] & back[1:-2, :-2] & back[2:-1, :-2] & back[3:, :-2]
+        out[1:-2, 1:-1] |= e_m
+        out[2:-1, 1:-1] |= e_m
+    return out
+
+
+def _mark_two_tile_notches(fg, bg):
+    """Return a mask of 2-tile-wide, 1-tile-deep ``fg`` dents into ``bg``."""
+    out = fg & False
+    h, w = fg.shape
+    if h >= 3 and w >= 4:
+        pair = fg[1:-1, 1:-2] & fg[1:-1, 2:-1] & bg[1:-1, :-3] & bg[1:-1, 3:]
+        n = pair & fg[:-2, 1:-2] & fg[:-2, 2:-1] & bg[2:, 1:-2] & bg[2:, 2:-1]
+        out[1:-1, 1:-2] |= n
+        out[1:-1, 2:-1] |= n
+        s = pair & fg[2:, 1:-2] & fg[2:, 2:-1] & bg[:-2, 1:-2] & bg[:-2, 2:-1]
+        out[1:-1, 1:-2] |= s
+        out[1:-1, 2:-1] |= s
+    if h >= 4 and w >= 3:
+        pair = fg[1:-2, 1:-1] & fg[2:-1, 1:-1] & bg[:-3, 1:-1] & bg[3:, 1:-1]
+        w_m = pair & fg[1:-2, :-2] & fg[2:-1, :-2] & bg[1:-2, 2:] & bg[2:-1, 2:]
+        out[1:-2, 1:-1] |= w_m
+        out[2:-1, 1:-1] |= w_m
+        e_m = pair & fg[1:-2, 2:] & fg[2:-1, 2:] & bg[1:-2, :-2] & bg[2:-1, :-2]
+        out[1:-2, 1:-1] |= e_m
+        out[2:-1, 1:-1] |= e_m
+    return out
+
+
 def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
     """Fill one-tile notches along the edge of the road, and shave one-tile bumps.
 
@@ -111,7 +161,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         y1 = min(h, y0 + strip)
         top, bottom = max(0, y0 - 1), min(h, y1 + 1)
         ground = np.asarray(landscape.crop((0, top, w, bottom))).copy()
-        for _ in range(6):
+        for _ in range(10):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
             verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
@@ -120,6 +170,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
             notch[:, 1:-1] |= road[:, :-2] & road[:, 2:]
             notch &= road_border
+            notch |= _mark_two_tile_notches(road_border, road)
             border_count = np.zeros(road.shape, dtype=np.uint8)
             border_count[:, 1:] += road_border[:, :-1]
             border_count[:, :-1] += road_border[:, 1:]
@@ -130,6 +181,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             bump[:, 1:-1] |= road_border[:, :-2] & road_border[:, 2:]
             bump |= border_count >= 3
             bump &= road
+            bump |= _mark_two_tile_bumps(road, road_border, road)
             # A pavement tile with no pavement beside it orthogonally is one
             # step of a diagonal edge, and on its own it draws as a lip that
             # reads as a spike standing in the grass. It becomes the ground it
@@ -177,8 +229,12 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             verge_count[:, :-1] += verge[:, 1:]
             verge_count[1:, :] += verge[:-1, :]
             verge_count[:-1, :] += verge[1:, :]
-            pave_bump = pave & (verge_count >= 3)
-            pave_notch = verge & (ortho_count >= 3)
+            pave_bump = (pave & (verge_count >= 3)) | _mark_two_tile_bumps(
+                pave, verge, pave | road
+            )
+            pave_notch = (verge & (ortho_count >= 3)) | _mark_two_tile_notches(
+                verge, pave
+            )
             if not notch.any() and not bump.any() and not lonep.any() \
                     and not mend.any() and not pave_bump.any() \
                     and not pave_notch.any():

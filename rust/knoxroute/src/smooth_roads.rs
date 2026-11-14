@@ -30,6 +30,117 @@ fn read_palette(r: &mut Reader<impl io::Read>, label: &str) -> Vec<u32> {
     raw.chunks_exact(3).map(pack_rgb).collect()
 }
 
+fn mark_two_tile_bumps(
+    fg: &[bool],
+    bg: &[bool],
+    back: &[bool],
+    w: usize,
+    h: usize,
+    out: &mut [bool],
+) {
+    if h >= 3 && w >= 4 {
+        for y in 1..(h - 1) {
+            let row = y * w;
+            for x in 1..(w - 2) {
+                let i = row + x;
+                let pair = fg[i] && fg[i + 1] && bg[i - 1] && bg[i + 2];
+                if !pair {
+                    continue;
+                }
+                let n = bg[i - w]
+                    && bg[i - w + 1]
+                    && back[i + w - 1]
+                    && back[i + w]
+                    && back[i + w + 1]
+                    && back[i + w + 2];
+                let s = bg[i + w]
+                    && bg[i + w + 1]
+                    && back[i - w - 1]
+                    && back[i - w]
+                    && back[i - w + 1]
+                    && back[i - w + 2];
+                if n || s {
+                    out[i] = true;
+                    out[i + 1] = true;
+                }
+            }
+        }
+    }
+    if h >= 4 && w >= 3 {
+        for y in 1..(h - 2) {
+            let row = y * w;
+            for x in 1..(w - 1) {
+                let i = row + x;
+                let pair = fg[i] && fg[i + w] && bg[i - w] && bg[i + 2 * w];
+                if !pair {
+                    continue;
+                }
+                let w_m = bg[i - 1]
+                    && bg[i + w - 1]
+                    && back[i - w + 1]
+                    && back[i + 1]
+                    && back[i + w + 1]
+                    && back[i + 2 * w + 1];
+                let e_m = bg[i + 1]
+                    && bg[i + w + 1]
+                    && back[i - w - 1]
+                    && back[i - 1]
+                    && back[i + w - 1]
+                    && back[i + 2 * w - 1];
+                if w_m || e_m {
+                    out[i] = true;
+                    out[i + w] = true;
+                }
+            }
+        }
+    }
+}
+
+fn mark_two_tile_notches(
+    fg: &[bool],
+    bg: &[bool],
+    w: usize,
+    h: usize,
+    out: &mut [bool],
+) {
+    if h >= 3 && w >= 4 {
+        for y in 1..(h - 1) {
+            let row = y * w;
+            for x in 1..(w - 2) {
+                let i = row + x;
+                let pair = fg[i] && fg[i + 1] && bg[i - 1] && bg[i + 2];
+                if !pair {
+                    continue;
+                }
+                let n = fg[i - w] && fg[i - w + 1] && bg[i + w] && bg[i + w + 1];
+                let s = fg[i + w] && fg[i + w + 1] && bg[i - w] && bg[i - w + 1];
+                if n || s {
+                    out[i] = true;
+                    out[i + 1] = true;
+                }
+            }
+        }
+    }
+    if h >= 4 && w >= 3 {
+        for y in 1..(h - 2) {
+            let row = y * w;
+            for x in 1..(w - 1) {
+                let i = row + x;
+                let pair = fg[i] && fg[i + w] && bg[i - w] && bg[i + 2 * w];
+                if !pair {
+                    continue;
+                }
+                let w_m = fg[i - 1] && fg[i + w - 1] && bg[i + 1] && bg[i + w + 1];
+                let e_m = fg[i + 1] && fg[i + w + 1] && bg[i - 1] && bg[i + w - 1];
+                if w_m || e_m {
+                    out[i] = true;
+                    out[i + w] = true;
+                }
+            }
+        }
+    }
+}
+
 pub fn smooth_strip(
     ground: &mut [u8],
     w: usize,
@@ -45,6 +156,7 @@ pub fn smooth_strip(
     let mut pave = vec![false; n];
     let mut verge = vec![false; n];
     let mut road_border = vec![false; n];
+    let mut pave_or_road = vec![false; n];
 
     let mut notch = vec![false; n];
     let mut bump = vec![false; n];
@@ -53,7 +165,7 @@ pub fn smooth_strip(
     let mut pave_bump = vec![false; n];
     let mut pave_notch = vec![false; n];
 
-    for _ in 0..6 {
+    for _ in 0..10 {
         for i in 0..n {
             let k = pack_rgb(&ground[i * 3..i * 3 + 3]);
             let is_r = asphalt.contains(&k);
@@ -63,6 +175,7 @@ pub fn smooth_strip(
             pave[i] = is_p;
             verge[i] = is_v;
             road_border[i] = is_p || is_v;
+            pave_or_road[i] = is_p || is_r;
         }
 
         let mut any_change = false;
@@ -138,6 +251,17 @@ pub fn smooth_strip(
 
                 any_change |= is_notch || is_bump || is_lonep || is_mend || is_pb || is_pn;
             }
+        }
+
+        mark_two_tile_notches(&road_border, &road, w, h, &mut notch);
+        mark_two_tile_bumps(&road, &road_border, &road, w, h, &mut bump);
+        mark_two_tile_bumps(&pave, &verge, &pave_or_road, w, h, &mut pave_bump);
+        mark_two_tile_notches(&verge, &pave, w, h, &mut pave_notch);
+        if !any_change {
+            any_change = notch.iter().any(|&v| v)
+                || bump.iter().any(|&v| v)
+                || pave_bump.iter().any(|&v| v)
+                || pave_notch.iter().any(|&v| v);
         }
 
         if !any_change {
