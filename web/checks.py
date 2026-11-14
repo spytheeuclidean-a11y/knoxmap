@@ -200,6 +200,15 @@ RENDER_SETTINGS = ["align_streets", "rotate_degrees", "straight_roads", "include
                    "climate_flavor", "winter_look"]
 
 
+def _effective_pixels(tiles_w: float, tiles_h: float) -> float:
+    """Peak pixels held in RAM at once (capped by chunked rendering for large maps)."""
+    # Large maps use generator.chunked (8x8 cells + 64-tile halo per chunk),
+    # bounding peak render RAM to one chunk rather than the full canvas.
+    chunk_pixels = (8 * 300 + 2 * 64) ** 2
+    total = tiles_w * tiles_h
+    return min(total, chunk_pixels) if total > 3600 * 3600 else total
+
+
 def _too_big_for_memory(tiles_w: float, tiles_h: float,
                         per_tile: float = BYTES_PER_TILE,
                         base: float = BASE_BYTES) -> str | None:
@@ -210,7 +219,7 @@ def _too_big_for_memory(tiles_w: float, tiles_h: float,
     fail with "MemoryError".
     """
     import knoxpaths
-    needed = tiles_w * tiles_h * per_tile + base
+    needed = _effective_pixels(tiles_w, tiles_h) * per_tile + base
     status = knoxlog.memory_status()
     if not status:
         return None
@@ -239,7 +248,7 @@ def _beyond_this_pc(tiles_w: float, tiles_h: float) -> str | None:
     if not status:
         return None
     total = status[0]
-    needed = tiles_w * tiles_h * BYTES_PER_TILE + BASE_BYTES
+    needed = _effective_pixels(tiles_w, tiles_h) * BYTES_PER_TILE + BASE_BYTES
     if total and needed > total:
         return (f"This map needs about {needed / 1e9:.0f} GB of memory and this PC has "
                 f"{total / 1e9:.0f} GB, so it cannot be made here. Pick a smaller area, "

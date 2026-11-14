@@ -305,6 +305,42 @@ def _paint_landcover(landscape: Image.Image, grid) -> None:
     landscape.paste(base, (0, 0))
 
 
+def _collect_global_features(features: list[OSMFeature], proj, clip,
+                             include_proposed_roads: int = 0):
+    buckets: dict[str, list[OSMFeature]] = {}
+    building_feats: list[OSMFeature] = []
+    indoor_feats: list[OSMFeature] = []
+    fence_feats: list[OSMFeature] = []
+    gate_feats: list[OSMFeature] = []
+    place_feats: list[OSMFeature] = []
+    for feat in features:
+        if feat.kind == "node" and "population" in feat.tags and "place" in feat.tags:
+            place_feats.append(feat)
+            continue
+        if feat.kind == "node" and feat.tags.get("barrier") in GATE_BARRIERS:
+            gate_feats.append(feat)
+        if feat.kind == "node" and "natural" not in feat.tags:
+            continue
+        if feat.kind == "way" and feat.tags.get("indoor") in ("room", "corridor"):
+            indoor_feats.append(feat)
+            continue
+        barrier = feat.tags.get("barrier")
+        if barrier in FENCE_BARRIERS and feat.kind == "way":
+            fence_feats.append(feat)
+        cat = classify(feat.tags, _is_polygon(feat))
+        if cat is None or cat in {"fence", "hedge"}:
+            continue
+        if cat == "building":
+            if clip is not None and not _inside(feat, proj, clip):
+                continue
+            building_feats.append(feat)
+            continue
+        if cat == "road_proposed" and not include_proposed_roads:
+            continue
+        buckets.setdefault(cat, []).append(feat)
+    return buckets, building_feats, indoor_feats, fence_feats, gate_feats, place_feats
+
+
 def render(features: Iterable[OSMFeature], south: float, west: float,
            north: float, east: float, meters_per_tile: float,
            output_dir: str, map_name: str,
@@ -327,8 +363,30 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            winter_look: str = "auto",
            elevation=None,
            elevation_span=None,
-           should_stop=None, progress=None) -> RenderResult:
-    proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
+           should_stop=None, progress=None,
+           _proj_override=None,
+           _skip_road_layout: bool = False,
+           _write_geojson: bool = True,
+           _chunk_out: dict | None = None) -> RenderResult:
+    proj = _proj_override or Projector.build(south, west, north, east, meters_per_tile, rotation)
+    from .chunked import CHUNK_MIN_CELLS, render_chunked
+    cx_cells, cy_cells = proj.cell_grid()
+    if _proj_override is None and cx_cells * cy_cells > CHUNK_MIN_CELLS:
+        return render_chunked(
+            features, south, west, north, east, meters_per_tile,
+            output_dir, map_name,
+            spawn_density=spawn_density, tree_density=tree_density,
+            forest_density=forest_density, forest_stand_m=forest_stand_m,
+            forest_edge_m=forest_edge_m, forest_params=forest_params,
+            rotation=rotation, osm_cache=osm_cache, osm_bbox=osm_bbox,
+            shape=shape, straight_roads=straight_roads,
+            include_proposed_roads=include_proposed_roads,
+            fill_frontage=fill_frontage, terrain_only=terrain_only,
+            landcover_for=landcover_for, climate=climate,
+            winter_look=winter_look, elevation=elevation,
+            elevation_span=elevation_span, should_stop=should_stop,
+            progress=progress,
+        )
     from .rendering.forest_params import ForestParams
     # The Forest card's knobs. Callers that only know Stand size and Edge
     # softness (tools/regression_maps.py, the tests) get the rest at default.
@@ -339,17 +397,17 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     import copy
     features = [copy.copy(f) for f in features]
     road_layout = int(straight_roads or 0)
-    if road_layout == 0:
+    if not _skip_road_layout and road_layout == 0:
         from .mapped_roads import clean_mapped_roads
         clean_mapped_roads(features, proj, classify, _is_polygon)
-    elif road_layout == 5:
+    elif not _skip_road_layout and road_layout == 5:
         from .vanilla_grid import apply_vanilla_grid
         apply_vanilla_grid(features, proj, classify, _is_polygon)
-    elif road_layout in (1, 4):
+    elif not _skip_road_layout and road_layout in (1, 4):
         # Every road in straight runs at 45-degree steps (octilinear.py).
         from .octilinear import straighten_roads
         straighten_roads(features, proj, classify, _is_polygon, clean=True)
-    elif road_layout in ROAD_LAYOUTS:
+    elif not _skip_road_layout and road_layout in ROAD_LAYOUTS:
         # Routed on vanilla's lattice (roadgraph/route.py), and saved: Build and
         # the paper map read the roads back rather than routing them again.
         from .octilinear import apply_road_graph, graph_path
@@ -709,6 +767,30 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     spawn_h = proj.height // C.SPAWN_MAP_SCALE
     spawn_map = _build_spawn_map(landscape, spawn_w, spawn_h, spawn_density)
 
+    if _chunk_out is not None:
+        _chunk_out["landscape"] = landscape
+        _chunk_out["vegetation"] = vegetation
+        _chunk_out["hierarchy"] = hierarchy_image
+        _chunk_out["spawn_map"] = spawn_map
+        _chunk_out["structures"] = {
+            "bridges": lifted.bridges,
+            "monuments": lifted.monuments,
+            "tiles": lifted.rows(),
+        }
+        cells_x, cells_y = proj.cell_grid()
+        return RenderResult(
+            landscape_path="",
+            vegetation_path="",
+            spawn_map_path="",
+            preview_path="",
+            buildings_geojson_path="",
+            meta_path="",
+            width=proj.width,
+            height=proj.height,
+            cells_x=cells_x,
+            cells_y=cells_y,
+        )
+
     # --- preview (landscape + vegetation blended) ---
     preview = _build_preview(landscape, vegetation)
     if elevation is not None:
@@ -763,48 +845,49 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         time.perf_counter() - t_render0,
     )
 
-    knoxfiles.write(buildings_path, _buildings_geojson(building_feats, indoor_feats))
-    knoxfiles.write(os.path.join(output_dir, f"{map_name}_areas.geojson"),
-                    _areas_geojson(buckets))
-    knoxfiles.write(os.path.join(output_dir, f"{map_name}_fences.geojson"),
-                    _lines_geojson([f for f in fence_feats
-                                    if clip is None or _inside(f, proj, clip)]))
-    knoxfiles.write(os.path.join(output_dir, f"{map_name}_fence_openings.geojson"),
-                    _openings_geojson(gate_feats, buckets))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_structures.json"),
                     {"bridges": lifted.bridges, "monuments": lifted.monuments,
                      "tiles": lifted.rows()})
-    knoxfiles.write(os.path.join(output_dir, f"{map_name}_places.json"),
-                    _places(place_feats, proj), ensure_ascii=False)
-
     cells_x, cells_y = proj.cell_grid()
-    # Last of the lot on purpose: the build looks for <name>_info.json to know
-    # there is a map here at all, so it appears once everything beside it has.
-    knoxfiles.write(meta_path, {
-        "map_name": map_name,
-        "bbox": {"south": south, "west": west, "north": north, "east": east},
-        "rotation": rotation,
-        "osm_cache": osm_cache,
-        "straight_roads": road_layout,
-        "include_proposed_roads": include_proposed_roads,
-        "osm_bbox": list(osm_bbox) if osm_bbox else None,
-        "shape": shape,
-        "meters_per_tile": meters_per_tile,
-        "width_tiles": proj.width,
-        "height_tiles": proj.height,
-        "cells_x": cells_x,
-        "cells_y": cells_y,
-        "spawn_density_max": spawn_density,
-        "building_count": len(building_feats),
-        "feature_count": sum(len(v) for v in buckets.values()),
-        # How many homes came from an address with no building drawn for
-        # it, so "it made none of mine" is a number rather than a guess.
-        "houses_from_addresses": len(addressed),
-        # And how many were put into gaps along a street.
-        "houses_infilled": len(infilled),
-        "sheds_infilled": len(sheds),
-        "guide_reference": "Thuztor Mapping Guide v0.2",
-    }, indent=2)
+    if _write_geojson:
+        knoxfiles.write(buildings_path, _buildings_geojson(building_feats, indoor_feats))
+        knoxfiles.write(os.path.join(output_dir, f"{map_name}_areas.geojson"),
+                        _areas_geojson(buckets))
+        knoxfiles.write(os.path.join(output_dir, f"{map_name}_fences.geojson"),
+                        _lines_geojson([f for f in fence_feats
+                                        if clip is None or _inside(f, proj, clip)]))
+        knoxfiles.write(os.path.join(output_dir, f"{map_name}_fence_openings.geojson"),
+                        _openings_geojson(gate_feats, buckets))
+        knoxfiles.write(os.path.join(output_dir, f"{map_name}_places.json"),
+                        _places(place_feats, proj), ensure_ascii=False)
+
+        # Last of the lot on purpose: the build looks for <name>_info.json to know
+        # there is a map here at all, so it appears once everything beside it has.
+        knoxfiles.write(meta_path, {
+            "map_name": map_name,
+            "bbox": {"south": south, "west": west, "north": north, "east": east},
+            "rotation": rotation,
+            "osm_cache": osm_cache,
+            "straight_roads": road_layout,
+            "include_proposed_roads": include_proposed_roads,
+            "osm_bbox": list(osm_bbox) if osm_bbox else None,
+            "shape": shape,
+            "meters_per_tile": meters_per_tile,
+            "width_tiles": proj.width,
+            "height_tiles": proj.height,
+            "cells_x": cells_x,
+            "cells_y": cells_y,
+            "spawn_density_max": spawn_density,
+            "building_count": len(building_feats),
+            "feature_count": sum(len(v) for v in buckets.values()),
+            # How many homes came from an address with no building drawn for
+            # it, so "it made none of mine" is a number rather than a guess.
+            "houses_from_addresses": len(addressed),
+            # And how many were put into gaps along a street.
+            "houses_infilled": len(infilled),
+            "sheds_infilled": len(sheds),
+            "guide_reference": "Thuztor Mapping Guide v0.2",
+        }, indent=2)
 
     return RenderResult(
         landscape_path=landscape_path,

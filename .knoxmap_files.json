@@ -41,6 +41,7 @@
     "docs/images/worldcover/town.png",
     "docs/images/worldcover/tundra.png",
     "generator/__init__.py",
+    "generator/chunked.py",
     "generator/edits.py",
     "generator/extract.py",
     "generator/mapped_roads.py",
