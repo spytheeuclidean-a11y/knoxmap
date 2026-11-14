@@ -439,9 +439,14 @@ SPECIAL_MIXES = {
                    ["storage", "office"]),
     # The shops under a block of flats: the game's own shop rooms, with a
     # stockroom behind.
-    "retail":     (["generalstore", "conveniencestore", "clothingstore", "cafe",
-                    "storage"],
-                   ["generalstore", "cafe", "storage"]),
+    "retail":     (["generalstore", "clothingstore", "grocery", "conveniencestore",
+                    "pharmacy", "bakery", "cafe", "electronicsstore", "bookstore",
+                    "toolstore", "sportstore", "furniturestore", "storage",
+                    "office", "breakroom", "bathroom"],
+                   ["departmentstore", "shoestore", "housewarestore", "musicstore",
+                    "movierental", "giftstore", "toystore", "gardenstore",
+                    "butcher", "liquorstore", "petstore", "artstore",
+                    "officestorage", "janitor", "storage"]),
     "industrial": (["warehouse", "mechanic", "office", "breakroom", "toolstore",
                     "lockerroom", "lobby", "security", "garage", "officestorage",
                     "janitor", "laundry", "kitchen", "diningroom", "medical",
@@ -804,8 +809,15 @@ MANSION_EXTRA = {
 # Nor is a cut kept where a room it keeps is more than this many times the
 # biggest its kind comes.
 HOUSE_OVERSIZE = 2.0
-RETAIL_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe", "grocery",
-                "liquorstore", "pharmacy", "bookstore", "toolstore"}
+RETAIL_ROOMS = {
+    "generalstore", "conveniencestore", "clothingstore", "cafe", "grocery",
+    "liquorstore", "pharmacy", "bookstore", "toolstore", "departmentstore",
+    "electronicsstore", "furniturestore", "housewarestore", "shoestore",
+    "sewingstore", "sportstore", "gardenstore", "bakery", "butcher",
+    "musicstore", "movierental", "giftstore", "toystore", "candystore",
+    "artstore", "petstore", "camerastore", "jewelrystore", "gunstore",
+    "hunting", "armysurplus",
+}
 
 
 STAIR_RUN = 5      # tiles a staircase occupies, from Stairs::bounds

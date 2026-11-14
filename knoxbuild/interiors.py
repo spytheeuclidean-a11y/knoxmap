@@ -137,8 +137,16 @@ ANY_WALL = {"shop_aisle": "shop_shelf", "shop_aisle_red": "shop_shelf_red",
             "shop_display": "shop_counter"}
 # The shops a ground floor may hold when OpenStreetMap does not say which,
 # weighted roughly as Knox County's are.
-STORE_WEIGHTS = {"generalstore": 3, "grocery": 2, "conveniencestore": 3, "clothingstore": 3,
-                 "liquorstore": 1, "pharmacy": 2, "bookstore": 1, "toolstore": 1}
+STORE_WEIGHTS = {
+    "generalstore": 3, "grocery": 2, "conveniencestore": 3, "clothingstore": 3,
+    "liquorstore": 1, "pharmacy": 2, "bookstore": 1, "toolstore": 2,
+    "departmentstore": 2, "electronicsstore": 2, "furniturestore": 1,
+    "housewarestore": 2, "shoestore": 1, "sewingstore": 1, "sportstore": 2,
+    "gardenstore": 1, "bakery": 2, "butcher": 1, "musicstore": 1,
+    "movierental": 1, "giftstore": 1, "toystore": 1, "candystore": 1,
+    "artstore": 1, "petstore": 1, "camerastore": 1, "jewelrystore": 1,
+    "gunstore": 1, "hunting": 1, "armysurplus": 1,
+}
 # Rows of shelving need this much floor, and the rows this much space apart
 # (the shelf and a two-tile aisle).
 MIN_SALES_FLOOR = 20

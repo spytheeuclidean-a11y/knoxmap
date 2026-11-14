@@ -174,16 +174,18 @@ def _assign_shop_floor(plan: Plan, rng: random.Random, street: str | None,
     adj = _neighbours(plan)
     taken = {i for i, _ in fronts}
     backs: list[tuple[int, str]] = []
+    used_fronts: set[str] = set()
     for n, (i, r) in enumerate(fronts):
         if n < len(uses):
             front, back = uses[n]
-        elif uses:
-            # More shop fronts than the map has businesses: the last one
-            # along the street takes the room next door as well.
-            front, back = uses[-1][0], "storage"
         else:
             front = interiors.store_kind(rng)
+            for _ in range(4):
+                if front not in used_fronts:
+                    break
+                front = interiors.store_kind(rng)
             back = "grocerystorage" if front == "grocery" else "storage"
+        used_fronts.add(front)
         r.kind = front
         backs.append((i, back))
     for i, back in backs:
