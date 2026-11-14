@@ -490,6 +490,12 @@ def render_tbx(plan: Plan | Building, name: str,
 
     out: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>']
 
+    b_kind = (
+        next((s.kind for s in storeys if s.kind and not s.kind.startswith("basement_")), None)
+        or next((s.kind for s in storeys if s.kind), None)
+    )
+    stairs_rng = random.Random(f"stairs:{name}")
+    stairs_idx = C.stairs_for_kind(b_kind, stairs_rng)
     building_attrs = [
         ("version", VERSION),
         ("width", building.width),
@@ -501,7 +507,7 @@ def render_tbx(plan: Plan | Building, name: str,
         ("Window", window_idx),
         ("Curtains", curtains_idx),
         ("Shutters", shutters_idx),
-        ("Stairs", C.STAIRS),
+        ("Stairs", stairs_idx),
         ("RoofCap", roof_cap_idx),
         ("RoofSlope", slope_idx),
         ("RoofTop", top_idx),
@@ -804,8 +810,13 @@ def render_tbx(plan: Plan | Building, name: str,
         # and an empty rect is treated as an invalid object.
         if level < len(building.stairs):
             sx, sy, sdir = building.stairs[level]
+            flight_stairs_idx = (
+                C.stairs_for_kind(storey.kind, stairs_rng)
+                if (storey.kind and storey.kind.startswith("basement_"))
+                else stairs_idx
+            )
             attrs = [("type", "stairs"), ("x", sx), ("y", sy),
-                     ("dir", sdir), ("Tile", C.STAIRS)]
+                     ("dir", sdir), ("Tile", flight_stairs_idx)]
             out.append(f"  <object{_attrs(attrs)}/>")
         for hx, hy in sorted(getattr(storey, "holes", ())):   # a plan cached before holes
             out.append(f"  <object{_attrs([('type', 'hole'), ('x', hx), ('y', hy)])}/>")
