@@ -424,12 +424,13 @@ SPECIAL_MIXES = {
     # Mostly classrooms. Enlarging the rooms instead dropped them from 6 a
     # floor to 3 and filled the space with offices, because the mix covers
     # more of a floor when there are fewer rooms on it.
-    "school":     (["lobby", "classroom", "classroom", "diningroom",
-                    "classroom", "gym", "kitchen",
-                    "library", "office", "classroom", "schoollab",
-                    "bathroom", "schoolstorage", "sportstorage"],
-                   ["classroom", "classroom", "classroom", "schoolstorage",
-                    "classroom", "office", "janitor", "bathroom"]),
+    "school":     (["gym", "diningroom", "lobby", "library", "kitchen",
+                    "classroom", "schoollab", "lockerroom", "breakroom",
+                    "office", "clinic", "classroom", "schoolstorage",
+                    "sportstorage", "officestorage", "janitor", "bathroom"],
+                   ["classroom", "schoollab", "classroom", "breakroom",
+                    "office", "schoolstorage", "lockerroom", "library",
+                    "officestorage", "security", "janitor", "bathroom"]),
     "church":     (["church", "lobby", "office", "storage", "bathroom"],
                    ["church", "church", "church", "storage"]),
     "restaurant": (["restaurant", "kitchen", "bar", "storage", "bathroom",

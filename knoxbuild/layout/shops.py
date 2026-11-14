@@ -226,11 +226,11 @@ ROOM_CAP_PER = {
     # A school has one library, one gym, one canteen and one janitor,
     # not one per six rooms: at a cap of 6 a 25-room floor came out with
     # four libraries. These are the rooms a building has exactly one of.
-    "library": 40, "gym": 40, "kitchen": 40, "diningroom": 40,
-    "lobby": 40, "schoollab": 24, "schoolstorage": 24,
-    "sportstorage": 40,
+    "library": 20, "gym": 40, "kitchen": 40, "diningroom": 40,
+    "lobby": 40, "schoollab": 10, "schoolstorage": 16,
+    "sportstorage": 30,
     "bathroom": 10, "hall": 12,
-    "breakroom": 25, "office": 12, "storage": 8, "garage": 15,
+    "breakroom": 15, "office": 10, "storage": 8, "garage": 15,
     "policeoffice": 6, "evidenceroom": 25,
     # A few cells, not a cell block: one room in eight at most, so a
     # 30-room station gets three or four rather than the eleven that a
@@ -497,7 +497,8 @@ NEEDS_CORRIDOR = {"school", "police", "civic", "medical", "fire", "fire_police",
 # restaurant fronts already choose an adjacent back room in _assign_shop_floor.
 BUSINESS_NEIGHBOURS = {
     "school": (("kitchen", "diningroom"), ("gym", "sportstorage"),
-               ("classroom", "schoollab")),
+               ("gym", "lockerroom"), ("classroom", "schoollab"),
+               ("office", "officestorage"), ("office", "breakroom")),
     "church": (("lobby", "church"), ("office", "storage")),
     "industrial": (("warehouse", "toolstore"), ("warehouse", "garage"),
                    ("office", "officestorage"), ("kitchen", "diningroom"),
