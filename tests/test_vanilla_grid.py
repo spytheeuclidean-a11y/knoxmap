@@ -107,6 +107,30 @@ class VanillaGridLayoutTests(unittest.TestCase):
         self.assertIn((40.0, 50.0), main.geometry)
         self.assertIn((40.0, 50.0), stem.geometry)
 
+    def test_four_way_intersection_arrives_on_major_leg(self):
+        # Slightly tilted E-W and N-S roads crossing at (50, 50) should not end
+        # their incoming stretch with a 2-tile diagonal stub right at (50, 50).
+        ew = osm.OSMFeature(
+            8, "way", {"highway": "primary"},
+            [(48.0, 0.0), (50.0, 50.0), (52.0, 100.0)],
+        )
+        ns = osm.OSMFeature(
+            9, "way", {"highway": "primary"},
+            [(0.0, 52.0), (50.0, 50.0), (100.0, 48.0)],
+        )
+        vanilla_grid.apply_vanilla_grid(
+            [ew, ns], self.proj, osm.classify, renderer._is_polygon
+        )
+        self._assert_octilinear(ew.geometry)
+        self._assert_octilinear(ns.geometry)
+        for road in (ew, ns):
+            idx = road.geometry.index((50.0, 50.0))
+            for neighbor in (road.geometry[idx - 1], road.geometry[idx + 1]):
+                self.assertGreater(
+                    max(abs(50.0 - neighbor[0]), abs(50.0 - neighbor[1])),
+                    vanilla_grid.MICRO_LEG_TILES,
+                )
+
     def test_replay_supports_mode_5(self):
         road = osm.OSMFeature(
             4, "way", {"highway": "residential"},

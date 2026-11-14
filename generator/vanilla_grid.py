@@ -52,7 +52,9 @@ def _polyline_deviation(samples: list[tuple[float, float]],
 
 def _route_8way(a: tuple[int, int], b: tuple[int, int],
                 samples: list[tuple[float, float]],
-                prev_dir: tuple[int, int] | None) -> list[tuple[int, int]]:
+                prev_dir: tuple[int, int] | None,
+                prefer_major_first: bool = False,
+                prefer_major_last: bool = False) -> list[tuple[int, int]]:
     """Connect integer points ``a`` and ``b`` using only 0/45/90-degree legs."""
     dx = b[0] - a[0]
     dy = b[1] - a[1]
@@ -71,6 +73,20 @@ def _route_8way(a: tuple[int, int], b: tuple[int, int],
 
     c1 = (a[0] + axis_step[0], a[1] + axis_step[1])
     c2 = (a[0] + diag_step[0], a[1] + diag_step[1])
+
+    if min(s, d) <= MICRO_LEG_TILES and max(s, d) >= 8:
+        if prefer_major_first and prefer_major_last:
+            # Keep tiny 1-3 tile jogs away from both pinned junction ends.
+            major_step = axis_step if s >= d else diag_step
+            minor_step = diag_step if s >= d else axis_step
+            half = (int(major_step[0] / 2), int(major_step[1] / 2))
+            m1 = (a[0] + half[0], a[1] + half[1])
+            m2 = (m1[0] + minor_step[0], m1[1] + minor_step[1])
+            return [m1, m2, b]
+        if prefer_major_first:
+            return [c1, b] if s >= d else [c2, b]
+        if prefer_major_last:
+            return [c2, b] if s >= d else [c1, b]
 
     if samples:
         e1 = _polyline_deviation(samples, a, c1, b)
@@ -117,7 +133,9 @@ def _chamfer_right_angles(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return out
 
 
-def _collapse_micro_legs(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
+def _collapse_micro_legs(pts: list[tuple[int, int]],
+                         pin_start: bool = False,
+                         pin_end: bool = False) -> list[tuple[int, int]]:
     """Smooth tiny <= ``MICRO_LEG_TILES`` interior jogs into clean 8-way bends."""
     if len(pts) < 4:
         return pts
@@ -130,8 +148,17 @@ def _collapse_micro_legs(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
         while i < len(cur) - 2:
             a, b, c, d = nxt[-1], cur[i], cur[i + 1], cur[i + 2]
             leg_bc = max(abs(c[0] - b[0]), abs(c[1] - b[1]))
-            if leg_bc <= MICRO_LEG_TILES:
-                bridged = _route_8way(a, d, [], _dir8(a, b))
+            at_start = pin_start and len(nxt) == 1
+            at_end = pin_end and i + 2 == len(cur) - 1
+            if leg_bc <= MICRO_LEG_TILES and not (at_start and at_end):
+                bridged = _route_8way(
+                    a,
+                    d,
+                    [],
+                    _dir8(a, b),
+                    prefer_major_first=at_start,
+                    prefer_major_last=at_end,
+                )
                 if len(bridged) == 1:
                     dev = max(_dist_seg(b, a, d), _dist_seg(c, a, d))
                 elif len(bridged) == 2:
@@ -169,7 +196,9 @@ def _merge_collinear(pts: list[tuple[int, int]]) -> list[tuple[int, int]]:
 
 
 def _route_stretch(raw_pts: list[tuple[float, float]],
-                   is_small_loop: bool = False) -> list[tuple[int, int]]:
+                   is_small_loop: bool = False,
+                   pin_start: bool = False,
+                   pin_end: bool = False) -> list[tuple[int, int]]:
     if len(raw_pts) < 2:
         return [_snap(p) for p in raw_pts]
     tol = LOOP_SIMPLIFY_TOLERANCE_TILES if is_small_loop else SIMPLIFY_TOLERANCE_TILES
@@ -195,12 +224,19 @@ def _route_stretch(raw_pts: list[tuple[float, float]],
         r1 = simp_to_raw[idx + 1]
         samples = raw_pts[r0 + 1:r1] if r1 > r0 + 1 else []
         prev_dir = _dir8(routed[-2], routed[-1]) if len(routed) >= 2 else None
-        for nxt in _route_8way(a, b, samples, prev_dir):
+        for nxt in _route_8way(
+            a,
+            b,
+            samples,
+            prev_dir,
+            prefer_major_first=(pin_start and idx == 0),
+            prefer_major_last=(pin_end and idx == len(snapped) - 2),
+        ):
             if nxt != routed[-1]:
                 routed.append(nxt)
     routed = _merge_collinear(routed)
     if not is_small_loop:
-        routed = _collapse_micro_legs(routed)
+        routed = _collapse_micro_legs(routed, pin_start=pin_start, pin_end=pin_end)
         routed = _chamfer_right_angles(routed)
         routed = _merge_collinear(routed)
     return routed
@@ -241,7 +277,14 @@ def apply_vanilla_grid(features: list[OSMFeature], proj, classify, is_polygon) -
         sorted_pins = sorted(pins)
         new_px: list[tuple[int, int]] = []
         for a, b in zip(sorted_pins, sorted_pins[1:]):
-            seg = _route_stretch(px_pts[a:b + 1], is_small_loop=is_small_loop)
+            pin_a = node_counts.get(_snap(px_pts[a]), 0) >= 2
+            pin_b = node_counts.get(_snap(px_pts[b]), 0) >= 2
+            seg = _route_stretch(
+                px_pts[a:b + 1],
+                is_small_loop=is_small_loop,
+                pin_start=pin_a,
+                pin_end=pin_b,
+            )
             if not new_px:
                 new_px.extend(seg)
             else:
