@@ -25,7 +25,7 @@
     overlay.hidden = true;
     overlay.style.cssText = [
       'position:fixed', 'inset:0', 'z-index:1200', 'background:#0d0f11',
-      'display:flex', 'flex-direction:column', 'color:#e6e8eb',
+      'display:none', 'flex-direction:column', 'color:#e6e8eb',
       'font-family:inherit',
     ].join(';');
 
@@ -150,11 +150,13 @@
 
     document.addEventListener('keydown', e => {
       if (overlay.hidden) return;
-      if (e.key === 'Escape') close();
-      else if (e.key === '+' || e.key === '=') zoomCenter(scale * 1.3);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+      } else if (e.key === '+' || e.key === '=') zoomCenter(scale * 1.3);
       else if (e.key === '-') zoomCenter(scale / 1.3);
       else if (e.key === '0') fit();
-    });
+    }, true);
   }
 
   function zoomAt(cx, cy, nextScale) {
@@ -231,7 +233,13 @@
   }
 
   function close() {
-    if (overlay) overlay.hidden = true;
+    dragging = false;
+    const viewport = document.getElementById('riViewport');
+    if (viewport) viewport.style.cursor = 'grab';
+    if (overlay) {
+      overlay.hidden = true;
+      overlay.style.display = 'none';
+    }
   }
 
   window.openRoadInspector = function (name) {
