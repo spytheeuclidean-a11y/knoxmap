@@ -2861,6 +2861,7 @@ document.getElementById('installBtn').addEventListener('click', async () => {
          + 'already playing, right-click the ground and pick "Reset loot" for '
          + 'fresh loot in a building.' + lifts + paper, data.paperMap === false ? 'warn' : 'ok');
     document.getElementById('publishCard').hidden = false;
+    showServerSetup();
     loadMaps();
   } catch (err) {
     note('installNote', err.message, 'bad');
@@ -3133,3 +3134,79 @@ function pollCompile() {
   runSearch(q);
 })();
 
+
+// ---- a dedicated server ----
+//
+// The mod ships a SERVER SETUP.txt that says exactly what to add; people get
+// it wrong anyway, because the editing is the hard part - one more mod on a
+// line of forty, the map at the FRONT of Map= with Muldraugh still at the
+// back, and a spawn regions file named for the server rather than the map.
+// This does it (knoxbuild/serverconf.py) and says what it changed.
+async function showServerSetup() {
+  const box = document.getElementById('serverSetup');
+  const pick = document.getElementById('serverPick');
+  if (!box || !pick) return;
+  let data;
+  try {
+    const res = await fetch('/api/servers');
+    data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+  } catch (err) {
+    box.hidden = true;                 // no servers to offer, nothing to show
+    return;
+  }
+  const servers = data.servers || [];
+  if (!servers.length) { box.hidden = true; return; }
+  box.hidden = false;
+  pick.innerHTML = servers.map(s =>
+    `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}`
+    + (s.save ? ' — has a world already' : '') + '</option>').join('');
+  noteServer('');
+}
+
+function noteServer(text, kind) {
+  const box = document.getElementById('serverNote');
+  if (!box) return;
+  box.innerHTML = text;
+  box.className = 'hint' + (kind ? ' ' + kind : '');
+}
+
+document.addEventListener('click', async ev => {
+  if (!ev.target.closest('#serverSetupBtn')) return;
+  const btn = document.getElementById('serverSetupBtn');
+  const server = document.getElementById('serverPick').value;
+  if (!currentMap || !server) return;
+  btn.disabled = true;
+  noteServer('Setting it up…');
+  try {
+    const res = await fetch('/api/server-setup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mapName: currentMap, server }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+    const did = (data.changed || []).length
+      ? '<ul>' + data.changed.map(c => `<li>${escapeHtml(c)}</li>`).join('') + '</ul>'
+      : '<p>Nothing to change: that server already had it.</p>';
+    // The one thing here that cannot be undone, so it is said plainly and
+    // the save is not touched: whose world it is, is not KnoxMap's to decide.
+    const world = data.save
+      ? '<p><b>That server has a world already.</b> Project Zomboid writes a '
+        + 'world cell by cell from whatever map was loaded at the time, so '
+        + 'cells built before this map arrived will not agree with the ones '
+        + 'built after. Delete <code>' + escapeHtml(data.save) + '</code> and '
+        + 'start a new one. Nothing has been deleted for you.</p>'
+      : '';
+    const copy = '<p>Every player needs the same mod folder in their own '
+      + 'Zomboid/mods: this map is not on the Workshop, so nothing downloads '
+      + 'it for them.</p>';
+    noteServer(`<p>Set up on <b>${escapeHtml(data.server)}</b>.</p>${did}${world}${copy}`
+               + (data.backup ? `<p class="hint">The old .ini was kept as `
+                  + `<code>${escapeHtml(data.backupName)}</code>.</p>` : ''),
+               data.save ? 'warn' : 'ok');
+  } catch (err) {
+    noteServer(escapeHtml(err.message), 'bad');
+  } finally {
+    btn.disabled = false;
+  }
+});

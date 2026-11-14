@@ -838,3 +838,15 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 #toolsBody { display: none; }
 .ws-dialog #toolsBody { display: block; }
 .ws-dialog #toolsBody h4:first-child { margin-top: 0; }
+
+/* Putting the map on a dedicated server, under the Install step. */
+.server-setup { margin: 10px 0 2px; padding: 8px 10px; border-radius: 6px;
+  background: var(--field); border-left: 3px solid var(--accent); font-size: 12px; }
+.server-setup[hidden] { display: none; }
+.server-head { font-weight: 600; margin-bottom: 2px; }
+.server-setup p { margin: 4px 0; }
+.server-setup ul { margin: 4px 0 4px 16px; padding: 0; }
+.server-setup select { font-size: 12px; padding: 4px 6px; max-width: 240px; }
+.server-setup code { font-family: var(--mono); font-size: 11px; }
+.server-setup .warn { color: var(--warn); }
+.server-setup .bad { color: var(--bad); }
