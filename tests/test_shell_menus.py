@@ -50,6 +50,11 @@ class MenuBar(unittest.TestCase):
         self.assertIn("#toolsBody { display: none; }", css)
         self.assertIn(".ws-dialog #toolsBody { display: block; }", css)
 
+    def test_tools_panel_tabs_have_no_emoji_icons(self):
+        tools_block = re.search(r"const TOOLS = \[(.*?)\];", self.shell, re.S)
+        self.assertIsNotNone(tools_block, "TOOLS table not found in static/js/shell.js")
+        self.assertNotRegex(tools_block.group(1), "[\u2600-\u27bf\U0001f000-\U0001faff\ufe0f]")
+
 
 if __name__ == "__main__":
     unittest.main()

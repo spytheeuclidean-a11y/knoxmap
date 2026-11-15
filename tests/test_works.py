@@ -6,7 +6,7 @@ from collections import deque
 import numpy as np
 
 from generator import pz_colors as C
-from knoxbuild.works import YARD_EDGE, yard_width
+from knoxbuild.works import yard_width
 from tests.test_yards import SIZE, _paint
 
 X, Y = 16, 20                 # the works, SIZE x SIZE, door in its north wall
@@ -46,9 +46,14 @@ class WorksYards(unittest.TestCase):
                 k = self.ring(x, y)
                 if 1 <= k <= self.r:
                     self.assertNotEqual(tuple(self.ground[y, x]), C.MEDIUM_GRASS, (x, y))
-                elif k > self.r + YARD_EDGE + 1 and abs(x - (X + 3)) > 3:
-                    # (the drive runs north to the pavement past the door)
+                elif k > self.r and abs(x - (X + 3)) > 3:
+                    # (the drive runs north to the pavement past the door; no sand/dirt fringe)
                     self.assertEqual(tuple(self.ground[y, x]), C.MEDIUM_GRASS, (x, y))
+
+    def test_no_sand_or_dirt_fringe_around_yard(self):
+        got = _colours(self.ground)
+        self.assertNotIn(C.LIGHT_ASPHALT, got)
+        self.assertNotIn(C.DIRT, got)
 
     def test_a_drive_reaches_the_pavement(self):
         hard = ~np.all(self.ground == C.MEDIUM_GRASS, axis=2)
