@@ -86,6 +86,56 @@ def _shifted(mask, dy, dx) -> "object":
     return out
 
 
+def _mark_two_tile_bumps(fg, bg, back):
+    """Return a mask of 2-tile-wide, 1-tile-deep ``fg`` teeth jutting into ``bg``."""
+    out = fg & False
+    h, w = fg.shape
+    if h >= 3 and w >= 4:
+        pair = fg[1:-1, 1:-2] & fg[1:-1, 2:-1] & bg[1:-1, :-3] & bg[1:-1, 3:]
+        n = pair & bg[:-2, 1:-2] & bg[:-2, 2:-1] & \
+            back[2:, :-3] & back[2:, 1:-2] & back[2:, 2:-1] & back[2:, 3:]
+        out[1:-1, 1:-2] |= n
+        out[1:-1, 2:-1] |= n
+        s = pair & bg[2:, 1:-2] & bg[2:, 2:-1] & \
+            back[:-2, :-3] & back[:-2, 1:-2] & back[:-2, 2:-1] & back[:-2, 3:]
+        out[1:-1, 1:-2] |= s
+        out[1:-1, 2:-1] |= s
+    if h >= 4 and w >= 3:
+        pair = fg[1:-2, 1:-1] & fg[2:-1, 1:-1] & bg[:-3, 1:-1] & bg[3:, 1:-1]
+        w_m = pair & bg[1:-2, :-2] & bg[2:-1, :-2] & \
+            back[:-3, 2:] & back[1:-2, 2:] & back[2:-1, 2:] & back[3:, 2:]
+        out[1:-2, 1:-1] |= w_m
+        out[2:-1, 1:-1] |= w_m
+        e_m = pair & bg[1:-2, 2:] & bg[2:-1, 2:] & \
+            back[:-3, :-2] & back[1:-2, :-2] & back[2:-1, :-2] & back[3:, :-2]
+        out[1:-2, 1:-1] |= e_m
+        out[2:-1, 1:-1] |= e_m
+    return out
+
+
+def _mark_two_tile_notches(fg, bg):
+    """Return a mask of 2-tile-wide, 1-tile-deep ``fg`` dents into ``bg``."""
+    out = fg & False
+    h, w = fg.shape
+    if h >= 3 and w >= 4:
+        pair = fg[1:-1, 1:-2] & fg[1:-1, 2:-1] & bg[1:-1, :-3] & bg[1:-1, 3:]
+        n = pair & fg[:-2, 1:-2] & fg[:-2, 2:-1] & bg[2:, 1:-2] & bg[2:, 2:-1]
+        out[1:-1, 1:-2] |= n
+        out[1:-1, 2:-1] |= n
+        s = pair & fg[2:, 1:-2] & fg[2:, 2:-1] & bg[:-2, 1:-2] & bg[:-2, 2:-1]
+        out[1:-1, 1:-2] |= s
+        out[1:-1, 2:-1] |= s
+    if h >= 4 and w >= 3:
+        pair = fg[1:-2, 1:-1] & fg[2:-1, 1:-1] & bg[:-3, 1:-1] & bg[3:, 1:-1]
+        w_m = pair & fg[1:-2, :-2] & fg[2:-1, :-2] & bg[1:-2, 2:] & bg[2:-1, 2:]
+        out[1:-2, 1:-1] |= w_m
+        out[2:-1, 1:-1] |= w_m
+        e_m = pair & fg[1:-2, 2:] & fg[2:-1, 2:] & bg[1:-2, :-2] & bg[2:-1, :-2]
+        out[1:-2, 1:-1] |= e_m
+        out[2:-1, 1:-1] |= e_m
+    return out
+
+
 def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
     """Fill one-tile notches along the edge of the road, and shave one-tile bumps.
 
@@ -95,6 +145,14 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
     along a line becomes road, and a road tile with pavement on both sides
     becomes pavement.
     """
+    from . import native_pixels
+
+    verge_pal = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
+    if native_pixels.smooth_road_edges(
+        landscape, asphalt, C.PALE_CONCRETE, C.MEDIUM_GRASS, verge_pal
+    ):
+        return
+
     import numpy as np
 
     w, h = landscape.size
@@ -103,7 +161,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         y1 = min(h, y0 + strip)
         top, bottom = max(0, y0 - 1), min(h, y1 + 1)
         ground = np.asarray(landscape.crop((0, top, w, bottom))).copy()
-        for _ in range(6):
+        for _ in range(10):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
             verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
@@ -112,6 +170,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
             notch[:, 1:-1] |= road[:, :-2] & road[:, 2:]
             notch &= road_border
+            notch |= _mark_two_tile_notches(road_border, road)
             border_count = np.zeros(road.shape, dtype=np.uint8)
             border_count[:, 1:] += road_border[:, :-1]
             border_count[:, :-1] += road_border[:, 1:]
@@ -122,6 +181,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             bump[:, 1:-1] |= road_border[:, :-2] & road_border[:, 2:]
             bump |= border_count >= 3
             bump &= road
+            bump |= _mark_two_tile_bumps(road, road_border, road)
             # A pavement tile with no pavement beside it orthogonally is one
             # step of a diagonal edge, and on its own it draws as a lip that
             # reads as a spike standing in the grass. It becomes the ground it
@@ -169,8 +229,12 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             verge_count[:, :-1] += verge[:, 1:]
             verge_count[1:, :] += verge[:-1, :]
             verge_count[:-1, :] += verge[1:, :]
-            pave_bump = pave & (verge_count >= 3)
-            pave_notch = verge & (ortho_count >= 3)
+            pave_bump = (pave & (verge_count >= 3)) | _mark_two_tile_bumps(
+                pave, verge, pave | road
+            )
+            pave_notch = (verge & (ortho_count >= 3)) | _mark_two_tile_notches(
+                verge, pave
+            )
             if not notch.any() and not bump.any() and not lonep.any() \
                     and not mend.any() and not pave_bump.any() \
                     and not pave_notch.any():
@@ -241,36 +305,19 @@ def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector, sho
         paint_track(draw, ring, should_stop)
 
 
-def _paint_road_details(veg: Image.Image, landscape: Image.Image,
-                        buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
-    """Kerbs where pavement meets the road, and lines down two-lane roads.
+def _paint_kerbs(veg: Image.Image, landscape: Image.Image, asphalt, is_colour) -> None:
+    """Paint straight and corner kerbs where pavement meets road."""
+    from . import native_pixels
 
-    Asphalt ran straight into the pavement with nothing between them, and a
-    road wider than a car had nothing painted on it. The vanilla map has both
-    on every street - laid by hand - and without them a street reads as a grey
-    patch rather than a road.
-    """
+    kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
+                3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
+    kerb_tuple = tuple(kerb_for[bits] for bits in (1, 2, 4, 8, 3, 5, 10, 12))
+    if native_pixels.paint_kerbs(veg, landscape, asphalt, C.PALE_CONCRETE, kerb_tuple):
+        return
+
     import numpy as np
 
     w, h = landscape.size
-    asphalt = (C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT,
-               C.DARK_POTHOLE, C.LIGHT_POTHOLE)
-
-    def is_colour(ground, colours):
-        mask = np.zeros(ground.shape[:2], dtype=bool)
-        for colour in colours:
-            same = ground[:, :, 0] == colour[0]
-            same &= ground[:, :, 1] == colour[1]
-            same &= ground[:, :, 2] == colour[2]
-            mask |= same
-        return mask
-
-    _smooth_road_edges(landscape, asphalt, is_colour)
-
-    # Kerbs, a strip at a time, each strip read with a row of overlap so the
-    # tiles either side of a seam still see their neighbours.
-    kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
-                3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
     strip = 1024
     for y0 in range(0, h, strip):
         y1 = min(h, y0 + strip)
@@ -293,6 +340,36 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
         for bits, colour in kerb_for.items():
             out[(sides == bits) & free] = colour
         veg.paste(Image.fromarray(out), (0, y0))
+
+
+def _paint_road_details(veg: Image.Image, landscape: Image.Image,
+                        buckets: dict[str, list[OSMFeature]], proj: Projector,
+                        smooth_edges: bool = True) -> None:
+    """Kerbs where pavement meets the road, and lines down two-lane roads.
+
+    Asphalt ran straight into the pavement with nothing between them, and a
+    road wider than a car had nothing painted on it. The vanilla map has both
+    on every street - laid by hand - and without them a street reads as a grey
+    patch rather than a road.
+    """
+    import numpy as np
+
+    w, h = landscape.size
+    asphalt = (C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT,
+               C.DARK_POTHOLE, C.LIGHT_POTHOLE)
+
+    def is_colour(ground, colours):
+        mask = np.zeros(ground.shape[:2], dtype=bool)
+        for colour in colours:
+            same = ground[:, :, 0] == colour[0]
+            same &= ground[:, :, 1] == colour[1]
+            same &= ground[:, :, 2] == colour[2]
+            mask |= same
+        return mask
+
+    if smooth_edges:
+        _smooth_road_edges(landscape, asphalt, is_colour)
+    _paint_kerbs(veg, landscape, asphalt, is_colour)
 
     # Crossings go down before the lane lines, which only paint on squares
     # nothing else has taken: a centre line drawn through a crossing is a line
@@ -332,39 +409,47 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
                                       bx + ox, by + oy, width))
     if not marks:
         return
+
     colour_for = {("yellow", "N"): C.LINE_YELLOW_N, ("yellow", "W"): C.LINE_YELLOW_W,
                   ("white", "N"): C.LINE_WHITE_N, ("white", "W"): C.LINE_WHITE_W}
-    ground_px = landscape.load()
-    veg_px = veg.load()
-
-    def road_at(x, y):
-        return 0 <= x < w and 0 <= y < h and ground_px[x, y] in asphalt
+    road = is_colour(np.asarray(landscape), asphalt)
+    veg_arr = np.asarray(veg).copy()
 
     for style, edge, ax, ay, bx, by, width in marks:
         steps = int(max(abs(bx - ax), abs(by - ay)))
-        for i in range(steps + 1):
-            t = i / steps if steps else 0
-            # The line sits on the edge between two tiles, so the road's
-            # middle is rounded to the nearest tile boundary.
-            x = int(round(ax + (bx - ax) * t))
-            y = int(round(ay + (by - ay) * t))
-            along = x if edge == "N" else y
-            if style == "white" and (along // 3) % 2:
-                continue
-            if not (road_at(x, y) and (road_at(x, y - 1) if edge == "N" else road_at(x - 1, y))):
-                continue
-            # At a junction the tarmac runs on across the line; a line through
-            # the middle of a crossroads is wrong, so stop short of it.
-            run = 0
-            for k in range(1, int(width) + 4):
-                if edge == "N":
-                    run += road_at(x, y - k) + road_at(x, y + k - 1)
-                else:
-                    run += road_at(x - k, y) + road_at(x + k - 1, y)
-            if run > width + 3:
-                continue
-            if veg_px[x, y] == C.VEG_NOTHING:
-                veg_px[x, y] = colour_for[(style, edge)]
+        t = np.linspace(0.0, 1.0, steps + 1) if steps else np.array([0.0])
+        xs = np.rint(ax + (bx - ax) * t).astype(np.intp)
+        ys = np.rint(ay + (by - ay) * t).astype(np.intp)
+        keep = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
+        if style == "white":
+            along = xs if edge == "N" else ys
+            keep &= ((along // 3) % 2) == 0
+        if not keep.any():
+            continue
+        xs, ys = xs[keep], ys[keep]
+        if edge == "N":
+            on_road = road[ys, xs] & (ys > 0) & road[np.maximum(0, ys - 1), xs]
+        else:
+            on_road = road[ys, xs] & (xs > 0) & road[ys, np.maximum(0, xs - 1)]
+        if not on_road.any():
+            continue
+        xs, ys = xs[on_road], ys[on_road]
+        run = np.zeros(len(xs), dtype=np.int32)
+        for k in range(1, int(width) + 4):
+            if edge == "N":
+                run += np.where(ys >= k, road[np.maximum(0, ys - k), xs], 0)
+                run += np.where(ys + k - 1 < h, road[np.minimum(h - 1, ys + k - 1), xs], 0)
+            else:
+                run += np.where(xs >= k, road[ys, np.maximum(0, xs - k)], 0)
+                run += np.where(xs + k - 1 < w, road[ys, np.minimum(w - 1, xs + k - 1)], 0)
+        ok = run <= width + 3
+        if not ok.any():
+            continue
+        xs, ys = xs[ok], ys[ok]
+        free = np.all(veg_arr[ys, xs] == C.VEG_NOTHING, axis=1)
+        if free.any():
+            veg_arr[ys[free], xs[free]] = colour_for[(style, edge)]
+    veg.paste(Image.fromarray(veg_arr))
 
 
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],

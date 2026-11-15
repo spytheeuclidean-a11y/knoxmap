@@ -221,7 +221,35 @@ TILE_ENTRIES = [{'category': 'exterior_walls',
  {'category': 'doors',
   'tiles': {'West': 'walls_garage_02_1', 'North': 'walls_garage_02_4'}},
  {'category': 'doors',
-  'tiles': {'West': 'walls_garage_02_2', 'North': 'walls_garage_02_5'}}]
+  'tiles': {'West': 'walls_garage_02_2', 'North': 'walls_garage_02_5'}},
+ {'category': 'stairs',
+  'tiles': {'West1': 'fixtures_stairs_01_003', 'West2': 'fixtures_stairs_01_004',
+            'West3': 'fixtures_stairs_01_005', 'North1': 'fixtures_stairs_01_011',
+            'North2': 'fixtures_stairs_01_012', 'North3': 'fixtures_stairs_01_013'}},
+ {'category': 'stairs',
+  'tiles': {'West1': 'fixtures_stairs_01_016', 'West2': 'fixtures_stairs_01_017',
+            'West3': 'fixtures_stairs_01_018', 'North1': 'fixtures_stairs_01_024',
+            'North2': 'fixtures_stairs_01_025', 'North3': 'fixtures_stairs_01_026'}},
+ {'category': 'stairs',
+  'tiles': {'West1': 'fixtures_stairs_01_019', 'West2': 'fixtures_stairs_01_020',
+            'West3': 'fixtures_stairs_01_021', 'North1': 'fixtures_stairs_01_027',
+            'North2': 'fixtures_stairs_01_028', 'North3': 'fixtures_stairs_01_029'}},
+ {'category': 'stairs',
+  'tiles': {'West1': 'fixtures_stairs_01_032', 'West2': 'fixtures_stairs_01_033',
+            'West3': 'fixtures_stairs_01_034', 'North1': 'fixtures_stairs_01_040',
+            'North2': 'fixtures_stairs_01_041', 'North3': 'fixtures_stairs_01_042'}},
+ {'category': 'stairs',
+  'tiles': {'West1': 'fixtures_stairs_01_048', 'West2': 'fixtures_stairs_01_049',
+            'West3': 'fixtures_stairs_01_050', 'North1': 'fixtures_stairs_01_056',
+            'North2': 'fixtures_stairs_01_057', 'North3': 'fixtures_stairs_01_058'}},
+ {'category': 'stairs',
+  'tiles': {'West1': 'fixtures_stairs_01_064', 'West2': 'fixtures_stairs_01_065',
+            'West3': 'fixtures_stairs_01_066', 'North1': 'fixtures_stairs_01_072',
+            'North2': 'fixtures_stairs_01_073', 'North3': 'fixtures_stairs_01_074'}},
+ {'category': 'stairs',
+  'tiles': {'West1': 'fixtures_stairs_01_080', 'West2': 'fixtures_stairs_01_081',
+            'West3': 'fixtures_stairs_01_082', 'North1': 'fixtures_stairs_01_088',
+            'North2': 'fixtures_stairs_01_089', 'North3': 'fixtures_stairs_01_090'}}]
   
  
 EXTERIOR_WALL = 1
@@ -230,6 +258,59 @@ DOOR_FRAME = 3
 WINDOW = 4
 CURTAINS = 5
 STAIRS = 6
+STAIRS_WOOD_BROWN = 22
+STAIRS_WOOD_DARK = 23
+STAIRS_WOOD_WHITE = 24
+STAIRS_METAL_INDUSTRIAL = 25
+STAIRS_CONCRETE_METAL = 26
+STAIRS_CARPET_RED = 27
+STAIRS_COMMERCIAL_LIGHT = 28
+
+RESIDENTIAL_STAIRS = (STAIRS, STAIRS_WOOD_BROWN, STAIRS_WOOD_DARK, STAIRS_WOOD_WHITE)
+INDUSTRIAL_STAIRS = (STAIRS_METAL_INDUSTRIAL, STAIRS_CONCRETE_METAL)
+COMMERCIAL_STAIRS = (STAIRS_CONCRETE_METAL, STAIRS_COMMERCIAL_LIGHT, STAIRS_METAL_INDUSTRIAL)
+RETAIL_STAIRS = (STAIRS, STAIRS_WOOD_BROWN, STAIRS_WOOD_DARK, STAIRS_WOOD_WHITE,
+                 STAIRS_COMMERCIAL_LIGHT, STAIRS_CARPET_RED)
+FORMAL_STAIRS = (STAIRS_CARPET_RED, STAIRS_WOOD_DARK, STAIRS_WOOD_BROWN)
+
+STAIR_CHOICES: dict[str, tuple[int, ...]] = {
+    "industrial": INDUSTRIAL_STAIRS,
+    "basement_industrial": INDUSTRIAL_STAIRS,
+    "garage": INDUSTRIAL_STAIRS,
+    "military": INDUSTRIAL_STAIRS,
+    "basement_military": INDUSTRIAL_STAIRS,
+    "barn": (STAIRS, STAIRS_WOOD_BROWN, STAIRS_METAL_INDUSTRIAL),
+    "shed": (STAIRS, STAIRS_WOOD_BROWN, STAIRS_METAL_INDUSTRIAL),
+    "school": COMMERCIAL_STAIRS,
+    "medical": COMMERCIAL_STAIRS,
+    "police": COMMERCIAL_STAIRS,
+    "fire": COMMERCIAL_STAIRS,
+    "fire_police": COMMERCIAL_STAIRS,
+    "basement_school": INDUSTRIAL_STAIRS,
+    "basement_medical": INDUSTRIAL_STAIRS,
+    "basement_police": INDUSTRIAL_STAIRS,
+    "offices": (STAIRS_COMMERCIAL_LIGHT, STAIRS_CONCRETE_METAL, STAIRS_WOOD_DARK),
+    "mall": (STAIRS_COMMERCIAL_LIGHT, STAIRS_CONCRETE_METAL, STAIRS_CARPET_RED),
+    "stadium": COMMERCIAL_STAIRS,
+    "library": (STAIRS_WOOD_DARK, STAIRS_COMMERCIAL_LIGHT, STAIRS_CARPET_RED),
+    "basement_mall": INDUSTRIAL_STAIRS,
+    "retail": RETAIL_STAIRS,
+    "shop": RETAIL_STAIRS,
+    "restaurant": RETAIL_STAIRS,
+    "church": FORMAL_STAIRS,
+    "civic": FORMAL_STAIRS,
+    "castle": FORMAL_STAIRS,
+    "basement_church": (STAIRS_WOOD_DARK, STAIRS_WOOD_BROWN, STAIRS_CONCRETE_METAL),
+    "basement_civic": (STAIRS_CONCRETE_METAL, STAIRS_WOOD_DARK),
+}
+
+
+def stairs_for_kind(kind: str | None, rng=None) -> int:
+    """Pick an interior stair style matching ``kind``."""
+    choices = STAIR_CHOICES.get(kind or "", RESIDENTIAL_STAIRS)
+    if rng is None:
+        return choices[0]
+    return rng.choice(choices)
 INTERIOR_WALL = 7
 
 FLOOR_CARPET_RED = 8
