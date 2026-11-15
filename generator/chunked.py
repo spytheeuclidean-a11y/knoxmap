@@ -219,6 +219,9 @@ def render_chunked(
         knoxfiles.write(graph_path(output_dir, map_name), graph)
         apply_road_graph(feats, graph, full_proj)
 
+    from .rendering.parking import square_parking_lots
+    square_parking_lots(feats, full_proj, classify, _is_polygon)
+
     bboxes = [_feature_px_bbox(f, full_proj) for f in feats]
 
     os.makedirs(output_dir, exist_ok=True)

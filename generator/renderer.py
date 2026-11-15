@@ -420,6 +420,9 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape, tick=tick)
         knoxfiles.write(graph_path(output_dir, map_name), graph)
         apply_road_graph(features, graph, proj)
+    if not _skip_road_layout:
+        from .rendering.parking import square_parking_lots
+        square_parking_lots(features, proj, classify, _is_polygon)
     t_render0 = time.perf_counter()
     # A drawn polygon, circle or real outline rather than a rectangle: the map
     # still covers its bounding box in whole cells, but only what lies inside
@@ -611,12 +614,13 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
                 _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
 
-    # Track and ballast share the same continuous route.
-    paint_rails(l_draw, buckets, proj, should_stop)
-
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:
         l_draw.rectangle(deck.bounds, fill=LANDSCAPE_FILL.get(cat, C.MEDIUM_ASPHALT))
+
+    # Track and ballast share the same continuous route; painted after water and
+    # straight bridge decks so railroads always cut uninterrupted across water.
+    paint_rails(l_draw, buckets, proj, should_stop)
     owned = None
     if landcover_grid is not None:
         # OSM has painted: what is still a marker is WorldCover's.
@@ -712,7 +716,17 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         if owned is not None:
             wet |= owned & np.isin(landcover_grid, (90, 95))
         if wet.any():
-            paint_pools(landscape, vegetation, proj, wet, building_bool)
+            pool_blocked = building_bool
+            rail_feats = [f for f in buckets.get("railway", []) if not _is_polygon(f)]
+            if rail_feats:
+                rail_mask = Image.new("L", (proj.width, proj.height), 0)
+                rail_draw = ImageDraw.Draw(rail_mask)
+                for rf in rail_feats:
+                    for ring in _feature_coords_px(rf, proj):
+                        if len(ring) >= 2:
+                            rail_draw.line(ring, fill=255, width=5)
+                pool_blocked = building_bool | (np.asarray(rail_mask) > 0)
+            paint_pools(landscape, vegetation, proj, wet, pool_blocked)
     except Exception as exc:            # noqa: BLE001 - never lose a map to it
         _log.warning("pools skipped: %s: %s", type(exc).__name__, exc)
     _paint_parks(vegetation, landscape, buckets.get("park", []), proj,

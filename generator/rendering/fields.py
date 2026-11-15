@@ -258,15 +258,38 @@ def _strips(h: int):
         yield top, min(h, top + STRIP_ROWS)
 
 
+def _pool_keep_out_mask(landscape) -> np.ndarray:
+    """True wherever roads, sidewalks, paving, water, or rail tiles already lie."""
+    from ..rail_tiles import RAIL_RULES
+
+    w, h = landscape.size
+    codes = np.array([
+        (r << 16) | (g << 8) | b
+        for r, g, b in (
+            C.DARKEST_ASPHALT, C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
+            C.LIGHT_ASPHALT, C.DARK_POTHOLE, C.LIGHT_POTHOLE,
+            C.PALE_CONCRETE, C.PAVING, C.WATER,
+            *(colour for _, colour, _ in RAIL_RULES),
+        )
+    ], dtype=np.uint32)
+    keep = np.zeros((h, w), dtype=bool)
+    for top, bottom in _strips(h):
+        arr = np.asarray(landscape.crop((0, top, w, bottom)), dtype=np.uint32)
+        keys = (arr[:, :, 0] << 16) | (arr[:, :, 1] << 8) | arr[:, :, 2]
+        keep[top:bottom] = np.isin(keys, codes) | (arr[:, :, 0] == 206)
+    return keep
+
+
 def paint_pools(landscape, veg, proj, wet, blocked) -> int:
     """Open-water pools in the `wet` tiles, none on or near `blocked` ones
-    (buildings) or the edge of the wet. Returns the pool tiles."""
+    (buildings, roads, rails) or the edge of the wet. Returns the pool tiles."""
     from .noise import lattices, smooth_noise
 
     if wet is None or not wet.any():
         return 0
     h, w = wet.shape
-    allowed = wet & ~_reach(~wet | blocked, POOL_CLEAR_TILES, outside=True)
+    keep_out = blocked | _pool_keep_out_mask(landscape)
+    allowed = wet & ~_reach(~wet | keep_out, POOL_CLEAR_TILES, outside=True)
     if not allowed.any():
         return 0
     cell = max(3, int(round(POOL_CELL_M / proj.meters_per_tile)))

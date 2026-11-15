@@ -71,6 +71,7 @@
     "generator/rendering/noise.py",
     "generator/rendering/native_pixels.py",
     "generator/rendering/outputs.py",
+    "generator/rendering/parking.py",
     "generator/rendering/projection.py",
     "generator/rendering/rails.py",
     "generator/rendering/roads.py",
