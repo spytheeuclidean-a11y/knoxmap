@@ -124,6 +124,19 @@ class PoolTest(unittest.TestCase):
         F.paint_pools(land, veg, P(), wet, blocked)
         self.assertFalse(colour_mask(land, C.WATER)[48:152, 48:152].any())
 
+    def test_never_overwrites_rails_or_roads_inside_osm_wetland(self):
+        land, veg = blank(200, 200, C.DARK_GRASS)
+        ImageDraw.Draw(land).rectangle((0, 60, 199, 64), fill=C.RAIL_NW_SE)
+        ImageDraw.Draw(land).rectangle((0, 136, 199, 142), fill=C.MEDIUM_ASPHALT)
+        wet = np.ones((200, 200), dtype=bool)
+        blocked = np.zeros_like(wet)
+        F.paint_pools(land, veg, P(), wet, blocked)
+        water = colour_mask(land, C.WATER)
+        self.assertFalse(water[58:67, :].any())
+        self.assertFalse(water[134:145, :].any())
+        self.assertTrue(colour_mask(land, C.RAIL_NW_SE)[62, :].all())
+        self.assertTrue(colour_mask(land, C.MEDIUM_ASPHALT)[139, :].all())
+
 
 class RockTest(unittest.TestCase):
     def setUp(self):
