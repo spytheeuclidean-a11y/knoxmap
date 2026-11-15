@@ -452,22 +452,19 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
     veg.paste(Image.fromarray(veg_arr))
 
 
+DENSE_APRON_TILES = 6
+
+
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
                        buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
-    """Pave the unmapped ground of built-up city blocks.
+    """Pave tight courtyards and aprons around built-up urban blocks.
 
     Land OSM says nothing about is painted as wild grass, which is right in the
-    countryside and wrong in an old town, where it is courtyards, alleys and
-    the gaps between blocks. Central Paris came out 77% meadow.
-
-    The decision is made per city block - the ground the streets enclose - on
-    how much of that block is under buildings. It used to be made per patch of
-    ground on the density nearby, which near the threshold flickered between
-    paved and grass across a single block and left it blotched like camouflage.
-    A block is paved whole or not at all, as real ones are. Mapped parks,
-    gardens and pitches keep their grass inside a paved block; a residential
-    area's lawns do not, since between buildings packed this tight they are
-    yards.
+    countryside and too meadow-like in a tight urban core. Rather than filling
+    entire blocks wall-to-wall with flat concrete (which turns any open yard
+    into a blank concrete slab), this paves a modest apron around the buildings
+    in dense blocks so tight alleys and courtyards join while open ground stays
+    grass. Mapped parks, gardens and pitches always keep their grass.
     """
     import numpy as np
     from shapely import STRtree
@@ -504,11 +501,15 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
     pd = ImageDraw.Draw(paved)
     any_paved = False
     for block in blocks:
-        covered = sum(footprints[i].intersection(block).area
-                      for i in tree.query(block))
+        hits = [footprints[i].intersection(block) for i in tree.query(block)]
+        covered = sum(g.area for g in hits)
         if block.area > MAX_PAVED_BLOCK or covered / block.area < DENSE_COVERAGE:
             continue
-        for part in getattr(block, "geoms", None) or [block]:
+        apron = unary_union([g for g in hits if not g.is_empty])
+        if apron.is_empty:
+            continue
+        apron = apron.buffer(DENSE_APRON_TILES).intersection(block)
+        for part in getattr(apron, "geoms", None) or [apron]:
             if hasattr(part, "exterior"):
                 pd.polygon(list(part.exterior.coords), fill=255)
                 for hole in part.interiors:

@@ -402,7 +402,15 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     scattered = [(asphalt, CRACK_SHARE, C.ASPHALT_CRACKS, "cracks"),
                  (pavement, LITTER_SHARE, C.LITTER, "litter")]
     if _rule_ready("Manhole cover"):
-        scattered.append((pavement, MANHOLE_SHARE, C.MANHOLE, "manholes"))
+        from . import native_pixels
+
+        asphalt_img = Image.fromarray(asphalt.astype(np.uint8) * 255, mode="L")
+        raw_road = native_pixels.box_any(asphalt_img.tobytes(), w, h, 4)
+        if raw_road is not None:
+            near_road = np.frombuffer(raw_road, dtype=bool).reshape(h, w).copy()
+        else:
+            near_road = np.asarray(asphalt_img.filter(ImageFilter.MaxFilter(9))) > 0
+        scattered.append((pavement & near_road, MANHOLE_SHARE, C.MANHOLE, "manholes"))
     lo = 0.0
     for mask, share, colour, name in scattered:
         pick = mask & empty & (roll >= lo) & (roll < lo + share)

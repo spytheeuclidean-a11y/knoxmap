@@ -284,6 +284,60 @@ class MultiDoorAndInfillFrontPaths(unittest.TestCase):
             self.assertNotEqual(tuple(after[16, 14]), C.MEDIUM_GRASS)
             self.assertNotEqual(tuple(after[21, 14]), C.MEDIUM_GRASS)
 
+    def test_commercial_building_gets_modest_apron_and_long_walk(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((60, 40), dtype=bool)
+            ground = np.full((60, 40, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[42:45, :] = C.PALE_CONCRETE
+            ground[45:48, :] = C.MEDIUM_ASPHALT
+            veg = np.full((60, 40, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            self._write_doors_tbx(os.path.join(out, "buildings"), "office.tbx",
+                                  [(3, 6, "N")])
+            occupied[10:16, 10:16] = True
+            rows = [{"kind": "offices", "file": "office.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": SIZE, "height": SIZE}]
+            paths, _ = paint_paths(out, "m", rows, occupied)
+            self.assertEqual(paths, 1)
+            after = np.asarray(Image.open(os.path.join(out, "m.bmp")))
+            # Doorway walk >20 tiles reaches the street sidewalk at y=41.
+            self.assertEqual(tuple(after[41, 13]), C.PAVING_STONE)
+            # Modest concrete apron hugs the sides/back without paving the lawn.
+            self.assertEqual(tuple(after[12, 9]), C.PALE_CONCRETE)
+            self.assertEqual(tuple(after[9, 13]), C.PALE_CONCRETE)
+            self.assertEqual(tuple(after[30, 20]), C.MEDIUM_GRASS)
+
+    def test_wide_multi_door_facade_merges_walks_into_shared_trunk(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.mkdir(os.path.join(out, "buildings"))
+            occupied = np.zeros((32, 32), dtype=bool)
+            ground = np.full((32, 32, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[24:27, :] = C.PALE_CONCRETE
+            ground[27:30, :] = C.MEDIUM_ASPHALT
+            veg = np.full((32, 32, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            self._write_doors_tbx(os.path.join(out, "buildings"), "wide_shop.tbx",
+                                  [(1, 6, "N"), (5, 6, "N")])
+            occupied[10:16, 10:16] = True
+            rows = [{"kind": "shop", "file": "wide_shop.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": SIZE, "height": SIZE}]
+            with mock.patch.object(yards_module, "MERGE_DOOR_SHARE", 1.0):
+                paths, _ = paint_paths(out, "m", rows, occupied)
+            self.assertEqual(paths, 1)
+            after = np.asarray(Image.open(os.path.join(out, "m.bmp")))
+            # Both doors join a cross-bar at y=18 and share a center trunk at x=13.
+            for x in range(11, 16):
+                self.assertEqual(tuple(after[18, x]), C.PAVING_STONE)
+            for y in range(19, 24):
+                self.assertEqual(tuple(after[y, 13]), C.PAVING_STONE)
+            self.assertEqual(tuple(after[21, 11]), C.MEDIUM_GRASS)
+            self.assertEqual(tuple(after[21, 15]), C.MEDIUM_GRASS)
+
 
 if __name__ == "__main__":
     unittest.main()
