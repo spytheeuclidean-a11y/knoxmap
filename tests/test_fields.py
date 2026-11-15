@@ -137,6 +137,15 @@ class PoolTest(unittest.TestCase):
         self.assertTrue(colour_mask(land, C.RAIL_NW_SE)[62, :].all())
         self.assertTrue(colour_mask(land, C.MEDIUM_ASPHALT)[139, :].all())
 
+    def test_never_overwrites_dirt_paths_inside_wetland(self):
+        land, veg = blank(200, 200, C.DARK_GRASS)
+        ImageDraw.Draw(land).rectangle((0, 95, 199, 98), fill=C.DIRT)
+        wet = np.ones((200, 200), dtype=bool)
+        blocked = np.zeros_like(wet)
+        F.paint_pools(land, veg, P(), wet, blocked)
+        self.assertTrue(colour_mask(land, C.DIRT)[95:99, :].all())
+        self.assertFalse((np.asarray(veg)[95:99, :] != 0).any())
+
 
 class RockTest(unittest.TestCase):
     def setUp(self):

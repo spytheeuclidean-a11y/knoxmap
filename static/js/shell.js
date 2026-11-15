@@ -386,7 +386,7 @@
   function about() {
     dialog('About KnoxMap', []);
     dlg.firstElementChild.insertAdjacentHTML('beforeend', `<p style="margin:0">Real places as Project Zomboid maps,
-      by <b>euclid80tr</b>.</p><p class="hint" style="margin:0">Map data © OpenStreetMap contributors (ODbL).
+      by <b>euclid80tr</b> &amp; <b>SolarisMare</b>.</p><p class="hint" style="margin:0">Map data © OpenStreetMap contributors (ODbL).
       Project Zomboid is The Indie Stone’s.</p>`);
   }
 
@@ -395,14 +395,14 @@
   // controls. The map's drawing buttons, and what a drawing in progress
   // shows (Finish, Cancel, Save), are pressed from the Area tab.
   const TOOLS = [
-    { id: 'area', icon: '📐', key: 'X', label: 'Extent', title: 'The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners' },
-    { id: 'draw', icon: '✏️', key: 'F', label: 'Features', title: 'Features to add to the map: a street, a house, a park… built like a real one',
+    { id: 'area', key: 'X', label: 'Extent', title: 'The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners' },
+    { id: 'draw', key: 'F', label: 'Features', title: 'Features to add to the map: a street, a house, a park… built like a real one',
       panel: 'sketch' },
-    { id: 'zone', icon: '🧩', key: 'Z', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
+    { id: 'zone', key: 'Z', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
       panel: 'zonesPanel' },
-    { id: 'change', icon: '🔧', key: 'E', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
+    { id: 'change', key: 'E', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
       panel: 'editMap' },
-    { id: 'make', icon: '🏗️', key: 'B', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
+    { id: 'make', key: 'B', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
   ];
   const toolTabs = tools.querySelector('.ws-tool-tabs');
   const toolPanes = tools.querySelector('.ws-tool-panes');
@@ -428,8 +428,8 @@
   };
   const PANE_NOTE = { draw: 'sketchNote', zone: 'zoneNote', change: 'editNote' };
   for (const t of TOOLS) {
-    const tab = make('button', 'setting-tab',
-      `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span><span>${esc(t.label)}</span>`);
+    const iconHtml = t.icon ? `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span>` : '';
+    const tab = make('button', 'setting-tab', `${iconHtml}<span>${esc(t.label)}</span>`);
     tab.type = 'button';
     tab.dataset.tool = t.id;
     tab.title = `${t.title} (${t.key})`;
@@ -797,7 +797,7 @@
             can hold, and whether the map servers are answering.</p>
             <button type="button" class="btn btn-small" id="wsHomeSetup">Check my setup</button></div></div>
         </section></div>
-      <p class="credit">KnoxMap by euclid80tr · Map data © OpenStreetMap contributors</p></div>`;
+      <p class="credit">KnoxMap by euclid80tr &amp; SolarisMare · Map data © OpenStreetMap contributors</p></div>`;
     const mapsBox = $('wsHomeMaps');
     mapsBox.append($('mapList'));
     mapsCard.hidden = true;

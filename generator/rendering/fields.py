@@ -268,7 +268,9 @@ def _pool_keep_out_mask(landscape) -> np.ndarray:
         for r, g, b in (
             C.DARKEST_ASPHALT, C.MEDIUM_ASPHALT, C.DARK_ASPHALT,
             C.LIGHT_ASPHALT, C.DARK_POTHOLE, C.LIGHT_POTHOLE,
-            C.PALE_CONCRETE, C.PAVING, C.WATER,
+            C.PALE_CONCRETE, C.PAVING, C.DIRT, C.SAND, C.CLAY,
+            C.DIRT_GRASS, C.GRAVEL_DIRT, C.DIRT_ROWS_H, C.DIRT_ROWS_V,
+            C.WATER,
             *(colour for _, colour, _ in RAIL_RULES),
         )
     ], dtype=np.uint32)
@@ -306,7 +308,7 @@ def paint_pools(landscape, veg, proj, wet, blocked) -> int:
         pool[top:bottom] = allowed[top:bottom] & (n > edge)
     if not pool.any():
         return 0
-    bank = wet & ~pool & _reach(pool, 1, outside=False)
+    bank = wet & ~pool & ~keep_out & _reach(pool, 1, outside=False)
     for top, bottom in _strips(h):
         p, b = pool[top:bottom], bank[top:bottom]
         if not (p.any() or b.any()):
