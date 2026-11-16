@@ -50,7 +50,7 @@ LABELS = {"generate": "Generate map", "build": "Build", "compile": "Compile",
 def _parse(version: str) -> tuple[int, ...]:
     import re
 
-    return tuple(int(p) for p in re.findall(r"\d+", version or "")[:4]) or (0,)
+    return tuple(int(p) for p in re.findall(r"\d+", version or "")) or (0,)
 
 
 def _path(map_dir: str) -> str:

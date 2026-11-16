@@ -47,6 +47,44 @@ class UpdateRoutes(unittest.TestCase):
         self.assertEqual(answer.status_code, 200)
         self.assertTrue(answer.get_json()["started"])
 
+    def test_deep_and_multi_digit_versions_are_accepted_and_ordered(self):
+        import re
+        from pathlib import Path
+
+        import updater
+        from knoxbuild import mapstate
+
+        for tag in ("1.8.5.10", "v1.8.5.10", "1.8.5.10.1", "v1.8.5.10.1", "v1.8.6.1.2-mc1"):
+            self.assertTrue(updater._is_knoxmap({"tag_name": tag}), tag)
+        self.assertFalse(updater._is_knoxmap({"tag_name": "worlded-cli-linux-20260909f"}))
+
+        pairs = (
+            ("1.8.5.10", "1.8.5.9"),
+            ("1.8.5.11", "1.8.5.10"),
+            ("1.8.5.10.1", "1.8.5.10"),
+            ("1.8.5.10.2", "1.8.5.10.1"),
+            ("1.8.6.1", "1.8.6"),
+            ("1.8.6.1.1", "1.8.6.1"),
+        )
+        for newer, older in pairs:
+            self.assertTrue(updater.is_newer(newer, older), (newer, older))
+            self.assertFalse(updater.is_newer(older, newer), (older, newer))
+            self.assertGreater(mapstate._parse(newer), mapstate._parse(older))
+
+        for ver in ("1.8.5.10", "1.8.5.10.1", "1.8.6.1.2-mc1"):
+            with mock.patch.object(updater, "managed", return_value=False):
+                answer = post("/api/versions/install", {"version": ver})
+            self.assertEqual(answer.status_code, 400)
+            self.assertIn("git checkout", answer.get_json()["error"], ver)
+
+        yml = (Path(updater.BASE_DIR) / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+        m = re.search(r"grep -Eq '([^']+)'", yml)
+        self.assertIsNotNone(m)
+        gate_re = re.compile(m.group(1))
+        for tag in ("v1.8.5.10", "v1.8.5.10.1", "1.8.6.1.1", "v1.8.5.10.1-mc1"):
+            self.assertIsNotNone(gate_re.fullmatch(tag), tag)
+        self.assertIsNone(gate_re.fullmatch("worlded-cli-linux-20260909f"))
+
     def test_a_restart_outside_the_window_is_refused(self):
         with mock.patch.dict("os.environ", {}, clear=False):
             import os
