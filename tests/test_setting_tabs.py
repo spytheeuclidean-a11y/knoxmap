@@ -82,6 +82,17 @@ class SettingTabs(unittest.TestCase):
         self.assertIn("new CustomEvent('listsearch'", APP)
         self.assertIn("addEventListener('listsearch'", APP)
 
+    def test_properties_tabs_and_notice_have_no_emoji_icons(self):
+        emoji_re = "[\u2600-\u27bf\U0001f000-\U0001faff\ufe0f]"
+        self.assertNotRegex(block("SETTING_GROUPS"), emoji_re)
+        other_fn = re.search(r"function settingTabs\(\) \{(.*?)\n\}", APP, re.S)
+        self.assertIsNotNone(other_fn, "settingTabs() not found in static/js/")
+        self.assertNotRegex(other_fn.group(1), emoji_re)
+        html = (ROOT / "templates" / "index.html").read_text(encoding="utf-8")
+        notice = re.search(r'<details id="zonesNotice".*?</details>', html, re.S)
+        self.assertIsNotNone(notice, "#zonesNotice not found in templates/index.html")
+        self.assertNotRegex(notice.group(0), emoji_re)
+
 
 if __name__ == "__main__":
     unittest.main()

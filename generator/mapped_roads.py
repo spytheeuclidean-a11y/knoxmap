@@ -18,12 +18,12 @@ ROAD_CATEGORIES = frozenset({
 })
 
 # Sub-tile jitter tolerance in tiles for Douglas-Peucker simplification.
-SIMPLIFY_TOLERANCE_TILES = 0.65
-LOOP_SIMPLIFY_TOLERANCE_TILES = 0.3
+SIMPLIFY_TOLERANCE_TILES = 1.1
+LOOP_SIMPLIFY_TOLERANCE_TILES = 0.35
 SMALL_LOOP_SPAN_TILES = 18.0
-MAX_SMOOTH_SHIFT_TILES = 0.75
-CHAIKIN_MAX_INSET_TILES = 4.0
-CHAIKIN_MIN_COS = 0.25  # Keep sharp corners (> ~75 deg turn) crisp.
+MAX_SMOOTH_SHIFT_TILES = 1.1
+CHAIKIN_MAX_INSET_TILES = 6.0
+CHAIKIN_MIN_COS = 0.10  # Keep sharp corners (> ~84 deg turn) crisp.
 
 
 def _perp_dist(pt: tuple[float, float], a: tuple[float, float],
@@ -75,10 +75,10 @@ def _smooth_micro_kinks(pts: list[tuple[float, float]]) -> list[tuple[float, flo
         v2x, v2y = bx - px, by - py
         l1 = math.hypot(v1x, v1y)
         l2 = math.hypot(v2x, v2y)
-        if l1 < 1e-6 or l2 < 1e-6 or min(l1, l2) >= 12.0:
+        if l1 < 1e-6 or l2 < 1e-6 or min(l1, l2) >= 18.0:
             continue
         cos_t = (v1x * v2x + v1y * v2y) / (l1 * l2)
-        if cos_t <= 0.65:
+        if cos_t <= 0.50:
             continue
         mx, my = (ax + bx) * 0.5, (ay + by) * 0.5
         dx, dy = (mx - px) * 0.5, (my - py) * 0.5
@@ -92,7 +92,7 @@ def _smooth_micro_kinks(pts: list[tuple[float, float]]) -> list[tuple[float, flo
 
 
 def _smooth_curves_chaikin(
-    pts: list[tuple[float, float]], iterations: int = 2
+    pts: list[tuple[float, float]], iterations: int = 3
 ) -> list[tuple[float, float]]:
     """Round polygonal road bends with bounded Chaikin corner-cutting.
 

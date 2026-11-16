@@ -142,6 +142,9 @@ def _paint_woodland_tiles(veg_px, mask_px, eroded_px, scrub_px, land_px, w, h,
                     land_px[x, y] = C.DARK_GRASS
 
 
+GRASS_COLOURS = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
+
+
 def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
                              feats: list[OSMFeature], proj: Projector) -> None:
     """Hedges, orchards, cemeteries and wetland, which are not woodland.
@@ -184,7 +187,8 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
             spacing = max(2, int(round(4 / proj.meters_per_tile)))
             for y in range(y0, y1):
                 for x in range(x0, x1):
-                    if not mp[x, y] or lp[x, y] == C.WATER:
+                    # Keep roads, sidewalks, paving, paths, rail, and water intact.
+                    if not mp[x, y] or lp[x, y] not in GRASS_COLOURS:
                         continue
                     if cat == "orchard":
                         if x % spacing == 0 and y % spacing == 0:
@@ -220,7 +224,6 @@ SHORT_GRASS_SHARE = 0.2
 # Long grass is off: its rule mixes in flowerbed tiles, which came out as pink
 # and blue squares all over every lawn.
 LONG_GRASS_SHARE = 0.0
-GRASS_COLOURS = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
 
 
 # Rows of the map worked on at a time in _box_any. A whole town's summed-area
@@ -541,8 +544,8 @@ def _clear_road_vegetation(veg: Image.Image, landscape: Image.Image) -> None:
     from . import native_pixels
 
     road_tuple = ((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
-                   C.DARKEST_ASPHALT, C.PALE_CONCRETE, C.DARK_POTHOLE,
-                   C.LIGHT_POTHOLE, C.WATER)
+                   C.DARKEST_ASPHALT, C.PALE_CONCRETE, C.PAVING,
+                   C.DARK_POTHOLE, C.LIGHT_POTHOLE, C.WATER)
                   + tuple(colour for _, colour, _ in RAIL_RULES))
     veg_tuple = (C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
                  C.GRASS_ON_DARK, C.SHORT_GRASS, C.LOT_OF_GRASS_AND_TREES,

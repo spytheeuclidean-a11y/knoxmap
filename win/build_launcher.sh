@@ -23,7 +23,9 @@ fi
 major="$(echo "$version" | cut -d. -f1)"
 minor="$(echo "$version" | cut -d. -f2)"
 patch="$(echo "$version" | cut -d. -f3)"
-: "${major:=0}" "${minor:=0}" "${patch:=0}"
+build="$(echo "$version" | cut -d. -f4)"
+: "${major:=0}" "${minor:=0}" "${patch:=0}" "${build:=0}"
+if [ "$build" -gt 65535 ] 2>/dev/null; then build=0; fi
 
 CC="${CC:-x86_64-w64-mingw32-gcc}"
 WINDRES="${WINDRES:-x86_64-w64-mingw32-windres}"
@@ -38,7 +40,7 @@ done
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 sed -e "s/@MAJOR@/$major/g" -e "s/@MINOR@/$minor/g" -e "s/@PATCH@/$patch/g" \
-    -e "s/@VERSION@/$version/g" win/knoxmap.rc > "$work/knoxmap.rc"
+    -e "s/@BUILD@/$build/g" -e "s/@VERSION@/$version/g" win/knoxmap.rc > "$work/knoxmap.rc"
 # The .rc names branding/knoxmap.ico relative to where windres is run.
 "$WINDRES" -I. "$work/knoxmap.rc" -O coff -o "$work/knoxmap.res"
 

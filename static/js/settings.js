@@ -34,7 +34,7 @@ const SETTING_LABELS = {
   min_size:            ['Smallest building', 'Buildings narrower than this many tiles are left out.'],
   align_streets:       ['Straighten streets', 'On turns the map so the main street grid runs along the tiles - no staircase roads. Off keeps north up.'],
   rotate_degrees:      ['Turn the map', 'Degrees to turn the whole area before it is built, on top of Straighten streets. Use it when the automatic angle picks the wrong grid.'],
-  straight_roads:      ['Road layout', 'As mapped draws roads as they are mapped on OpenStreetMap, smoothed to remove jagged tile edges - the default. Knox County straight lays every road in straight runs along the tiles and on 45-degree diagonals, squaring off the short kinks between runs so a street stays on one grid line or one diagonal. Vanilla curves routes them the way the game’s own B42 map draws its streets: along the tiles, 45 degrees and the 2:1 slopes, with its curves and street shapes. Built-up streets square keeps streets lined with buildings on the grid, as the buildings are, and off them. The vanilla choices take a few minutes on a town.'],
+  straight_roads:      ['Road layout', 'As mapped draws roads as they are mapped on OpenStreetMap, smoothed to remove jagged tile edges - the default. Vanilla 45° grid builds every road from the ground up on Project Zomboid’s 8-way tile grid (0°, 45°, and 90° runs only, with 45° chamfered turns and no 2:1 or curved slopes). Knox County straight lays every road in straight runs along the tiles and on 45-degree diagonals, squaring off the short kinks between runs so a street stays on one grid line or one diagonal. Vanilla curves routes them the way the game’s own B42 map draws its streets: along the tiles, 45 degrees and the 2:1 slopes, with its curves and street shapes. Built-up streets square keeps streets lined with buildings on the grid, as the buildings are, and off them. The vanilla curves choices take a few minutes on a town.'],
   include_proposed_roads: ['Proposed roads', 'On includes roads marked as proposed in OpenStreetMap, even though they may not exist yet. Off leaves them out.'],
   max_size:            ['Largest building', 'Footprints above this are skipped.'],
   building_mix:        ['Mix of buildings', 'How Most buildings is shared out by kind, as percentages: house=40,shop=15,industrial=13 and so on. Leave it empty and the map keeps its own mix, whatever OpenStreetMap has there. Write “preset” for a typical town’s shares. A share the map cannot fill - 15% shops where there are twenty of them - goes to the kinds that can, so the number you asked for is still built; the log says what was asked for against what the ground could give. Names: house, apartment, shop, industrial, garage, farm, school, medical, police, church, civic, other.'],
@@ -81,7 +81,6 @@ async function loadSettings() {
 const SETTING_GROUPS = {
   map: {
     title: 'Map',
-    icon: '🗺️',
     part: 'map',
     partEnd: 'map-area',
     main: ['terrain_only'],
@@ -89,7 +88,6 @@ const SETTING_GROUPS = {
   },
   gameplay: {
     title: 'Gameplay',
-    icon: '🧟',
     main: ['zombies_per_resident', 'spawn_density', 'guaranteed_rifle'],
     advanced: [
       ['Zombies', ['m2_per_person']],
@@ -98,7 +96,6 @@ const SETTING_GROUPS = {
   },
   roads: {
     title: 'Roads',
-    icon: '🛣️',
     main: ['true_map', 'straight_roads', 'align_streets'],
     advanced: [
       ['Layout', ['rotate_degrees', 'include_proposed_roads', 'seed']],
@@ -106,7 +103,6 @@ const SETTING_GROUPS = {
   },
   buildings: {
     title: 'Buildings',
-    icon: '🏘️',
     main: ['max_buildings', 'fill_gaps', 'height_mix', 'max_levels', 'arch_style',
            'vanilla_tiles'],
     advanced: [
@@ -121,7 +117,6 @@ const SETTING_GROUPS = {
   },
   land: {
     title: 'Land',
-    icon: '⛰️',
     main: ['landcover', 'elevation', 'winter_look'],
     advanced: [
       ['Details', ['max_relief', 'climate_flavor', 'ne_context']],
@@ -129,7 +124,6 @@ const SETTING_GROUPS = {
   },
   forest: {
     title: 'Forest',
-    icon: '🌲',
     preview: true,
     main: ['forest_density', 'forest_thickets', 'forest_stand_m', 'forest_stand_variety',
            'forest_edge_m'],
@@ -376,7 +370,7 @@ function settingTabs() {
   const listed = new Set(tabs.flatMap(([, group]) => groupKeys(group)));
   const rest = Object.keys(SETTING_LABELS)
     .filter(key => key in settingsMeta.defaults && !listed.has(key));
-  if (rest.length) tabs.push(['other', { title: 'Other', icon: '⚙️', main: rest, advanced: [] }]);
+  if (rest.length) tabs.push(['other', { title: 'Other', main: rest, advanced: [] }]);
   return tabs;
 }
 
@@ -399,8 +393,7 @@ function buildSettingsForm(values) {
     tab.dataset.tab = name;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-controls', `setting-panel-${name}`);
-    // The emoji is its own element, so the name stays a line to translate.
-    tab.innerHTML = `<span class="setting-tab-icon" aria-hidden="true">${group.icon || ''}</span>`
+    tab.innerHTML = (group.icon ? `<span class="setting-tab-icon" aria-hidden="true">${group.icon}</span>` : '')
       + `<span class="setting-tab-name">${group.title}</span>`
       + '<span class="setting-tab-dot" title="Changed from the defaults for this kind of place" hidden></span>'
       + '<span class="setting-tab-count"></span>';

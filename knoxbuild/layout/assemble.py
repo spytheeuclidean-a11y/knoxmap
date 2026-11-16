@@ -561,7 +561,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
         _open_shopfronts(plan)
     if ground and garage_door:
         _widen_vehicle_entry(plan, street)
-    _furnish(plan, rng, stairs, street)
+    _furnish(plan, rng, stairs, street, is_ground=ground)
     if mix_kind == "mall":
         _clear_concourse(plan)
         _place_kiosks(plan, rng, ground)

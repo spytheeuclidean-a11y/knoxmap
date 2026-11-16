@@ -259,6 +259,26 @@ class RoadsideProps(unittest.TestCase):
                     f"fixture placed on sidewalk at {(x, y)}",
                 )
 
+    def test_manholes_skip_distant_concrete_aprons(self):
+        ground = Image.new("RGB", (80, 80), C.MEDIUM_GRASS)
+        pixels = ground.load()
+        for y in range(80):
+            for x in range(4, 12):
+                pixels[x, y] = C.MEDIUM_ASPHALT
+            for x in range(12, 14):
+                pixels[x, y] = C.PALE_CONCRETE
+        for y in range(10, 70):
+            for x in range(30, 75):
+                pixels[x, y] = C.PALE_CONCRETE
+        vegetation = Image.new("RGB", ground.size, C.VEG_NOTHING)
+        with mock.patch.object(furniture, "_mod_tiles_ready", return_value=False):
+            renderer._paint_street_furniture(vegetation, ground)
+        distant_manholes = [
+            (x, y) for x in range(20, 80) for y in range(80)
+            if vegetation.getpixel((x, y)) == C.MANHOLE
+        ]
+        self.assertEqual(distant_manholes, [])
+
 
 if __name__ == "__main__":
     unittest.main()
