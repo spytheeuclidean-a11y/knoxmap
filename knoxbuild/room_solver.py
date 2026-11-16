@@ -1442,18 +1442,50 @@ def solve_varied(house: House, programme: str, n: int = VARIETY, seconds: float 
 
 
 class LayoutCache:
-    """Layouts by house_key, on disk as JSON. The key holds its programme's
-    hash, so a change to the tables or the solver leaves the old entries
-    unused (`prune` drops them) and re-solves only what it touched."""
+    """Layouts by house_key, on disk. The key holds its programme's hash, so a change to the
+    tables or the solver leaves the old entries unused (`prune` drops them) and re-solves
+    only what it touched.
+
+    On disk: `layouts.json`, the compacted base, and `shards/*.jsonl`, one file per process
+    per run, each line `[key, entry]`. `save` only appends what is new to this process's own
+    shard (it used to rewrite the whole file every 25 footprints: quadratic SSD writes on a
+    big map); `compact`, once at the end of a run, folds the shards into the base. Loading
+    reads the base, then the shards in name order, the later winning, so caches made on
+    several machines are merged by copying their shards in."""
+
+    SHARDS_MAX = 24             # compact once there are this many shards
 
     def __init__(self, folder: str | None = None):
         self.folder = folder or os.path.join(HERE, "..", "cache", "room_solver")
         self.path = os.path.join(self.folder, "layouts.json")
-        self.data = {}
+        self.shards = os.path.join(self.folder, "shards")
+        self._shard = None          # this process's own shard, made at its first save
+        self._pending: dict = {}    # written since the last save
+        self._gone: set = set()     # pruned: dropped from the base at the next compact
+        self._rewrite = False
+        self.dirty = False
+        self.data, _ = self._read_all()
+
+    def _shard_files(self) -> list:
+        if not os.path.isdir(self.shards):
+            return []
+        return sorted(os.path.join(self.shards, n) for n in os.listdir(self.shards) if n.endswith(".jsonl"))
+
+    def _read_all(self):
+        data: dict = {}
         if os.path.exists(self.path):
             with open(self.path, encoding="utf-8") as f:
-                self.data = json.load(f)
-        self.dirty = False
+                data = json.load(f)
+        files = self._shard_files()
+        for name in files:
+            with open(name, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        key, entry = json.loads(line)
+                    except ValueError:
+                        continue            # the last line of a process that was killed
+                    data[key] = entry
+        return data, files
 
     def options(self, house: House, programme: str) -> list:
         """Every cached layout that fits house: its own, and its mirror image's mirrored."""
@@ -1475,7 +1507,8 @@ class LayoutCache:
         self.store(house_key(house, programme), programme, [_to_json(lay) for lay in lays])
 
     def store(self, key: str, programme: str, lays: list) -> None:
-        self.data[key] = {"programme": programme, "hash": programme_hash(programme), "layouts": lays}
+        self.data[key] = self._pending[key] = {"programme": programme, "hash": programme_hash(programme),
+                                               "layouts": lays}
         self.dirty = True
 
     def prune(self) -> int:
@@ -1484,33 +1517,73 @@ class LayoutCache:
                  if not is_programme(v.get("programme")) or v.get("hash") != programme_hash(v["programme"])]
         for k in stale:
             del self.data[k]
-        self.dirty = self.dirty or bool(stale)
+            self._pending.pop(k, None)
+        self._gone |= set(stale)
+        self._rewrite = self._rewrite or bool(stale)
         return len(stale)
 
     def save(self, tries: int = 10) -> None:
-        """Write the cache, merged with what is on disk now (another Build run
-        may have saved since this one read it), through a file of this
-        process's own; a moment's lock on Windows is waited out."""
-        if not self.dirty:
+        """Append what is new to this process's shard (a moment's lock on Windows is waited
+        out). Nothing else is read or rewritten."""
+        if not self._pending:
+            self.dirty = False
             return
-        os.makedirs(self.folder, exist_ok=True)
-        tmp = f"{self.path}.{os.getpid()}.tmp"
+        os.makedirs(self.shards, exist_ok=True)
+        if self._shard is None:
+            import socket
+            self._shard = os.path.join(self.shards, f"{int(time.time()):012d}-{socket.gethostname()}-{os.getpid()}.jsonl")
         for i in range(tries):
             try:
-                if os.path.exists(self.path):
-                    with open(self.path, encoding="utf-8") as f:
-                        disk = json.load(f)
-                    disk.update(self.data)
-                    self.data = disk
-                with open(tmp, "w", encoding="utf-8") as f:
-                    json.dump(self.data, f, separators=(",", ":"))
-                os.replace(tmp, self.path)
+                with open(self._shard, "a", encoding="utf-8") as f:
+                    for key, entry in self._pending.items():
+                        f.write(json.dumps([key, entry], separators=(",", ":")) + "\n")
+                self._pending.clear()
                 self.dirty = False
                 return
-            except (OSError, ValueError):
+            except OSError:
                 if i == tries - 1:
                     raise
                 time.sleep(0.5 * (i + 1))
+
+    def compact(self, force: bool = False) -> bool:
+        """Fold the shards into layouts.json: when entries were pruned, or the shards number
+        SHARDS_MAX, or force. One run at a time (a lock file; a run that finds it skips: the
+        shards stay and are folded in later). Returns whether it did."""
+        self.save()
+        files = self._shard_files()
+        if not (self._rewrite or force or len(files) >= self.SHARDS_MAX):
+            return False
+        lock = os.path.join(self.folder, "compact.lock")
+        os.makedirs(self.folder, exist_ok=True)
+        try:
+            if os.path.exists(lock) and time.time() - os.path.getmtime(lock) > 600:
+                os.remove(lock)             # a run that died holding it
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except OSError:
+            return False
+        try:
+            os.close(fd)
+            data, files = self._read_all()
+            for key in self._gone:
+                data.pop(key, None)
+            tmp = f"{self.path}.{os.getpid()}.tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(data, f, separators=(",", ":"))
+            os.replace(tmp, self.path)
+            for name in files:
+                try:
+                    os.remove(name)
+                except OSError:
+                    pass
+            self.data, self._shard = data, None
+            self._gone.clear()
+            self._rewrite = False
+            return True
+        finally:
+            try:
+                os.remove(lock)
+            except OSError:
+                pass
 
 
 def pick(options: list, building_id) -> Layout:
@@ -2163,6 +2236,7 @@ def prepare(jobs: list, processes: int | None = None) -> dict | None:
     processes = processes or max(1, (os.cpu_count() or 4) // 4)
     got = prewarm(todo, cache, processes=processes, workers=4,
                   progress=lambda i, n, t: print(f"  room_solver: {i}/{n} footprints solved, {t:.0f}s", flush=True))
+    cache.compact()                 # the run's shards folded into the base (when it is time)
     os.environ[PREPARED] = "1"      # Build's workers: the cache only (PREPARED)
     got["houses"] = len(todo)
     got["stale_dropped"] = dropped
@@ -2291,6 +2365,7 @@ def main(argv=None):
         got = prewarm(jobs, cache, processes=a.processes, seconds=a.seconds, workers=a.workers,
                       progress=lambda i, n, t: print(f"  {i}/{n} footprints, {t:.0f}s", flush=True))
         print(got)
+        cache.compact()
         t = time.time()
         found = sum(1 for i, (h, p) in enumerate(jobs) if layout_for(h, p, i, cache) is not None)
         print(f"from the cache: {found}/{len(jobs)} houses laid out in {time.time() - t:.1f}s")
