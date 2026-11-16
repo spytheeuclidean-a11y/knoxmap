@@ -34,6 +34,7 @@ $parts = $Version.Split(".")
 $major = if ($parts.Count -gt 0 -and $parts[0]) { $parts[0] } else { "0" }
 $minor = if ($parts.Count -gt 1 -and $parts[1]) { $parts[1] } else { "0" }
 $patch = if ($parts.Count -gt 2 -and $parts[2]) { $parts[2] } else { "0" }
+$build = if ($parts.Count -gt 3 -and $parts[3] -and [int]$parts[3] -le 65535) { $parts[3] } else { "0" }
 
 # The compiler, from whatever Visual Studio or Build Tools is installed. This
 # uses only what ships on the machine, so the release does not depend on a
@@ -67,7 +68,8 @@ try {
     # what people are right to be wary of.
     (Get-Content "win\knoxmap.rc" -Raw).
         Replace("@MAJOR@", $major).Replace("@MINOR@", $minor).
-        Replace("@PATCH@", $patch).Replace("@VERSION@", $Version) |
+        Replace("@PATCH@", $patch).Replace("@BUILD@", $build).
+        Replace("@VERSION@", $Version) |
         Set-Content -Encoding ascii (Join-Path $work "knoxmap.rc")
 
     # The .rc names branding/knoxmap.ico relative to the repository root.
