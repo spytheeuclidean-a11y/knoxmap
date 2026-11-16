@@ -86,6 +86,56 @@ def _shifted(mask, dy, dx) -> "object":
     return out
 
 
+def _mark_two_tile_bumps(fg, bg, back):
+    """Return a mask of 2-tile-wide, 1-tile-deep ``fg`` teeth jutting into ``bg``."""
+    out = fg & False
+    h, w = fg.shape
+    if h >= 3 and w >= 4:
+        pair = fg[1:-1, 1:-2] & fg[1:-1, 2:-1] & bg[1:-1, :-3] & bg[1:-1, 3:]
+        n = pair & bg[:-2, 1:-2] & bg[:-2, 2:-1] & \
+            back[2:, :-3] & back[2:, 1:-2] & back[2:, 2:-1] & back[2:, 3:]
+        out[1:-1, 1:-2] |= n
+        out[1:-1, 2:-1] |= n
+        s = pair & bg[2:, 1:-2] & bg[2:, 2:-1] & \
+            back[:-2, :-3] & back[:-2, 1:-2] & back[:-2, 2:-1] & back[:-2, 3:]
+        out[1:-1, 1:-2] |= s
+        out[1:-1, 2:-1] |= s
+    if h >= 4 and w >= 3:
+        pair = fg[1:-2, 1:-1] & fg[2:-1, 1:-1] & bg[:-3, 1:-1] & bg[3:, 1:-1]
+        w_m = pair & bg[1:-2, :-2] & bg[2:-1, :-2] & \
+            back[:-3, 2:] & back[1:-2, 2:] & back[2:-1, 2:] & back[3:, 2:]
+        out[1:-2, 1:-1] |= w_m
+        out[2:-1, 1:-1] |= w_m
+        e_m = pair & bg[1:-2, 2:] & bg[2:-1, 2:] & \
+            back[:-3, :-2] & back[1:-2, :-2] & back[2:-1, :-2] & back[3:, :-2]
+        out[1:-2, 1:-1] |= e_m
+        out[2:-1, 1:-1] |= e_m
+    return out
+
+
+def _mark_two_tile_notches(fg, bg):
+    """Return a mask of 2-tile-wide, 1-tile-deep ``fg`` dents into ``bg``."""
+    out = fg & False
+    h, w = fg.shape
+    if h >= 3 and w >= 4:
+        pair = fg[1:-1, 1:-2] & fg[1:-1, 2:-1] & bg[1:-1, :-3] & bg[1:-1, 3:]
+        n = pair & fg[:-2, 1:-2] & fg[:-2, 2:-1] & bg[2:, 1:-2] & bg[2:, 2:-1]
+        out[1:-1, 1:-2] |= n
+        out[1:-1, 2:-1] |= n
+        s = pair & fg[2:, 1:-2] & fg[2:, 2:-1] & bg[:-2, 1:-2] & bg[:-2, 2:-1]
+        out[1:-1, 1:-2] |= s
+        out[1:-1, 2:-1] |= s
+    if h >= 4 and w >= 3:
+        pair = fg[1:-2, 1:-1] & fg[2:-1, 1:-1] & bg[:-3, 1:-1] & bg[3:, 1:-1]
+        w_m = pair & fg[1:-2, :-2] & fg[2:-1, :-2] & bg[1:-2, 2:] & bg[2:-1, 2:]
+        out[1:-2, 1:-1] |= w_m
+        out[2:-1, 1:-1] |= w_m
+        e_m = pair & fg[1:-2, 2:] & fg[2:-1, 2:] & bg[1:-2, :-2] & bg[2:-1, :-2]
+        out[1:-2, 1:-1] |= e_m
+        out[2:-1, 1:-1] |= e_m
+    return out
+
+
 def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
     """Fill one-tile notches along the edge of the road, and shave one-tile bumps.
 
@@ -95,6 +145,14 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
     along a line becomes road, and a road tile with pavement on both sides
     becomes pavement.
     """
+    from . import native_pixels
+
+    verge_pal = (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS)
+    if native_pixels.smooth_road_edges(
+        landscape, asphalt, C.PALE_CONCRETE, C.MEDIUM_GRASS, verge_pal
+    ):
+        return
+
     import numpy as np
 
     w, h = landscape.size
@@ -103,7 +161,7 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
         y1 = min(h, y0 + strip)
         top, bottom = max(0, y0 - 1), min(h, y1 + 1)
         ground = np.asarray(landscape.crop((0, top, w, bottom))).copy()
-        for _ in range(2):
+        for _ in range(10):
             road = is_colour(ground, asphalt)
             pave = is_colour(ground, (C.PALE_CONCRETE,))
             verge = is_colour(ground, (C.DARK_GRASS, C.MEDIUM_GRASS, C.LIGHT_GRASS))
@@ -112,10 +170,18 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             notch[1:-1, :] |= road[:-2, :] & road[2:, :]
             notch[:, 1:-1] |= road[:, :-2] & road[:, 2:]
             notch &= road_border
+            notch |= _mark_two_tile_notches(road_border, road)
+            border_count = np.zeros(road.shape, dtype=np.uint8)
+            border_count[:, 1:] += road_border[:, :-1]
+            border_count[:, :-1] += road_border[:, 1:]
+            border_count[1:, :] += road_border[:-1, :]
+            border_count[:-1, :] += road_border[1:, :]
             bump = np.zeros_like(road)
             bump[1:-1, :] |= road_border[:-2, :] & road_border[2:, :]
             bump[:, 1:-1] |= road_border[:, :-2] & road_border[:, 2:]
+            bump |= border_count >= 3
             bump &= road
+            bump |= _mark_two_tile_bumps(road, road_border, road)
             # A pavement tile with no pavement beside it orthogonally is one
             # step of a diagonal edge, and on its own it draws as a lip that
             # reads as a spike standing in the grass. It becomes the ground it
@@ -163,8 +229,12 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
             verge_count[:, :-1] += verge[:, 1:]
             verge_count[1:, :] += verge[:-1, :]
             verge_count[:-1, :] += verge[1:, :]
-            pave_bump = pave & (verge_count >= 3)
-            pave_notch = verge & (ortho_count >= 3)
+            pave_bump = (pave & (verge_count >= 3)) | _mark_two_tile_bumps(
+                pave, verge, pave | road
+            )
+            pave_notch = (verge & (ortho_count >= 3)) | _mark_two_tile_notches(
+                verge, pave
+            )
             if not notch.any() and not bump.any() and not lonep.any() \
                     and not mend.any() and not pave_bump.any() \
                     and not pave_notch.any():
@@ -235,8 +305,46 @@ def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector, sho
         paint_track(draw, ring, should_stop)
 
 
+def _paint_kerbs(veg: Image.Image, landscape: Image.Image, asphalt, is_colour) -> None:
+    """Paint straight and corner kerbs where pavement meets road."""
+    from . import native_pixels
+
+    kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
+                3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
+    kerb_tuple = tuple(kerb_for[bits] for bits in (1, 2, 4, 8, 3, 5, 10, 12))
+    if native_pixels.paint_kerbs(veg, landscape, asphalt, C.PALE_CONCRETE, kerb_tuple):
+        return
+
+    import numpy as np
+
+    w, h = landscape.size
+    strip = 1024
+    for y0 in range(0, h, strip):
+        y1 = min(h, y0 + strip)
+        top, bottom = max(0, y0 - 1), min(h, y1 + 1)
+        ground = np.asarray(landscape.crop((0, top, w, bottom)))
+        road = is_colour(ground, asphalt)
+        pave = is_colour(ground, (C.PALE_CONCRETE,))
+        sides = np.zeros(road.shape, dtype=np.uint8)
+        sides[:, 1:] |= road[:, :-1] * np.uint8(1)     # road to the west
+        sides[1:, :] |= road[:-1, :] * np.uint8(2)     # road to the north
+        sides[:-1, :] |= road[1:, :] * np.uint8(4)     # road to the south
+        sides[:, :-1] |= road[:, 1:] * np.uint8(8)     # road to the east
+        sides[~pave] = 0
+        sides = _real_kerbs(sides)
+        rows = slice(y0 - top, y0 - top + (y1 - y0))
+        sides = sides[rows]
+        existing = np.asarray(veg.crop((0, y0, w, y1)))
+        free = (existing.reshape(-1, 3).max(axis=1) == 0).reshape(sides.shape)
+        out = existing.copy()
+        for bits, colour in kerb_for.items():
+            out[(sides == bits) & free] = colour
+        veg.paste(Image.fromarray(out), (0, y0))
+
+
 def _paint_road_details(veg: Image.Image, landscape: Image.Image,
-                        buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+                        buckets: dict[str, list[OSMFeature]], proj: Projector,
+                        smooth_edges: bool = True) -> None:
     """Kerbs where pavement meets the road, and lines down two-lane roads.
 
     Asphalt ran straight into the pavement with nothing between them, and a
@@ -259,71 +367,9 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
             mask |= same
         return mask
 
-    _smooth_road_edges(landscape, asphalt, is_colour)
-
-    # Kerbs, a strip at a time, each strip read with a row of overlap so the
-    # tiles either side of a seam still see their neighbours.
-    kerb_for = {1: C.KERB_W, 2: C.KERB_N, 4: C.KERB_S, 8: C.KERB_E,
-                3: C.KERB_NW, 5: C.KERB_SW, 10: C.KERB_NE, 12: C.KERB_SE}
-    # The diagonal pair, only where the rules their colours need are written: a
-    # colour with no rule behind it is dropped with a warning, and an install
-    # that has not been set up since they were added has neither.
-    from .furniture import _rule_ready
-    diag_kerb = {
-        "NW": (C.KERB_DNW_0, C.KERB_DNW_1),
-        "NE": (C.KERB_DNE_0, C.KERB_DNE_1),
-        "SW": (C.KERB_DSW_0, C.KERB_DSW_1),
-        "SE": (C.KERB_DSE_0, C.KERB_DSE_1),
-    } if _rule_ready("Kerb diag NW 0") else None
-    strip = 1024
-    for y0 in range(0, h, strip):
-        y1 = min(h, y0 + strip)
-        top, bottom = max(0, y0 - 1), min(h, y1 + 1)
-        ground = np.asarray(landscape.crop((0, top, w, bottom)))
-        road = is_colour(ground, asphalt)
-        pave = is_colour(ground, (C.PALE_CONCRETE,))
-        sides = np.zeros(road.shape, dtype=np.uint8)
-        sides[:, 1:] |= road[:, :-1] * np.uint8(1)     # road to the west
-        sides[1:, :] |= road[:-1, :] * np.uint8(2)     # road to the north
-        sides[:-1, :] |= road[1:, :] * np.uint8(4)     # road to the south
-        sides[:, :-1] |= road[:, 1:] * np.uint8(8)     # road to the east
-        sides[~pave] = 0
-        sides = _real_kerbs(sides)
-        rows = slice(y0 - top, y0 - top + (y1 - y0))
-        sides = sides[rows]
-        existing = np.asarray(veg.crop((0, y0, w, y1)))
-        free = (existing.reshape(-1, 3).max(axis=1) == 0).reshape(sides.shape)
-        out = existing.copy()
-        for bits, colour in kerb_for.items():
-            out[(sides == bits) & free] = colour
-        # A kerb on a diagonal edge. `sides` is zero on a pavement square whose
-        # tarmac is diagonal to it rather than beside it, and the square kerbs
-        # cannot draw that edge - they step with the tarmac. The game's own 2x
-        # pieces follow the diagonal, so a street at 45 degrees gets a kerb
-        # running along it instead of a staircase of square ones.
-        if diag_kerb:
-            road_r, pave_r = road[rows], pave[rows]
-            # The pieces are 2x tiles - 128x256, two squares wide and two tall -
-            # so one of them covers the square beside it as well. Painting every
-            # pavement square drew each one twice, overlapping by half, which is
-            # what a doubled, angled mess of white lines is in game.
-
-            y_idx = np.arange(sides.shape[0])[:, None]
-            x_idx = np.arange(sides.shape[1])[None, :]
-            even = (y_idx % 2 == 0) & (x_idx % 2 == 0)
-            for name, (dy, dx) in (("NW", (-1, -1)), ("NE", (-1, 1)),
-                                   ("SW", (1, -1)), ("SE", (1, 1))):
-                beside_diag = _shifted(road_r, dy, dx)
-                pick = (sides == 0) & beside_diag & pave_r & free & even
-                if not pick.any():
-                    continue
-                first, second = diag_kerb[name]
-                ys_, xs_ = np.nonzero(pick)
-                for y, x in zip(ys_, xs_):
-                    # two pieces per direction: they take turns along the edge,
-                    # which is how the 2x art lines up with the tile grid.
-                    out[y, x] = first if (x // 2 + y // 2) % 2 == 0 else second
-        veg.paste(Image.fromarray(out), (0, y0))
+    if smooth_edges:
+        _smooth_road_edges(landscape, asphalt, is_colour)
+    _paint_kerbs(veg, landscape, asphalt, is_colour)
 
     # Crossings go down before the lane lines, which only paint on squares
     # nothing else has taken: a centre line drawn through a crossing is a line
@@ -363,57 +409,62 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
                                       bx + ox, by + oy, width))
     if not marks:
         return
+
     colour_for = {("yellow", "N"): C.LINE_YELLOW_N, ("yellow", "W"): C.LINE_YELLOW_W,
                   ("white", "N"): C.LINE_WHITE_N, ("white", "W"): C.LINE_WHITE_W}
-    ground_px = landscape.load()
-    veg_px = veg.load()
-
-    def road_at(x, y):
-        return 0 <= x < w and 0 <= y < h and ground_px[x, y] in asphalt
+    road = is_colour(np.asarray(landscape), asphalt)
+    veg_arr = np.asarray(veg).copy()
 
     for style, edge, ax, ay, bx, by, width in marks:
         steps = int(max(abs(bx - ax), abs(by - ay)))
-        for i in range(steps + 1):
-            t = i / steps if steps else 0
-            # The line sits on the edge between two tiles, so the road's
-            # middle is rounded to the nearest tile boundary.
-            x = int(round(ax + (bx - ax) * t))
-            y = int(round(ay + (by - ay) * t))
-            along = x if edge == "N" else y
-            if style == "white" and (along // 3) % 2:
-                continue
-            if not (road_at(x, y) and (road_at(x, y - 1) if edge == "N" else road_at(x - 1, y))):
-                continue
-            # At a junction the tarmac runs on across the line; a line through
-            # the middle of a crossroads is wrong, so stop short of it.
-            run = 0
-            for k in range(1, int(width) + 4):
-                if edge == "N":
-                    run += road_at(x, y - k) + road_at(x, y + k - 1)
-                else:
-                    run += road_at(x - k, y) + road_at(x + k - 1, y)
-            if run > width + 3:
-                continue
-            if veg_px[x, y] == C.VEG_NOTHING:
-                veg_px[x, y] = colour_for[(style, edge)]
+        t = np.linspace(0.0, 1.0, steps + 1) if steps else np.array([0.0])
+        xs = np.rint(ax + (bx - ax) * t).astype(np.intp)
+        ys = np.rint(ay + (by - ay) * t).astype(np.intp)
+        keep = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
+        if style == "white":
+            along = xs if edge == "N" else ys
+            keep &= ((along // 3) % 2) == 0
+        if not keep.any():
+            continue
+        xs, ys = xs[keep], ys[keep]
+        if edge == "N":
+            on_road = road[ys, xs] & (ys > 0) & road[np.maximum(0, ys - 1), xs]
+        else:
+            on_road = road[ys, xs] & (xs > 0) & road[ys, np.maximum(0, xs - 1)]
+        if not on_road.any():
+            continue
+        xs, ys = xs[on_road], ys[on_road]
+        run = np.zeros(len(xs), dtype=np.int32)
+        for k in range(1, int(width) + 4):
+            if edge == "N":
+                run += np.where(ys >= k, road[np.maximum(0, ys - k), xs], 0)
+                run += np.where(ys + k - 1 < h, road[np.minimum(h - 1, ys + k - 1), xs], 0)
+            else:
+                run += np.where(xs >= k, road[ys, np.maximum(0, xs - k)], 0)
+                run += np.where(xs + k - 1 < w, road[ys, np.minimum(w - 1, xs + k - 1)], 0)
+        ok = run <= width + 3
+        if not ok.any():
+            continue
+        xs, ys = xs[ok], ys[ok]
+        free = np.all(veg_arr[ys, xs] == C.VEG_NOTHING, axis=1)
+        if free.any():
+            veg_arr[ys[free], xs[free]] = colour_for[(style, edge)]
+    veg.paste(Image.fromarray(veg_arr))
+
+
+DENSE_APRON_TILES = 6
 
 
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
                        buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
-    """Pave the unmapped ground of built-up city blocks.
+    """Pave tight courtyards and aprons around built-up urban blocks.
 
     Land OSM says nothing about is painted as wild grass, which is right in the
-    countryside and wrong in an old town, where it is courtyards, alleys and
-    the gaps between blocks. Central Paris came out 77% meadow.
-
-    The decision is made per city block - the ground the streets enclose - on
-    how much of that block is under buildings. It used to be made per patch of
-    ground on the density nearby, which near the threshold flickered between
-    paved and grass across a single block and left it blotched like camouflage.
-    A block is paved whole or not at all, as real ones are. Mapped parks,
-    gardens and pitches keep their grass inside a paved block; a residential
-    area's lawns do not, since between buildings packed this tight they are
-    yards.
+    countryside and too meadow-like in a tight urban core. Rather than filling
+    entire blocks wall-to-wall with flat concrete (which turns any open yard
+    into a blank concrete slab), this paves a modest apron around the buildings
+    in dense blocks so tight alleys and courtyards join while open ground stays
+    grass. Mapped parks, gardens and pitches always keep their grass.
     """
     import numpy as np
     from shapely import STRtree
@@ -450,11 +501,15 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
     pd = ImageDraw.Draw(paved)
     any_paved = False
     for block in blocks:
-        covered = sum(footprints[i].intersection(block).area
-                      for i in tree.query(block))
+        hits = [footprints[i].intersection(block) for i in tree.query(block)]
+        covered = sum(g.area for g in hits)
         if block.area > MAX_PAVED_BLOCK or covered / block.area < DENSE_COVERAGE:
             continue
-        for part in getattr(block, "geoms", None) or [block]:
+        apron = unary_union([g for g in hits if not g.is_empty])
+        if apron.is_empty:
+            continue
+        apron = apron.buffer(DENSE_APRON_TILES).intersection(block)
+        for part in getattr(apron, "geoms", None) or [apron]:
             if hasattr(part, "exterior"):
                 pd.polygon(list(part.exterior.coords), fill=255)
                 for hole in part.interiors:

@@ -127,6 +127,62 @@ class IsoViewEndpointTests(unittest.TestCase):
             if placements_file.exists():
                 placements_file.unlink()
 
+    def test_rust_and_python_renders_match_pixels(self):
+        from pathlib import Path
+        import struct
+        import tempfile
+        import numpy as np
+        from tools import render_lots
+        from tools.compile_map import knoxlots_exe
+
+        if knoxlots_exe() is None:
+            self.skipTest("knoxlots binary not built")
+        with tempfile.TemporaryDirectory() as tmp:
+            lots = Path(tmp) / "lots"
+            lots.mkdir()
+            tiles = [b"blends_natural_01_000", b"walls_exterior_house_01_000"]
+            hdr = bytearray(b"LOTH")
+            hdr += struct.pack("<II", 1, len(tiles))
+            for t in tiles:
+                hdr += t + b"\n"
+            hdr += struct.pack("<IIii", 8, 8, 0, 0)
+            hdr += struct.pack("<II", 0, 0)
+            hdr += b"\x00" * 1024
+            (lots / "0_0.lotheader").write_bytes(bytes(hdr))
+
+            chunks = []
+            for idx in range(1024):
+                if idx == 0:
+                    c = bytearray()
+                    c += struct.pack("<IiII", 3, -1, 0, 1)
+                    c += struct.pack("<iI", -1, 63)
+                    chunks.append(bytes(c))
+                else:
+                    chunks.append(struct.pack("<iI", -1, 64))
+            pack = bytearray(b"LOTP") + struct.pack("<II", 1, 1024)
+            off = 12 + 1024 * 8
+            for c in chunks:
+                pack += struct.pack("<q", off)
+                off += len(c)
+            for c in chunks:
+                pack += c
+            (lots / "world_0_0.lotpack").write_bytes(bytes(pack))
+
+            img_rust = render_lots.render(str(lots), 0, 0, 16, 16, scale=0.5, world=True)
+            prev = os.environ.get("KNOXMAP_PYTHON_RENDER")
+            os.environ["KNOXMAP_PYTHON_RENDER"] = "1"
+            try:
+                img_py = render_lots.render(str(lots), 0, 0, 16, 16, scale=0.5, world=True)
+            finally:
+                if prev is None:
+                    os.environ.pop("KNOXMAP_PYTHON_RENDER", None)
+                else:
+                    os.environ["KNOXMAP_PYTHON_RENDER"] = prev
+            self.assertIsNotNone(img_rust)
+            self.assertIsNotNone(img_py)
+            self.assertEqual(img_rust.size, img_py.size)
+            np.testing.assert_array_equal(np.asarray(img_rust), np.asarray(img_py))
+
 
 if __name__ == "__main__":
     unittest.main()

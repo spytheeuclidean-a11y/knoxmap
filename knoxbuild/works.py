@@ -18,8 +18,7 @@ from generator import pz_colors as C
 
 WORKS_KINDS = ("industrial",)
 YARD_MIN, YARD_MAX = 6, 10       # tiles of yard out from the walls
-YARD_EDGE = 3                    # worn ground past the yard: gravel, dirt, weeds
-EDGE_WEAR = (0.55, 0.3, 0.12)    # how much of each row of it is worn, nearest first
+YARD_EDGE = 3                    # weeds past the yard; no gravel or dirt fringe
 DRIVE_MAX = 120
 DRIVE_WIDTH = 3
 CLUTTER_EVERY = 9                # tiles of wall per stack of clutter
@@ -84,17 +83,15 @@ def dress_works(rows: list[dict], door_lists: dict, cv, drives: list | None, rng
             cv.paint(x, y, C.MEDIUM_ASPHALT)
             cv.paved_at[y * w + x] = True
 
-        # Where the tarmac gives out: gravel, dirt and weeds into the grass.
-        for y in range(y0 - r - YARD_EDGE, y0 + bh + r + YARD_EDGE):
-            for x in range(x0 - r - YARD_EDGE, x0 + bw + r + YARD_EDGE):
-                k = ring(x, y) - r - 1
-                if not 0 <= k < YARD_EDGE or not cv.free(x, y):
-                    continue
-                roll = rng.random()
-                if roll < EDGE_WEAR[k]:
-                    cv.paint(x, y, C.LIGHT_ASPHALT if rng.random() < 0.65 else C.DIRT)
-                elif roll < EDGE_WEAR[k] + 0.25 and cv.veg is not None:
-                    cv.veg[y, x] = C.SHORT_GRASS
+        # Clean tarmac-to-grass border with sparse weeds; avoid scattering sand/dirt tiles.
+        if cv.veg is not None:
+            for y in range(y0 - r - YARD_EDGE, y0 + bh + r + YARD_EDGE):
+                for x in range(x0 - r - YARD_EDGE, x0 + bw + r + YARD_EDGE):
+                    k = ring(x, y) - r - 1
+                    if not 0 <= k < YARD_EDGE or not cv.free(x, y):
+                        continue
+                    if rng.random() < 0.25:
+                        cv.veg[y, x] = C.SHORT_GRASS
 
         taken = set(fronts)
 

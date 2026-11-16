@@ -174,16 +174,18 @@ def _assign_shop_floor(plan: Plan, rng: random.Random, street: str | None,
     adj = _neighbours(plan)
     taken = {i for i, _ in fronts}
     backs: list[tuple[int, str]] = []
+    used_fronts: set[str] = set()
     for n, (i, r) in enumerate(fronts):
         if n < len(uses):
             front, back = uses[n]
-        elif uses:
-            # More shop fronts than the map has businesses: the last one
-            # along the street takes the room next door as well.
-            front, back = uses[-1][0], "storage"
         else:
             front = interiors.store_kind(rng)
+            for _ in range(4):
+                if front not in used_fronts:
+                    break
+                front = interiors.store_kind(rng)
             back = "grocerystorage" if front == "grocery" else "storage"
+        used_fronts.add(front)
         r.kind = front
         backs.append((i, back))
     for i, back in backs:
@@ -224,11 +226,11 @@ ROOM_CAP_PER = {
     # A school has one library, one gym, one canteen and one janitor,
     # not one per six rooms: at a cap of 6 a 25-room floor came out with
     # four libraries. These are the rooms a building has exactly one of.
-    "library": 40, "gym": 40, "kitchen": 40, "diningroom": 40,
-    "lobby": 40, "schoollab": 24, "schoolstorage": 24,
-    "sportstorage": 40,
+    "library": 20, "gym": 40, "kitchen": 40, "diningroom": 40,
+    "lobby": 40, "schoollab": 10, "schoolstorage": 16,
+    "sportstorage": 30,
     "bathroom": 10, "hall": 12,
-    "breakroom": 25, "office": 12, "storage": 8, "garage": 15,
+    "breakroom": 15, "office": 10, "storage": 8, "garage": 15,
     "policeoffice": 6, "evidenceroom": 25,
     # A few cells, not a cell block: one room in eight at most, so a
     # 30-room station gets three or four rather than the eleven that a
@@ -488,16 +490,19 @@ def _assign_kinds(rooms: list[Room], mix: list[str], fill: list[str]) -> None:
 CORRIDOR_WORTH_IT = 8
 
 
-NEEDS_CORRIDOR = {"school", "police", "civic", "medical", "fire", "military",
-                  "library", "offices"}
+NEEDS_CORRIDOR = {"school", "police", "civic", "medical", "fire", "fire_police",
+                  "military", "library", "offices"}
 
 # Pairs that belong together when both rooms fit on the floor. Shop and
 # restaurant fronts already choose an adjacent back room in _assign_shop_floor.
 BUSINESS_NEIGHBOURS = {
     "school": (("kitchen", "diningroom"), ("gym", "sportstorage"),
-               ("classroom", "schoollab")),
+               ("gym", "lockerroom"), ("classroom", "schoollab"),
+               ("office", "officestorage"), ("office", "breakroom")),
     "church": (("lobby", "church"), ("office", "storage")),
-    "industrial": (("warehouse", "storage"), ("warehouse", "garage")),
+    "industrial": (("warehouse", "toolstore"), ("warehouse", "garage"),
+                   ("office", "officestorage"), ("kitchen", "diningroom"),
+                   ("lockerroom", "bathroom")),
     "barn": (("warehouse", "storage"), ("warehouse", "garage")),
     "military": (("kitchen", "bedroom"), ("armystorage", "office")),
     "castle": (("hall", "church"), ("hall", "kitchen")),
@@ -508,6 +513,7 @@ BUSINESS_NEIGHBOURS = {
                ("policeoffice", "evidenceroom"), ("policelocker", "lockerroom")),
     "library": (("library", "storage"), ("lobby", "library")),
     "fire": (("firegarage", "firestorage"), ("kitchen", "bedroom")),
+    "fire_police": (("firegarage", "firestorage"), ("policeoffice", "policelocker")),
     "offices": (("office", "officestorage"), ("office", "breakroom")),
 }
 
@@ -560,6 +566,7 @@ MIN_SPECIAL_ROOMS = {
     "civic": {"office": 1, "lobby": 1},
     "medical": {"clinic": 1, "medical": 1},
     "fire": {"firegarage": 1},
+    "fire_police": {"firegarage": 1, "policeoffice": 1, "policelocker": 1},
     "military": {"armystorage": 1},
     "library": {"library": 1},
     "offices": {"office": 1},

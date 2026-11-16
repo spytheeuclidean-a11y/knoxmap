@@ -42,6 +42,19 @@ class BusinessLayouts(unittest.TestCase):
             self.assertFalse(any(4 <= cx <= 11 and 3 <= cy <= 8
                                  for cx, cy in layout._cells_for(role, x, y, facing)))
 
+    def test_barbershop_salon_gets_stations_reception_and_waiting_area(self):
+        building = layout.build_building(
+            14, 12, kind="shop", commercial=True, uses=[("aesthetic", "storage")],
+            street="W", seed=12)
+        plan = building.storeys[0]
+        roles = {role for role, *_ in plan.furniture}
+        self.assertIn("salon_chair", roles)
+        self.assertIn("register", roles)
+        self.assertIn("shop_counter", roles)
+        self.assertTrue(roles & {"sofa", "chair"})
+        self.assertIn("hair_dryer", roles)
+        self.assertIn("shelf", roles)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -186,13 +186,27 @@ BUILD_BASE_BYTES = 300e6
 # steps a change really needs. tests/test_render_settings.py checks it against
 # what generate() actually reads, so the two cannot drift apart.
 RENDER_SETTINGS = ["align_streets", "rotate_degrees", "straight_roads", "include_proposed_roads",
-                   "tree_density", "forest_density", "fill_gaps", "fill_frontage",
+                   "tree_density", "forest_density", "forest_stand_m", "forest_edge_m",
+                   "forest_thickets", "forest_stand_variety", "forest_raggedness",
+                   "forest_edge_wobble", "forest_spill_thick", "forest_keep_meadows",
+                   "forest_seed", "forest_house_clearing_m", "forest_big_trees",
+                   "forest_groves", "forest_wild_growth", "forest_shrubland",
+                   "fill_gaps", "fill_frontage",
                    "terrain_only",
                    # Enrichment layers (knoxdata/): they colour the ground and
                    # tag buildings, so changing one redraws the map.
                    "landcover", "elevation", "max_relief", "ne_context",
                    "region_override", "hospitals", "hospitals_place_missing",
                    "climate_flavor", "winter_look"]
+
+
+def _effective_pixels(tiles_w: float, tiles_h: float) -> float:
+    """Peak pixels held in RAM at once (capped by chunked rendering for large maps)."""
+    # Large maps use generator.chunked (8x8 cells + 64-tile halo per chunk),
+    # bounding peak render RAM to one chunk rather than the full canvas.
+    chunk_pixels = (8 * 300 + 2 * 64) ** 2
+    total = tiles_w * tiles_h
+    return min(total, chunk_pixels) if total > 3600 * 3600 else total
 
 
 def _too_big_for_memory(tiles_w: float, tiles_h: float,
@@ -205,7 +219,7 @@ def _too_big_for_memory(tiles_w: float, tiles_h: float,
     fail with "MemoryError".
     """
     import knoxpaths
-    needed = tiles_w * tiles_h * per_tile + base
+    needed = _effective_pixels(tiles_w, tiles_h) * per_tile + base
     status = knoxlog.memory_status()
     if not status:
         return None
@@ -234,7 +248,7 @@ def _beyond_this_pc(tiles_w: float, tiles_h: float) -> str | None:
     if not status:
         return None
     total = status[0]
-    needed = tiles_w * tiles_h * BYTES_PER_TILE + BASE_BYTES
+    needed = _effective_pixels(tiles_w, tiles_h) * BYTES_PER_TILE + BASE_BYTES
     if total and needed > total:
         return (f"This map needs about {needed / 1e9:.0f} GB of memory and this PC has "
                 f"{total / 1e9:.0f} GB, so it cannot be made here. Pick a smaller area, "

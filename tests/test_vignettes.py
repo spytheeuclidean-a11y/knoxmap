@@ -156,3 +156,17 @@ class Vignettes(unittest.TestCase):
 
             self.assertEqual(placements, [])
             self.assertEqual(counts["vignette_props"], 0)
+
+    def test_major_highway_gets_roadside_staging_caches_away_from_ends(self):
+        with TemporaryDirectory() as directory:
+            hierarchy = np.zeros((80, 300), dtype=np.uint8)
+            hierarchy[36:42, :] = 6
+            _o, _p, counts, bdir = self._place(
+                directory, [(0, 36, 299, 41)], hierarchy=hierarchy,
+                width=300, height=80)
+            tiles, _names = _lots(bdir)
+
+            self.assertGreaterEqual(counts["highway_stages"], 1)
+            verge_props = [(x, y, t) for x, y, t, _l in tiles
+                           if t in DRUMS + CRATES and not (36 <= y <= 41)]
+            self.assertGreaterEqual(len(verge_props), 2)

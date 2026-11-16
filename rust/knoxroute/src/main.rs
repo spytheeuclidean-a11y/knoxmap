@@ -14,7 +14,11 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::io::{self, BufWriter, Read, Write};
 
+mod box_any;
+mod clear_road_veg;
+mod paint_kerbs;
 mod rails;
+mod smooth_roads;
 mod woodland;
 
 const N: usize = 16;
@@ -576,8 +580,24 @@ fn main() {
         woodland::run();
         return;
     }
+    if std::env::args().nth(1).as_deref() == Some("--clear-road-veg") {
+        clear_road_veg::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--box-any") {
+        box_any::run();
+        return;
+    }
     if std::env::args().nth(1).as_deref() == Some("--rails") {
         rails::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--smooth-roads") {
+        smooth_roads::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--paint-kerbs") {
+        paint_kerbs::run();
         return;
     }
     let mut r = Reader { inner: io::stdin() };

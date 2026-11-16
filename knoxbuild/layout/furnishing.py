@@ -139,7 +139,7 @@ WALL_ART_CHANCE = 0.55
 # and a school came out with a wall of them. A classroom, a corridor and a
 # police office get none.
 ART_FREE_KINDS = {"police", "civic", "school", "medical", "fire",
-                  "military", "library"}
+                  "fire_police", "military", "library"}
 # Buildings that are places of work, not homes, and the rooms in them whose
 # usual wishlist is a domestic one. A station, a school or a clinic gets a
 # noticeboard and a water cooler where a house gets a side table and a
@@ -158,8 +158,8 @@ HOME_KINDS = {None, "house", "apartment", "basement_house", "basement_house_rec"
               "basement_house_cellar"}
 # What a home puts in a box room instead.
 HOME_STORE = {"metal_rack": "shelf", "crate": "dresser"}
-CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "military",
-               "library"}
+CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "fire_police",
+               "military", "library"}
 CIVIC_ROOMS = {
     "hall": ["plant", "water_cooler", "chair", "painting", "chair"],
     "lobby": ["shop_counter", "chair", "chair", "plant", "painting",
@@ -879,8 +879,28 @@ for _kind in list(ROOM_STYLE) + list(STOCKROOMS):
 # Commercial kitchens are fitted with counters wall to wall, like a home's.
 # Rooms of a business laid out by their trade (interiors.furnish_*), not by
 # the wishlist round the walls.
-TRADE_LAYOUTS = {"bar": "furnish_bar", "laundry": "furnish_laundromat",
-                 "gym": "furnish_gym", "church": "furnish_church"}
+TRADE_LAYOUTS = {
+    "bar": "furnish_bar",
+    "laundry": "furnish_laundromat",
+    "gym": "furnish_gym",
+    "church": "furnish_church",
+    "library": "furnish_library",
+    "theatre": "furnish_theatre",
+    "bank": "furnish_bank",
+    "post": "furnish_bank",
+    "daycare": "furnish_daycare",
+    "clinic": "furnish_clinic",
+    "medical": "furnish_clinic",
+    "medicaloffice": "furnish_clinic",
+    "dentist": "furnish_clinic",
+    "policeoffice": "furnish_police",
+    "policehall": "furnish_police",
+    "security": "furnish_police",
+    "diningroom": "furnish_diningroom",
+    "warehouse": "furnish_industrial_floor",
+    "factory": "furnish_industrial_floor",
+    "workshop": "furnish_industrial_floor",
+}
 KITCHENS = {"kitchen", "openplan", "breakroom", "restaurantkitchen", "pizzakitchen", "burgerkitchen",
             "dinerkitchen", "chinesekitchen", "sushikitchen", "mexicankitchen", "seafoodkitchen",
             "cafekitchen", "bakerykitchen", "icecreamkitchen"}
@@ -1437,7 +1457,8 @@ def _room_walkway(plan: Plan, idx: int, door_tiles: set,
 
 def _furnish(plan: Plan, rng: random.Random,
              stairs: tuple[int, int, str] | None = None,
-             street: str | None = None) -> None:
+             street: str | None = None,
+             is_ground: bool = True) -> None:
     """Push furniture against room walls, skipping tiles a door needs clear.
 
     Every room, the corridor and stair hall included, first gets a light
@@ -1447,7 +1468,7 @@ def _furnish(plan: Plan, rng: random.Random,
     wishlists, and even there it was written to the floor rather than a wall.
     """
     door_tiles = _door_tiles(plan)
-    door_edges = set(plan.doors) | set(plan.open_edge)
+    door_edges = set(plan.doors) | set(plan.open_edge) | set(getattr(plan, "garage_door_tiles", ()))
     # The lift doors take their stretch of wall: nothing hangs on it.
     for _rect, (lx, ly, ld) in plan.shafts:
         door_edges |= {(lx, ly + i, "W") if ld == "W" else (lx + i, ly, "N")
@@ -1503,17 +1524,18 @@ def _furnish(plan: Plan, rng: random.Random,
         def hang(role: str, x: int, y: int, facing: str) -> bool:
             if role in NORTH_WEST_ONLY and facing in ("S", "E"):
                 return False
-            edge = _wall_edge(x, y, facing)
-            if edge in door_edges or edge in used_walls:
-                return False
             orient = _facing(role, facing)
+            cells = _cells_for(role, x, y, orient)
             # Every tile of the piece in this room: a two-tile mirror hung at
             # the end of a wall reached through the outside wall.
-            if any(_room_at(plan, cx, cy) != idx for cx, cy in _cells_for(role, x, y, orient)):
+            if any(_room_at(plan, cx, cy) != idx for cx, cy in cells):
+                return False
+            edges = {_wall_edge(cx, cy, facing) for cx, cy in cells}
+            if edges & (door_edges | used_walls | plan.wall_pieces):
                 return False
             plan.furniture.append((role, x, y, orient))
-            used_walls.add(edge)
-            plan.wall_pieces.add(edge)
+            used_walls.update(edges)
+            plan.wall_pieces.update(edges)
             return True
 
         # The switch: on a wall one tile from this room's door, the way people
@@ -1629,6 +1651,52 @@ def _furnish(plan: Plan, rng: random.Random,
                     plan.furniture.append((role, x, y, "N"))
                     laid += 1
                     break
+            if plan.kind not in HOUSE_LIKE_KINDS:
+                # Keep stair ends, lift doors and narrow hallway necks unobstructed.
+                core_no_go = set(keep_clear) | {
+                    c for c in room_cells if _narrow(plan.grid, c[0], c[1])}
+                if stairs is not None:
+                    sx, sy, sd = stairs
+                    sdx, sdy = (0, 1) if sd == "N" else (1, 0)
+                    core_no_go |= {(sx - sdx, sy - sdy),
+                                   (sx + sdx * STAIR_RUN, sy + sdy * STAIR_RUN)}
+                for _rect, (lx, ly, ld) in plan.shafts:
+                    for i in range(SHAFT_SIZE):
+                        ax, ay = (lx, ly + i) if ld == "W" else (lx + i, ly)
+                        bx, by = (ax - 1, ay) if ld == "W" else (ax, ay - 1)
+                        core_no_go.update(((ax, ay), (bx, by)))
+                if is_ground:
+                    for dx, dy, dd in plan.doors:
+                        a, b = ((dx, dy - 1), (dx, dy)) if dd == "N" else ((dx - 1, dy), (dx, dy))
+                        if 0 in (_room_at(plan, *a), _room_at(plan, *b)):
+                            tile = a if _room_at(plan, *a) == idx else b
+                            if tile in room_cells:
+                                interiors._door_mat(plan, idx, tile[0], tile[1], dd)
+                if plan.kind not in ART_FREE_KINDS and "corkboard" in C.FURNITURE:
+                    for slot in inside:
+                        if slot[2] in ("N", "W") and hang("corkboard", *slot):
+                            break
+                if is_ground and r.area >= 16:
+                    lobby_core = ("water_cooler", "vending", "plant", "bin")
+                    added_core = 0
+                    for role in lobby_core:
+                        if role not in C.FURNITURE or added_core >= (3 if r.area >= 32 else 2):
+                            continue
+                        for x, y, facing in inside + facade:
+                            if role in NORTH_WEST_ONLY and facing in ("S", "E"):
+                                continue
+                            orient = _facing(role, facing)
+                            ax, ay = _wall_anchor(role, x, y, orient, facing)
+                            cells = _cells_for(role, ax, ay, orient)
+                            if any(c in core_no_go or _room_at(plan, *c) != idx
+                                   for c in cells):
+                                continue
+                            if not keeps_open(cells):
+                                continue
+                            plan.furniture.append((role, ax, ay, orient))
+                            core_no_go.update(cells)
+                            added_core += 1
+                            break
             continue
         # A shop's sales floor is fitted out as a whole - rows of shelving,
         # the till by the door - not from a list pushed against its walls.
@@ -1656,10 +1724,17 @@ def _furnish(plan: Plan, rng: random.Random,
                  if plan.kind not in HOME_KINDS and plan.kind != "apartment" else None)
         trade_fitted = False
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
-        if r.kind in ("garage", "mechanic") and interiors.furnish_service_bay(
+        if r.kind in ("garage", "mechanic", "firegarage") and interiors.furnish_service_bay(
                 plan, idx, r, rng, door_tiles, keep_clear,
-                mechanic=(r.kind == "mechanic")):
+                mechanic=(r.kind in ("mechanic", "firegarage"))):
+            interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
+                                 door_edges, no_go, keeps_open, walk)
             continue
+        if r.kind == "lobby" and plan.kind not in HOUSE_LIKE_KINDS:
+            got = interiors.furnish_lobby(
+                plan, idx, r, rng, occupied, no_go, keeps_open, street=street)
+            if got is not None:
+                base, trade_fitted = got, True
         if office:
             base, office_fitted = interiors.furnish_office(
                 plan, idx, r, rng, occupied, keep_clear, keeps_open)
@@ -2225,6 +2300,40 @@ KIND_FLOOR_CHOICES = {
         "office":            ["civic_pale", "civic_grey"],
         "storage":           ["civic_scuff", "civic_pale"],
     },
+    "fire": {
+        "firegarage":        ["concrete"],
+        "firestorage":       ["civic_scuff", "concrete"],
+        "hall":              ["civic_hall", "civic_pale", "civic_grey"],
+        "lobby":             ["civic_hall", "civic_pale", "civic_grey"],
+        "office":            ["civic_pale", "civic_grey"],
+        "kitchen":           ["civic_pale", "civic_worn"],
+        "bathroom":          ["tile_white", "civic_pale"],
+        "bedroom":           ["civic_pale", "civic_grey"],
+        "storage":           ["civic_scuff", "civic_pale"],
+    },
+    "fire_police": {
+        "firegarage":        ["concrete"],
+        "firestorage":       ["civic_scuff", "concrete"],
+        "hall":              ["civic_hall", "civic_pale", "civic_grey"],
+        "lobby":             ["civic_hall", "civic_pale", "civic_grey"],
+        "prisoncells":       ["civic_hall"],
+        "policeoffice":      ["civic_pale", "civic_grey", "civic_hall"],
+        "policehall":        ["civic_hall", "civic_pale"],
+        "policelocker":      ["civic_pale", "civic_scuff"],
+        "policegunstorage":  ["civic_pale", "civic_grey", "civic_scuff"],
+        "policeoutfitstorage": ["civic_pale", "civic_scuff"],
+        "policearchive":     ["civic_pale", "civic_grey"],
+        "officestorage":     ["civic_pale", "civic_scuff"],
+        "interrogationroom": ["civic_pale", "civic_grey"],
+        "security":          ["civic_pale", "civic_grey"],
+        "breakroom":         ["civic_pale", "civic_worn"],
+        "janitor":           ["civic_scuff", "civic_worn"],
+        "bathroom":          ["tile_white", "civic_pale"],
+        "office":            ["civic_pale", "civic_grey"],
+        "bedroom":           ["civic_pale", "civic_grey"],
+        "kitchen":           ["civic_pale", "civic_worn"],
+        "storage":           ["civic_scuff", "civic_pale"],
+    },
 }
 # The most counters a wishlist may ask for however big the room; past this the
 # budget above decides.
@@ -2680,7 +2789,7 @@ def _under_a_window(role: str) -> bool:
                      "radio", "coffee_maker", "toaster", "bin", "phone", "box",
                      "box_battered", "hamper", "sale_sign"}
             or role.startswith(("bed", "double_bed", "sofa_", "counter", "dresser",
-                                "low_table_")))
+                                "low_table_", "sink", "kitchen_sink")))
 
 
 # A cost (essentials, secondary, decoration) packed into one int that sorts

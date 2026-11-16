@@ -217,12 +217,14 @@ LANDSCAPE_FILL = {
     "parking": C.DARK_ASPHALT,
     "plaza": C.PAVING,
     "residential": C.MEDIUM_GRASS,
-    "commercial": C.PALE_CONCRETE,
+    # Grass base rather than a wall-to-wall concrete plain; each building gets a
+    # modest concrete apron and paths to the street (knoxbuild/yards.py).
+    "commercial": C.MEDIUM_GRASS,
     # Rough grass: each works gets its own tarmac yard round it
     # (knoxbuild/works.py). Gravel from fence to fence was a beige plain.
     "industrial": C.LIGHT_GRASS,
     "military": C.DIRT,
-    "schoolyard": C.PALE_CONCRETE,
+    "schoolyard": C.MEDIUM_GRASS,
     "hospital_grounds": C.MEDIUM_GRASS,
     "worship_grounds": C.PAVING,
     "cemetery": C.LIGHT_GRASS,

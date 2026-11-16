@@ -296,6 +296,17 @@ class AdditionalBuildingRulesTests(unittest.TestCase):
             self.assertIn("ew_0", tiles)          # the west wall
             self.assertIn("ew_1", tiles)          # the north wall
 
+    def test_adjacent_row_house_outside_edge_keeps_neighbours_walls(self):
+        from knoxbuild.buildtiles import compose_lots
+        a = parse_tbx(tbx(4, 3, [(grid(4, 3), [])]))
+        b = parse_tbx(tbx(4, 5, [(grid(4, 5), [])]))
+        world = compose_lots([(b, 4, 0, 0), (a, 0, 2, 0)])
+        # `a`'s SouthEast corner post at (4, 5) must not erase `b`'s south wall.
+        self.assertIn("ew_1", world[(4, 5, 0)])
+        # `a`'s east exterior wall at (4, 2) must not replace `b`'s interior wall.
+        self.assertIn("iwA_0", world[(4, 2, 0)])
+        self.assertNotIn("ew_0", world[(4, 2, 0)])
+
 
 if __name__ == "__main__":
     unittest.main()

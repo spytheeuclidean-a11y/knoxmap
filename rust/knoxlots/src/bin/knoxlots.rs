@@ -16,7 +16,8 @@ use knoxlots::header::Header;
 use knoxlots::compile::{compile_cell, export_cell, Manifest};
 use knoxlots::kcell::KCell;
 use knoxlots::pack::Pack;
-use std::{env, fs, path::Path, path::PathBuf, process::ExitCode};
+use knoxlots::render::{render_lots, tile_list};
+use std::{env, fs, io::Write, path::Path, path::PathBuf, process::ExitCode};
 
 #[derive(Default)]
 struct Tally {
@@ -308,9 +309,77 @@ fn compare(a: &str, b: &str) -> ExitCode {
     if different.is_empty() && missing == 0 && extra == 0 && same > 0 { ExitCode::SUCCESS } else { ExitCode::FAILURE }
 }
 
+fn cmd_tile_list(args: &[&str]) -> ExitCode {
+    if args.len() != 7 {
+        return ExitCode::from(2);
+    }
+    let Ok(ox) = args[1].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(oy) = args[2].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(x) = args[3].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(y) = args[4].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(w) = args[5].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(h) = args[6].parse::<i32>() else { return ExitCode::from(2) };
+    match tile_list(Path::new(args[0]), ox, oy, x, y, w, h) {
+        Ok(names) => {
+            let stdout = std::io::stdout();
+            let mut out = std::io::BufWriter::new(stdout.lock());
+            for n in names {
+                let _ = writeln!(out, "{n}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn cmd_render(args: &[&str]) -> ExitCode {
+    if args.len() < 10 {
+        return ExitCode::from(2);
+    }
+    let lots = Path::new(args[0]);
+    let sprites = Path::new(args[1]);
+    let out_raw = Path::new(args[2]);
+    let Ok(ox) = args[3].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(oy) = args[4].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(x) = args[5].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(y) = args[6].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(w) = args[7].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(h) = args[8].parse::<i32>() else { return ExitCode::from(2) };
+    let Ok(tw) = args[9].parse::<i32>() else { return ExitCode::from(2) };
+    let mut max_level: Option<i32> = None;
+    let mut skip_blends = false;
+    let mut i = 10;
+    while i < args.len() {
+        match args[i] {
+            "--max-level" if i + 1 < args.len() => {
+                let Ok(ml) = args[i + 1].parse::<i32>() else { return ExitCode::from(2) };
+                max_level = Some(ml);
+                i += 2;
+            }
+            "--skip-blends" => {
+                skip_blends = true;
+                i += 1;
+            }
+            _ => return ExitCode::from(2),
+        }
+    }
+    match render_lots(lots, sprites, out_raw, ox, oy, x, y, w, h, tw, max_level, skip_blends) {
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::from(3),
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
+    let strs: Vec<&str> = args.iter().map(String::as_str).collect();
+    match strs.as_slice() {
         ["verify", dir] => verify(dir, false),
         ["rebuild", dir] => verify(dir, true),
         ["blank-chunkdata", input, output] => blank(input, output),
@@ -322,8 +391,10 @@ fn main() -> ExitCode {
             Err(_) => ExitCode::from(2),
         },
         ["compare", a, b] => compare(a, b),
+        ["tile-list", rest @ ..] => cmd_tile_list(rest),
+        ["render", rest @ ..] => cmd_render(rest),
         _ => {
-            eprintln!("usage:\n  knoxlots verify <lots folder>\n  knoxlots rebuild <lots folder>\n  knoxlots blank-chunkdata <in> <out>\n  knoxlots export <lots> <src> [--keep-zombie]\n  knoxlots compile <src> <out> [--threads N]\n  knoxlots compare <a> <b>");
+            eprintln!("usage:\n  knoxlots verify <lots folder>\n  knoxlots rebuild <lots folder>\n  knoxlots blank-chunkdata <in> <out>\n  knoxlots export <lots> <src> [--keep-zombie]\n  knoxlots compile <src> <out> [--threads N]\n  knoxlots compare <a> <b>\n  knoxlots tile-list <lots> <ox> <oy> <X> <Y> <W> <H>\n  knoxlots render <lots> <sprites.bin> <out.raw> <ox> <oy> <X> <Y> <W> <H> <TW> [--max-level L] [--skip-blends]");
             ExitCode::from(2)
         }
     }

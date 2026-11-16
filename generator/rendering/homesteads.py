@@ -24,11 +24,16 @@ from .fields import _hash01
 
 YARD_M = 6.0                   # no field or water this near a building
 YARD_CLASSES = (40, 80)        # WorldCover cropland and water
-CLEAR_M = (10.0, 30.0)         # how far a clearing runs out from the walls
+# How far a clearing runs out from the walls. It was 10-30 m, which in a town
+# took the belts of trees between the houses: they are narrow, and every house
+# beside one got a clearing as wide as the belt.
+CLEAR_M = (8.0, 20.0)
 WOBBLE = 0.35                  # ...varying this much round the building
 EDGE_M = 4.0                   # the thinned fringe past it
 EDGE_THIN = 0.5                # of the fringe's trees, the share stepped down
-IN_WOODS = 0.15                # of a clearing's ground, the woods it needs to get one
+# Of a clearing's ground, the woods it needs to get one: a house in the woods,
+# not a house in town with a tree belt along one side of its yard.
+IN_WOODS = 0.5
 DRIVE_MIN_M2 = 40.0            # sheds and garages get no drive of their own
 DRIVE_MAX_M = 400.0
 DRIVE_MIN_TILES = 3            # a road this close is the drive already
@@ -141,12 +146,16 @@ def _bezier(p, q, bend: float, step: float = 1.0):
     return list(zip(xs.tolist(), ys.tolist()))
 
 
-def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile) -> tuple[np.ndarray, dict]:
+def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
+                     clear_max_m: float = CLEAR_M[1]) -> tuple[np.ndarray, dict]:
     """Clearings and drives for buildings standing in woods.
 
     `footprints` are pixel rings, `roads` pixel polylines (the roads a drive
     may join). Returns the tiles cleared or paved (bool), for the planting
-    passes after this to leave alone, and counts."""
+    passes after this to leave alone, and counts.
+
+    clear_max_m: how far a clearing reaches from the walls at most (House
+    clearings); the near end is CLEAR_M's ratio of it, 0 is none."""
     from shapely.geometry import LineString, Polygon, box
     from shapely.ops import nearest_points
     from shapely.strtree import STRtree
@@ -156,6 +165,9 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile) -> tupl
     vegp = np.array(veg)
     done = np.zeros((h, w), dtype=bool)
     counts = {"clearings": 0, "drives": 0}
+    if clear_max_m <= 0:
+        return done, counts
+    clear_min_m = clear_max_m * CLEAR_M[0] / CLEAR_M[1]
     mpt = meters_per_tile
     # Only the stretches on the map: a road running off its edge would send a
     # drive off it too.
@@ -174,7 +186,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile) -> tupl
     drive_ground = np.zeros((h, w), dtype=bool)
     for colour in DRIVE_GROUND:
         drive_ground |= np.all(land == colour, axis=2)
-    reach_max = CLEAR_M[1] * (1 + WOBBLE) / mpt + EDGE_M / mpt + 2
+    reach_max = clear_max_m * (1 + WOBBLE) / mpt + EDGE_M / mpt + 2
 
     polys = []
     for ring in footprints:
@@ -200,7 +212,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile) -> tupl
         seed = int((int(poly.centroid.x) * 73856093) ^ (int(poly.centroid.y) * 19349663)
                    ^ HOME_SEED) & 0xFFFFFFFF
         roll = float(_hash01(np.array([seed]), HOME_SEED)[0])
-        radius = (CLEAR_M[0] + roll * (CLEAR_M[1] - CLEAR_M[0])) / mpt
+        radius = (clear_min_m + roll * (clear_max_m - clear_min_m)) / mpt
         clearing = _wobbly(poly, radius, seed)
         fringe = _wobbly(poly, radius, seed, extra=EDGE_M / mpt)
         bw, bh = x1 - x0, y1 - y0

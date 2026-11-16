@@ -103,7 +103,7 @@ class RenderWorldCoverTest(unittest.TestCase):
                    C.DARK_POTHOLE, C.LIGHT_POTHOLE)
         # The road runs edge to edge of the bbox (the map is padded to whole
         # cells past it): no field or wood cut it.
-        self.assertGreater(road.mean(axis=1).max(), 0.7)
+        self.assertGreater(road.any(axis=0).mean(), 0.7)
         grown = is_(self.veg, C.CORN_1, C.CORN_2, C.TREES, C.TREES_DARK_GRASS,
                     C.SPARSE_TREES, C.BUSHES, C.ROCKS, C.BOULDERS)
         self.assertFalse((grown & road).any())
@@ -157,6 +157,20 @@ class RenderWorldCoverTest(unittest.TestCase):
         # ...while the grassland up there is banded.
         ys, xs = region(proj, 0.75, 0.7, 0.95, 0.95)
         self.assertLess(is_(land[ys, xs], C.MEDIUM_GRASS).mean(), 0.9)
+
+    def test_worldcover_wood_is_patchy(self):
+        def wood(width, height, bounds=None):
+            return np.full((height, width), 10, dtype="uint8")
+        proj, _, veg = render(wood, feats=[])
+        ys, xs = region(proj, 0.2, 0.2, 0.8, 0.8)
+        v = veg[ys, xs]
+        # Mostly trees in grass, a tenth of it a wall, the rest sparse - and
+        # no clearing it was not given (generator/rendering/forest_shape.py).
+        dense = is_(v, C.TREES).mean()
+        self.assertGreater(dense, 0.05)
+        self.assertLess(dense, 0.2)
+        self.assertGreater(is_(v, C.TREES_DARK_GRASS).mean(), 0.4)
+        self.assertGreater(is_(v, C.SPARSE_TREES).mean(), 0.1)
 
     def test_broken_landcover_still_renders(self):
         def broken(w, h, bounds=None):

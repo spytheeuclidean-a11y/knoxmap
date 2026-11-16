@@ -12,7 +12,7 @@ from PIL import Image
 
 from generator.osm import OSMFeature
 from generator.pz_colors import MEDIUM_GRASS, PALE_CONCRETE
-from generator.rendering import roads
+from generator.rendering import landcover, roads
 
 W = H = 900
 
@@ -76,6 +76,19 @@ class DenseBlocks(unittest.TestCase):
                   square(600, 600, 50, 600), square(50, 600, 50, 50)],
                  [building(100, 100, 300, 250), building(150, 400, 250, 150)])
         self.assertEqual(paved_fraction(im, (60, 60, 590, 590)), 0.0)
+
+    def test_dense_block_with_courtyard_leaves_open_interior_grass(self):
+        # A 200x200 block cleared to >40% building coverage must pave an apron
+        # around the buildings without turning an open central courtyard solid concrete.
+        im = run([square(100, 100, 300, 100), square(300, 100, 300, 300),
+                  square(300, 300, 100, 300), square(100, 300, 100, 100)],
+                 [building(105, 105, 190, 50), building(105, 245, 190, 50)])
+        self.assertEqual(paved_fraction(im, (170, 170, 230, 230)), 0.0)
+        self.assertGreater(paved_fraction(im, (110, 155, 290, 162)), 0.8)
+
+    def test_commercial_and_schoolyard_landcover_fill_default_to_grass(self):
+        self.assertEqual(landcover.LANDSCAPE_FILL["commercial"], MEDIUM_GRASS)
+        self.assertEqual(landcover.LANDSCAPE_FILL["schoolyard"], MEDIUM_GRASS)
 
 
 if __name__ == "__main__":
