@@ -588,6 +588,21 @@
           <label>Mod id <input type="text" id="modId"/></label>
         </div>
         <span id="installNote" class="step-note">Copies the map into your Zomboid mods folder.</span>
+        <!-- Everything a dedicated server needs, done rather than described:
+             the mod id added to Mods=, the map put at the front of Map= with
+             Muldraugh still at the back, and the spawn regions file named for
+             the server (knoxbuild/serverconf.py). -->
+        <div id="serverSetup" class="server-setup" hidden>
+          <div class="server-head">Play it with friends</div>
+          <p class="hint">Put this map on a dedicated server on this PC. It adds
+            what is missing to the server&rsquo;s own files and leaves the rest
+            alone, keeping a copy of the .ini first.</p>
+          <div class="sketch-actions">
+            <select id="serverPick" aria-label="Which server"></select>
+            <button type="button" id="serverSetupBtn" class="btn btn-small">Set it up</button>
+          </div>
+          <div id="serverNote" class="hint"></div>
+        </div>
       </div>
       <button id="installBtn" class="btn" disabled>Install</button>
     </li>

@@ -12,6 +12,7 @@ from pathlib import Path
 from flask import Blueprint, jsonify, request, send_file
 
 import knoxlog
+import knoxpaths
 from generator import osm
 from knoxbuild import mapstate
 from knoxbuild.settings import PRESETS, Settings
@@ -507,6 +508,89 @@ def api_settings():
         "presets": {name: s.to_dict() for name, s in PRESETS.items()},
     })
 
+
+@bp.route("/api/servers")
+def api_servers():
+    """The dedicated servers on this PC, so the window can offer them.
+
+    A server is a <name>.ini in Zomboid/Server. `save` says a world has
+    already been played there, which is the one thing about adding a map to
+    a server that cannot be undone.
+    """
+    from knoxbuild import serverconf
+
+    try:
+        return jsonify({"servers": serverconf.servers(),
+                        "folder": str(serverconf.server_dir())})
+    except OSError as exc:
+        return failed(f"The server folder could not be read: {exc}", 500, exc)
+
+
+@bp.route("/api/server-setup", methods=["POST"])
+def api_server_setup():
+    """Put an installed map on one of those servers.
+
+    The mod already ships a SERVER SETUP.txt saying what to add; people get
+    it wrong anyway, because the editing is the hard part. Adding one mod to
+    a line of forty without dropping a semicolon, putting the map at the
+    front of Map= while leaving Muldraugh at the back, and naming the spawn
+    regions file for the server rather than the map - which is why players
+    spawn in Muldraugh and nobody knows why (knoxbuild/serverconf.py).
+    """
+    from knoxbuild import serverconf
+    from tools import make_map_mod
+
+    data = _json_body()
+    map_dir = _map_dir(data.get("mapName", ""))
+    if map_dir is None:
+        return jsonify({"error": "Unknown map."}), 404
+    server = str(data.get("server") or "").strip()
+    if not server or any(c in server for c in r'\/:*?"<>|'):
+        return jsonify({"error": "Which server? Give the name of one of the "
+                                 ".ini files in Zomboid/Server."}), 400
+
+    rec = mapstate.installed(str(map_dir)) or {}
+    if not rec.get("modId"):
+        return jsonify({"error": "Install this map first: a server needs the "
+                                 "mod it is going to load."}), 400
+    title = str(rec.get("title") or map_dir.name)
+    mod_id = str(rec["modId"])
+    folder = make_map_mod.folder_name(title, mod_id)
+
+    from knoxbuild import placement as _placement
+    standalone = bool(_placement.standalone(str(map_dir)))
+    extra, workshop = [], []
+    if rec.get("needsErika") or _mod_uses_erika(rec.get("modRoot")):
+        extra.append(knoxpaths.ERIKAS_TILES_MOD_ID)
+        workshop.append(knoxpaths.ERIKAS_TILES_WORKSHOP_ID)
+    try:
+        report = serverconf.apply(server, mod_id, folder, title=title,
+                                  standalone=standalone, extra_mods=extra,
+                                  workshop=workshop)
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+    except OSError as exc:
+        return failed(f"The server's files could not be written: {exc}", 500, exc)
+    log.info("server setup %s on %s: %s", map_dir.name, server,
+             "; ".join(report["changed"]) or "nothing to change")
+    return jsonify(report)
+
+
+def _mod_uses_erika(mod_root) -> bool:
+    """Whether the installed mod's cells carry Erika's tiles, read from the
+    mod rather than remembered: a map installed by an older version has no
+    note of it either way."""
+    from pathlib import Path
+
+    if not mod_root:
+        return False
+    try:
+        for header in Path(str(mod_root)).rglob("*.lotheader"):
+            if b"_erika_" in header.read_bytes():
+                return True
+    except OSError:
+        return False
+    return False
 
 
 @bp.route("/api/forest-preview")

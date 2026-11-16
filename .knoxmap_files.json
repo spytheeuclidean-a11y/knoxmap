@@ -145,6 +145,7 @@
     "knoxbuild/room_solver.json",
     "knoxbuild/room_solver.py",
     "knoxbuild/rules.py",
+    "knoxbuild/serverconf.py",
     "knoxbuild/settings.py",
     "knoxbuild/share.py",
     "knoxbuild/sizing.py",

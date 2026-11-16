@@ -1,3 +1,26 @@
+## Unreleased
+
+- **A map on a dedicated server, without editing an .ini**
+  (`knoxbuild/serverconf.py`). The mod has always shipped a SERVER SETUP.txt
+  naming exactly what to add, and people got it wrong anyway, because the
+  editing is the hard part: one more mod on a line of forty without dropping
+  a semicolon, the map at the *front* of `Map=` with Muldraugh still at the
+  back, and a spawn regions file named for the server rather than the map -
+  which is why players spawn in Muldraugh and nobody knows why.
+
+  The Install step now lists the servers in Zomboid/Server and sets one up:
+  it adds what is missing and leaves everything else alone, so a server with
+  forty mods keeps its forty. The .ini is copied to one side first - a map
+  tool has no business being the reason a server will not start - and the
+  window says what changed. A map built with Erika's Tiles brings the tile
+  mod and its Workshop id with it, read from the installed cells.
+
+  Two things it will not do for you: it does not delete the world, only says
+  that one exists and that cells built before the map arrived will not agree
+  with the ones built after; and it says in as many words that every player
+  needs the same mod folder, because this map is not on the Workshop and
+  nothing downloads it for them.
+
 ## 1.8.6
 
 - **Default "As mapped" roads & smoother curves** (#127, `generator/mapped_roads.py`, `generator/renderer.py`, `knoxbuild/settings.py`). **As mapped** is now the default Road layout. Sub-tile OpenStreetMap digitization jitter is cleaned with Douglas-Peucker simplification while keeping intersections, junctions, and roundabouts pinned; gentle bends and kinks are smoothed with bounded Chaikin corner-cutting while keeping sharp street corners crisp; and post-rasterization edge smoothing shaves 1-tile spurs and fills 1-tile notches. Also fixed `building_mix` loading in `Settings.from_dict()` so **Generate map** works cleanly with saved settings, and added a warning on the **Coastline** toggle explaining that it treats everything outside the landmass as sea.
