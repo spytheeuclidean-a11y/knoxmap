@@ -24,6 +24,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 import knoxfiles
+import knoxlog
 import knoxstop
 
 from . import pz_colors as C
@@ -417,7 +418,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             knoxstop.check(should_stop, "the roads")
             if progress:
                 progress(done, total)
-        graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape, tick=tick)
+        graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape, log=knoxlog.log.info, tick=tick)
         knoxfiles.write(graph_path(output_dir, map_name), graph)
         apply_road_graph(features, graph, proj)
     if not _skip_road_layout:

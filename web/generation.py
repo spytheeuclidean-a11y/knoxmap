@@ -410,14 +410,10 @@ def _generate(data):
                     type(exc).__name__, exc)
 
     osm_time = time.time() - t0
-    # "Vanilla curves, built-up streets square" routes every street through
-    # knoxroute. Without it the same search runs in Python, about a hundred times
-    # slower: releases up to 1.8.4.3 never shipped it, and a city sat on
-    # "Routing the roads" for days with nothing to say why. Said, so the window
-    # can say it too.
+    # Both vanilla layouts can use the native road search.
     from generator.roadgraph import rustsearch
     native_ok = rustsearch.available()
-    slow_roads = int(settings.straight_roads) == 3 and not native_ok
+    slow_roads = int(settings.straight_roads) in renderer.ROAD_LAYOUTS and not native_ok
     if slow_roads:
         log.warning("generate %s: the road router (knoxroute) was not found - routing the "
                     "roads in Python, which is far slower", map_name)
