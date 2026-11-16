@@ -670,6 +670,9 @@ def replay(features: list, proj, classify, is_polygon, info: dict, map_dir: str,
     every time), or the map's saved road graph read back (2 and 3: routing again would
     take minutes). Returns how many roads were redrawn."""
     mode = int(info.get("straight_roads") or 0)
+    if mode == 5:
+        from .vanilla_grid import apply_vanilla_grid
+        return apply_vanilla_grid(features, proj, classify, is_polygon)
     if mode in (1, 4):
         return straighten_roads(features, proj, classify, is_polygon, clean=(mode == 4))
     if mode in (2, 3):

@@ -44,7 +44,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 REPO = "spytheeuclidean-a11y/knoxmap"
 API_LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
-API_RELEASES = f"https://api.github.com/repos/{REPO}/releases?per_page=50"
+API_RELEASES = f"https://api.github.com/repos/{REPO}/releases?per_page=100"
 # A release carries one file per system: a zip for Windows, where the zip
 # format is native and nobody has tar, and tarballs for Linux and macOS,
 # which keep the executable bit on setup.sh and knoxmap.sh. Releases up to
@@ -118,7 +118,7 @@ def _parse(version: str) -> tuple:
     if found:
         name, number = found.group(1).lower(), int(found.group(2) or 1)
         text = text[:found.start()]
-    numbers = tuple(int(p) for p in re.findall(r"\d+", text)[:4]) or (0,)
+    numbers = tuple(int(p) for p in re.findall(r"\d+", text)) or (0,)
     return (numbers, number, name)
 
 
@@ -257,7 +257,7 @@ def _open_release(path: Path) -> _Bundle:
 # of Qt as an upgrade. Only a tag that is a version is a release of KnoxMap.
 # "v1.3.9", and "v1.3.9-mc1" - a release for one system only, which carries
 # the system and its number after the version.
-VERSION_TAG = re.compile(r"v?\d+(?:\.\d+){0,3}(?:-[a-z]+\d*)?$")
+VERSION_TAG = re.compile(r"v?\d+(?:\.\d+)*(?:-[a-z]+\d*)?$")
 
 
 def _is_knoxmap(release: dict) -> bool:

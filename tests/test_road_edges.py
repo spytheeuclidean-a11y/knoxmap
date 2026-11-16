@@ -157,3 +157,65 @@ class DiagonalKerbs(unittest.TestCase):
             _paint_road_details(veg, landscape, {}, SimpleNamespace(meters_per_tile=1.0))
         found = {veg.getpixel((x, y)) for y in range(h) for x in range(w)} & diag_colours
         self.assertFalse(found, f"unexpected diagonal kerbs on 45-degree road edge: {found}")
+
+    def test_wetland_orchard_cemetery_and_forest_do_not_override_road_bend(self):
+        import tempfile
+        import numpy as np
+
+        from generator import pz_colors as C, renderer
+        from generator.osm import OSMFeature
+        from generator.rendering.projection import Projector
+
+        south, west, north, east = 40.0, -85.0, 40.0018, -84.9978
+        proj = Projector.build(south, west, north, east, 1.0, 0.0)
+        wetland = OSMFeature(1, "way", {"natural": "wetland", "wetland": "marsh"}, [
+            proj.to_latlon(20, 20), proj.to_latlon(140, 20),
+            proj.to_latlon(140, 140), proj.to_latlon(20, 140),
+            proj.to_latlon(20, 20),
+        ])
+        orchard = OSMFeature(2, "way", {"landuse": "orchard"}, [
+            proj.to_latlon(20, 20), proj.to_latlon(140, 20),
+            proj.to_latlon(140, 140), proj.to_latlon(20, 140),
+            proj.to_latlon(20, 20),
+        ])
+        cemetery = OSMFeature(3, "way", {"landuse": "cemetery"}, [
+            proj.to_latlon(20, 20), proj.to_latlon(140, 20),
+            proj.to_latlon(140, 140), proj.to_latlon(20, 140),
+            proj.to_latlon(20, 20),
+        ])
+        bend = OSMFeature(4, "way", {"highway": "secondary", "lanes": "2"}, [
+            proj.to_latlon(80, 20),
+            proj.to_latlon(80, 80),
+            proj.to_latlon(20, 80),
+        ])
+        veg_bush_or_tree = (C.DENSE_BUSHES_GRASS, C.BUSHES, C.TREES,
+                            C.TREES_DARK_GRASS, C.SPARSE_TREES)
+        for layout in (0, 5):
+            with self.subTest(straight_roads=layout), tempfile.TemporaryDirectory() as out:
+                bare_res = renderer.render(
+                    [bend], south, west, north, east,
+                    meters_per_tile=1.0, output_dir=out, map_name=f"bare_{layout}",
+                    straight_roads=layout,
+                )
+                bare_land = np.asarray(Image.open(bare_res.landscape_path).convert("RGB"))
+                road_or_pave = (
+                    np.all(bare_land == C.MEDIUM_ASPHALT, axis=2)
+                    | np.all(bare_land == C.DARKEST_ASPHALT, axis=2)
+                    | np.all(bare_land == C.PALE_CONCRETE, axis=2)
+                )
+                self.assertTrue(road_or_pave.any())
+
+                res = renderer.render(
+                    [wetland, orchard, cemetery, bend], south, west, north, east,
+                    meters_per_tile=1.0, output_dir=out, map_name=f"bend_{layout}",
+                    straight_roads=layout,
+                )
+                land = np.asarray(Image.open(res.landscape_path).convert("RGB"))
+                veg = np.asarray(Image.open(res.vegetation_path).convert("RGB"))
+                self.assertTrue(
+                    np.array_equal(land[road_or_pave], bare_land[road_or_pave]),
+                    "wetland/orchard/cemetery overwrote road or sidewalk tiles",
+                )
+                for col in veg_bush_or_tree:
+                    has_veg = np.all(veg == col, axis=2) & road_or_pave
+                    self.assertFalse(has_veg.any(), f"vegetation {col} grew on road/sidewalk")

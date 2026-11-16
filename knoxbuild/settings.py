@@ -328,7 +328,7 @@ LIMITS = {
     "align_streets": (0, 1),
     # Past 45 either way it is the same grid again, a quarter turn round.
     "rotate_degrees": (-45.0, 45.0),
-    "straight_roads": (0, 4),
+    "straight_roads": (0, 5),
     "include_proposed_roads": (0, 1),
     "max_size": (8, 250),
     # 0 is no ceiling; the top end is past the largest town anybody has
