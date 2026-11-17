@@ -58,37 +58,36 @@ def _fast(path: str, bits_wanted: int, crop, step: int = 1):
         cols = slice(0, out_w, step)
         shape = (len(rows), len(range(0, out_w, step))) + ((3,) if bpp == 3 else ())
         out = np.empty(shape, dtype=np.uint8)
-        raw = np.memmap(path, dtype=np.uint8, mode="r", offset=offset,
-                        shape=(height, stride))
-        try:
+        row_bytes = out_w * bpp
+        with open(path, "rb") as fh:
             for n, y in enumerate(rows):
-                line = raw[height - 1 - y] if bottom_up else raw[y]
+                src_y = height - 1 - y if bottom_up else y
+                fh.seek(offset + src_y * stride)
+                line = np.frombuffer(fh.read(row_bytes), dtype=np.uint8)
                 if bpp == 3:
-                    out[n] = line[:out_w * 3].reshape(out_w, 3)[cols][:, ::-1]
+                    out[n] = line.reshape(out_w, 3)[cols][:, ::-1]
                 else:
-                    out[n] = line[:out_w][cols]
-        finally:
-            del raw
+                    out[n] = line[cols]
         return out
     shape = (out_h, out_w, 3) if bpp == 3 else (out_h, out_w)
     out = np.empty(shape, dtype=np.uint8)
-    raw = np.memmap(path, dtype=np.uint8, mode="r", offset=offset,
-                    shape=(height, stride))
-    try:
+    # Read strips via buffered file I/O instead of memmapping the whole file,
+    # avoiding Windows WinError 1450 commit-space exhaustion on multi-GB BMPs.
+    with open(path, "rb") as fh:
         for top in range(0, out_h, STRIP_ROWS):
             bottom = min(top + STRIP_ROWS, out_h)
+            count = bottom - top
+            src_top = (height - bottom) if bottom_up else top
+            fh.seek(offset + src_top * stride)
+            buf = fh.read(count * stride)
+            src = np.frombuffer(buf, dtype=np.uint8).reshape(count, stride)
             if bottom_up:
-                # File row 0 is the bottom of the picture.
-                src = raw[height - bottom:height - top][::-1]
-            else:
-                src = raw[top:bottom]
+                src = src[::-1]
             if bpp == 3:
-                px = src[:, :out_w * 3].reshape(bottom - top, out_w, 3)
+                px = src[:, :out_w * 3].reshape(count, out_w, 3)
                 out[top:bottom] = px[:, :, ::-1]          # BGR -> RGB
             else:
                 out[top:bottom] = src[:, :out_w]
-    finally:
-        del raw
     return out
 
 
