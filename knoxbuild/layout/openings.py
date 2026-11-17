@@ -144,7 +144,8 @@ def _door_cost(a: str, b: str) -> float:
     return cost
 
 
-def _doors(plan: Plan, rng: random.Random) -> None:
+def _doors(plan: Plan, rng: random.Random,
+           stairs: tuple[int, int, str] | None = None) -> None:
     """Connect every room, with as few doors as a real plan would have.
 
     The old rule put a door on every boundary between two rooms. A floor where
@@ -163,7 +164,25 @@ def _doors(plan: Plan, rng: random.Random) -> None:
         return
     rooms = plan.rooms
     sealed = {i for i, r in enumerate(rooms, 1) if r.is_shaft}
-    edges = {k: v for k, v in _boundary_edges(plan).items()
+    from .core import STAIR_RUN
+
+    stair_steps: set[tuple[int, int]] = set()
+    if stairs is not None:
+        sx, sy, sd = stairs
+        sdx, sdy = (0, 1) if sd == "N" else (1, 0)
+        stair_steps = {(sx + sdx * i, sy + sdy * i) for i in range(1, STAIR_RUN - 1)}
+
+    def clear_of_stairs(wall: list[tuple[int, int, str]]) -> list[tuple[int, int, str]]:
+        if not stair_steps:
+            return wall
+        safe = [
+            e for e in wall
+            if (e[0], e[1]) not in stair_steps
+            and ((e[0] - 1, e[1]) if e[2] == "W" else (e[0], e[1] - 1)) not in stair_steps
+        ]
+        return safe or wall
+
+    edges = {k: clear_of_stairs(v) for k, v in _boundary_edges(plan).items()
              if k[0] not in sealed and k[1] not in sealed}
 
     def start_room() -> int:
