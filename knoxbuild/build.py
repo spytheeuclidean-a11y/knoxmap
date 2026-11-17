@@ -1832,9 +1832,38 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     allowed -= sum(b["rooms"] for b in cellars)
     before = sum(results[j][1] for j in laid)
     if before > max(0, allowed):
-        share = max(0, allowed) / before
-        thin = {j: max(1, int(results[j][1] * share)) for j in laid
-                if int(results[j][1] * share) < results[j][1]}
+        from .layout.dwellings import THIN_MIN_ROOMS
+
+        target = max(0, allowed)
+        need_cut = before - target
+        reducible = {
+            j: max(0, results[j][1] - results[j][0] * THIN_MIN_ROOMS)
+            for j in laid
+        }
+        total_reducible = sum(reducible.values())
+        thin = {}
+        if total_reducible > 0:
+            ratio = min(1.0, need_cut / total_reducible)
+            for j in laid:
+                avail = reducible[j]
+                if not avail:
+                    continue
+                cut = min(avail, int(round(avail * ratio)))
+                if cut > 0:
+                    thin[j] = results[j][1] - cut
+            planned_total = before - sum(results[j][1] - thin[j] for j in thin)
+            # Distribute any rounding shortfall one room at a time across headroom.
+            if planned_total > target:
+                for j in sorted(laid, key=lambda idx: -(reducible[idx] - (results[idx][1] - thin.get(idx, results[idx][1])))):
+                    while planned_total > target:
+                        cur = thin.get(j, results[j][1])
+                        floor_j = results[j][1] - reducible[j]
+                        if cur <= floor_j:
+                            break
+                        thin[j] = cur - 1
+                        planned_total -= 1
+                    if planned_total <= target:
+                        break
     else:
         thin = {}
 
@@ -1860,7 +1889,34 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             _make_all([(jobs[j], thin[j]) for j in order], laid_out, should_stop,
                       remade, make_batch=_make_thin_batch, prepare_solver=False)
             after = before - lost
-            print(f"  interiors           : {len(order):,} buildings thinned to fit "
+            overflow = after - max(0, allowed)
+            if overflow > 0:
+                extra = {}
+                for j in sorted(
+                    laid,
+                    key=lambda idx: -(results[idx][1] - results[idx][0] * THIN_MIN_ROOMS),
+                ):
+                    head = results[j][1] - results[j][0] * THIN_MIN_ROOMS
+                    if head <= 0 or (j in thin and results[j][1] > thin[j]):
+                        continue
+                    take = min(head, overflow)
+                    extra[j] = results[j][1] - take
+                    overflow -= take
+                    if overflow <= 0:
+                        break
+                if extra:
+                    thin.update(extra)
+                    order = sorted(extra)
+                    _make_all(
+                        [(jobs[j], extra[j]) for j in order],
+                        laid_out,
+                        should_stop,
+                        remade,
+                        make_batch=_make_thin_batch,
+                        prepare_solver=False,
+                    )
+                    after = sum(results[j][1] for j in laid)
+            print(f"  interiors           : {len(thin):,} buildings thinned to fit "
                   f"the game's save buffer, {before:,} rooms -> {after:,}")
         finally:
             _write_cache(out_dir, code, kept)

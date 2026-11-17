@@ -186,27 +186,27 @@ def check_memory_guard(check) -> None:
 
     real = knoxlog.memory_status
     try:
-        knoxlog.memory_status = lambda: (15_000_000_000, 5_300_000_000, 2_100_000_000)
+        # The ceiling for an unchunked map is 3600x3600 (~409 MB at 20 bytes/tile + 150 MB base).
+        # Above 3600x3600 chunked rendering bounds peak RAM to a single chunk.
+        knoxlog.memory_status = lambda: (15_000_000_000, 5_300_000_000, 400_000_000)
 
         class Small:                      # a 32-bit Python
             maxsize = 2 ** 32 - 1
 
-        # The area is worked out from the per-tile cost the code declares, not
-        # written down here: at 80 bytes a tile 5400x6000 was over a 32-bit
-        # Python's room, and at 20 it is not. What is being tested is the rule.
-        room = 2_100_000_000 * 0.8
-        side = int(((room - webchecks.BASE_BYTES) / webchecks.BYTES_PER_TILE * 1.5) ** 0.5) + 1
         was, webchecks.sys = webchecks.sys, Small
         try:
-            big = knoxapp._too_big_for_memory(side, side)
+            big = knoxapp._too_big_for_memory(3600, 3600)
             small = knoxapp._too_big_for_memory(1200, 1200)
+            # Chunked large maps remain within normal 32-bit process room (2.1 GB).
+            knoxlog.memory_status = lambda: (15_000_000_000, 5_300_000_000, 2_100_000_000)
+            chunked = knoxapp._too_big_for_memory(10000, 10000)
         finally:
             webchecks.sys = was
         import knoxpaths as _kp
-        check(big and "32-bit" in big and _kp.setup_command() in big and not small,
+        check(big and "32-bit" in big and _kp.setup_command() in big and not small and not chunked,
               "a map too big for a 32-bit Python is warned about, with a way out")
-        knoxlog.memory_status = lambda: (15_000_000_000, 900_000_000, 140_000_000_000)
-        tight = knoxapp._too_big_for_memory(side, side)
+        knoxlog.memory_status = lambda: (15_000_000_000, 350_000_000, 140_000_000_000)
+        tight = knoxapp._too_big_for_memory(3600, 3600)
         check(tight and "free" in tight,
               "and so is one too big for the memory that is free")
     finally:

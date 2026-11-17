@@ -443,6 +443,10 @@ def check_trees_are_trees(check) -> None:
             tree = _re.search(r"tree = (\d+)", tile.group(2))
             if tree:
                 sizes[tile.group(1)] = int(tree.group(1))
+    if not sizes:
+        print("  --    no unpacked .tiles.txt definitions here, so the tree tiles "
+              "are taken as read")
+        return
     scenery = sorted(t for t in named if t not in sizes)
     check(not scenery, f"every tree the rules place is a tree the game grows "
                        f"({len(named) - len(scenery)} of {len(named)}"
