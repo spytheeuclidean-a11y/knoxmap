@@ -367,6 +367,9 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            should_stop=None, progress=None,
            _proj_override=None,
            _skip_road_layout: bool = False,
+           _skip_infill: bool = False,
+           _rail_override: list[tuple[int, int, int]] | None = None,
+           _rail_offset: tuple[int, int] = (0, 0),
            _write_geojson: bool = True,
            _chunk_out: dict | None = None) -> RenderResult:
     proj = _proj_override or Projector.build(south, west, north, east, meters_per_tile, rotation)
@@ -519,7 +522,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     if terrain_only:
         building_feats = []
         buckets["building"] = []
-    else:
+    elif not _skip_infill:
         addressed = _houses_from_addresses(features, building_feats, proj)
         if addressed:
             building_feats = building_feats + addressed
@@ -621,7 +624,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
 
     # Track and ballast share the same continuous route; painted after water and
     # straight bridge decks so railroads always cut uninterrupted across water.
-    paint_rails(l_draw, buckets, proj, should_stop)
+    paint_rails(l_draw, buckets, proj, should_stop,
+                sections_override=_rail_override, offset=_rail_offset)
     owned = None
     if landcover_grid is not None:
         # OSM has painted: what is still a marker is WorldCover's.

@@ -297,9 +297,24 @@ def _smooth_road_edges(landscape: Image.Image, asphalt, is_colour) -> None:
 
 # --- railway ---------------------------------------------------------------
 
-def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector, should_stop=None) -> None:
+def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector, should_stop=None,
+                sections_override: list[tuple[int, int, int]] | None = None,
+                offset: tuple[int, int] = (0, 0)) -> None:
     """Lay connected vanilla straights, diagonals and bends along each track."""
-    from .rails import rail_paths, paint_track
+    from ..rail_tiles import ASSEMBLIES, rail_colour
+    from .rails import paint_track, rail_paths
+
+    if sections_override is not None:
+        ox_off, oy_off = offset
+        w, h = proj.width, proj.height
+        for ox, oy, index in sections_override:
+            lx, ly = ox - ox_off, oy - oy_off
+            if -24 <= lx < w + 24 and -24 <= ly < h + 24:
+                for x, y, sheet, tile in ASSEMBLIES[index][4]:
+                    px, py = lx + x, ly + y
+                    if 0 <= px < w and 0 <= py < h:
+                        draw.point((px, py), fill=rail_colour(sheet, tile))
+        return
 
     for ring in rail_paths(buckets.get("railway", []), proj):
         paint_track(draw, ring, should_stop)

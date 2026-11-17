@@ -158,6 +158,94 @@ class ChunkedRenderTests(unittest.TestCase):
                 self.assertFalse((Path(td) / ".resumed_preview_wip.png").exists())
                 self.assertEqual((res.width, res.height), (600, 600))
 
+    def test_render_chunked_keeps_fill_frontage_buildings(self):
+        from generator.osm import OSMFeature
+        from generator.rendering.infill import FIRST_ID
+        from generator.rendering.projection import Projector
+
+        north = SOUTH + 550 * LAT_PER_M
+        east = WEST + 550 * LON_PER_M
+        proj = Projector.build(SOUTH, WEST, north, east, 1.0)
+        feats = [
+            OSMFeature(
+                osm_id=1, kind="way", tags={"highway": "residential"},
+                geometry=[proj.to_latlon(40, 200), proj.to_latlon(340, 200)],
+            )
+        ]
+        for i in range(6):
+            if i in (2, 3):
+                continue
+            x0, x1 = 40 + i * 18, 40 + i * 18 + 15
+            feats.append(OSMFeature(
+                osm_id=100 + i, kind="way", tags={"building": "house"},
+                geometry=[
+                    proj.to_latlon(x0, 180), proj.to_latlon(x1, 180),
+                    proj.to_latlon(x1, 192), proj.to_latlon(x0, 192),
+                    proj.to_latlon(x0, 180),
+                ],
+            ))
+        with tempfile.TemporaryDirectory() as td:
+            res = chunked.render_chunked(
+                feats, SOUTH, WEST, north, east, 1.0,
+                td, "infilled",
+                fill_frontage=1,
+                chunk_cells=1,
+                halo_tiles=16,
+            )
+            meta = json.loads(Path(res.meta_path).read_text(encoding="utf-8"))
+            gj = json.loads(Path(res.buildings_geojson_path).read_text(encoding="utf-8"))
+            ids = [f["properties"]["osm_id"] for f in gj["features"]]
+            self.assertGreaterEqual(meta["houses_infilled"], 2)
+            self.assertTrue(any(i <= FIRST_ID for i in ids))
+
+    def test_render_chunked_keeps_rails_continuous_across_chunks(self):
+        from generator.osm import OSMFeature
+        from generator.rendering.projection import Projector
+
+        north = SOUTH + 550 * LAT_PER_M
+        east = WEST + 550 * LON_PER_M
+        proj = Projector.build(SOUTH, WEST, north, east, 1.0)
+        # A slightly angled West-East railway crossing the x=300 chunk seam.
+        feats = [
+            OSMFeature(
+                osm_id=9, kind="way", tags={"railway": "rail"},
+                geometry=[proj.to_latlon(20, 290), proj.to_latlon(580, 304)],
+            )
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            res = chunked.render_chunked(
+                feats, SOUTH, WEST, north, east, 1.0,
+                td, "rails",
+                chunk_cells=1,
+                halo_tiles=16,
+            )
+            arr = np.asarray(Image.open(res.landscape_path).convert("RGB"))
+            # Every column from x=100 to x=500 (including across the x=300 seam)
+            # must carry rail pixels (red channel > 180 from RAIL_BALLAST/RAIL_*).
+            rail_cols = [
+                x for x in range(100, 500)
+                if np.any((arr[250:350, x, 0] >= 180) & (arr[250:350, x, 2] >= 180))
+            ]
+            self.assertEqual(rail_cols, list(range(100, 500)))
+
+    def test_bmp_writer_handles_over_4gb_dimensions(self):
+        import io
+        import struct
+        from unittest import mock
+
+        buf = io.BytesIO()
+        buf.close = lambda: None
+        with mock.patch("builtins.open", return_value=buf):
+            w = chunked._BmpWriter("huge.bmp", 40000, 38000, bpp=3)
+            self.assertGreater(w.file_size, 0xFFFFFFFF)
+        raw = buf.getvalue()
+        sig, bf_size, _, _, off = struct.unpack_from("<2sIHHI", raw, 0)
+        _, width, height, _, bpp, comp, bi_size, *_ = struct.unpack_from("<IiiHHIIiiII", raw, 14)
+        self.assertEqual(sig, b"BM")
+        self.assertEqual(bf_size, 0)
+        self.assertEqual(off, 54)
+        self.assertEqual((width, height, bpp, comp, bi_size), (40000, 38000, 24, 0, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -130,6 +130,43 @@ _SIDE = {(0, -1): "N", (0, 1): "S", (-1, 0): "W", (1, 0): "E"}
 
 
 _OUTSIDE_DOORS_CACHE: dict[tuple[str, int], list[tuple[int, int, int, int]]] = {}
+_OUTSIDE_WINDOWS_CACHE: dict[tuple[str, int], set[tuple[int, int]]] = {}
+
+
+def _outside_windows(tbx_path: str) -> set[tuple[int, int]]:
+    """(outside x, y) for every ground-floor exterior window in ``tbx_path``."""
+    try:
+        key = (tbx_path, os.stat(tbx_path).st_mtime_ns)
+    except OSError:
+        key = None
+    if key is not None and key in _OUTSIDE_WINDOWS_CACHE:
+        return _OUTSIDE_WINDOWS_CACHE[key]
+    with open(tbx_path, encoding="utf-8") as f:
+        text = f.read()
+    first = text.split("<floor>", 2)
+    if len(first) < 2:
+        return set()
+    floor = first[1]
+    grid_text = re.search(r"<rooms>(.*?)</rooms>", floor, re.S)
+    if not grid_text:
+        return set()
+    grid = [[int(v) for v in row.strip().strip(",").split(",")]
+            for row in grid_text.group(1).strip().splitlines() if row.strip()]
+    h, w = len(grid), len(grid[0])
+
+    def inside(x, y):
+        return 0 <= x < w and 0 <= y < h and grid[y][x] != 0
+
+    found: set[tuple[int, int]] = set()
+    for m in re.finditer(r'type="window"[^>]*? x="(\d+)" y="(\d+)" dir="([NW])"', floor):
+        x, y, d = int(m.group(1)), int(m.group(2)), m.group(3)
+        a, b = ((x, y - 1), (x, y)) if d == "N" else ((x - 1, y), (x, y))
+        if inside(*a) != inside(*b):
+            out = a if inside(*b) else b
+            found.add((out[0], out[1]))
+    if key is not None:
+        _OUTSIDE_WINDOWS_CACHE[key] = found
+    return found
 
 
 def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
@@ -247,6 +284,419 @@ def _find_walk(sx: int, sy: int, dx: int, dy: int, w: int, h: int,
                 break
             straight_walk.append((tx, ty))
     return walk, end
+
+
+_NON_HOME_BENCH_KINDS = frozenset({
+    "apartment", "civic", "medical", "library", "school",
+    "hotel", "shop", "mall", "restaurant", "office", "offices",
+})
+_SERVICE_CLUTTER_KINDS = frozenset({"shop", "retail", "mall", "restaurant", "barn"})
+_DUMPSTER_KINDS = _NON_HOME_BENCH_KINDS | frozenset({"retail"})
+
+
+def _place_orderly_seating(can_fn, clear_neighbors_fn, veg: np.ndarray,
+                           tx: int, ty: int, rng: random.Random,
+                           allow_loungers: bool = True) -> bool:
+    """Place orderly outdoor seating: chairs facing each other across one empty
+    tile, a neat line of chairs spaced by one, or parallel loungers."""
+    mode = rng.randrange(3 if allow_loungers else 2)
+    if mode == 0:
+        # Two chairs facing each other across 1 clear tile.
+        if rng.random() < 0.5:
+            pts = ((tx, ty), (tx + 1, ty), (tx + 2, ty))
+            if all(can_fn(*p) for p in pts) and clear_neighbors_fn(tx, ty) and clear_neighbors_fn(tx + 2, ty):
+                veg[ty, tx] = C.CHAIR_E
+                veg[ty, tx + 2] = C.CHAIR_W
+                return True
+        else:
+            pts = ((tx, ty), (tx, ty + 1), (tx, ty + 2))
+            if all(can_fn(*p) for p in pts) and clear_neighbors_fn(tx, ty) and clear_neighbors_fn(tx, ty + 2):
+                veg[ty, tx] = C.CHAIR_S
+                veg[ty + 2, tx] = C.CHAIR_N
+                return True
+        return False
+    if mode == 1:
+        # Line of 2-3 chairs spaced by 1 empty tile.
+        if rng.random() < 0.5:
+            slots = [0, 2, 4] if can_fn(tx + 4, ty) and clear_neighbors_fn(tx + 4, ty) else [0, 2]
+            if all(can_fn(tx + s, ty) and clear_neighbors_fn(tx + s, ty) for s in slots) and can_fn(tx + 1, ty):
+                for s in slots:
+                    veg[ty, tx + s] = C.CHAIR_S
+                return True
+        else:
+            slots = [0, 2, 4] if can_fn(tx, ty + 4) and clear_neighbors_fn(tx, ty + 4) else [0, 2]
+            if all(can_fn(tx, ty + s) and clear_neighbors_fn(tx, ty + s) for s in slots) and can_fn(tx, ty + 1):
+                for s in slots:
+                    veg[ty + s, tx] = C.CHAIR_E
+                return True
+        return False
+    # Two parallel deck-chair loungers separated by a 1-tile aisle.
+    pts = ((tx, ty), (tx + 1, ty), (tx, ty + 1), (tx + 1, ty + 1), (tx, ty + 2), (tx + 1, ty + 2))
+    if all(can_fn(*p) for p in pts) and clear_neighbors_fn(tx, ty) and clear_neighbors_fn(tx, ty + 2):
+        veg[ty, tx] = C.TABLE_X0
+        veg[ty, tx + 1] = C.TABLE_X1
+        veg[ty + 2, tx] = C.TABLE_X0
+        veg[ty + 2, tx + 1] = C.TABLE_X1
+        return True
+    return False
+
+
+def _dress_non_home_surroundings(
+    rows: list[dict],
+    door_lists: dict,
+    out_dir: str,
+    ground: np.ndarray,
+    veg: np.ndarray,
+    w: int,
+    h: int,
+    occupied: np.ndarray,
+    road_at: np.ndarray,
+    paved_at: np.ndarray,
+    free,
+    fronts: set[tuple[int, int]] | None,
+) -> None:
+    """Place foundation hedges, flower beds, bins, benches, patio seating,
+    dumpsters, service clutter, litter, and shade trees around non-residential
+    buildings so commercial, apartment, and civic blocks feel lived in."""
+    from .works import _dumpster
+
+    bench_ready = _rule_ready("Bench")
+    door_clear = fronts or set()
+
+    def can_veg(x: int, y: int) -> bool:
+        if not (0 <= x < w and 0 <= y < h):
+            return False
+        if (x, y) in door_clear or road_at[y * w + x] or occupied[y, x]:
+            return False
+        if tuple(veg[y, x]) != C.VEG_NOTHING:
+            return False
+        g = tuple(ground[y, x])
+        return g in CROSSABLE or g in PAVED
+
+    def place_veg(x: int, y: int, colour: tuple[int, int, int]) -> bool:
+        if not can_veg(x, y):
+            return False
+        veg[y, x] = colour
+        return True
+
+    def is_grass(x: int, y: int) -> bool:
+        return 0 <= x < w and 0 <= y < h and tuple(ground[y, x]) in CROSSABLE
+
+    def is_paved(x: int, y: int) -> bool:
+        return 0 <= x < w and 0 <= y < h and (paved_at[y * w + x] or tuple(ground[y, x]) in PAVED)
+
+    for row in rows:
+        kind = row.get("kind", "")
+        if kind in ("house", "garage", "industrial"):
+            continue
+        bx0, by0 = row["tile_x"], row["tile_y"]
+        bw, bh = row["width"], row["height"]
+        if bw < 3 or bh < 3:
+            continue
+        doors = door_lists.get(row["file"], [])
+        nrng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0xA5A5A5A5)
+        bin_spots: list[tuple[int, int]] = []
+
+        # 1. Entrance bins and benches flanking doors.
+        if doors:
+            for ox, oy, ix, iy in doors[:3]:
+                dx, dy = ox - ix, oy - iy
+                px, py = -dy, dx
+                sx, sy = bx0 + ox, by0 + oy
+                if nrng.random() < 0.90:
+                    sides = [(-2, 2), (2, -2)]
+                    for k in nrng.choice(sides) + (-3, 3):
+                        bx_, by_ = sx + px * k, sy + py * k
+                        if place_veg(bx_, by_, C.BIN):
+                            bin_spots.append((bx_, by_))
+                            break
+                if bench_ready and kind in _NON_HOME_BENCH_KINDS and nrng.random() < 0.75:
+                    bench = C.BENCH_X if py == 0 else C.BENCH_Y
+                    for k in (2, -3, 3, -4, 4):
+                        ax, ay = sx + px * k, sy + py * k
+                        bx_, by_ = ax + px, ay + py
+                        if (can_veg(ax, ay) and can_veg(bx_, by_)
+                                and is_paved(ax, ay) and is_paved(bx_, by_)):
+                            veg[ay, ax] = bench[0]
+                            veg[by_, bx_] = bench[1]
+                            break
+
+        # 2. Organic foundation hedges and flower beds on grass hugging the apron/walls.
+        ring_min, ring_max = 1, BUILDING_APRON_MAX + 1
+        candidates: list[tuple[int, int]] = []
+        for y in range(max(0, by0 - ring_max), min(h, by0 + bh + ring_max)):
+            for x in range(max(0, bx0 - ring_max), min(w, bx0 + bw + ring_max)):
+                dist = max(bx0 - x, x - (bx0 + bw - 1), by0 - y, y - (by0 + bh - 1), 0)
+                if not ring_min <= dist <= ring_max:
+                    continue
+                if not is_grass(x, y) or not can_veg(x, y):
+                    continue
+                if dist == 1 or any(
+                    0 <= x + nx < w and 0 <= y + ny < h
+                    and (is_paved(x + nx, y + ny) or occupied[y + ny, x + nx])
+                    for nx, ny in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                ):
+                    candidates.append((x, y))
+        if candidates:
+            cx, cy = bx0 + bw / 2, by0 + bh / 2
+            import math
+            candidates.sort(key=lambda p: math.atan2(p[1] - cy, p[0] - cx))
+            cand_set = set(candidates)
+            i = nrng.randrange(3)
+            while i < len(candidates):
+                run_len = nrng.randint(2, 5)
+                colour = C.FLOWERS if nrng.random() < 0.30 else C.BUSHES
+                for x, y in candidates[i:i + run_len]:
+                    if (x, y) in cand_set:
+                        place_veg(x, y, colour)
+                i += run_len + nrng.randint(1, 3)
+
+        # 3. Orderly outdoor seating (facing chairs or spaced line) 3+ tiles clear of walls.
+        if bw >= 6 and bh >= 6 and kind in _NON_HOME_BENCH_KINDS and nrng.random() < 0.50:
+            spots = [
+                (bx0 + bw // 2, by0 + bh + 3),
+                (bx0 + bw // 2, by0 - 5),
+                (bx0 - 5, by0 + bh // 2),
+                (bx0 + bw + 3, by0 + bh // 2),
+            ]
+            nrng.shuffle(spots)
+            door_pts_t = [(bx0 + ox, by0 + oy) for ox, oy, _ix, _iy in doors]
+
+            def clear_n(x: int, y: int) -> bool:
+                return all(
+                    0 <= x + nx < w and 0 <= y + ny < h
+                    and tuple(veg[y + ny, x + nx]) == C.VEG_NOTHING
+                    for nx, ny in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                )
+
+            for tx, ty in spots:
+                if any(abs(tx - dx_) + abs(ty - dy_) <= 3 for dx_, dy_ in door_pts_t):
+                    continue
+                if _place_orderly_seating(can_veg, clear_n, veg, tx, ty, nrng, allow_loungers=False):
+                    break
+
+        # 4. Rear/side dumpsters & service clutter: only on doorless South/East walls
+        # and never directly in front of a ground-floor window.
+        door_walls = set()
+        door_pts = []
+        for ox, oy, ix, iy in doors:
+            door_pts.append((bx0 + ox, by0 + oy))
+            if oy - iy > 0:
+                door_walls.add("S")
+            elif oy - iy < 0:
+                door_walls.add("N")
+            elif ox - ix > 0:
+                door_walls.add("E")
+            elif ox - ix < 0:
+                door_walls.add("W")
+
+        tbx_file = os.path.join(out_dir, "buildings", row["file"])
+        window_tiles = {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)} if os.path.isfile(tbx_file) else set()
+
+        service_ring = []
+        if "S" not in door_walls:
+            sy_w = by0 + bh
+            if 0 <= sy_w < h:
+                service_ring.extend(
+                    (x, sy_w) for x in range(max(0, bx0 + 1), min(w, bx0 + bw - 1))
+                    if can_veg(x, sy_w)
+                    and (x, sy_w) not in window_tiles
+                    and not any(abs(x - dx_) + abs(sy_w - dy_) <= 3 for dx_, dy_ in door_pts)
+                )
+        if "E" not in door_walls:
+            ex_w = bx0 + bw
+            if 0 <= ex_w < w:
+                service_ring.extend(
+                    (ex_w, y) for y in range(max(0, by0 + 1), min(h, by0 + bh - 1))
+                    if can_veg(ex_w, y)
+                    and (ex_w, y) not in window_tiles
+                    and not any(abs(ex_w - dx_) + abs(y - dy_) <= 3 for dx_, dy_ in door_pts)
+                )
+        if service_ring and bw >= 6 and bh >= 6:
+            if kind in _DUMPSTER_KINDS and nrng.random() < 0.85:
+                _dumpster(service_ring, bx0, by0, bw, bh, doors, can_veg, place_veg, nrng)
+            clutter_chance = 0.75 if kind in _SERVICE_CLUTTER_KINDS else 0.45
+            if nrng.random() < clutter_chance:
+                far_wall = sorted(
+                    service_ring,
+                    key=lambda p: min(abs(p[0] - dx_) + abs(p[1] - dy_) for dx_, dy_ in door_pts)
+                    if door_pts else 0,
+                    reverse=True,
+                )
+                props = (C.WORKS_CRATE, C.WORKS_BARREL, C.WORKS_PALLET, C.WORKS_DRUM, C.WORKS_TIRES)
+                n_clusters = nrng.randint(2, 4) if kind in _SERVICE_CLUTTER_KINDS else nrng.randint(1, 2)
+                idx = 0
+                for _ in range(n_clusters):
+                    if idx >= len(far_wall):
+                        break
+                    prop = nrng.choice(props)
+                    placed = 0
+                    while idx < len(far_wall) and placed < nrng.randint(2, 3):
+                        px_, py_ = far_wall[idx]
+                        idx += 1
+                        if place_veg(px_, py_, prop):
+                            placed += 1
+                    idx += nrng.randint(1, 3)
+
+        # Occasional litter near entrance bins or service walls.
+        for bx_, by_ in bin_spots:
+            if nrng.random() < 0.50:
+                for ox_, oy_ in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    if place_veg(bx_ + ox_, by_ + oy_, C.LITTER):
+                        break
+
+        # 5. Varied shade trees at least 4 tiles clear of walls/doors/props so canopies don't clip.
+        tree_target = 1 if (bw < 10 and bh < 10) else nrng.randint(2, 4)
+        tree_candidates = [
+            (bx0 - nrng.randint(4, 7), by0 - nrng.randint(4, 6)),
+            (bx0 + bw + nrng.randint(4, 6), by0 - nrng.randint(4, 6)),
+            (bx0 - nrng.randint(4, 7), by0 + bh + nrng.randint(4, 6)),
+            (bx0 + bw + nrng.randint(4, 6), by0 + bh + nrng.randint(4, 6)),
+            (bx0 + bw // 2 + nrng.randint(-3, 3), by0 - nrng.randint(5, 8)),
+            (bx0 + bw // 2 + nrng.randint(-3, 3), by0 + bh + nrng.randint(4, 7)),
+        ]
+        nrng.shuffle(tree_candidates)
+        trees = 0
+        for cx_, cy_ in tree_candidates:
+            if (is_grass(cx_, cy_) and can_veg(cx_, cy_)
+                    and not any(abs(cx_ - dx_) + abs(cy_ - dy_) <= 4 for dx_, dy_ in door_pts)
+                    and all(
+                        0 <= cx_ + nx < w and 0 <= cy_ + ny < h
+                        and tuple(veg[cy_ + ny, cx_ + nx]) == C.VEG_NOTHING
+                        for nx, ny in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                    )):
+                veg[cy_, cx_] = C.TREE_SMALL if nrng.random() < 0.7 else C.TREES
+                trees += 1
+                if trees >= tree_target:
+                    break
+
+
+def _dress_open_yards(
+    rows: list[dict],
+    door_lists: dict,
+    ground: np.ndarray,
+    veg: np.ndarray,
+    w: int,
+    h: int,
+    occupied: np.ndarray,
+    road_at: np.ndarray,
+    free,
+    fronts: set[tuple[int, int]] | None,
+) -> None:
+    """Scale exterior yard decor to how much open grass surrounds a building:
+    compact lots stay uncluttered, while spacious lots get trees, shrub
+    islands, flower beds, seating/picnic spots, and subtle yard clutter."""
+    bench_ready = _rule_ready("Bench")
+    door_clear = fronts or set()
+
+    def can_grass(x: int, y: int) -> bool:
+        return (0 <= x < w and 0 <= y < h and free(x, y)
+                and (x, y) not in door_clear and not road_at[y * w + x]
+                and not occupied[y, x] and tuple(ground[y, x]) in CROSSABLE
+                and tuple(veg[y, x]) == C.VEG_NOTHING)
+
+    def clear_neighbors(x: int, y: int) -> bool:
+        return all(
+            0 <= x + nx < w and 0 <= y + ny < h
+            and tuple(veg[y + ny, x + nx]) == C.VEG_NOTHING
+            for nx, ny in ((1, 0), (-1, 0), (0, 1), (0, -1))
+        )
+
+    for row in rows:
+        kind = row.get("kind", "")
+        if kind in ("garage", "industrial"):
+            continue
+        bx0, by0 = row["tile_x"], row["tile_y"]
+        bw, bh = row["width"], row["height"]
+        if bw < 3 or bh < 3:
+            continue
+
+        open_tiles: list[tuple[int, int, int]] = []
+        y0 = max(0, by0 - 12)
+        y1 = min(h, by0 + bh + 12)
+        x0 = max(0, bx0 - 12)
+        x1 = min(w, bx0 + bw + 12)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                dist = max(bx0 - x, x - (bx0 + bw - 1), by0 - y, y - (by0 + bh - 1), 0)
+                if 2 <= dist <= 12 and can_grass(x, y):
+                    open_tiles.append((x, y, dist))
+
+        n_open = len(open_tiles)
+        if n_open < 35:
+            continue
+        scale = min(1.0, (n_open - 35) / 220.0)
+        yrng = random.Random((bx0 * 19349663) ^ (by0 * 73856093) ^ 0x55AA55AA)
+        door_pts = [(bx0 + ox, by0 + oy) for ox, oy, _ix, _iy in door_lists.get(row["file"], [])]
+
+        def clear_of_doors(x: int, y: int, radius: int = 3) -> bool:
+            return not any(abs(x - dx_) + abs(y - dy_) <= radius for dx_, dy_ in door_pts)
+
+        mid_spots = [(x, y) for x, y, d in open_tiles if 4 <= d <= 10 and clear_of_doors(x, y, 4)]
+        yrng.shuffle(mid_spots)
+
+        # 1. Orderly seating (facing chairs, spaced line, or parallel loungers) or bench.
+        if scale >= 0.25 and mid_spots and yrng.random() < 0.35 + 0.45 * scale:
+            placed_seat = False
+            for tx, ty in mid_spots[:40]:
+                if _place_orderly_seating(can_grass, clear_neighbors, veg, tx, ty, yrng,
+                                          allow_loungers=(kind != "house")):
+                    placed_seat = True
+                    break
+            if not placed_seat and bench_ready:
+                for tx, ty in mid_spots[:30]:
+                    if can_grass(tx, ty) and can_grass(tx + 1, ty) and clear_neighbors(tx, ty):
+                        veg[ty, tx] = C.BENCH_X[0]
+                        veg[ty, tx + 1] = C.BENCH_X[1]
+                        break
+
+        # 2. Woodpile / utility clutter or raised flower patch on spacious yards.
+        if scale >= 0.20 and mid_spots:
+            n_features = 1 if scale < 0.6 else 2
+            feat_idx = 0
+            for _ in range(n_features):
+                while feat_idx < len(mid_spots):
+                    fx, fy = mid_spots[feat_idx]
+                    feat_idx += 1
+                    if not (can_grass(fx, fy) and clear_neighbors(fx, fy)):
+                        continue
+                    if yrng.random() < 0.55:
+                        prop = yrng.choice((C.WORKS_PALLET, C.WORKS_BARREL, C.WORKS_CRATE, C.WORKS_TIRES))
+                        veg[fy, fx] = prop
+                        if can_grass(fx + 1, fy):
+                            veg[fy, fx + 1] = prop
+                    else:
+                        for ox_, oy_ in ((0, 0), (1, 0), (0, 1)):
+                            if can_grass(fx + ox_, fy + oy_):
+                                veg[fy + oy_, fx + ox_] = C.FLOWERS
+                    break
+
+        # 3. Organic shrub & flower islands across the open yard.
+        n_islands = max(1, round(5 * scale))
+        island_spots = [(x, y) for x, y, d in open_tiles if 3 <= d <= 11 and clear_of_doors(x, y, 3)]
+        yrng.shuffle(island_spots)
+        for ix, iy in island_spots[:n_islands]:
+            if not can_grass(ix, iy):
+                continue
+            col = C.BUSHES if yrng.random() < 0.72 else C.FLOWERS
+            veg[iy, ix] = col
+            for ox_, oy_ in yrng.sample(((1, 0), (-1, 0), (0, 1), (0, -1)), 3):
+                if can_grass(ix + ox_, iy + oy_) and yrng.random() < 0.65:
+                    veg[iy + oy_, ix + ox_] = col
+
+        # 4. Extra shade trees scaled to open yard space, spaced apart from each other.
+        n_trees = max(1, round(5 * scale))
+        tree_spots = [(x, y) for x, y, d in open_tiles if 4 <= d <= 12 and clear_of_doors(x, y, 4)]
+        yrng.shuffle(tree_spots)
+        placed_trees: list[tuple[int, int]] = []
+        for tx, ty in tree_spots:
+            if len(placed_trees) >= n_trees:
+                break
+            if any(abs(tx - px_) + abs(ty - py_) < 5 for px_, py_ in placed_trees):
+                continue
+            if can_grass(tx, ty) and clear_neighbors(tx, ty):
+                veg[ty, tx] = C.TREE_SMALL if yrng.random() < 0.65 else C.TREES
+                placed_trees.append((tx, ty))
 
 
 def _paint_walk_and_stoop(walk: list, end: tuple[int, int],
@@ -634,13 +1084,14 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
 
         if not any_connected:
             continue
-        # Front-yard flower beds flanking the stoop and an occasional kerbside
+        # Front-yard flower/shrub beds flanking the stoop and an occasional kerbside
         # bin opposite the mailbox so street fronts read as lived-in homes.
-        if home and veg is not None and frng.random() < 0.60:
+        if home and veg is not None and frng.random() < 0.80:
+            bed_colour = C.FLOWERS if frng.random() < 0.55 else C.BUSHES
             for k in (-2, 2, -3, 3):
                 fx, fy = sx + px * k, sy + py * k
                 if free(fx, fy) and tuple(ground[fy, fx]) not in LAWNLESS:
-                    put(fx, fy, C.FLOWERS)
+                    put(fx, fy, bed_colour)
         # The mailbox, beside the path where it reaches the street.
         if home and walk and (end is not None and end not in drive_tiles or primary in merged):
             mx, my = walk[0]
@@ -883,6 +1334,53 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 for v in range(depth):
                     x, y = at(u, v)
                     claimed_bytes[y * w + x] = 1
+        # Side/front foundation shrubs, side-wall clutter, and a front shade tree
+        # added after the back yard so back-yard patios and props stay intact.
+        if veg is not None:
+            side_wall = [
+                (x, y)
+                for y in range(max(0, by0 - 1), min(h, by0 + bh + 1))
+                for x in range(max(0, bx0 - 1), min(w, bx0 + bw + 1))
+                if (x in (bx0 - 1, bx0 + bw) or y in (by0 - 1, by0 + bh))
+                and not (sx - 2 <= x <= sx + 2 and sy - 2 <= y <= sy + 2)
+                and free(x, y) and tuple(ground[y, x]) in CROSSABLE
+                and tuple(veg[y, x]) == C.VEG_NOTHING
+            ]
+            if side_wall:
+                import math
+                cx_h, cy_h = bx0 + bw / 2, by0 + bh / 2
+                side_wall.sort(key=lambda p: math.atan2(p[1] - cy_h, p[0] - cx_h))
+                si = frng.randrange(3)
+                while si < len(side_wall):
+                    rlen = frng.randint(1, 3)
+                    col = C.BUSHES if frng.random() < 0.78 else C.FLOWERS
+                    for sx_, sy_ in side_wall[si:si + rlen]:
+                        put(sx_, sy_, col)
+                    si += rlen + frng.randint(2, 5)
+                if frng.random() < 0.60:
+                    bx_w, by_w = frng.choice(side_wall)
+                    put(bx_w, by_w, C.BIN)
+                if frng.random() < 0.45:
+                    cx_w, cy_w = frng.choice(side_wall)
+                    put(cx_w, cy_w, frng.choice((C.WORKS_PALLET, C.WORKS_BARREL, C.WORKS_CRATE)))
+            if frng.random() < 0.65:
+                front_corners = [
+                    (sx + px * frng.randint(4, 6) + dx * frng.randint(4, 5),
+                     sy + py * frng.randint(4, 6) + dy * frng.randint(4, 5)),
+                    (sx - px * frng.randint(4, 6) + dx * frng.randint(4, 5),
+                     sy - py * frng.randint(4, 6) + dy * frng.randint(4, 5)),
+                ]
+                for tx_, ty_ in front_corners:
+                    if (0 <= tx_ < w and 0 <= ty_ < h and free(tx_, ty_)
+                            and tuple(ground[ty_, tx_]) in CROSSABLE
+                            and tuple(veg[ty_, tx_]) == C.VEG_NOTHING
+                            and all(
+                                0 <= tx_ + nx < w and 0 <= ty_ + ny < h
+                                and tuple(veg[ty_ + ny, tx_ + nx]) == C.VEG_NOTHING
+                                for nx, ny in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                            )):
+                        put(tx_, ty_, C.TREE_SMALL if frng.random() < 0.7 else C.TREES)
+                        break
         dressed += 1
 
     for row in rows:
@@ -962,6 +1460,16 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     # after all doorway walks and industrial tarmac yards are placed.
     for bx0, by0, bw, bh in apron_boxes:
         _pave_building_apron(bx0, by0, bw, bh, occupied, w, h, free, paint)
+
+    if veg is not None:
+        _dress_non_home_surroundings(
+            rows, door_lists, out_dir, ground, veg, w, h,
+            occupied, road_at, paved_at, free, fronts,
+        )
+        _dress_open_yards(
+            rows, door_lists, ground, veg, w, h,
+            occupied, road_at, free, fronts,
+        )
 
     if veg is not None and fronts:
         # No tree or bush grows in a doorway.

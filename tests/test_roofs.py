@@ -31,23 +31,25 @@ class RoofLayouts(unittest.TestCase):
                     self.assertTrue(abs(x - other_x) > 1 or abs(y - other_y) > 1)
 
     def test_every_roof_piece_is_one_the_world_painter_can_draw(self):
-        # buildroofs.roof_squares has no branch for a Peak30Quad whose longer
-        # side is even, so such a piece paints nothing: the house keeps its
-        # walls and loses its entire roof (108 houses in one town).
         from knoxbuild.buildroofs import roof_squares
 
-        for w in range(3, 14):
-            for h in range(3, 14):
+        for w in range(3, 18):
+            for h in range(3, 18):
                 grid = [[1] * w for _ in range(h)]
                 for kind, depth, _caps, (x, y, pw, ph) in tbx._roof_pieces(
                         layout.roof_rects(grid), True, True):
                     if kind == "FlatTop":
                         continue
                     with self.subTest(kind=kind, w=w, h=h):
-                        self.assertTrue(roof_squares(
+                        got = roof_squares(
                             lambda n: {}, {},
                             dict(RoofType=kind, Depth=depth, x=x, y=y,
-                                 width=pw, height=ph)))
+                                 width=pw, height=ph))
+                        self.assertTrue(got)
+                        if kind.startswith("Peak30"):
+                            for ry in range(y, y + ph):
+                                for rx in range(x, x + pw):
+                                    self.assertIn((rx, ry), got)
 
     def test_flat_roof_plant_stands_on_the_roof(self):
         # The game hangs an attachedCeiling tile from the ceiling of its level:
@@ -121,6 +123,71 @@ class RoofLayouts(unittest.TestCase):
                 kind, _depth, _caps, box = pieces[0]
                 self.assertNotEqual(kind, "FlatTop")
                 self.assertEqual(box, (0, 0, w, h))
+
+    def test_partially_exposed_wing_edge_stays_capped(self):
+        # An L-shape where the main wing's South edge is only partially shared
+        # keeps cappedS=True so the exposed gable end does not stay open.
+        grid = [[1] * 12 for _ in range(8)]
+        for y in range(8, 13):
+            grid.append([1] * 5 + [0] * 7)
+        rects = layout.roof_rects(grid)
+        self.assertEqual(len(rects), 2)
+        self.assertTrue(rects[0][4]["cappedS"])
+
+    def test_perpendicular_peak30_wings_emit_inner_valley_tile(self):
+        from types import SimpleNamespace
+
+        from knoxbuild.buildroofs import upper_layers
+
+        we = dict(type="roof", RoofType="Peak30WE", Depth="Zero",
+                  x=0, y=0, width=10, height=5, SlopeTiles=1, CapTiles=0)
+        ns = dict(type="roof", RoofType="Peak30NS", Depth="Zero",
+                  x=5, y=5, width=5, height=6, SlopeTiles=1, CapTiles=0)
+        slopes = {
+            "Slope30N1": "sN1", "Slope30N2": "sN2", "Slope30S1": "sS1", "Slope30S2": "sS2",
+            "Slope30W1": "sW1", "Slope30W2": "sW2", "Slope30E1": "sE1", "Slope30E2": "sE2",
+            "Peak30NS3": "pNS3", "Peak30WE3": "pWE3",
+            "InnerSlope30SE1": "inSE1",
+        }
+        empty_rooms = [[0] * 10 for _ in range(11)]
+        floors = [SimpleNamespace(rooms=[[1] * 10 for _ in range(11)], objects=[]),
+                  SimpleNamespace(rooms=empty_rooms, objects=[we, ns])]
+        _out, pitched = upper_layers(lambda n: slopes if n == 1 else {}, {}, 10, 11, [{"Ceiling": 0}], floors, 1)
+        self.assertEqual(pitched[(4, 4)], ["inSE1"])
+
+    def test_flattop_always_uses_depth_three(self):
+        # WorldEd/knoxlots drops any building with a FlatTop Depth="Zero" roof.
+        for w, h, gable_only in ((12, 10, True), (10, 12, True), (12, 12, False)):
+            grid = [[1] * w for _ in range(h)]
+            for kind, depth, _caps, _box in tbx._roof_pieces(
+                    layout.roof_rects(grid), True, True, gable_only=gable_only):
+                if kind == "FlatTop":
+                    self.assertEqual(depth, "Three")
+
+    def test_rectangular_peak30quad_ridge_matches_peak30_orientation(self):
+        from knoxbuild.buildroofs import roof_squares
+
+        slopes = {
+            "Slope30N1": "N1", "Slope30N2": "N2", "Slope30S1": "S1", "Slope30S2": "S2",
+            "Slope30W1": "W1", "Slope30W2": "W2", "Slope30E1": "E1", "Slope30E2": "E2",
+            "OuterSlope30NW1": "NW1", "OuterSlope30NE1": "NE1",
+            "OuterSlope30SW1": "SW1", "OuterSlope30SE1": "SE1",
+            "OuterSlope30NW2": "NW2", "OuterSlope30NE2": "NE2",
+            "OuterSlope30SW2": "SW2", "OuterSlope30SE2": "SE2",
+            "Peak30NS3": "ridgeNS3", "Peak30WE3": "ridgeWE3",
+        }
+        we = roof_squares(lambda n: slopes if n == 1 else {}, {},
+                          dict(RoofType="Peak30Quad", Depth="Zero", x=0, y=0,
+                               width=9, height=5, SlopeTiles=1, CapTiles=0))
+        self.assertEqual(we[(4, 2)], ["ridgeNS3"])
+        ns = roof_squares(lambda n: slopes if n == 1 else {}, {},
+                          dict(RoofType="Peak30Quad", Depth="Zero", x=0, y=0,
+                               width=5, height=9, SlopeTiles=1, CapTiles=0))
+        self.assertEqual(ns[(2, 4)], ["ridgeWE3"])
+
+
+if __name__ == "__main__":
+    unittest.main()
 
 
 if __name__ == "__main__":

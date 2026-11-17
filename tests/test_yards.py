@@ -338,6 +338,89 @@ class MultiDoorAndInfillFrontPaths(unittest.TestCase):
             self.assertEqual(tuple(after[21, 11]), C.MEDIUM_GRASS)
             self.assertEqual(tuple(after[21, 15]), C.MEDIUM_GRASS)
 
+    def test_non_home_buildings_get_foundation_decor_without_blocking_doors(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.makedirs(os.path.join(out, "buildings"))
+            occupied = np.zeros((32, 32), dtype=bool)
+            ground = np.full((32, 32, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[26:, :] = C.DARK_ASPHALT
+            veg = np.full((32, 32, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            self._write_doors_tbx(os.path.join(out, "buildings"), "apt.tbx", [(3, 6, "N")])
+            occupied[10:16, 10:16] = True
+            rows = [{"kind": "apartment", "file": "apt.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": SIZE, "height": SIZE}]
+            paint_paths(out, "m", rows, occupied)
+            veg_after = np.asarray(Image.open(os.path.join(out, "m_veg.bmp")))
+            drawn = {tuple(c) for c in veg_after.reshape(-1, 3)}
+            decor = {C.BUSHES, C.FLOWERS, C.BIN, C.DUMPSTER_BLUE_S0, C.DUMPSTER_ORANGE_S0,
+                     C.DUMPSTER_BLUE_E0, C.DUMPSTER_ORANGE_E0}
+            self.assertTrue(drawn & decor)
+            # Doorway tile itself stays clear of vegetation/props.
+            self.assertEqual(tuple(veg_after[16, 13]), C.VEG_NOTHING)
+
+    def test_spacious_lot_gets_more_yard_decor_than_compact_lot(self):
+        def decor_count(size_xy: int, pack_neighbors: bool) -> int:
+            with tempfile.TemporaryDirectory() as out:
+                os.makedirs(os.path.join(out, "buildings"))
+                occupied = np.zeros((size_xy, size_xy), dtype=bool)
+                ground = np.full((size_xy, size_xy, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+                ground[size_xy - 4:, :] = C.DARK_ASPHALT
+                veg = np.full((size_xy, size_xy, 3), C.VEG_NOTHING, dtype=np.uint8)
+                if pack_neighbors:
+                    # Leave only a tight 2-tile grass strip around the house.
+                    occupied[:, :max(0, size_xy // 2 - 5)] = True
+                    occupied[:, min(size_xy, size_xy // 2 + 5):] = True
+                cx = size_xy // 2 - 3
+                cy = size_xy // 2 - 3
+                self._write_doors_tbx(os.path.join(out, "buildings"), "h.tbx", [(3, 6, "N")])
+                occupied[cy:cy + 6, cx:cx + 6] = True
+                Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+                Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+                rows = [{"kind": "house", "file": "h.tbx",
+                         "tile_x": cx, "tile_y": cy, "width": 6, "height": 6}]
+                paint_paths(out, "m", rows, occupied)
+                after = np.asarray(Image.open(os.path.join(out, "m_veg.bmp")))
+                return int(np.any(after != C.VEG_NOTHING, axis=2).sum())
+
+        compact = decor_count(28, pack_neighbors=True)
+        spacious = decor_count(44, pack_neighbors=False)
+        self.assertGreater(spacious, compact + 5)
+
+    def test_dumpster_skips_ground_floor_windows(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.makedirs(os.path.join(out, "buildings"))
+            occupied = np.zeros((32, 32), dtype=bool)
+            ground = np.full((32, 32, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[28:, :] = C.DARK_ASPHALT
+            veg = np.full((32, 32, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            grid = "\n".join(",".join(["1"] * 6) for _ in range(6))
+            wins = "".join(f'  <object type="window" x="{x}" y="6" dir="N"/>\n' for x in range(1, 6))
+            tbx = (
+                f'<building version="3" width="6" height="6">\n <floor>\n'
+                f'  <rooms>\n{grid}\n  </rooms>\n'
+                f'  <object type="door" x="0" y="3" dir="W"/>\n'
+                f'{wins} </floor>\n</building>\n'
+            )
+            with open(os.path.join(out, "buildings", "shop.tbx"), "w", encoding="utf-8") as f:
+                f.write(tbx)
+            occupied[10:16, 10:16] = True
+            rows = [{"kind": "shop", "file": "shop.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": 6, "height": 6}]
+            paint_paths(out, "m", rows, occupied)
+            after = np.asarray(Image.open(os.path.join(out, "m_veg.bmp")))
+            dumpster_cols = {
+                C.DUMPSTER_BLUE_S0, C.DUMPSTER_BLUE_S1,
+                C.DUMPSTER_ORANGE_S0, C.DUMPSTER_ORANGE_S1,
+            }
+            for wx in range(11, 16):
+                self.assertNotIn(tuple(after[16, wx]), dumpster_cols)
+
 
 if __name__ == "__main__":
     unittest.main()

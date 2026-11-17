@@ -125,11 +125,8 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
             # Stock shallow gables stop at eleven; surplus stays behind the far eave.
             odd = min(odd, PEAK30_MAX_ACROSS)
         # Hips only on small houses: across a wide one the four slopes meet
-        # in a tall point that looks like a hat. A quad is cut from the square
-        # of the longer side of its rectangle, so that side has to be odd or
-        # buildroofs paints nothing at all and the house loses its whole roof.
+        # in a tall point that looks like a hat.
         hip = (not gable_only and single and odd <= HIP_MAX_ACROSS
-               and max(rw, odd) % 2 == 1
                and (rx * 31 + ry * 17 + rw * 7 + rh) % 2 == 0)
         cap = dict(_NO_CAPS)
         if along_x:
@@ -310,6 +307,25 @@ def shopfront_dressing(storey, rng) -> tuple[dict, dict]:
     return sign, awnings
 
 
+# Tall, full-height, or wide storefront windows that standard 1-tile curtains
+# and blinds do not fit (they float in the middle or hang past the glass).
+_NO_CURTAIN_WINDOWS = frozenset({
+    "fixtures_windows_01_048", "fixtures_windows_01_050",
+    "fixtures_windows_metal_010", "fixtures_windows_metal_011",
+    "fixtures_windows_white_016", "fixtures_windows_white_017",
+    "fixtures_windows_white_020", "fixtures_windows_white_021",
+    "fixtures_windows_white_022", "fixtures_windows_white_023",
+    "fixtures_windows_wood_016", "fixtures_windows_wood_017",
+})
+
+
+def _window_allows_curtains(entry: dict | None) -> bool:
+    if not entry:
+        return True
+    tiles = entry.get("tiles") or {}
+    return not any(t in _NO_CURTAIN_WINDOWS for t in tiles.values())
+
+
 def _add(entries: list[dict], entry: dict | None) -> int:
     """The 1-based index of `entry` in the tile-entry table, appending it if it
     is not there yet; 0, BuildingEd's "none", for no entry."""
@@ -384,12 +400,14 @@ def render_tbx(plan: Plan | Building, name: str,
             entries.append(style["window"])
             window_idx = len(entries)
         curtains_idx = _add(entries, style.get("curtains")) if "curtains" in style else C.CURTAINS
+        if not _window_allows_curtains(style.get("window")):
+            curtains_idx = 0
         # Taller buildings of a kind take bigger windows: the last row whose
         # storey count this building reaches.
         for levels, entry, curtains in style.get("windows_by_levels") or ():
             if len(storeys) >= levels and levels > 1:
                 window_idx = _add(entries, entry)
-                curtains_idx = _add(entries, curtains)
+                curtains_idx = _add(entries, curtains) if _window_allows_curtains(entry) else 0
         trim_idx = _add(entries, style.get("trim"))
         shutters_idx = _add(entries, style.get("shutters"))
         grime_idx = _add(entries, style.get("grime"))
@@ -404,7 +422,7 @@ def render_tbx(plan: Plan | Building, name: str,
         if style.get("shop_front"):
             entry, curtains = style["shop_front"]
             front_idx = _add(entries, entry)
-            front_curtains = _add(entries, curtains)
+            front_curtains = _add(entries, curtains) if _window_allows_curtains(entry) else 0
     # Garages use the stock low shingled gable, independent of their wall style.
     garage_only = bool(building.rooms) and all(r.kind == "garage"
                                                for r in building.rooms)

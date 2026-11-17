@@ -226,6 +226,19 @@ def rail_sections(points, *, backend="rust", should_stop=None):
     yield from reversed(path)
 
 
+def global_rail_sections(features, proj, should_stop=None) -> list[tuple[int, int, int]]:
+    """Precompute all (ox, oy, assembly_index) rail sections in global coordinates."""
+    out: list[tuple[int, int, int]] = []
+    for ring in rail_paths(features, proj):
+        try:
+            out.extend(rail_sections(ring, should_stop=should_stop))
+        except RailFitError:
+            logging.getLogger(__name__).warning(
+                "Skipping railway that cannot fit connected track (%d points, from %s to %s)",
+                len(ring), ring[0] if ring else None, ring[-1] if ring else None)
+    return out
+
+
 def paint_track(draw, points, should_stop=None):
     """Paint complete connected pieces; never shift a straight strip sideways."""
     try:
