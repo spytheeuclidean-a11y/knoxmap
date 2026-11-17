@@ -889,11 +889,13 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     # indexed y * w + x.
     claimed_bytes = bytearray(h * w)
     claimed = np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w)
-    crossable_at = crossable.ravel().tolist()
-    paved_at = paved.ravel().tolist()
-    occupied_at = np.asarray(occupied, dtype=bool).ravel().tolist()
-    road_at = road.ravel().tolist()
-    walkable_at = ((crossable | paved | road) & ~occupied).ravel().tolist()
+    crossable_at = bytearray(crossable.astype(np.uint8, copy=False).tobytes())
+    paved_at = bytearray(paved.astype(np.uint8, copy=False).tobytes())
+    occupied_at = bytearray(np.asarray(occupied, dtype=np.uint8).tobytes())
+    road_at = bytearray(road.astype(np.uint8, copy=False).tobytes())
+    walkable_at = bytearray(((crossable | paved | road) & ~occupied).astype(np.uint8, copy=False).tobytes())
+    del paved, road
+    crossable = np.frombuffer(crossable_at, dtype=bool).reshape(h, w)
     # Drives the terrain laid already, read before any are painted here.
     laid = same_colour(ground, C.DARK_ASPHALT)
 
