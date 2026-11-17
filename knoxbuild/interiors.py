@@ -2264,6 +2264,9 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
         if bay_lane:
             no_go = set(no_go) | bay_lane
         nw_walls = on_walls(("N", "W"))
+        interior_nw = [(x, y, side) for x, y, side in nw_walls
+                       if L._room_at(plan, x + STEP[side][0], y + STEP[side][1]) > 0]
+        nw_hang = interior_nw
         counters = ("counter", "shop_counter", "diner_counter")
         has_role = {f[0] for f in mine}
 
@@ -2284,21 +2287,22 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
             if not any(f[0].startswith("mirror") for f in mine):
                 hang("mirror_small", [(x, y, o) for role, x, y, o in mine if L._is_sink(role)])
 
-        # Clock, corkboard and wall vents on bare N/W walls (at most one clock).
+        # Clock, corkboard and wall vents on bare N/W interior walls when available
+        # so facade window bays keep their columns across floors.
         if "clock" not in has_role and room.kind not in {"bathroom", "closet", "elevator"}:
             chance = 0.7 if room.kind in {
                 "classroom", "secondaryclassroom", "schoollab", "library", "diningroom",
                 "office", "bank", "post", "policeoffice", "clinic", "medical",
             } else 0.35
             if rng.random() < chance:
-                hang("clock", nw_walls)
+                hang("clock", nw_hang)
         if "corkboard" not in has_role and room.kind in {
             "office", "bank", "post", "policeoffice", "policehall", "breakroom",
             "library", "workshop", "warehouse",
         } and rng.random() < 0.5:
-            hang("corkboard", nw_walls)
+            hang("corkboard", nw_hang)
         if "wall_vent" not in has_role and rng.random() < 0.25:
-            hang("wall_vent", nw_walls)
+            hang("wall_vent", nw_hang)
 
         # Waste bins and storage boxes kept off walkways and vehicle bays.
         if "bin" not in has_role and room.kind not in {

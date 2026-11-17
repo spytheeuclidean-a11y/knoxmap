@@ -565,7 +565,7 @@ def thin_building(building: "Building", limit: int) -> int:
     few bytes: a building laid out that coarse is not a building any more.
     """
     total = len(building.rooms)
-    if not limit or total <= limit or limit < THIN_MIN_ROOMS:
+    if limit <= 0 or total <= limit:
         return 0
     merged = 0
     for storey in building.storeys:
