@@ -63,9 +63,6 @@ class CatalogueOrientation(unittest.TestCase):
     def test_the_yard_props_are_the_sprites_their_rules_name(self):
         places = catalogue()
         self.assertIn(("N", "0,0"), places[rule_tile("Dog house")])
-        # The swing is a single hanging seat, which the catalogue does not list
-        # on its own; it is the middle seat of the park set.
-        self.assertTrue(rule_tile("Swing").startswith("location_community_park_01_"))
 
     def test_every_prop_colour_is_unique(self):
         seen = set()

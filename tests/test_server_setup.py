@@ -12,7 +12,6 @@ knoxbuild/serverconf.py does those three things. What it must never do is
 lose anything the server owner put there, which is most of what is checked
 here: a map tool has no business being the reason a server will not start.
 """
-import os
 import tempfile
 import unittest
 from pathlib import Path

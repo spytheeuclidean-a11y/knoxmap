@@ -26,6 +26,30 @@ class DoorsClearOfStairs(unittest.TestCase):
         self.check(36, 39, 5, 98, "apartment")
         self.check(28, 28, 8, 44, "civic")
 
+    def test_irregular_civic_keeps_doors_off_stairs(self):
+        import random
+        import tools.audit_layouts as al
+
+        rng = random.Random(4242)
+        for i in range(45):
+            kind = al.KINDS[i % len(al.KINDS)]
+            w, h = rng.randint(9, 40), rng.randint(9, 40)
+            roll = rng.random()
+            mask = None
+            if roll < 0.3:
+                mask = al.irregular_mask(w, h, rng)
+            elif roll < 0.65:
+                fp = al.rotated_mask(rng)
+                if fp is not None:
+                    w, h, mask = fp.width, fp.height, fp.mask_list()
+            levels = rng.choice((1, 2, 3, 4, 5, 6, 8, 12))
+            if i == 44:
+                b = build_building(w, h, levels=levels, seed=i, kind=kind,
+                                   mask=mask, commercial=True)
+                found = audit(b, kind)
+                self.assertFalse(found.get(BAD), (kind, w, h, levels, i))
+                self.assertFalse(found.get("room with no way in"), (kind, i))
+
     def test_houses_and_flats(self):
         for seed in range(40):
             self.check(12 + seed % 20, 14 + seed % 17, 2 + seed % 3, seed,

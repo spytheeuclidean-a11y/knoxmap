@@ -541,7 +541,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
     if kind == "apartment" and not hotel and tower is None:
         _flats_keep_bathrooms(plan)
 
-    _doors(plan, rng)
+    _doors(plan, rng, stairs=stairs)
     if mix_kind == "mall":
         _mall_doors(plan, rng, ground)
     if ground and tower is not None:
