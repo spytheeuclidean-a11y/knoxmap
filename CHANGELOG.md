@@ -1,3 +1,22 @@
+## 1.8.6.2
+
+- **Chunked large-map fixes: street infill, continuous railroads & > 4 GiB BMPs**
+  (#140, `generator/chunked.py`, `generator/renderer.py`, `generator/rendering/rails.py`, `generator/rendering/roads.py`).
+  - **Keep `fill_frontage` / address / shed buildings on chunked maps:** Runs `_houses_from_addresses()`, `_infill_frontage()`, and `_back_sheds()` once globally before chunking so chunked maps write all infilled buildings into `<map>_buildings.geojson` and `<map>_info.json`.
+  - **Continuous railroads across chunk seams:** Precomputes `global_rail_sections()` once in global coordinates so tracks no longer disconnect or jump across chunk boundaries.
+  - **Maps larger than 4 GiB:** Avoids 32-bit unsigned `'I'` struct overflow in `_BmpWriter` when `file_size` or `pixel_bytes` exceeds `4 GiB`.
+
+- **Rectangular hip roofs & multi-wing inner valleys**
+  (#140, `knoxbuild/buildroofs.py`, `knoxbuild/tbx.py`). Fixed `Peak30Quad` hip roofs on non-square rectangular houses (`side = min(w, h)` with matching `Peak30NS`/`Peak30WE` ridge tiles so all four slopes close without flat gaps or notched ridges), added `InnerSlope30*` valley tiles where perpendicular `Peak30WE`/`Peak30NS` wings meet, and kept `FlatTop` roofs at `Depth="Three"` so `knoxlots` never drops buildings.
+
+- **Omit mismatched curtains/blinds on tall & wide windows**
+  (#140, `knoxbuild/tbx.py`). Skips 1-tile curtains and blinds (`CurtainsTile="0"`) on tall, full-height, and wide storefront window styles where they do not fit (`fixtures_windows_white_016/017`, `020/021`, `022/023`, `fixtures_windows_wood_016/017`, `fixtures_windows_metal_010/011`, `fixtures_windows_01_048/050`), while keeping them on standard house windows.
+
+- **Richer, space-adaptive exterior & yard decor**
+  (#140, `knoxbuild/yards.py`).
+  - Adds `_dress_non_home_surroundings()` for commercial, apartment, civic, school, and medical buildings (entrance bins/benches, organic foundation shrub/flower runs, orderly facing/spaced outdoor seating, corner shade trees `4+` tiles clear of walls/doors, and doorless South/East dumpsters & service clutter kept clear of ground-floor windows).
+  - Enhances house front/side foundation landscaping and adds `_dress_open_yards()` to scale extra trees, shrub/flower islands, seating, and yard utility/garden patches to the open grass around each building.
+
 ## 1.8.6.1
 
 - **A map on a dedicated server, without editing an .ini**
