@@ -228,6 +228,24 @@ class ChunkedRenderTests(unittest.TestCase):
             ]
             self.assertEqual(rail_cols, list(range(100, 500)))
 
+    def test_bmp_writer_handles_over_4gb_dimensions(self):
+        import io
+        import struct
+        from unittest import mock
+
+        buf = io.BytesIO()
+        buf.close = lambda: None
+        with mock.patch("builtins.open", return_value=buf):
+            w = chunked._BmpWriter("huge.bmp", 40000, 38000, bpp=3)
+            self.assertGreater(w.file_size, 0xFFFFFFFF)
+        raw = buf.getvalue()
+        sig, bf_size, _, _, off = struct.unpack_from("<2sIHHI", raw, 0)
+        _, width, height, _, bpp, comp, bi_size, *_ = struct.unpack_from("<IiiHHIIiiII", raw, 14)
+        self.assertEqual(sig, b"BM")
+        self.assertEqual(bf_size, 0)
+        self.assertEqual(off, 54)
+        self.assertEqual((width, height, bpp, comp, bi_size), (40000, 38000, 24, 0, 0))
+
 
 if __name__ == "__main__":
     unittest.main()

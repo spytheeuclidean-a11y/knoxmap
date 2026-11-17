@@ -101,10 +101,15 @@ class _BmpWriter:
             return
 
         self._f = open(path, "w+b")
-        file_hdr = struct.pack("<2sIHHI", b"BM", self.file_size, 0, 0, self.header_size)
+        # BMP headers store bfSize and biSizeImage as 32-bit unsigned ints, so
+        # maps past 4 GiB must leave those optional fields as 0 instead of
+        # overflowing struct 'I'. Strip readers use width/height/data_offset.
+        hdr_file_size = self.file_size if self.file_size <= 0xFFFFFFFF else 0
+        hdr_pixel_bytes = pixel_bytes if pixel_bytes <= 0xFFFFFFFF else 0
+        file_hdr = struct.pack("<2sIHHI", b"BM", hdr_file_size, 0, 0, self.header_size)
         info_hdr = struct.pack(
             "<IiiHHIIiiII",
-            40, self.width, self.height, 1, bpp * 8, 0, pixel_bytes, 0, 0,
+            40, self.width, self.height, 1, bpp * 8, 0, hdr_pixel_bytes, 0, 0,
             256 if bpp == 1 else 0, 0,
         )
         self._f.write(file_hdr)
