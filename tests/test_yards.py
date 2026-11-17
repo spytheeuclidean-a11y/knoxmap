@@ -389,6 +389,38 @@ class MultiDoorAndInfillFrontPaths(unittest.TestCase):
         spacious = decor_count(44, pack_neighbors=False)
         self.assertGreater(spacious, compact + 5)
 
+    def test_dumpster_skips_ground_floor_windows(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.makedirs(os.path.join(out, "buildings"))
+            occupied = np.zeros((32, 32), dtype=bool)
+            ground = np.full((32, 32, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+            ground[28:, :] = C.DARK_ASPHALT
+            veg = np.full((32, 32, 3), C.VEG_NOTHING, dtype=np.uint8)
+            Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
+            Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
+
+            grid = "\n".join(",".join(["1"] * 6) for _ in range(6))
+            wins = "".join(f'  <object type="window" x="{x}" y="6" dir="N"/>\n' for x in range(1, 6))
+            tbx = (
+                f'<building version="3" width="6" height="6">\n <floor>\n'
+                f'  <rooms>\n{grid}\n  </rooms>\n'
+                f'  <object type="door" x="0" y="3" dir="W"/>\n'
+                f'{wins} </floor>\n</building>\n'
+            )
+            with open(os.path.join(out, "buildings", "shop.tbx"), "w", encoding="utf-8") as f:
+                f.write(tbx)
+            occupied[10:16, 10:16] = True
+            rows = [{"kind": "shop", "file": "shop.tbx",
+                     "tile_x": 10, "tile_y": 10, "width": 6, "height": 6}]
+            paint_paths(out, "m", rows, occupied)
+            after = np.asarray(Image.open(os.path.join(out, "m_veg.bmp")))
+            dumpster_cols = {
+                C.DUMPSTER_BLUE_S0, C.DUMPSTER_BLUE_S1,
+                C.DUMPSTER_ORANGE_S0, C.DUMPSTER_ORANGE_S1,
+            }
+            for wx in range(11, 16):
+                self.assertNotIn(tuple(after[16, wx]), dumpster_cols)
+
 
 if __name__ == "__main__":
     unittest.main()
