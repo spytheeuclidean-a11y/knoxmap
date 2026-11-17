@@ -100,20 +100,6 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
     """
     out = []
     single = len(rects) == 1
-    # Multi-wing pitched buildings look disjointed if one wing is 30-degree
-    # and the adjoining wing falls back to 45-degree. Keep a single pitch.
-    multi_allow_30 = True
-    if not single and peaked and not gable_only:
-        for _rx, _ry, rw, rh, _caps in rects:
-            across = min(rw, rh)
-            tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
-            if across < NARROW_PEAK_MIN or tooth:
-                continue
-            steep_block = len(rects) >= MANY_WING_RECTS and across > MANY_WING_PEAK30_MAX
-            if (not roof30 or across < 3 or steep_block or across > PEAK30_MAX_ACROSS
-                    or across % 2 == 0 or across < PEAK_MIN_TILES):
-                multi_allow_30 = False
-                break
     for rx, ry, rw, rh, caps in rects:
         across = min(rw, rh)
         tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
@@ -123,7 +109,7 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         along_x = rw >= rh
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
         steep_block = len(rects) >= MANY_WING_RECTS and across > MANY_WING_PEAK30_MAX
-        if not roof30 or not multi_allow_30 or across < 3 or (not gable_only and (
+        if not roof30 or across < 3 or (not gable_only and (
                 steep_block or across > PEAK30_MAX_ACROSS or across % 2 == 0
                 or across < PEAK_MIN_TILES)):
             cap = dict(_NO_CAPS)
