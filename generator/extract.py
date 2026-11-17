@@ -50,7 +50,7 @@ class ExtractUnavailable(RuntimeError):
 
 
 def cache_dir() -> str:
-    return os.path.join(str(knoxpaths.BASE_DIR), "cache", "extracts")
+    return str(knoxpaths.launch_dir() / "cache" / "extracts")
 
 
 def _native_path(path: str) -> str:

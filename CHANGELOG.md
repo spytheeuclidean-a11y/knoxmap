@@ -1,7 +1,7 @@
-## Unreleased
+## 1.8.6.1
 
 - **A map on a dedicated server, without editing an .ini**
-  (`knoxbuild/serverconf.py`). The mod has always shipped a SERVER SETUP.txt
+  (#133, `knoxbuild/serverconf.py`). The mod has always shipped a `SERVER SETUP.txt`
   naming exactly what to add, and people got it wrong anyway, because the
   editing is the hard part: one more mod on a line of forty without dropping
   a semicolon, the map at the *front* of `Map=` with Muldraugh still at the
@@ -20,6 +20,29 @@
   with the ones built after; and it says in as many words that every player
   needs the same mod folder, because this map is not on the Workshop and
   nothing downloads it for them.
+
+- **OSM parking lots, Vanilla 45° grid roads, interior/stair overhaul & chunked rendering**
+  (#131, `generator/vanilla_grid.py`, `generator/chunked.py`, `generator/rendering/parking.py`, `knoxbuild/interiors.py`, `rust/knoxroute/`).
+  - **OSM parking lots & tile-grid squaring:** Squares irregular OSM parking polygons onto Project Zomboid's orthogonal tile grid, paints stall divider lines and wheel stops, adds curbed divider islands with lamps/bushes every 6 stalls, and excludes islands from car spawns.
+  - **Vanilla 45° grid road layout:** Adds `straight_roads = 5` on Project Zomboid's 8-way integer tile grid (`0°`, `45°`, `90°`, `135°`), collapsing micro-stubs and preserving clean mitered joins.
+  - **Smoother "As mapped" roads & Rust pixel passes:** Ports `_smooth_road_edges` and `_paint_kerbs` to `knoxroute` with automatic Python fallback, and improves 2-tile bump/notch smoothing on asphalt and sidewalks.
+  - **Chunked rendering & terrain fixes:** Splits very large maps (`> 12 × 12` cells) into `8 × 8` cell chunks with a `64`-tile overlap halo and checkpoint resume; fixes straight railway bridges over water, wetland pool/vegetation bleed onto roads, industrial yard border wear, concrete ground aprons, and merged non-home doorway paths.
+  - **Interior & stair overhaul:** Expands industrial/basement, retail strip-mall, school, and civic/service layouts (`library`, `theatre`, `clinic`, `bank`, `policeoffice`, `daycare`), adds kind-matched stairs, protects drive-in vehicle bay lanes and garage doors, updates UI/credits (`SolarisMare`), and removes the 4-component version limit so 5+ segment versions work cleanly going forward.
+
+- **Use `knoxroute` for plain Vanilla curves**
+  (#132, `generator/vanilla_curves.py`, `rust/knoxroute/`). Runs the existing Rust road router for plain **Vanilla curves** (about 4.2× faster than Python on large OSM selections) while keeping the Python fallback, filters out-of-window corners before packing, and logs backend/fallback counts.
+
+- **Per-process layout cache shards**
+  (#128, `knoxbuild/layout_cache.py`). `LayoutCache.save()` now appends new entries to per-process `.jsonl` shards under `shards/` instead of rewriting the full `layouts.json` every 25 footprints, then compacts them atomically with `compact.lock`.
+
+- **Vanilla-safe mansion studies**
+  (#134, `knoxbuild/layout/core.py`). Replaces `erika_shelves_2` and `erika_shelves_6` in `MANSION_EXTRA["office"]` with vanilla `bookshelf` roles (while keeping `_erika_ready()` substitution when Erika's Tiles is installed) so grand houses compile without missing-tileset errors on vanilla installs.
+
+- **Keep cached OSM extracts readable through Windows junctions**
+  (#137, `knoxpaths.py`, `generator/extract.py`, `updater.py`). Preserves the ASCII junction working directory for the Geofabrik extract cache across launcher startup and updater restarts when the install directory contains non-ASCII characters.
+
+- **Window alignment, stair doors, room thinning & CI fixes**
+  (#138, `knoxbuild/interiors.py`, `knoxbuild/layout/openings.py`, `knoxbuild/build.py`, `tools/selftest_suite/`). Keeps commercial wall fixtures (`clock`, `corkboard`, `wall_vent`) off exterior facade walls so upstairs shop windows stay aligned, keeps interior boundary doors off stair steps, fits thinned town room counts inside `META_BUDGET`, updates selftest memory/tile-tree checks, and removes `.claude/skills/` from the repository.
 
 ## 1.8.6
 

@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
 import numpy as np
 from PIL import Image
@@ -34,7 +35,8 @@ class ParkingLotDressingTest(unittest.TestCase):
             lot = box(6, 6, 42, 30)
             areas = SimpleNamespace(_items=[(lot, {"category": "parking"})])
 
-            zones = _detect_zones(lp, [], areas=areas, veg_path=vp)
+            with mock.patch("knoxbuild.yards._rule_ready", return_value=True):
+                zones = _detect_zones(lp, [], areas=areas, veg_path=vp)
             stalls = [z for z in zones if z.kind == "ParkingStall"]
             self.assertGreater(len(stalls), 0)
 

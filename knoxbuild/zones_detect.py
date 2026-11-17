@@ -280,7 +280,9 @@ def _paint_parking_lots(
 ) -> np.ndarray | None:
     """Paint bay lines, wheel stops, divider islands, and light poles onto _veg.bmp."""
     from generator import pz_colors as C
+    from knoxbuild.yards import _rule_ready
 
+    paint_blocks = _rule_ready("Parking block")
     h, w = veg_arr.shape[:2]
     out = veg_arr.copy()
     empty = np.all(out == C.VEG_NOTHING, axis=2)
@@ -296,9 +298,10 @@ def _paint_parking_lots(
 
     for x, y, sw, sh, is_first_row, across in stalls:
         if across:
-            head_y = y + sh - 1 if is_first_row else y
-            for dx, colour in enumerate(C.PARKING_BLOCK_X):
-                put(x + dx, head_y, colour)
+            if paint_blocks:
+                head_y = y + sh - 1 if is_first_row else y
+                for dx, colour in enumerate(C.PARKING_BLOCK_X):
+                    put(x + dx, head_y, colour)
             dy_range = range(0, sh - 1) if is_first_row else range(1, sh)
             right_end = (x + sw, y) not in stall_origins
             for dy in dy_range:
@@ -306,9 +309,10 @@ def _paint_parking_lots(
                 if right_end:
                     put(x + sw - 1, y + dy, C.EDGE_LINE_E)
         else:
-            head_x = x + sw - 1 if is_first_row else x
-            for dy, colour in enumerate(C.PARKING_BLOCK_Y):
-                put(head_x, y + dy, colour)
+            if paint_blocks:
+                head_x = x + sw - 1 if is_first_row else x
+                for dy, colour in enumerate(C.PARKING_BLOCK_Y):
+                    put(head_x, y + dy, colour)
             dx_range = range(0, sw - 1) if is_first_row else range(1, sw)
             bottom_end = (x, y + sh) not in stall_origins
             for dx in dx_range:
