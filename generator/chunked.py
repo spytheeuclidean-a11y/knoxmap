@@ -255,6 +255,10 @@ def render_chunked(
             sheds_infilled = len(sheds)
             feats.extend(sheds)
 
+    from .rendering.rails import global_rail_sections
+    rail_feats = [f for f in feats if classify(f.tags, _is_polygon(f)) == "railway"]
+    rail_sections_global = global_rail_sections(rail_feats, full_proj, should_stop=should_stop)
+
     bboxes = [_feature_px_bbox(f, full_proj) for f in feats]
 
     os.makedirs(output_dir, exist_ok=True)
@@ -428,6 +432,8 @@ def render_chunked(
                         _proj_override=sub_proj,
                         _skip_road_layout=True,
                         _skip_infill=True,
+                        _rail_override=rail_sections_global,
+                        _rail_offset=(hx0, hy0),
                         _write_geojson=False,
                         _chunk_out=chunk_out,
                     )
