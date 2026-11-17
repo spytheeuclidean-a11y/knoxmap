@@ -118,8 +118,7 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         across = min(rw, rh)
         tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
         if not peaked or across < NARROW_PEAK_MIN or tooth:
-            flat_depth = "Zero" if peaked else "Three"
-            out.append(("FlatTop", flat_depth, dict(_NO_CAPS), (rx, ry, rw, rh)))
+            out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
             continue
         along_x = rw >= rh
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
@@ -147,14 +146,14 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         if along_x:
             box = (rx, ry + (rh - odd), rw, odd)
             if rh != odd:
-                out.append(("FlatTop", "Zero", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
             if not hip:
                 cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
             out.append(("Peak30Quad" if hip else "Peak30WE", "Zero", cap, box))
         else:
             box = (rx + (rw - odd), ry, odd, rh)
             if rw != odd:
-                out.append(("FlatTop", "Zero", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
             if not hip:
                 cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
             out.append(("Peak30Quad" if hip else "Peak30NS", "Zero", cap, box))
