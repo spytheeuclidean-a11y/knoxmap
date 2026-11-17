@@ -130,6 +130,43 @@ _SIDE = {(0, -1): "N", (0, 1): "S", (-1, 0): "W", (1, 0): "E"}
 
 
 _OUTSIDE_DOORS_CACHE: dict[tuple[str, int], list[tuple[int, int, int, int]]] = {}
+_OUTSIDE_WINDOWS_CACHE: dict[tuple[str, int], set[tuple[int, int]]] = {}
+
+
+def _outside_windows(tbx_path: str) -> set[tuple[int, int]]:
+    """(outside x, y) for every ground-floor exterior window in ``tbx_path``."""
+    try:
+        key = (tbx_path, os.stat(tbx_path).st_mtime_ns)
+    except OSError:
+        key = None
+    if key is not None and key in _OUTSIDE_WINDOWS_CACHE:
+        return _OUTSIDE_WINDOWS_CACHE[key]
+    with open(tbx_path, encoding="utf-8") as f:
+        text = f.read()
+    first = text.split("<floor>", 2)
+    if len(first) < 2:
+        return set()
+    floor = first[1]
+    grid_text = re.search(r"<rooms>(.*?)</rooms>", floor, re.S)
+    if not grid_text:
+        return set()
+    grid = [[int(v) for v in row.strip().strip(",").split(",")]
+            for row in grid_text.group(1).strip().splitlines() if row.strip()]
+    h, w = len(grid), len(grid[0])
+
+    def inside(x, y):
+        return 0 <= x < w and 0 <= y < h and grid[y][x] != 0
+
+    found: set[tuple[int, int]] = set()
+    for m in re.finditer(r'type="window"[^>]*? x="(\d+)" y="(\d+)" dir="([NW])"', floor):
+        x, y, d = int(m.group(1)), int(m.group(2)), m.group(3)
+        a, b = ((x, y - 1), (x, y)) if d == "N" else ((x - 1, y), (x, y))
+        if inside(*a) != inside(*b):
+            out = a if inside(*b) else b
+            found.add((out[0], out[1]))
+    if key is not None:
+        _OUTSIDE_WINDOWS_CACHE[key] = found
+    return found
 
 
 def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
@@ -257,9 +294,57 @@ _SERVICE_CLUTTER_KINDS = frozenset({"shop", "retail", "mall", "restaurant", "bar
 _DUMPSTER_KINDS = _NON_HOME_BENCH_KINDS | frozenset({"retail"})
 
 
+def _place_orderly_seating(can_fn, clear_neighbors_fn, veg: np.ndarray,
+                           tx: int, ty: int, rng: random.Random,
+                           allow_loungers: bool = True) -> bool:
+    """Place orderly outdoor seating: chairs facing each other across one empty
+    tile, a neat line of chairs spaced by one, or parallel loungers."""
+    mode = rng.randrange(3 if allow_loungers else 2)
+    if mode == 0:
+        # Two chairs facing each other across 1 clear tile.
+        if rng.random() < 0.5:
+            pts = ((tx, ty), (tx + 1, ty), (tx + 2, ty))
+            if all(can_fn(*p) for p in pts) and clear_neighbors_fn(tx, ty) and clear_neighbors_fn(tx + 2, ty):
+                veg[ty, tx] = C.CHAIR_E
+                veg[ty, tx + 2] = C.CHAIR_W
+                return True
+        else:
+            pts = ((tx, ty), (tx, ty + 1), (tx, ty + 2))
+            if all(can_fn(*p) for p in pts) and clear_neighbors_fn(tx, ty) and clear_neighbors_fn(tx, ty + 2):
+                veg[ty, tx] = C.CHAIR_S
+                veg[ty + 2, tx] = C.CHAIR_N
+                return True
+        return False
+    if mode == 1:
+        # Line of 2-3 chairs spaced by 1 empty tile.
+        if rng.random() < 0.5:
+            slots = [0, 2, 4] if can_fn(tx + 4, ty) and clear_neighbors_fn(tx + 4, ty) else [0, 2]
+            if all(can_fn(tx + s, ty) and clear_neighbors_fn(tx + s, ty) for s in slots) and can_fn(tx + 1, ty):
+                for s in slots:
+                    veg[ty, tx + s] = C.CHAIR_S
+                return True
+        else:
+            slots = [0, 2, 4] if can_fn(tx, ty + 4) and clear_neighbors_fn(tx, ty + 4) else [0, 2]
+            if all(can_fn(tx, ty + s) and clear_neighbors_fn(tx, ty + s) for s in slots) and can_fn(tx, ty + 1):
+                for s in slots:
+                    veg[ty + s, tx] = C.CHAIR_E
+                return True
+        return False
+    # Two parallel deck-chair loungers separated by a 1-tile aisle.
+    pts = ((tx, ty), (tx + 1, ty), (tx, ty + 1), (tx + 1, ty + 1), (tx, ty + 2), (tx + 1, ty + 2))
+    if all(can_fn(*p) for p in pts) and clear_neighbors_fn(tx, ty) and clear_neighbors_fn(tx, ty + 2):
+        veg[ty, tx] = C.TABLE_X0
+        veg[ty, tx + 1] = C.TABLE_X1
+        veg[ty + 2, tx] = C.TABLE_X0
+        veg[ty + 2, tx + 1] = C.TABLE_X1
+        return True
+    return False
+
+
 def _dress_non_home_surroundings(
     rows: list[dict],
     door_lists: dict,
+    out_dir: str,
     ground: np.ndarray,
     veg: np.ndarray,
     w: int,
@@ -366,33 +451,32 @@ def _dress_non_home_surroundings(
                         place_veg(x, y, colour)
                 i += run_len + nrng.randint(1, 3)
 
-        # 3. Outdoor break / patio table + chairs on apron or side/back grass (3+ tiles clear of walls).
+        # 3. Orderly outdoor seating (facing chairs or spaced line) 3+ tiles clear of walls.
         if bw >= 6 and bh >= 6 and kind in _NON_HOME_BENCH_KINDS and nrng.random() < 0.50:
             spots = [
                 (bx0 + bw // 2, by0 + bh + 3),
-                (bx0 + bw // 2, by0 - 4),
-                (bx0 - 4, by0 + bh // 2),
+                (bx0 + bw // 2, by0 - 5),
+                (bx0 - 5, by0 + bh // 2),
                 (bx0 + bw + 3, by0 + bh // 2),
             ]
             nrng.shuffle(spots)
             door_pts_t = [(bx0 + ox, by0 + oy) for ox, oy, _ix, _iy in doors]
+
+            def clear_n(x: int, y: int) -> bool:
+                return all(
+                    0 <= x + nx < w and 0 <= y + ny < h
+                    and tuple(veg[y + ny, x + nx]) == C.VEG_NOTHING
+                    for nx, ny in ((1, 0), (-1, 0), (0, 1), (0, -1))
+                )
+
             for tx, ty in spots:
                 if any(abs(tx - dx_) + abs(ty - dy_) <= 3 for dx_, dy_ in door_pts_t):
                     continue
-                if (can_veg(tx, ty) and can_veg(tx + 1, ty)
-                        and can_veg(tx, ty - 1) and can_veg(tx + 1, ty + 1)):
-                    veg[ty, tx] = C.TABLE_X0
-                    veg[ty, tx + 1] = C.TABLE_X1
-                    if can_veg(tx, ty - 1):
-                        veg[ty - 1, tx] = C.CHAIR_S
-                    if can_veg(tx + 1, ty + 1):
-                        veg[ty + 1, tx + 1] = C.CHAIR_N
-                    if nrng.random() < 0.6 and can_veg(tx - 1, ty):
-                        veg[ty, tx - 1] = C.CHAIR_E
+                if _place_orderly_seating(can_veg, clear_n, veg, tx, ty, nrng, allow_loungers=False):
                     break
 
         # 4. Rear/side dumpsters & service clutter: only on doorless South/East walls
-        # so S/E-facing sprites never clip into N/W walls or crowd front entrances.
+        # and never directly in front of a ground-floor window.
         door_walls = set()
         door_pts = []
         for ox, oy, ix, iy in doors:
@@ -406,6 +490,9 @@ def _dress_non_home_surroundings(
             elif ox - ix < 0:
                 door_walls.add("W")
 
+        tbx_file = os.path.join(out_dir, "buildings", row["file"])
+        window_tiles = {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)} if os.path.isfile(tbx_file) else set()
+
         service_ring = []
         if "S" not in door_walls:
             sy_w = by0 + bh
@@ -413,6 +500,7 @@ def _dress_non_home_surroundings(
                 service_ring.extend(
                     (x, sy_w) for x in range(max(0, bx0 + 1), min(w, bx0 + bw - 1))
                     if can_veg(x, sy_w)
+                    and (x, sy_w) not in window_tiles
                     and not any(abs(x - dx_) + abs(sy_w - dy_) <= 3 for dx_, dy_ in door_pts)
                 )
         if "E" not in door_walls:
@@ -421,6 +509,7 @@ def _dress_non_home_surroundings(
                 service_ring.extend(
                     (ex_w, y) for y in range(max(0, by0 + 1), min(h, by0 + bh - 1))
                     if can_veg(ex_w, y)
+                    and (ex_w, y) not in window_tiles
                     and not any(abs(ex_w - dx_) + abs(y - dy_) <= 3 for dx_, dy_ in door_pts)
                 )
         if service_ring and bw >= 6 and bh >= 6:
@@ -546,24 +635,14 @@ def _dress_open_yards(
         mid_spots = [(x, y) for x, y, d in open_tiles if 4 <= d <= 10 and clear_of_doors(x, y, 4)]
         yrng.shuffle(mid_spots)
 
-        # 1. Yard picnic table + chairs (non-home) or lawn bench on spacious lots.
+        # 1. Orderly seating (facing chairs, spaced line, or parallel loungers) or bench.
         if scale >= 0.25 and mid_spots and yrng.random() < 0.35 + 0.45 * scale:
             placed_seat = False
-            if kind != "house":
-                for tx, ty in mid_spots[:40]:
-                    if (can_grass(tx, ty) and can_grass(tx + 1, ty)
-                            and can_grass(tx, ty - 1) and can_grass(tx + 1, ty + 1)
-                            and clear_neighbors(tx, ty) and clear_neighbors(tx + 1, ty)):
-                        veg[ty, tx] = C.TABLE_X0
-                        veg[ty, tx + 1] = C.TABLE_X1
-                        if can_grass(tx, ty - 1):
-                            veg[ty - 1, tx] = C.CHAIR_S
-                        if can_grass(tx + 1, ty + 1):
-                            veg[ty + 1, tx + 1] = C.CHAIR_N
-                        if yrng.random() < 0.6 and can_grass(tx - 1, ty):
-                            veg[ty, tx - 1] = C.CHAIR_E
-                        placed_seat = True
-                        break
+            for tx, ty in mid_spots[:40]:
+                if _place_orderly_seating(can_grass, clear_neighbors, veg, tx, ty, yrng,
+                                          allow_loungers=(kind != "house")):
+                    placed_seat = True
+                    break
             if not placed_seat and bench_ready:
                 for tx, ty in mid_spots[:30]:
                     if can_grass(tx, ty) and can_grass(tx + 1, ty) and clear_neighbors(tx, ty):
@@ -1384,7 +1463,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
 
     if veg is not None:
         _dress_non_home_surroundings(
-            rows, door_lists, ground, veg, w, h,
+            rows, door_lists, out_dir, ground, veg, w, h,
             occupied, road_at, paved_at, free, fronts,
         )
         _dress_open_yards(
