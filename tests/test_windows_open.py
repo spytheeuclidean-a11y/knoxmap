@@ -63,6 +63,27 @@ class WindowsPeopleCanOpen(unittest.TestCase):
         self.assertTrue(used - set(LOCKED_WINDOWS) <= {"fixtures_windows_church"},
                         sorted(used - set(LOCKED_WINDOWS)))
 
+    def test_mismatched_tall_or_wide_windows_omit_curtains(self):
+        from xml.etree import ElementTree
+
+        from knoxbuild import layout
+        from knoxbuild.tbx import render_tbx
+
+        built = layout.build_building(8, 8, levels=1, seed=1, kind="house")
+        by_name = {s["name"]: s for s in C.HOUSE_STYLES}
+        for name, want_curtains in (("clapboard", True), ("siding_green", False), ("siding_pink", False)):
+            root = ElementTree.fromstring(render_tbx(built, name, style=by_name[name]))
+            win_curtains = {
+                int(obj.attrib["CurtainsTile"])
+                for obj in root.iter("object")
+                if obj.attrib.get("type") == "window"
+            }
+            self.assertTrue(win_curtains, name)
+            if want_curtains:
+                self.assertTrue(all(c > 0 for c in win_curtains), (name, win_curtains))
+            else:
+                self.assertEqual(win_curtains, {0}, (name, win_curtains))
+
 
 if __name__ == "__main__":
     unittest.main()

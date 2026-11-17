@@ -222,6 +222,39 @@ def render_chunked(
     from .rendering.parking import square_parking_lots
     square_parking_lots(feats, full_proj, classify, _is_polygon)
 
+    clip = shape_px(shape, full_proj)
+    houses_from_addresses = 0
+    houses_infilled = 0
+    sheds_infilled = 0
+    if not terrain_only:
+        from .rendering.buildings import _houses_from_addresses
+        from .rendering.infill import _back_sheds, _infill_frontage
+
+        buckets_g, b_feats_g, *_ = R._collect_global_features(
+            feats, full_proj, clip, include_proposed_roads
+        )
+        veg_g = buckets_g.get("vegetation", [])
+        addressed = _houses_from_addresses(feats, b_feats_g, full_proj)
+        if addressed:
+            houses_from_addresses = len(addressed)
+            feats.extend(addressed)
+            b_feats_g = b_feats_g + addressed
+            buckets_g["building"] = buckets_g.get("building", []) + addressed
+        if fill_frontage:
+            infilled = _infill_frontage(
+                buckets_g, veg_g, b_feats_g,
+                full_proj, clip, extend_ends=(int(fill_frontage) != 2),
+            )
+            if infilled:
+                houses_infilled = len(infilled)
+                feats.extend(infilled)
+                b_feats_g = b_feats_g + infilled
+                buckets_g["building"] = buckets_g.get("building", []) + infilled
+        sheds = _back_sheds(buckets_g, veg_g, b_feats_g, full_proj, clip)
+        if sheds:
+            sheds_infilled = len(sheds)
+            feats.extend(sheds)
+
     bboxes = [_feature_px_bbox(f, full_proj) for f in feats]
 
     os.makedirs(output_dir, exist_ok=True)
@@ -256,6 +289,7 @@ def render_chunked(
         "chunk_cells": chunk_cells, "halo_tiles": halo_tiles,
         "meters_per_tile": float(meters_per_tile), "rotation": float(rotation),
         "road_layout": road_layout, "terrain_only": int(terrain_only or 0),
+        "fill_frontage": int(fill_frontage or 0),
         "spawn_density": int(spawn_density),
         "tree_density": float(tree_density),
         "forest_density": float(forest_density),
@@ -393,6 +427,7 @@ def render_chunked(
                         should_stop=should_stop,
                         _proj_override=sub_proj,
                         _skip_road_layout=True,
+                        _skip_infill=True,
                         _write_geojson=False,
                         _chunk_out=chunk_out,
                     )
@@ -450,7 +485,6 @@ def render_chunked(
             fut.result()
 
     # Global GeoJSON/metadata outputs matching renderer.render().
-    clip = shape_px(shape, full_proj)
     buckets, building_feats, indoor_feats, fence_feats, gate_feats, place_feats = (
         R._collect_global_features(feats, full_proj, clip, include_proposed_roads)
     )
@@ -487,9 +521,9 @@ def render_chunked(
         "spawn_density_max": spawn_density,
         "building_count": len(building_feats),
         "feature_count": sum(len(v) for v in buckets.values()),
-        "houses_from_addresses": 0,
-        "houses_infilled": 0,
-        "sheds_infilled": 0,
+        "houses_from_addresses": houses_from_addresses,
+        "houses_infilled": houses_infilled,
+        "sheds_infilled": sheds_infilled,
         "chunked": True,
         "chunk_count": total_chunks,
         "guide_reference": "Thuztor Mapping Guide v0.2",

@@ -367,6 +367,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            should_stop=None, progress=None,
            _proj_override=None,
            _skip_road_layout: bool = False,
+           _skip_infill: bool = False,
            _write_geojson: bool = True,
            _chunk_out: dict | None = None) -> RenderResult:
     proj = _proj_override or Projector.build(south, west, north, east, meters_per_tile, rotation)
@@ -519,7 +520,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     if terrain_only:
         building_feats = []
         buckets["building"] = []
-    else:
+    elif not _skip_infill:
         addressed = _houses_from_addresses(features, building_feats, proj)
         if addressed:
             building_feats = building_feats + addressed
