@@ -970,7 +970,7 @@ def _source_stamp(project: Path) -> dict:
 
 
 def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: int | None = None,
-                 on_phase=None) -> int:
+                 on_phase=None, incremental=True) -> int:
     """Compile with knoxlots instead of WorldEd: no bitmap limit, no batches.
 
     Makes the cell sources from the project (tools/map_source.py), compiles them into a
@@ -988,6 +988,7 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
     if not (project / f"{project.name}.pzw").exists():
         raise FileNotFoundError(f"No {project.name}.pzw - generate the buildings first.")
     ensure_rail_rules(knoxpaths.mapping_tools_dir())
+    from tools import compile_cells
     from tools.map_source import make_map_source
     run = uuid.uuid4().hex[:8]
     scratch = project / ".knoxlots"
@@ -1016,12 +1017,27 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
             # are an hour and a half, and a crash at row 34 of 49 threw them all
             # away. The lot files knoxlots writes are always made afresh.
             # After prepare_output, so a project it repaired counts as changed.
+            cache = compile_cells.CellCache(project, exe, BASE_DIR, incremental, should_stop)
+            if cache.state is not None and not cache.changed:
+                if compile_cells.digest(cache.pzw) != cache.pzw_hash:
+                    raise RuntimeError("The map changed during compilation. Compile it again.")
+                cells = len(cache.state["outputs"]) // 3
+                if on_progress:
+                    on_progress(cells, cells, cells)
+                knoxlog.log.info("compile %s [%s]: all %d compiled cells are current", project.name, run, cells)
+                finished = True
+                return cells
+
             stamp = _source_stamp(project)
+            stamp["inputs"] = cache.inputs
+            stamp["guard"] = cache.guard
+            stamp["pzw"] = cache.pzw_hash
+            stamp["partial"] = cache.state is not None
             try:
                 same = json.loads((src / SOURCE_STAMP).read_text(encoding="utf-8")) == stamp
             except (OSError, ValueError):
                 same = False
-            if not same:
+            if not same or cache.state is not None or not incremental:
                 shutil.rmtree(scratch, ignore_errors=True)
             shutil.rmtree(out, ignore_errors=True)
             src.mkdir(parents=True, exist_ok=True)
@@ -1035,33 +1051,46 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
             make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop,
                             on_row=lambda n, rows: phase(f"Building the cells: row {n} of {rows}",
                                                          0.05 + 0.55 * n / rows),
-                            on_start=lambda: phase("Building the cells", 0.05), resume=True)
-            total = len(list(src.glob("cell_*.kcell"))) or 1
-            phase(f"Writing lot files: 0 of {total} cells", 0.6)
+                            on_start=lambda: phase("Building the cells", 0.05), resume=True,
+                            select_cells=cache.select, track=True)
+            built_cells = compile_cells.cells_from_sources(src)
+            planned = cache.selected if cache.partial else cache.all_cells
+            if built_cells != planned:
+                raise RuntimeError("The compile did not prepare all the selected cells")
+            expected = compile_cells.lot_names(built_cells)
+            total = len(expected) // 3
+            if total:
+                phase(f"Writing lot files: 0 of {total} cells", 0.6)
 
-            def tick() -> None:
-                done = sum(1 for _ in out.glob("*.lotheader")) if out.exists() else 0
-                phase(f"Writing lot files: {done} of {total} cells", 0.6 + 0.35 * min(done, total) / total)
+                def tick() -> None:
+                    done = sum(1 for _ in out.glob("*.lotheader")) if out.exists() else 0
+                    phase(f"Writing lot files: {done} of {total} cells",
+                          0.6 + 0.35 * min(done, total) / total)
 
-            cmd = [str(exe), "compile", str(src), str(out), "--threads", str(workers or os.cpu_count() or 1)]
-            proc = _run_batch(cmd, should_stop or (lambda: False), time.time(), tick=tick)
-            if proc.returncode != 0:
-                raise RuntimeError(f"knoxlots failed (exit {proc.returncode}): {_why(proc)}")
-            cells = len(list(out.glob("*.lotheader")))
-            if not cells:
+                cmd = [str(exe), "compile", str(src), str(out), "--threads", str(workers or os.cpu_count() or 1)]
+                proc = _run_batch(cmd, should_stop or (lambda: False), time.time(), tick=tick)
+                if proc.returncode != 0:
+                    raise RuntimeError(f"knoxlots failed (exit {proc.returncode}): {_why(proc)}")
+                if expected != {p.name for p in out.iterdir()}:
+                    raise RuntimeError("knoxlots did not produce the expected files")
+            elif not cache.partial:
                 raise RuntimeError("knoxlots produced no cells")
+            knoxstop.check(should_stop, "the compile")
+            cache.verify_inputs()
             phase("Putting the lot files in the map", 0.95)
             lots = project / "lots"
-            lots.mkdir(exist_ok=True)
-            for old in lots.glob("*.lotheader"):
-                old.unlink()
-            for old in list(lots.glob("world_*.lotpack")) + list(lots.glob("chunkdata_*.bin")):
-                old.unlink()
-            for f in out.iterdir():
-                shutil.move(str(f), str(lots / f.name))
+            if not cache.partial:
+                for old in compile_cells.lot_paths(lots):
+                    old.unlink()
+            if total:
+                for f in out.iterdir():
+                    os.replace(f, lots / f.name)
+            outputs = compile_cells.lot_hashes(lots)
+            cache.save(src, outputs)
+            cells = len(outputs) // 3
             if on_progress:
                 on_progress(cells, cells, cells)
-            knoxlog.log.info("compile %s [%s]: knoxlots wrote %d cells", project.name, run, cells)
+            knoxlog.log.info("compile %s [%s]: knoxlots rebuilt %d of %d cells", project.name, run, total, cells)
             finished = True
             return cells
         finally:
@@ -1100,7 +1129,8 @@ def compile_map(project_dir: str, batch: int = 4, exe: str | None = None,
     everything compiled away first.
     """
     if (backend or default_backend()) == "rust":
-        return compile_rust(project_dir, on_progress, should_stop, workers, on_phase)
+        return compile_rust(project_dir, on_progress, should_stop, workers, on_phase,
+                            incremental=incremental and not fresh and not only_cells)
     if workers is None:
         workers = default_workers()
     project = Path(project_dir).resolve()

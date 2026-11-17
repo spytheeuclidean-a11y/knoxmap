@@ -15,7 +15,8 @@ from knoxbuild.settings import Settings
 from knoxbuild.tbx import render_tbx
 from knoxbuild.world import Placement, render_pzw
 from tools.building_stats import read_header
-from tools.compile_map import compile_rust, knoxlots_exe
+from tools.compile_cells import lot_hashes, lot_names
+from tools.compile_map import compile_map, compile_rust, knoxlots_exe
 from tools.map_source import project_origin, read_lots
 
 from tests.basement_town import build_town
@@ -87,6 +88,45 @@ class BasementLotsCompile(unittest.TestCase):
         for f in glob.glob(os.path.join(project, "town*")):
             os.rename(f, os.path.join(project, name + os.path.basename(f)[4:]))
         return project
+
+    def test_moving_a_building_rebuilds_both_cells_and_matches_a_full_compile(self):
+        from pathlib import Path
+
+        project = self._copy("move")
+        ox, oy = project_origin(project)
+        boundary = (ox // SIDE + 1) * SIDE - ox
+        west = (ox // SIDE, 0)
+        east = (west[0] + 1, 0)
+        tx, ty = boundary - 20, 20
+        name = "moving.tbx"
+        plan = build_plan(10, 10, kind="military", ground=False, seed=2)
+        (Path(project) / "buildings" / name).write_text(render_tbx(plan, "moving"),
+                                                       encoding="utf-8")
+        _add_lot(project, name, tx, ty, 10, 10, 0)
+        self.assertEqual((oy + ty) // SIDE, west[1])
+        pzw = Path(project) / "move.pzw"
+        lots = Path(project) / "lots"
+        compile_rust(project, workers=1)
+        before = lot_hashes(lots)
+
+        layout = pzw.read_text(encoding="utf-8")
+        pattern = rf'(<lot x="){tx}(" y="{ty}"[^>]* map="buildings/{re.escape(name)}"/>)'
+        moved, count = re.subn(pattern, lambda m: f"{m[1]}{boundary + 4}{m[2]}", layout)
+        self.assertEqual(count, 1)
+        pzw.write_text(moved, encoding="utf-8")
+
+        phases = []
+        compile_rust(project, workers=1, on_phase=lambda text, _: phases.append(text))
+        self.assertIn("Writing lot files: 0 of 2 cells", phases)
+        partial = lot_hashes(lots)
+        changed = {name for name, digest in partial.items() if before.get(name) != digest}
+        self.assertEqual(partial.keys(), before.keys())
+        self.assertTrue(changed & lot_names({west}))
+        self.assertTrue(changed & lot_names({east}))
+        self.assertLessEqual(changed, lot_names({west, east}))
+
+        compile_map(project, workers=1, backend="rust", fresh=True)
+        self.assertEqual(lot_hashes(lots), partial)
 
     def test_a_basement_lot_compiles_to_level_minus_1(self):
         project = self._copy("one")

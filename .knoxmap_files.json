@@ -260,6 +260,7 @@
     "tools/cell_check.py",
     "tools/check_buildings.py",
     "tools/check_manifest.py",
+    "tools/compile_cells.py",
     "tools/compile_compare.py",
     "tools/compile_map.py",
     "tools/compile_repeatable.py",

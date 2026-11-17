@@ -263,7 +263,7 @@ class CarryingOnACompile(unittest.TestCase):
     def _run(self, out, rows_made, fail_at=None, resume=True):
         calls = {"read": 0}
 
-        def row(project, out_, cy, band, placed, seed, seams, size):
+        def row(project, out_, cy, band, placed, seed, seams, size, columns, track):
             if cy == fail_at:
                 raise MemoryError()
             rows_made.append(cy)
@@ -315,27 +315,30 @@ class CarryingOnACompile(unittest.TestCase):
         stopped run left were still there when it got that far."""
         project = Path(self.project)
         (project / "town.pzw").write_text("<world/>", encoding="utf-8")
+        exe = project / "knoxlots"
+        exe.touch()
         seen = {}
 
         def make_map_source(project_, out, **kw):
-            seen["kept"] = sorted(p.name for p in Path(out).glob("row_*.done"))
+            src = Path(out)
+            seen["kept"] = sorted(p.name for p in src.glob("row_*.done"))
+            (src / "row_0.done").touch()
             raise knoxstop.Stopped("the compile")
 
-        with mock.patch.object(C, "knoxlots_exe", return_value="knoxlots"), \
+        with mock.patch.object(C, "knoxlots_exe", return_value=exe), \
                 mock.patch.object(C, "ensure_rail_rules"), \
                 mock.patch.object(C, "knoxpaths"), \
                 mock.patch.object(C, "prepare_output"), \
                 mock.patch.object(C, "_source_stamp", return_value=stamp), \
+                mock.patch.object(M, "rules_path", return_value=project / "Rules.txt"), \
+                mock.patch.object(M.bitmaps, "_bmp_header", return_value=(256, 256 * 4)), \
                 mock.patch.object(M, "make_map_source", make_map_source):
             with self.assertRaises(knoxstop.Stopped):
                 C.compile_rust(self.project)
         return seen["kept"]
 
     def test_a_stopped_compile_is_carried_on_only_for_the_same_map(self):
-        src = Path(self.project) / ".knoxlots" / "src"
-        src.mkdir(parents=True)
-        (src / C.SOURCE_STAMP).write_text(json.dumps({"map": 1}), encoding="utf-8")
-        (src / "row_0.done").write_text("", encoding="utf-8")
+        self.assertEqual(self._compile({"map": 1}), [])
         self.assertEqual(self._compile({"map": 1}), ["row_0.done"])
         self.assertEqual(self._compile({"map": 2}), [], "changed since: made afresh")
 
