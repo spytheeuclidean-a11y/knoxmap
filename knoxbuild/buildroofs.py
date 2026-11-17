@@ -178,6 +178,45 @@ def band_squares(entry, attrs: dict, o: dict) -> dict[tuple[int, int], list[str]
     return {(x, y): [tile] for y in range(y0, y0 + h) for x in range(x0 + 3, x0 + w - 3)}
 
 
+def _apply_inner_valleys(entry, attrs: dict, pitched_objs: list[dict],
+                         pitched: dict[tuple[int, int], list[str]]) -> None:
+    """Where perpendicular Peak30WE and Peak30NS wings meet at an inside corner,
+    replace the outer seam slope tile with an InnerSlope30 valley tile when the
+    tileset provides one."""
+    wes = [o for o in pitched_objs if o.get("RoofType") == "Peak30WE"]
+    nss = [o for o in pitched_objs if o.get("RoofType") == "Peak30NS"]
+    if not wes or not nss:
+        return
+    for we in wes:
+        wx0, wy0 = int(we["x"]), int(we["y"])
+        ww, wh = int(we["width"]), min(int(we["height"]), 11)
+        slopes = entry(we.get("SlopeTiles", attrs.get("RoofSlope", 0)))
+        if not slopes:
+            continue
+        for ns in nss:
+            nx0, ny0 = int(ns["x"]), int(ns["y"])
+            nw, nh = min(int(ns["width"]), 11), int(ns["height"])
+            # Check if the NS wing abuts the South or North edge of the WE wing.
+            if ny0 == wy0 + wh and nx0 < wx0 + ww and nx0 + nw > wx0:
+                if nx0 > wx0:
+                    t = slopes.get("InnerSlope30SE1", "")
+                    if t:
+                        pitched[(nx0 - 1, wy0 + wh - 1)] = [t]
+                if nx0 + nw < wx0 + ww:
+                    t = slopes.get("InnerSlope30SW1", "")
+                    if t:
+                        pitched[(nx0 + nw, wy0 + wh - 1)] = [t]
+            elif ny0 + nh == wy0 and nx0 < wx0 + ww and nx0 + nw > wx0:
+                if nx0 > wx0:
+                    t = slopes.get("InnerSlope30NE1", "")
+                    if t:
+                        pitched[(nx0 - 1, wy0)] = [t]
+                if nx0 + nw < wx0 + ww:
+                    t = slopes.get("InnerSlope30NW1", "")
+                    if t:
+                        pitched[(nx0 + nw, wy0)] = [t]
+
+
 def upper_layers(entry, attrs: dict, width: int, height: int, room_defs: list[dict],
                  floors: list, z: int) -> tuple[dict, dict]:
     """What goes on level z because of the storey below it and the roofs: ceilings over the
@@ -206,10 +245,13 @@ def upper_layers(entry, attrs: dict, width: int, height: int, room_defs: list[di
                 out.pop((int(o["x"]), int(o["y"])), None)
     pitched: dict[tuple[int, int], list[str]] = {}
     if z < len(floors):
-        for o in floors[z].objects:
-            if o.get("type") == "roof" and o.get("RoofType") != "FlatTop":
-                for pos, tiles in roof_squares(entry, attrs, o).items():
-                    pitched[pos] = pitched.get(pos, []) + tiles
+        pitched_objs = [o for o in floors[z].objects
+                        if o.get("type") == "roof" and o.get("RoofType") != "FlatTop"]
+        for o in pitched_objs:
+            for pos, tiles in roof_squares(entry, attrs, o).items():
+                pitched[pos] = pitched.get(pos, []) + tiles
+        if len(pitched_objs) >= 2:
+            _apply_inner_valleys(entry, attrs, pitched_objs, pitched)
     return out, pitched
 
 
