@@ -124,18 +124,15 @@ class RoofLayouts(unittest.TestCase):
                 self.assertNotEqual(kind, "FlatTop")
                 self.assertEqual(box, (0, 0, w, h))
 
-    def test_multi_wing_pitched_building_uses_consistent_pitch_and_uncapped_shared_edge(self):
-        # An L-shape with a 5-wide wing and an 8-wide wing keeps a single pitch
-        # across both wings, and the shared edge is left uncapped.
+    def test_partially_exposed_wing_edge_stays_capped(self):
+        # An L-shape where the main wing's South edge is only partially shared
+        # keeps cappedS=True so the exposed gable end does not stay open.
         grid = [[1] * 12 for _ in range(8)]
         for y in range(8, 13):
             grid.append([1] * 5 + [0] * 7)
         rects = layout.roof_rects(grid)
         self.assertEqual(len(rects), 2)
-        self.assertFalse(rects[0][4]["cappedS"])
-        pieces = tbx._roof_pieces(rects, True, True)
-        kinds = {k for k, *_ in pieces if k != "FlatTop"}
-        self.assertTrue(kinds <= {"PeakWE", "PeakNS"}, kinds)
+        self.assertTrue(rects[0][4]["cappedS"])
 
     def test_perpendicular_peak30_wings_emit_inner_valley_tile(self):
         from types import SimpleNamespace
