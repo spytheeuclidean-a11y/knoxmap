@@ -30,7 +30,7 @@ class BrokenPool(unittest.TestCase):
     def test_the_rows_a_broken_pool_lost_are_made_one_at_a_time(self):
         made = []
 
-        def row(project, out, cy, band, placed, seed, seams, size):
+        def row(project, out, cy, band, placed, seed, seams, size, columns, track):
             made.append(cy)
             return 1
 

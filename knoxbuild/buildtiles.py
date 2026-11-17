@@ -511,7 +511,7 @@ def _yields(tile: str) -> bool:
     return tile.startswith(YIELDING_PREFIXES) and not _structure(tile)
 
 
-def compose_lots(lots) -> dict[tuple[int, int, int], list[str]]:
+def compose_lots(lots, on_footprint=None) -> dict[tuple[int, int, int], list[str]]:
     """Compose (building, x, y, base level) placements in project order.
 
     Rooms replace earlier lot squares. Outside rooms, only populated layers replace
@@ -520,11 +520,14 @@ def compose_lots(lots) -> dict[tuple[int, int, int], list[str]]:
     and a square holding one drops the lamps, trees, bushes and flowers on it.
     """
     world = {}
-    for b, tx, ty, base in lots:
+    for lot, (b, tx, ty, base) in enumerate(lots):
         for z, floor in enumerate(b.floors):
             layers = level_layers(b, z)
             rooms = {(x, y) for y, row in enumerate(floor.rooms) for x, r in enumerate(row) if r > 0}
-            for x, y in rooms | layers.keys():
+            positions = rooms | layers.keys()
+            if on_footprint:
+                on_footprint(lot, positions)
+            for x, y in positions:
                 pos = (tx + x, ty + y, base + z)
                 new = layers.get((x, y), [])
                 if (x, y) in rooms:

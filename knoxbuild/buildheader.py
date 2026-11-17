@@ -168,6 +168,27 @@ def placed_rooms(lots) -> list[tuple[int, int, list[dict]]]:
     return out
 
 
+def _room_anchor(tx: int, ty: int, entries: list[dict]) -> tuple[int, int]:
+    # The first lot's corner, unless a later part reaches further north or west.
+    # WorldEd's exact rule for buildings like these is unknown.
+    return (min(tx, min(r[0] for e in entries for r in e["rects"])),
+            min(ty, min(r[1] for e in entries for r in e["rects"])))
+
+
+def group_buildings_by_row(placed: list[tuple[int, int, list[dict]]],
+                           origin: tuple[int, int]) -> dict[int, dict[int, list[tuple[int, int, list[dict]]]]]:
+    """Group room-table inputs by compiled cell row, then column, preserving input order."""
+    ox, oy = origin
+    rows: dict[int, dict[int, list[tuple[int, int, list[dict]]]]] = {}
+    for tx, ty, entries in placed:
+        if not entries:
+            continue
+        x, y = _room_anchor(tx, ty, entries)
+        cx, cy = (x + ox) // CELL, (y + oy) // CELL
+        rows.setdefault(cy, {}).setdefault(cx, []).append((tx, ty, entries))
+    return rows
+
+
 def cell_tables(cell_x: int, cell_y: int, placed: list[tuple[int, int, list[dict]]],
                 origin: tuple[int, int] = (ORIGIN_X, 0)) -> tuple[list[dict], list[list[int]]]:
     """(rooms, buildings) of one cell. `placed` holds, for each building in project order,
@@ -182,12 +203,7 @@ def cell_tables(cell_x: int, cell_y: int, placed: list[tuple[int, int, list[dict
     for tx, ty, entries in sorted(placed, key=lambda p: (p[1] // 300, p[0] // 300)):
         if not entries:
             continue
-        # The cell of the north-west corner of its rooms: the first lot's corner, unless a later
-        # part of a large building reaches further north or west (a rect must not be negative).
-        # ponytail: matches WorldEd on 16 of 25 cells of a 1500 m map; the rule WorldEd uses for
-        # such buildings is not found.
-        tx = min(tx, min(r[0] for e in entries for r in e["rects"]))
-        ty = min(ty, min(r[1] for e in entries for r in e["rects"]))
+        tx, ty = _room_anchor(tx, ty, entries)
         if not (x0 <= tx < x0 + CELL and y0 <= ty < y0 + CELL):
             continue
         buildings.append(list(range(len(rooms), len(rooms) + len(entries))))
