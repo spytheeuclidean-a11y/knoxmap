@@ -64,6 +64,9 @@ class _SubProjector:
     def to_latlon(self, px: float, py: float) -> tuple[float, float]:
         return self._parent.to_latlon(px + self.offset_x, py + self.offset_y)
 
+    def to_latlon_many(self, px, py):
+        return self._parent.to_latlon_many(px + self.offset_x, py + self.offset_y)
+
     def cell_grid(self) -> tuple[int, int]:
         return self.width // C.CELL_SIZE, self.height // C.CELL_SIZE
 

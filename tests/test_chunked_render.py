@@ -246,6 +246,18 @@ class ChunkedRenderTests(unittest.TestCase):
         self.assertEqual(off, 54)
         self.assertEqual((width, height, bpp, comp, bi_size), (40000, 38000, 24, 0, 0))
 
+    def test_subprojector_to_latlon_many_matches_parent(self):
+        from generator.rendering.projection import Projector
+
+        proj = Projector.build(SOUTH, WEST, SOUTH + 550 * LAT_PER_M, WEST + 550 * LON_PER_M, 1.0)
+        sub = chunked._SubProjector(proj, 100, 120, 300, 300)
+        xs = np.array([10.0, 50.0])
+        ys = np.array([20.0, 80.0])
+        slat, slon = sub.to_latlon_many(xs, ys)
+        plat, plon = proj.to_latlon_many(xs + 100, ys + 120)
+        np.testing.assert_allclose(slat, plat)
+        np.testing.assert_allclose(slon, plon)
+
 
 if __name__ == "__main__":
     unittest.main()
