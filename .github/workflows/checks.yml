@@ -45,7 +45,7 @@ jobs:
       - name: Verify runtime and startup recovery checks
         run: |
           python knoxruntime.py
-          python -m unittest tests.test_runtime_bootstrap
+          python -m unittest tests.test_runtime_bootstrap tests.test_extract
           python -c "from app import app; assert app.test_client().get('/').status_code == 200"
 
   generator:

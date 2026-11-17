@@ -667,7 +667,7 @@ def relaunch() -> None:
     """
     import knoxpaths
     exe = knoxpaths.venv_python(windowless=True)
-    kwargs: dict = {"cwd": BASE_DIR, "close_fds": True}
+    kwargs: dict = {"cwd": knoxpaths.launch_dir(), "close_fds": True}
     if os.name == "nt":
         kwargs["creationflags"] = (getattr(subprocess, "DETACHED_PROCESS", 0)
                                    | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))

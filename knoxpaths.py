@@ -23,6 +23,20 @@ CONFIG_PATH = BASE_DIR / "knoxmap_config.json"
 VENDOR_DIR = BASE_DIR / "vendor"
 
 
+def launch_dir() -> Path:
+    """Keep an ASCII Windows alias to the install directory when launched through one."""
+    if os.name == "nt" and not str(BASE_DIR).isascii():
+        # The Windows launchers start in the install directory. resolve() can
+        # lose an ASCII junction that libosmium can use to open the cache.
+        try:
+            here = Path.cwd()
+            if str(here).isascii() and here.samefile(BASE_DIR):
+                return here
+        except OSError:
+            pass  # The working directory may no longer be accessible.
+    return BASE_DIR
+
+
 # Several things read the settings file, change one key and write it back: Setup,
 # the language, the Steam folders, the version the player chose. Two at once
 # would each write back what they read, and the first one's change was lost.
