@@ -14,6 +14,9 @@ from ..rail_tiles import ASSEMBLIES, RAIL_END_RADIUS, RailFitError, rail_colour
 from .geometry import _feature_coords_px, _is_polygon
 
 
+RAIL_ALIGNMENT_TOLERANCE = 9
+
+
 def rail_paths(features, proj):
     rings = [ring for feat in features
              if not _is_polygon(feat) and feat.tags.get("service") not in ("spur", "yard", "crossover")
@@ -62,11 +65,14 @@ def continuous_tracks(rings, bounds=None):
                 end = end + normals[-1] * (offsets[-1] - np.dot(end, normals[-1])) / np.dot(normals[-1], normals[-1])
                 corners = [np.linalg.solve(np.array([a, b]), [u, v])
                            for a, b, u, v in zip(normals, normals[1:], offsets, offsets[1:])]
-                turns.append([tuple(start)] + [tuple(p) for p in corners] + [tuple(end)])
+                aligned = [tuple(start)] + [tuple(p) for p in corners] + [tuple(end)]
+                if part.hausdorff_distance(LineString(aligned)) > RAIL_ALIGNMENT_TOLERANCE:
+                    aligned = list(part.coords)
+                turns.append(aligned)
                 continue
             axis, normal, uv, slope, intercept = fitted[0]
             record = {"lo": float(uv[:, 0].min()), "hi": float(uv[:, 0].max()),
-                      "slope": float(slope), "intercept": float(intercept)}
+                      "slope": float(slope), "intercept": float(intercept), "line": part}
             group = None
             for candidate in groups:
                 reference = candidate[1][0]
@@ -85,14 +91,24 @@ def continuous_tracks(rings, bounds=None):
         norm = np.dot(axis, axis)
         lo, hi = min(r["lo"] for r in records), max(r["hi"] for r in records)
         at = (lo + hi) / 2
-        offsets = sorted(r["slope"] * at + r["intercept"] for r in records)
+        records = sorted(records, key=lambda r: r["slope"] * at + r["intercept"])
         kept = []
-        for offset in offsets:
+        aligned = []
+        for record in records:
+            offset = record["slope"] * at + record["intercept"]
             value = round(offset - (0.5 if axis == (1, -1) else 0)) + (0.5 if axis == (1, -1) else 0)
             if kept:
                 value = max(value, kept[-1] + math.ceil(5 * math.sqrt(norm)))
             kept.append(value)
-            yield [tuple((np.array(axis) * u + np.array(normal) * value) / norm) for u in (lo, hi)]
+            line = [tuple((np.array(axis) * u + np.array(normal) * value) / norm) for u in (lo, hi)]
+            if record["line"].hausdorff_distance(LineString(line)) > RAIL_ALIGNMENT_TOLERANCE:
+                # Keep the whole corridor mapped when extending or spacing one
+                # line would send it outside its own railway alignment.
+                yield from (list(r["line"].coords) for r in records)
+                break
+            aligned.append(line)
+        else:
+            yield from aligned
     yield from turns
 
 
