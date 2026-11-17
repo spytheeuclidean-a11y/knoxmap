@@ -1,7 +1,9 @@
 """Map data from a downloaded regional extract instead of live Overpass queries."""
 import os
+from pathlib import Path
 import shutil
 import struct
+import subprocess
 import sys
 import tempfile
 import time
@@ -225,6 +227,32 @@ class ReadingAnExtract(unittest.TestCase):
     def read(self, bbox):
         with mock.patch.object(extract, "cache_dir", lambda: self.dir):
             return extract._read(self.path, self.filters, bbox, lambda *a: None, None)
+
+    @unittest.skipUnless(os.name == "nt", "Windows directory junctions")
+    def test_reads_cached_extract_through_the_launch_junction_without_short_paths(self):
+        with tempfile.TemporaryDirectory(dir=self.dir) as folder:
+            target = os.path.join(folder, "\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0438")
+            alias = os.path.join(folder, "Downloads")
+            cache = os.path.join(target, "cache", "extracts")
+            os.makedirs(cache)
+            shutil.copyfile(self.path, os.path.join(cache, "test.osm.pbf"))
+            subprocess.run(["cmd.exe", "/d", "/c", "mklink", "/J", "Downloads",
+                            os.path.basename(target)], cwd=folder, check=True,
+                           capture_output=True, timeout=10)
+            previous = os.getcwd()
+            try:
+                with mock.patch.object(extract.knoxpaths, "BASE_DIR", Path(target)), \
+                     mock.patch("ctypes.windll.kernel32.GetShortPathNameW", return_value=0), \
+                     mock.patch.object(extract.requests, "get", side_effect=AssertionError("downloaded")):
+                    os.chdir(folder)
+                    self.assertEqual(extract.cache_dir(), cache)
+                    os.chdir(alias)
+                    got = extract.elements(9.99, 19.99, 10.03, 20.03,
+                                           regions=[{"id": "test", "name": "Test"}])
+            finally:
+                os.chdir(previous)
+        self.assertEqual({(e["type"], e["id"]) for e in got},
+                         {("node", 5), ("way", 100), ("relation", 200)})
 
     @unittest.skipUnless(os.name == "nt", "Windows native paths")
     def test_unicode_directory_with_disk_index(self):
