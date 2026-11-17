@@ -864,13 +864,33 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     veg_base = os.path.join(out_dir, f"{map_name}_veg_base.bmp")
     if not os.path.exists(bmp):
         return 0, []
+    from .bitmaps import _bmp_header
+    occ_h, occ_w = occupied.shape[:2]
+
+    def _dims(p):
+        hdr = _bmp_header(p)
+        return (hdr[0], hdr[1]) if hdr else None
+
     if not os.path.exists(base):
         shutil.copyfile(bmp, base)
-    if os.path.exists(veg_path) and not os.path.exists(veg_base):
-        shutil.copyfile(veg_path, veg_base)
-    ground = read_rgb(base)
-    veg = read_rgb(veg_base) if os.path.exists(veg_base) else None
+    elif _dims(base) != (occ_w, occ_h) and _dims(bmp) == (occ_w, occ_h):
+        shutil.copyfile(bmp, base)
+    if os.path.exists(veg_path):
+        if not os.path.exists(veg_base):
+            shutil.copyfile(veg_path, veg_base)
+        elif _dims(veg_base) != (occ_w, occ_h) and _dims(veg_path) == (occ_w, occ_h):
+            shutil.copyfile(veg_path, veg_base)
+    ground = read_rgb(base, crop=(occ_h, occ_w))
+    veg = read_rgb(veg_base, crop=(occ_h, occ_w)) if os.path.exists(veg_base) else None
     h, w = ground.shape[:2]
+    if veg is not None and veg.shape[:2] != (h, w):
+        veg = veg[:h, :w] if veg.shape[0] >= h and veg.shape[1] >= w else None
+    if (occ_h, occ_w) == (h, w):
+        occ = occupied
+    else:
+        occ = np.zeros((h, w), dtype=bool)
+        ch, cw = min(h, occ_h), min(w, occ_w)
+        occ[:ch, :cw] = occupied[:ch, :cw]
 
     def match(colours):
         mask = np.zeros((h, w), dtype=bool)
@@ -881,7 +901,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     paved = match(PAVED)
     road = match((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
                   C.DARKEST_ASPHALT, C.DARK_POTHOLE, C.LIGHT_POTHOLE))
-    crossable = match(CROSSABLE) & ~occupied
+    crossable = match(CROSSABLE) & ~occ
     # Painted for some house already. One block of memory seen two ways: as an
     # array for the whole-map work, and as bytes for the tile-at-a-time loops
     # below, where reading a numpy element costs several times what a list
@@ -891,9 +911,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     claimed = np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w)
     crossable_at = bytearray(crossable.astype(np.uint8, copy=False).tobytes())
     paved_at = bytearray(paved.astype(np.uint8, copy=False).tobytes())
-    occupied_at = bytearray(np.asarray(occupied, dtype=np.uint8).tobytes())
+    occupied_at = bytearray(np.asarray(occ, dtype=np.uint8).tobytes())
     road_at = bytearray(road.astype(np.uint8, copy=False).tobytes())
-    walkable_at = bytearray(((crossable | paved | road) & ~occupied).astype(np.uint8, copy=False).tobytes())
+    walkable_at = bytearray(((crossable | paved | road) & ~occ).astype(np.uint8, copy=False).tobytes())
     del paved, road
     crossable = np.frombuffer(crossable_at, dtype=bool).reshape(h, w)
     # Drives the terrain laid already, read before any are painted here.
@@ -1461,16 +1481,16 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     # Give non-home buildings a modest concrete apron hugging their walls
     # after all doorway walks and industrial tarmac yards are placed.
     for bx0, by0, bw, bh in apron_boxes:
-        _pave_building_apron(bx0, by0, bw, bh, occupied, w, h, free, paint)
+        _pave_building_apron(bx0, by0, bw, bh, occ, w, h, free, paint)
 
     if veg is not None:
         _dress_non_home_surroundings(
             rows, door_lists, out_dir, ground, veg, w, h,
-            occupied, road_at, paved_at, free, fronts,
+            occ, road_at, paved_at, free, fronts,
         )
         _dress_open_yards(
             rows, door_lists, ground, veg, w, h,
-            occupied, road_at, free, fronts,
+            occ, road_at, free, fronts,
         )
 
     if veg is not None and fronts:
@@ -1480,7 +1500,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 veg[y, x] = C.VEG_NOTHING
     # The credit for KnoxMap, in the ground near the first spawn house.
     from . import credit_ground
-    clear = (match(CROSSABLE) & ~occupied
+    clear = (match(CROSSABLE) & ~occ
              & ~np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w))
     where = credit_ground.paint(ground, veg, clear, rows)
     print(f"credit lettering     : " + (f"at tile {where[0]},{where[1]}" if where else "no clear patch"))
