@@ -31,23 +31,25 @@ class RoofLayouts(unittest.TestCase):
                     self.assertTrue(abs(x - other_x) > 1 or abs(y - other_y) > 1)
 
     def test_every_roof_piece_is_one_the_world_painter_can_draw(self):
-        # buildroofs.roof_squares has no branch for a Peak30Quad whose longer
-        # side is even, so such a piece paints nothing: the house keeps its
-        # walls and loses its entire roof (108 houses in one town).
         from knoxbuild.buildroofs import roof_squares
 
-        for w in range(3, 14):
-            for h in range(3, 14):
+        for w in range(3, 18):
+            for h in range(3, 18):
                 grid = [[1] * w for _ in range(h)]
                 for kind, depth, _caps, (x, y, pw, ph) in tbx._roof_pieces(
                         layout.roof_rects(grid), True, True):
                     if kind == "FlatTop":
                         continue
                     with self.subTest(kind=kind, w=w, h=h):
-                        self.assertTrue(roof_squares(
+                        got = roof_squares(
                             lambda n: {}, {},
                             dict(RoofType=kind, Depth=depth, x=x, y=y,
-                                 width=pw, height=ph)))
+                                 width=pw, height=ph))
+                        self.assertTrue(got)
+                        if kind.startswith("Peak30"):
+                            for ry in range(y, y + ph):
+                                for rx in range(x, x + pw):
+                                    self.assertIn((rx, ry), got)
 
     def test_flat_roof_plant_stands_on_the_roof(self):
         # The game hangs an attachedCeiling tile from the ceiling of its level:

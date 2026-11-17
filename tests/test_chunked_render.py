@@ -158,6 +158,46 @@ class ChunkedRenderTests(unittest.TestCase):
                 self.assertFalse((Path(td) / ".resumed_preview_wip.png").exists())
                 self.assertEqual((res.width, res.height), (600, 600))
 
+    def test_render_chunked_keeps_fill_frontage_buildings(self):
+        from generator.osm import OSMFeature
+        from generator.rendering.infill import FIRST_ID
+        from generator.rendering.projection import Projector
+
+        north = SOUTH + 550 * LAT_PER_M
+        east = WEST + 550 * LON_PER_M
+        proj = Projector.build(SOUTH, WEST, north, east, 1.0)
+        feats = [
+            OSMFeature(
+                osm_id=1, kind="way", tags={"highway": "residential"},
+                geometry=[proj.to_latlon(40, 200), proj.to_latlon(340, 200)],
+            )
+        ]
+        for i in range(6):
+            if i in (2, 3):
+                continue
+            x0, x1 = 40 + i * 18, 40 + i * 18 + 15
+            feats.append(OSMFeature(
+                osm_id=100 + i, kind="way", tags={"building": "house"},
+                geometry=[
+                    proj.to_latlon(x0, 180), proj.to_latlon(x1, 180),
+                    proj.to_latlon(x1, 192), proj.to_latlon(x0, 192),
+                    proj.to_latlon(x0, 180),
+                ],
+            ))
+        with tempfile.TemporaryDirectory() as td:
+            res = chunked.render_chunked(
+                feats, SOUTH, WEST, north, east, 1.0,
+                td, "infilled",
+                fill_frontage=1,
+                chunk_cells=1,
+                halo_tiles=16,
+            )
+            meta = json.loads(Path(res.meta_path).read_text(encoding="utf-8"))
+            gj = json.loads(Path(res.buildings_geojson_path).read_text(encoding="utf-8"))
+            ids = [f["properties"]["osm_id"] for f in gj["features"]]
+            self.assertGreaterEqual(meta["houses_infilled"], 2)
+            self.assertTrue(any(i <= FIRST_ID for i in ids))
+
 
 if __name__ == "__main__":
     unittest.main()
