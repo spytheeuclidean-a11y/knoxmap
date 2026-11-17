@@ -421,6 +421,17 @@ class MultiDoorAndInfillFrontPaths(unittest.TestCase):
             for wx in range(11, 16):
                 self.assertNotIn(tuple(after[16, wx]), dumpster_cols)
 
+    def test_paint_paths_handles_mismatched_ground_base_shape(self):
+        with tempfile.TemporaryDirectory() as out:
+            os.makedirs(os.path.join(out, "buildings"))
+            # Simulate stale 40x40 base bitmaps alongside a 28x28 occupied mask.
+            Image.new("RGB", (40, 40), C.MEDIUM_GRASS).save(os.path.join(out, "m.bmp"))
+            Image.new("RGB", (40, 40), C.MEDIUM_GRASS).save(os.path.join(out, "m_ground_base.bmp"))
+            Image.new("RGB", (40, 40), C.VEG_NOTHING).save(os.path.join(out, "m_veg.bmp"))
+            Image.new("RGB", (40, 40), C.VEG_NOTHING).save(os.path.join(out, "m_veg_base.bmp"))
+            occupied = np.zeros((28, 28), dtype=bool)
+            paint_paths(out, "m", [], occupied)
+
 
 if __name__ == "__main__":
     unittest.main()
