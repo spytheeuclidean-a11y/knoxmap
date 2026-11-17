@@ -43,6 +43,34 @@ class ContinuousRails(unittest.TestCase):
         self.assertEqual(tracks, rings)
         self.assertTrue(all(list(rail_sections(track)) for track in tracks))
 
+    def test_separated_unequal_tracks_fit_without_tile_overlap(self):
+        rings = [[(0, 0), (100, 10), (200, 20)],
+                 [(0, 7), (100, 17), (140, 21)]]
+        tracks = list(continuous_tracks(rings))
+        self.assertEqual(tracks, rings)  # the original geometry takes the fallback
+        occupied = set()
+        for track in tracks:
+            sections = list(rail_sections(track))
+            self.assertTrue(sections)
+            tiles = {(ox + x, oy + y) for ox, oy, i in sections
+                     for x, y, _sheet, _tile in ASSEMBLIES[i][4]}
+            self.assertFalse(occupied & tiles)
+            occupied.update(tiles)
+
+    @unittest.expectedFailure
+    def test_closely_spaced_unequal_tracks_do_not_overlap(self):
+        # The fallback fits each mapped track independently; their tile
+        # assemblies can overlap even though the OSM lines do not.
+        rings = [[(0, 0), (100, 10), (200, 20)],
+                 [(0, 5), (100, 15), (140, 19)]]
+        occupied = set()
+        for track in continuous_tracks(rings):
+            tiles = {(ox + x, oy + y) for ox, oy, i in rail_sections(track)
+                     for x, y, _sheet, _tile in ASSEMBLIES[i][4]}
+            self.assertTrue(tiles)
+            self.assertFalse(occupied & tiles)
+            occupied.update(tiles)
+
     def test_wide_curve_is_kept_inside_its_mapped_corridor(self):
         ring = [(0, 0), (25, 12), (60, 16), (85, 12), (110, 0)]
         self.assertEqual(list(continuous_tracks([ring])), [ring])
