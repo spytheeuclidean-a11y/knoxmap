@@ -198,6 +198,36 @@ class ChunkedRenderTests(unittest.TestCase):
             self.assertGreaterEqual(meta["houses_infilled"], 2)
             self.assertTrue(any(i <= FIRST_ID for i in ids))
 
+    def test_render_chunked_keeps_rails_continuous_across_chunks(self):
+        from generator.osm import OSMFeature
+        from generator.rendering.projection import Projector
+
+        north = SOUTH + 550 * LAT_PER_M
+        east = WEST + 550 * LON_PER_M
+        proj = Projector.build(SOUTH, WEST, north, east, 1.0)
+        # A slightly angled West-East railway crossing the x=300 chunk seam.
+        feats = [
+            OSMFeature(
+                osm_id=9, kind="way", tags={"railway": "rail"},
+                geometry=[proj.to_latlon(20, 290), proj.to_latlon(580, 304)],
+            )
+        ]
+        with tempfile.TemporaryDirectory() as td:
+            res = chunked.render_chunked(
+                feats, SOUTH, WEST, north, east, 1.0,
+                td, "rails",
+                chunk_cells=1,
+                halo_tiles=16,
+            )
+            arr = np.asarray(Image.open(res.landscape_path).convert("RGB"))
+            # Every column from x=100 to x=500 (including across the x=300 seam)
+            # must carry rail pixels (red channel > 180 from RAIL_BALLAST/RAIL_*).
+            rail_cols = [
+                x for x in range(100, 500)
+                if np.any((arr[250:350, x, 0] >= 180) & (arr[250:350, x, 2] >= 180))
+            ]
+            self.assertEqual(rail_cols, list(range(100, 500)))
+
 
 if __name__ == "__main__":
     unittest.main()
