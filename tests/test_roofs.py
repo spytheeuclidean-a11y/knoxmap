@@ -158,6 +158,15 @@ class RoofLayouts(unittest.TestCase):
         _out, pitched = upper_layers(lambda n: slopes if n == 1 else {}, {}, 10, 11, [{"Ceiling": 0}], floors, 1)
         self.assertEqual(pitched[(4, 4)], ["inSE1"])
 
+    def test_flattop_always_uses_depth_three(self):
+        # WorldEd/knoxlots drops any building with a FlatTop Depth="Zero" roof.
+        for w, h, gable_only in ((12, 10, True), (10, 12, True), (12, 12, False)):
+            grid = [[1] * w for _ in range(h)]
+            for kind, depth, _caps, _box in tbx._roof_pieces(
+                    layout.roof_rects(grid), True, True, gable_only=gable_only):
+                if kind == "FlatTop":
+                    self.assertEqual(depth, "Three")
+
 
 if __name__ == "__main__":
     unittest.main()
