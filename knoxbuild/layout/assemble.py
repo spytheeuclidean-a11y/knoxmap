@@ -839,15 +839,15 @@ def roof_rects(grid: list[list[int]]) -> list[tuple[int, int, int, int, dict]]:
             for x in range(x0, x0 + rw):
                 todo[y][x] = False
 
-        def open_side(cells) -> bool:
-            return all(0 <= cx < w and 0 <= cy < h and inside[cy][cx]
+        def touches_inside(cells) -> bool:
+            return any(0 <= cx < w and 0 <= cy < h and inside[cy][cx]
                        for cx, cy in cells)
 
         caps = {
-            "cappedW": not open_side([(x0 - 1, y) for y in range(y0, y0 + rh)]),
-            "cappedE": not open_side([(x0 + rw, y) for y in range(y0, y0 + rh)]),
-            "cappedN": not open_side([(x, y0 - 1) for x in range(x0, x0 + rw)]),
-            "cappedS": not open_side([(x, y0 + rh) for x in range(x0, x0 + rw)]),
+            "cappedW": not touches_inside([(x0 - 1, y) for y in range(y0, y0 + rh)]),
+            "cappedE": not touches_inside([(x0 + rw, y) for y in range(y0, y0 + rh)]),
+            "cappedN": not touches_inside([(x, y0 - 1) for x in range(x0, x0 + rw)]),
+            "cappedS": not touches_inside([(x, y0 + rh) for x in range(x0, x0 + rw)]),
         }
         rects.append((x0, y0, rw, rh, caps))
     return rects

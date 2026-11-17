@@ -100,16 +100,31 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
     """
     out = []
     single = len(rects) == 1
+    # Multi-wing pitched buildings look disjointed if one wing is 30-degree
+    # and the adjoining wing falls back to 45-degree. Keep a single pitch.
+    multi_allow_30 = True
+    if not single and peaked and not gable_only:
+        for _rx, _ry, rw, rh, _caps in rects:
+            across = min(rw, rh)
+            tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
+            if across < NARROW_PEAK_MIN or tooth:
+                continue
+            steep_block = len(rects) >= MANY_WING_RECTS and across > MANY_WING_PEAK30_MAX
+            if (not roof30 or across < 3 or steep_block or across > PEAK30_MAX_ACROSS
+                    or across % 2 == 0 or across < PEAK_MIN_TILES):
+                multi_allow_30 = False
+                break
     for rx, ry, rw, rh, caps in rects:
         across = min(rw, rh)
         tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
         if not peaked or across < NARROW_PEAK_MIN or tooth:
-            out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+            flat_depth = "Zero" if peaked else "Three"
+            out.append(("FlatTop", flat_depth, dict(_NO_CAPS), (rx, ry, rw, rh)))
             continue
         along_x = rw >= rh
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
         steep_block = len(rects) >= MANY_WING_RECTS and across > MANY_WING_PEAK30_MAX
-        if not roof30 or across < 3 or (not gable_only and (
+        if not roof30 or not multi_allow_30 or across < 3 or (not gable_only and (
                 steep_block or across > PEAK30_MAX_ACROSS or across % 2 == 0
                 or across < PEAK_MIN_TILES)):
             cap = dict(_NO_CAPS)
@@ -132,14 +147,14 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         if along_x:
             box = (rx, ry + (rh - odd), rw, odd)
             if rh != odd:
-                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
+                out.append(("FlatTop", "Zero", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
             if not hip:
                 cap["cappedW"], cap["cappedE"] = caps["cappedW"], caps["cappedE"]
             out.append(("Peak30Quad" if hip else "Peak30WE", "Zero", cap, box))
         else:
             box = (rx + (rw - odd), ry, odd, rh)
             if rw != odd:
-                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
+                out.append(("FlatTop", "Zero", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
             if not hip:
                 cap["cappedN"], cap["cappedS"] = caps["cappedN"], caps["cappedS"]
             out.append(("Peak30Quad" if hip else "Peak30NS", "Zero", cap, box))

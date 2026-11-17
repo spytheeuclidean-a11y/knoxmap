@@ -124,6 +124,44 @@ class RoofLayouts(unittest.TestCase):
                 self.assertNotEqual(kind, "FlatTop")
                 self.assertEqual(box, (0, 0, w, h))
 
+    def test_multi_wing_pitched_building_uses_consistent_pitch_and_uncapped_shared_edge(self):
+        # An L-shape with a 5-wide wing and an 8-wide wing keeps a single pitch
+        # across both wings, and the shared edge is left uncapped.
+        grid = [[1] * 12 for _ in range(8)]
+        for y in range(8, 13):
+            grid.append([1] * 5 + [0] * 7)
+        rects = layout.roof_rects(grid)
+        self.assertEqual(len(rects), 2)
+        self.assertFalse(rects[0][4]["cappedS"])
+        pieces = tbx._roof_pieces(rects, True, True)
+        kinds = {k for k, *_ in pieces if k != "FlatTop"}
+        self.assertTrue(kinds <= {"PeakWE", "PeakNS"}, kinds)
+
+    def test_perpendicular_peak30_wings_emit_inner_valley_tile(self):
+        from types import SimpleNamespace
+
+        from knoxbuild.buildroofs import upper_layers
+
+        we = dict(type="roof", RoofType="Peak30WE", Depth="Zero",
+                  x=0, y=0, width=10, height=5, SlopeTiles=1, CapTiles=0)
+        ns = dict(type="roof", RoofType="Peak30NS", Depth="Zero",
+                  x=5, y=5, width=5, height=6, SlopeTiles=1, CapTiles=0)
+        slopes = {
+            "Slope30N1": "sN1", "Slope30N2": "sN2", "Slope30S1": "sS1", "Slope30S2": "sS2",
+            "Slope30W1": "sW1", "Slope30W2": "sW2", "Slope30E1": "sE1", "Slope30E2": "sE2",
+            "Peak30NS3": "pNS3", "Peak30WE3": "pWE3",
+            "InnerSlope30SE1": "inSE1",
+        }
+        empty_rooms = [[0] * 10 for _ in range(11)]
+        floors = [SimpleNamespace(rooms=[[1] * 10 for _ in range(11)], objects=[]),
+                  SimpleNamespace(rooms=empty_rooms, objects=[we, ns])]
+        _out, pitched = upper_layers(lambda n: slopes if n == 1 else {}, {}, 10, 11, [{"Ceiling": 0}], floors, 1)
+        self.assertEqual(pitched[(4, 4)], ["inSE1"])
+
+
+if __name__ == "__main__":
+    unittest.main()
+
 
 if __name__ == "__main__":
     unittest.main()
