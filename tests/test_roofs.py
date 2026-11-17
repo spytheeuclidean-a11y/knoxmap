@@ -167,6 +167,27 @@ class RoofLayouts(unittest.TestCase):
                 if kind == "FlatTop":
                     self.assertEqual(depth, "Three")
 
+    def test_rectangular_peak30quad_ridge_matches_peak30_orientation(self):
+        from knoxbuild.buildroofs import roof_squares
+
+        slopes = {
+            "Slope30N1": "N1", "Slope30N2": "N2", "Slope30S1": "S1", "Slope30S2": "S2",
+            "Slope30W1": "W1", "Slope30W2": "W2", "Slope30E1": "E1", "Slope30E2": "E2",
+            "OuterSlope30NW1": "NW1", "OuterSlope30NE1": "NE1",
+            "OuterSlope30SW1": "SW1", "OuterSlope30SE1": "SE1",
+            "OuterSlope30NW2": "NW2", "OuterSlope30NE2": "NE2",
+            "OuterSlope30SW2": "SW2", "OuterSlope30SE2": "SE2",
+            "Peak30NS3": "ridgeNS3", "Peak30WE3": "ridgeWE3",
+        }
+        we = roof_squares(lambda n: slopes if n == 1 else {}, {},
+                          dict(RoofType="Peak30Quad", Depth="Zero", x=0, y=0,
+                               width=9, height=5, SlopeTiles=1, CapTiles=0))
+        self.assertEqual(we[(4, 2)], ["ridgeNS3"])
+        ns = roof_squares(lambda n: slopes if n == 1 else {}, {},
+                          dict(RoofType="Peak30Quad", Depth="Zero", x=0, y=0,
+                               width=5, height=9, SlopeTiles=1, CapTiles=0))
+        self.assertEqual(ns[(2, 4)], ["ridgeWE3"])
+
 
 if __name__ == "__main__":
     unittest.main()

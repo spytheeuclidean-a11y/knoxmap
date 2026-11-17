@@ -125,9 +125,9 @@ def roof_squares(entry, attrs: dict, o: dict) -> dict[tuple[int, int], list[str]
                     if w == h:
                         enum = f"Peak30Quad{k + 1}"
                     elif w > h:
-                        enum = f"Peak30WE{k + 1}"
-                    else:
                         enum = f"Peak30NS{k + 1}"
+                    else:
+                        enum = f"Peak30WE{k + 1}"
                 else:
                     top, bottom = dy == r - 1, dy == h - r
                     left, right = dx == r - 1, dx == w - r
