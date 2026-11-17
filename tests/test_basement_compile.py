@@ -128,6 +128,43 @@ class BasementLotsCompile(unittest.TestCase):
         compile_map(project, workers=1, backend="rust", fresh=True)
         self.assertEqual(lot_hashes(lots), partial)
 
+    def test_changed_building_across_cell_edge_matches_full_compile(self):
+        from pathlib import Path
+
+        project = self._copy("edited")
+        ox, _ = project_origin(project)
+        tx = (ox // SIDE + 1) * SIDE - ox - 8
+        building = Path(project) / "buildings" / "edited.tbx"
+        _add_lot(project, "edited.tbx", tx, 20, 20, 12, 0)
+        building.write_text(render_tbx(build_plan(20, 12, kind="military", ground=False, seed=2),
+                                       "edited"), encoding="utf-8")
+        compile_rust(project, workers=1)
+        before = lot_hashes(Path(project) / "lots")
+
+        # Different dimensions and kind change both room tables and tile stacks.
+        building.write_text(render_tbx(build_plan(26, 14, kind="house", ground=False, seed=4),
+                                       "edited"), encoding="utf-8")
+        phases = []
+        compile_rust(project, workers=1, on_phase=lambda text, _: phases.append(text))
+        partial = lot_hashes(Path(project) / "lots")
+        self.assertNotEqual(before, partial)
+        self.assertIn("Writing lot files: 0 of 2 cells", phases)
+        compile_map(project, workers=1, backend="rust", fresh=True)
+        self.assertEqual(partial, lot_hashes(Path(project) / "lots"))
+
+    def test_corrupt_output_forces_full_recompile(self):
+        from pathlib import Path
+
+        project = self._copy("corrupt")
+        lots = Path(project) / "lots"
+        compile_rust(project, workers=1)
+        expected = lot_hashes(lots)
+        (lots / next(iter(expected))).write_bytes(b"corrupted")
+        phases = []
+        compile_rust(project, workers=1, on_phase=lambda text, _: phases.append(text))
+        self.assertIn(f"Writing lot files: 0 of {len(expected) // 3} cells", phases)
+        self.assertEqual(lot_hashes(lots), expected)
+
     def test_a_basement_lot_compiles_to_level_minus_1(self):
         project = self._copy("one")
         name, tx, ty, _lv, w, h = read_lots(project)[0]
