@@ -483,7 +483,7 @@ def _place_windows(building: "Building", kind: str | None,
         # window below it takes that column first, and the even spacing fills
         # whatever is left.
         under = set(building.storeys[level - 1].windows) if level else set()
-        blocked = set(getattr(storey, "wall_pieces", set())) | storey.party
+        wall_edges = set(getattr(storey, "wall_pieces", set()))
         # Every tile of whatever hangs on a wall, not only the one it is anchored
         # on: wall_pieces holds one edge per piece, so a three-tile whiteboard
         # kept a window off its first tile and had one through the other two.
@@ -493,7 +493,14 @@ def _place_windows(building: "Building", kind: str | None,
                     cells = _cells_for(role, fx, fy, fd)
                 except KeyError:
                     cells = [(fx, fy)]
-                blocked |= {_wall_edge(cx, cy, fd) for cx, cy in cells}
+                wall_edges |= {_wall_edge(cx, cy, fd) for cx, cy in cells}
+        blocked = set(wall_edges) | storey.party
+        if house_like:
+            # Shuttered windows extend onto the adjacent wall tile on either
+            # side, so keep them at least one tile clear of wall decor too.
+            for ex, ey, ed in wall_edges:
+                blocked.add((ex - 1, ey, ed) if ed == "N" else (ex, ey - 1, ed))
+                blocked.add((ex + 1, ey, ed) if ed == "N" else (ex, ey + 1, ed))
         # Edges with a dresser, shelf or lamp behind them. A window there has
         # its square cleared, and in a full room the piece has nowhere else
         # to go and is thrown away: nine in ten of the pieces the clear-up
@@ -3324,6 +3331,27 @@ def _off_the_doorways(storey: Plan) -> int:
     return len(gone)
 
 
+def _off_the_windows(storey: Plan) -> int:
+    """Drop non-switch wall decor that overlaps a window edge."""
+    if not storey.windows:
+        return 0
+    win_edges = set(storey.windows)
+    gone: set[int] = set()
+    for i, (role, fx, fy, fd) in enumerate(storey.furniture):
+        if role == SWITCH or not _is_wall_piece(role):
+            continue
+        try:
+            cells = _cells_for(role, fx, fy, fd)
+        except KeyError:
+            cells = [(fx, fy)]
+        if any(_wall_edge(cx, cy, fd) in win_edges for cx, cy in cells):
+            gone.add(i)
+    if gone:
+        storey.furniture = [f for i, f in enumerate(storey.furniture)
+                            if i not in gone]
+    return len(gone)
+
+
 def _clear_the_way(building: "Building") -> int:
     """Take out whatever stands between a doorway and the rooms behind it.
 
@@ -3336,6 +3364,7 @@ def _clear_the_way(building: "Building") -> int:
     stairs = building.stairs[0] if building.stairs else None
     for level, storey in enumerate(building.storeys):
         _make_way_for_windows(storey, stairs)
+        removed += _off_the_windows(storey)
         starts = _ways_in(building, level, storey)
         if not starts:
             continue

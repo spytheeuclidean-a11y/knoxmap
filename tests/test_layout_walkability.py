@@ -65,6 +65,31 @@ class FurnishedRoomWalkability(unittest.TestCase):
         self.assertGreater(removed, 0)
         self.assertLess(len(plan.furniture), len(furniture))
 
+    def test_shuttered_house_windows_keep_clear_of_wall_decor_and_strip_overlaps(self):
+        room = layout.Room(0, 0, 5, 3, kind="livingroom")
+        plan = layout.Plan(
+            6, 4, rooms=[room], grid=[[1] * 6 for _ in range(4)],
+            doors=[(0, 2, "W")],
+            furniture=[("painting", 2, 0, "N"), ("switch", 1, 3, "N")],
+        )
+        building = layout.Building(6, 4, storeys=[plan])
+
+        layout._place_windows(building, "house")
+        # Shuttered house windows must not land on or immediately adjacent to
+        # the painting at (2, 0, "N") -> (1, 0, "N"), (2, 0, "N"), (3, 0, "N").
+        for wx, wy, wd in plan.windows:
+            if wd == "N" and wy == 0:
+                self.assertGreater(abs(wx - 2), 1)
+
+        # If wall decor ever overlaps a placed window edge, _clear_the_way removes it
+        # while preserving light switches.
+        plan.windows.append((2, 0, "N"))
+        plan.windows.append((1, 3, "N"))
+        layout._clear_the_way(building)
+        roles = [f[0] for f in plan.furniture]
+        self.assertNotIn("painting", roles)
+        self.assertIn("switch", roles)
+
 
 class NothingIsWalledOffByTheLift(unittest.TestCase):
     """A lift shaft is sealed, so what it stands across is a wall.

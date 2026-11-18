@@ -394,6 +394,8 @@ def _dress_non_home_surroundings(
         if bw < 3 or bh < 3:
             continue
         doors = door_lists.get(row["file"], [])
+        tbx_file = os.path.join(out_dir, "buildings", row["file"])
+        window_tiles = {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)} if os.path.isfile(tbx_file) else set()
         nrng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0xA5A5A5A5)
         bin_spots: list[tuple[int, int]] = []
 
@@ -407,7 +409,7 @@ def _dress_non_home_surroundings(
                     sides = [(-2, 2), (2, -2)]
                     for k in nrng.choice(sides) + (-3, 3):
                         bx_, by_ = sx + px * k, sy + py * k
-                        if place_veg(bx_, by_, C.BIN):
+                        if (bx_, by_) not in window_tiles and place_veg(bx_, by_, C.BIN):
                             bin_spots.append((bx_, by_))
                             break
                 if bench_ready and kind in _NON_HOME_BENCH_KINDS and nrng.random() < 0.75:
@@ -416,6 +418,8 @@ def _dress_non_home_surroundings(
                         ax, ay = sx + px * k, sy + py * k
                         bx_, by_ = ax + px, ay + py
                         if (can_veg(ax, ay) and can_veg(bx_, by_)
+                                and (ax, ay) not in window_tiles
+                                and (bx_, by_) not in window_tiles
                                 and is_paved(ax, ay) and is_paved(bx_, by_)):
                             veg[ay, ax] = bench[0]
                             veg[by_, bx_] = bench[1]
@@ -447,7 +451,7 @@ def _dress_non_home_surroundings(
                 run_len = nrng.randint(2, 5)
                 colour = C.FLOWERS if nrng.random() < 0.30 else C.BUSHES
                 for x, y in candidates[i:i + run_len]:
-                    if (x, y) in cand_set:
+                    if (x, y) in cand_set and not (colour == C.BUSHES and (x, y) in window_tiles):
                         place_veg(x, y, colour)
                 i += run_len + nrng.randint(1, 3)
 
@@ -489,9 +493,6 @@ def _dress_non_home_surroundings(
                 door_walls.add("E")
             elif ox - ix < 0:
                 door_walls.add("W")
-
-        tbx_file = os.path.join(out_dir, "buildings", row["file"])
-        window_tiles = {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)} if os.path.isfile(tbx_file) else set()
 
         service_ring = []
         if "S" not in door_walls:
@@ -864,13 +865,33 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     veg_base = os.path.join(out_dir, f"{map_name}_veg_base.bmp")
     if not os.path.exists(bmp):
         return 0, []
+    from .bitmaps import _bmp_header
+    occ_h, occ_w = occupied.shape[:2]
+
+    def _dims(p):
+        hdr = _bmp_header(p)
+        return (hdr[0], hdr[1]) if hdr else None
+
     if not os.path.exists(base):
         shutil.copyfile(bmp, base)
-    if os.path.exists(veg_path) and not os.path.exists(veg_base):
-        shutil.copyfile(veg_path, veg_base)
-    ground = read_rgb(base)
-    veg = read_rgb(veg_base) if os.path.exists(veg_base) else None
+    elif _dims(base) != (occ_w, occ_h) and _dims(bmp) == (occ_w, occ_h):
+        shutil.copyfile(bmp, base)
+    if os.path.exists(veg_path):
+        if not os.path.exists(veg_base):
+            shutil.copyfile(veg_path, veg_base)
+        elif _dims(veg_base) != (occ_w, occ_h) and _dims(veg_path) == (occ_w, occ_h):
+            shutil.copyfile(veg_path, veg_base)
+    ground = read_rgb(base, crop=(occ_h, occ_w))
+    veg = read_rgb(veg_base, crop=(occ_h, occ_w)) if os.path.exists(veg_base) else None
     h, w = ground.shape[:2]
+    if veg is not None and veg.shape[:2] != (h, w):
+        veg = veg[:h, :w] if veg.shape[0] >= h and veg.shape[1] >= w else None
+    if (occ_h, occ_w) == (h, w):
+        occ = occupied
+    else:
+        occ = np.zeros((h, w), dtype=bool)
+        ch, cw = min(h, occ_h), min(w, occ_w)
+        occ[:ch, :cw] = occupied[:ch, :cw]
 
     def match(colours):
         mask = np.zeros((h, w), dtype=bool)
@@ -881,7 +902,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     paved = match(PAVED)
     road = match((C.DARK_ASPHALT, C.MEDIUM_ASPHALT, C.LIGHT_ASPHALT,
                   C.DARKEST_ASPHALT, C.DARK_POTHOLE, C.LIGHT_POTHOLE))
-    crossable = match(CROSSABLE) & ~occupied
+    crossable = match(CROSSABLE) & ~occ
     # Painted for some house already. One block of memory seen two ways: as an
     # array for the whole-map work, and as bytes for the tile-at-a-time loops
     # below, where reading a numpy element costs several times what a list
@@ -889,11 +910,13 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     # indexed y * w + x.
     claimed_bytes = bytearray(h * w)
     claimed = np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w)
-    crossable_at = crossable.ravel().tolist()
-    paved_at = paved.ravel().tolist()
-    occupied_at = np.asarray(occupied, dtype=bool).ravel().tolist()
-    road_at = road.ravel().tolist()
-    walkable_at = ((crossable | paved | road) & ~occupied).ravel().tolist()
+    crossable_at = bytearray(crossable.astype(np.uint8, copy=False).tobytes())
+    paved_at = bytearray(paved.astype(np.uint8, copy=False).tobytes())
+    occupied_at = bytearray(np.asarray(occ, dtype=np.uint8).tobytes())
+    road_at = bytearray(road.astype(np.uint8, copy=False).tobytes())
+    walkable_at = bytearray(((crossable | paved | road) & ~occ).astype(np.uint8, copy=False).tobytes())
+    del paved, road
+    crossable = np.frombuffer(crossable_at, dtype=bool).reshape(h, w)
     # Drives the terrain laid already, read before any are painted here.
     laid = same_colour(ground, C.DARK_ASPHALT)
 
@@ -986,6 +1009,12 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 lights.append((lx, ly, 0, PORCH_LIGHT_LAYER, style[side]))
                 break
 
+        tbx_file = os.path.join(out_dir, "buildings", row["file"])
+        window_tiles = (
+            {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)}
+            if os.path.isfile(tbx_file) else set()
+        )
+
         # The drive: beside the house, from the street past the front wall.
         # Ahead of the path, so that a house far back from the street can walk
         # to its own drive.
@@ -1040,7 +1069,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                     drives.append((min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1))
                 # The dustbin at the top of the drive, on the lawn beside it.
                 bx, by = strip[0]
-                put(bx - px, by - py, C.BIN)
+                if (bx - px, by - py) not in window_tiles:
+                    put(bx - px, by - py, C.BIN)
                 break
 
         frng = random.Random((bx0 * 2654435761) ^ (by0 * 2246822519) ^ 0x517CC1B7)
@@ -1090,7 +1120,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             bed_colour = C.FLOWERS if frng.random() < 0.55 else C.BUSHES
             for k in (-2, 2, -3, 3):
                 fx, fy = sx + px * k, sy + py * k
-                if free(fx, fy) and tuple(ground[fy, fx]) not in LAWNLESS:
+                if (free(fx, fy) and tuple(ground[fy, fx]) not in LAWNLESS
+                        and not (bed_colour == C.BUSHES and (fx, fy) in window_tiles)):
                     put(fx, fy, bed_colour)
         # The mailbox, beside the path where it reaches the street.
         if home and walk and (end is not None and end not in drive_tiles or primary in merged):
@@ -1345,6 +1376,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 and not (sx - 2 <= x <= sx + 2 and sy - 2 <= y <= sy + 2)
                 and free(x, y) and tuple(ground[y, x]) in CROSSABLE
                 and tuple(veg[y, x]) == C.VEG_NOTHING
+                and (x, y) not in window_tiles
             ]
             if side_wall:
                 import math
@@ -1459,16 +1491,16 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     # Give non-home buildings a modest concrete apron hugging their walls
     # after all doorway walks and industrial tarmac yards are placed.
     for bx0, by0, bw, bh in apron_boxes:
-        _pave_building_apron(bx0, by0, bw, bh, occupied, w, h, free, paint)
+        _pave_building_apron(bx0, by0, bw, bh, occ, w, h, free, paint)
 
     if veg is not None:
         _dress_non_home_surroundings(
             rows, door_lists, out_dir, ground, veg, w, h,
-            occupied, road_at, paved_at, free, fronts,
+            occ, road_at, paved_at, free, fronts,
         )
         _dress_open_yards(
             rows, door_lists, ground, veg, w, h,
-            occupied, road_at, free, fronts,
+            occ, road_at, free, fronts,
         )
 
     if veg is not None and fronts:
@@ -1478,7 +1510,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 veg[y, x] = C.VEG_NOTHING
     # The credit for KnoxMap, in the ground near the first spawn house.
     from . import credit_ground
-    clear = (match(CROSSABLE) & ~occupied
+    clear = (match(CROSSABLE) & ~occ
              & ~np.frombuffer(claimed_bytes, dtype=bool).reshape(h, w))
     where = credit_ground.paint(ground, veg, clear, rows)
     print(f"credit lettering     : " + (f"at tile {where[0]},{where[1]}" if where else "no clear patch"))

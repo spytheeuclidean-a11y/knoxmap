@@ -64,6 +64,9 @@ class _SubProjector:
     def to_latlon(self, px: float, py: float) -> tuple[float, float]:
         return self._parent.to_latlon(px + self.offset_x, py + self.offset_y)
 
+    def to_latlon_many(self, px, py):
+        return self._parent.to_latlon_many(px + self.offset_x, py + self.offset_y)
+
     def cell_grid(self) -> tuple[int, int]:
         return self.width // C.CELL_SIZE, self.height // C.CELL_SIZE
 
@@ -194,6 +197,7 @@ def render_chunked(
     elevation_span=None,
     should_stop=None,
     progress=None,
+    render_progress=None,
     chunk_cells: int = CHUNK_CELLS,
     halo_tiles: int = HALO_TILES,
 ):
@@ -207,6 +211,8 @@ def render_chunked(
     fp = forest_params or ForestParams(stand_m=forest_stand_m, edge_m=forest_edge_m)
 
     feats = [copy.copy(f) for f in features]
+    if render_progress:
+        render_progress(0.05, "Preparing roads")
     road_layout = int(straight_roads or 0)
     if road_layout == 0:
         from .mapped_roads import clean_mapped_roads
@@ -224,6 +230,8 @@ def render_chunked(
         knoxfiles.write(graph_path(output_dir, map_name), graph)
         apply_road_graph(feats, graph, full_proj)
 
+    if render_progress:
+        render_progress(0.25, "Squaring parking & collecting features")
     from .rendering.parking import square_parking_lots
     square_parking_lots(feats, full_proj, classify, _is_polygon)
 
@@ -246,6 +254,8 @@ def render_chunked(
             b_feats_g = b_feats_g + addressed
             buckets_g["building"] = buckets_g.get("building", []) + addressed
         if fill_frontage:
+            if render_progress:
+                render_progress(0.45, "Placing infill buildings")
             infilled = _infill_frontage(
                 buckets_g, veg_g, b_feats_g,
                 full_proj, clip, extend_ends=(int(fill_frontage) != 2),
@@ -255,15 +265,21 @@ def render_chunked(
                 feats.extend(infilled)
                 b_feats_g = b_feats_g + infilled
                 buckets_g["building"] = buckets_g.get("building", []) + infilled
+        if render_progress:
+            render_progress(0.65, "Placing back sheds")
         sheds = _back_sheds(buckets_g, veg_g, b_feats_g, full_proj, clip)
         if sheds:
             sheds_infilled = len(sheds)
             feats.extend(sheds)
 
+    if render_progress:
+        render_progress(0.78, "Fitting railways")
     from .rendering.rails import global_rail_sections
     rail_feats = [f for f in feats if classify(f.tags, _is_polygon(f)) == "railway"]
     rail_sections_global = global_rail_sections(rail_feats, full_proj, should_stop=should_stop)
 
+    if render_progress:
+        render_progress(0.90, "Indexing feature bounds")
     bboxes = [_feature_px_bbox(f, full_proj) for f in feats]
 
     os.makedirs(output_dir, exist_ok=True)

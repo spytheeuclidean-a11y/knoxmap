@@ -1107,6 +1107,7 @@ def _make_all(jobs: list[tuple], tick=None, should_stop=None,
         pending = {pool.submit(make_batch, jobs[s:s + MAKE_BATCH]): s
                    for s in range(0, len(jobs), MAKE_BATCH)}
         last_tick = 0
+        last_tick_at = time.monotonic()
         while pending:
             # Woken at least every second, so a stop is seen while the big
             # buildings are still being made.
@@ -1115,8 +1116,10 @@ def _make_all(jobs: list[tuple], tick=None, should_stop=None,
                 start = pending.pop(fut)
                 for k, result in enumerate(fut.result()):
                     keep(start + k, result)
-            if tick and done - last_tick >= 25:
+            if tick and done > last_tick and (
+                    done - last_tick >= 25 or time.monotonic() - last_tick_at >= 2.0):
                 last_tick = done
+                last_tick_at = time.monotonic()
                 tick(done, len(jobs))
             knoxstop.check(should_stop, "the buildings")
         pool.shutdown()

@@ -364,7 +364,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            winter_look: str = "auto",
            elevation=None,
            elevation_span=None,
-           should_stop=None, progress=None,
+           should_stop=None, progress=None, render_progress=None,
            _proj_override=None,
            _skip_road_layout: bool = False,
            _skip_infill: bool = False,
@@ -389,7 +389,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             landcover_for=landcover_for, climate=climate,
             winter_look=winter_look, elevation=elevation,
             elevation_span=elevation_span, should_stop=should_stop,
-            progress=progress,
+            progress=progress, render_progress=render_progress,
         )
     from .rendering.forest_params import ForestParams
     # The Forest card's knobs. Callers that only know Stand size and Edge
@@ -428,6 +428,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         from .rendering.parking import square_parking_lots
         square_parking_lots(features, proj, classify, _is_polygon)
     t_render0 = time.perf_counter()
+    if render_progress:
+        render_progress(0.15, "Drawing ground")
     # A drawn polygon, circle or real outline rather than a rectangle: the map
     # still covers its bounding box in whole cells, but only what lies inside
     # the shape is built.
@@ -697,6 +699,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
 
     t_ground = time.perf_counter()
     knoxstop.check(should_stop, "the terrain")
+    if render_progress:
+        render_progress(0.55, "Drawing vegetation")
     # The woods the mapper drew take both dials; the gardens and the scrub
     # over open ground take the overall one only.
     _paint_vegetation(vegetation, landscape, vegetation_feats, proj,
@@ -754,6 +758,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                      density=tree_density, wood_mult=fp.big_trees)
     _clear_building_vegetation(vegetation, building_feats, proj)
     t_veg = time.perf_counter()
+    if render_progress:
+        render_progress(0.78, "Drawing details")
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj,
                         smooth_edges=(road_layout != 5))
@@ -762,6 +768,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     # where it has something to serve.
     _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask)
     t_details = time.perf_counter()
+    if render_progress:
+        render_progress(0.90, "Saving bitmaps")
     # Nothing grows through a deck or a ramp, and no lamp stands on one.
     veg_px = vegetation.load()
     for x, y in lifted.clear_veg:

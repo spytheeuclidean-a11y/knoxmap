@@ -92,6 +92,17 @@ const fx = (() => {
   let clockTimer = null;
   let started = 0;
 
+  function formatLeft(seconds) {
+    const mins = Math.max(1, Math.round(seconds / 60));
+    if (mins < 60) return `${mins} min`;
+    return `${Math.floor(mins / 60)} h ${mins % 60} min`;
+  }
+
+  function setEta(etaSeconds) {
+    const el = $('#gen-eta');
+    if (el) el.textContent = etaSeconds ? ` · ~${formatLeft(etaSeconds)} left` : '';
+  }
+
   const overlay = {
     show() {
       const el = $('#gen-overlay');
@@ -99,6 +110,7 @@ const fx = (() => {
       $('.gen-kicker', el).textContent = 'Generating terrain';
       $('#gen-stage').textContent = 'Contacting OpenStreetMap…';
       $('#gen-detail').textContent = '';
+      setEta(0);
       $('#gen-bar').parentElement.classList.remove('is-indeterminate');
       $('#gen-bar').style.width = '4%';
       started = Date.now();
@@ -110,6 +122,7 @@ const fx = (() => {
     },
     update(p) {
       $('#gen-bar').parentElement.classList.toggle('is-indeterminate', p.stage === 'osm' && p.total === 0);
+      setEta(p && p.etaSeconds);
       if (p.stage === 'osm') {
         const total = p.total || 1;
         const done = p.done || 0;
@@ -130,8 +143,12 @@ const fx = (() => {
         $('#gen-bar').style.width = `${Math.round(82 + 17 * done / total)}%`;
       } else if (p.stage === 'render') {
         $('#gen-stage').textContent = 'Drawing the terrain';
-        $('#gen-detail').textContent = `${(p.features || 0).toLocaleString()} features`;
-        $('#gen-bar').style.width = '82%';
+        const featText = `${(p.features || 0).toLocaleString()} features`;
+        $('#gen-detail').textContent = p.note ? `${featText} · ${p.note}` : featText;
+        const pct = typeof p.fraction === 'number' && p.fraction > 0 && p.fraction < 1
+          ? Math.round(70 + 28 * p.fraction)
+          : 82;
+        $('#gen-bar').style.width = `${pct}%`;
       }
     },
     done(summary) {
@@ -139,6 +156,7 @@ const fx = (() => {
       $('.gen-kicker').textContent = 'Done';
       $('#gen-stage').textContent = summary || '';
       $('#gen-detail').textContent = '';
+      setEta(0);
       $('#gen-bar').style.width = '100%';
       this.hide(600);
     },
@@ -148,6 +166,7 @@ const fx = (() => {
       const shown = i18n.t(message);
       $('#gen-stage').textContent = shown.length > 160 ? shown.slice(0, 157) + '…' : shown;
       $('#gen-detail').textContent = '';
+      setEta(0);
       this.hide(2500);
     },
     hide(delay = 0) {
