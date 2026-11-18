@@ -105,6 +105,7 @@
     "knoxbuild/buildroofs.py",
     "knoxbuild/buildtiles.py",
     "knoxbuild/catalog.py",
+    "knoxbuild/chunked_build.py",
     "knoxbuild/context.py",
     "knoxbuild/credit_ground.py",
     "knoxbuild/credits.py",
