@@ -90,8 +90,7 @@ def build_building(width: int, height: int, levels: int = 1,
         # folded into, so the strip has to be a room of its own or nothing.
         small = min(width, height) < CORE_WIDE + 2 * MIN_ROOM
         core = _pick_core(width, height, mask, rng, street,
-                          min_gap=MIN_ROOM if kind in HOUSE_LIKE_KINDS and small else 1,
-                          hug_wall=hug_wall and levels < ELEVATOR_FROM_LEVELS)
+                          min_gap=MIN_ROOM if kind in HOUSE_LIKE_KINDS and small else 1)
     if levels > 1 and core is None:
         levels = 1          # nowhere to put a staircase, so one floor it is
 
