@@ -12,6 +12,7 @@ on top (an outer wall stands on grass).
 """
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -25,7 +26,7 @@ import knoxlog  # noqa: E402
 import knoxstop  # noqa: E402
 from knoxbuild import bitmaps  # noqa: E402
 from knoxbuild.blends import blend_layers, load_blends  # noqa: E402
-from knoxbuild.buildheader import cell_tables, placed_rooms  # noqa: E402
+from knoxbuild.buildheader import cell_tables, group_buildings_by_row, placed_rooms  # noqa: E402
 from knoxbuild.buildtiles import compose_lots, parse_tbx, parse_tbx_rooms, tile_name  # noqa: E402
 from knoxbuild.kcell import SIDE, cell_source  # noqa: E402
 from knoxbuild.rules import load_rules  # noqa: E402
@@ -72,23 +73,36 @@ GB_PER_ROW_WORKER = 1
 MARGIN = 8     # tiles a building's output can reach past the lot the project gives it
 
 
-def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, seams: bool,
-         size: tuple[int, int]) -> int:
+def _row(project: str, out: str, cy: int, band: list[tuple], room_columns, seed: int, seams: bool,
+         size: tuple[int, int], columns=None, track=False) -> int:
     """Write the cell sources of one row of cells. `band` holds the lots that reach the row,
     (name, tx, ty, base level), in project order: a square's tiles depend only on the lots
-    covering it, so these are all the row needs."""
+    covering it. `room_columns` holds the room-table inputs owned by this row,
+    keyed by compiled cell column."""
     name = os.path.basename(os.path.normpath(project))
     land_path = os.path.join(project, f"{name}.bmp")
     veg_path = os.path.join(project, f"{name}_veg.bmp")
     w, h = size
     origin = project_origin(project)
     ox, oy = origin
+    # A window opened before a local update may still submit the old list.
+    if isinstance(room_columns, list):
+        room_columns = group_buildings_by_row(room_columns, origin).get(cy, {})
     rules_file = rules_path()
     rules = load_rules(rules_file)
     blends = load_blends(os.path.join(os.path.dirname(rules_file), "Blends.txt"))
     parsed = [(parse_tbx(_read_text(os.path.join(project, "buildings", f"{t}.tbx"))),
                tx, ty, lv) for t, tx, ty, lv in band]
-    world = compose_lots(parsed)
+    footprints = {}
+    wy0 = cy * SIDE - oy
+
+    def remember(lot, points):
+        name_, tx, ty, _ = band[lot]
+        columns_ = footprints.setdefault(name_, set())
+        columns_.update((tx + x + ox) // SIDE for x, y in points
+                        if wy0 <= ty + y < wy0 + SIDE)
+
+    world = compose_lots(parsed, remember if track else None)
     room_squares = set()
     for b, tx, ty, base in parsed:
         for z, floor in enumerate(b.floors):
@@ -103,7 +117,8 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
     y_lo, y_hi = max(wy0 - 1, 0), min(wy0 + SIDE + 1, h)
     land_strip = bitmaps.read_rgb_rows(land_path, y_lo, y_hi, w)
     veg_strip = bitmaps.read_rgb_rows(veg_path, y_lo, y_hi, w)
-    for cx in range(ox // SIDE, (ox + w - 1) // SIDE + 1):
+    cxs = range(ox // SIDE, (ox + w - 1) // SIDE + 1)
+    for cx in cxs if columns is None else columns:
         wx0 = cx * SIDE - ox
         win = SIDE + 2
         lw = np.zeros((win, win, 3), np.uint8)
@@ -147,7 +162,7 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
         # A building's rooms are listed in the cell of its north-west corner,
         # which need not hold a square of its basement: the cell's levels
         # cover what its room table names as well as its squares.
-        rooms, buildings = cell_tables(cx, cy, placed, origin)
+        rooms, buildings = cell_tables(cx, cy, room_columns.get(cx, []), origin)
         levels_used = [z for _, _, z in stacks] + [r["z"] for r in rooms]
         min_z = min(min(levels_used, default=0), 0)
         nlev = max(levels_used, default=0) + 1 - min_z
@@ -168,6 +183,9 @@ def _row(project: str, out: str, cy: int, band: list[tuple], placed, seed: int, 
         with open(os.path.join(out, f"cell_{cx}_{cy}.kcell"), "wb") as f:
             f.write(data)
         written += 1
+    if track:
+        with open(os.path.join(out, f"footprints_{cy}.json"), "w", encoding="utf-8") as f:
+            json.dump({name_: sorted(set(cxs) & xs) for name_, xs in footprints.items() if xs}, f)
     return written
 
 
@@ -235,7 +253,7 @@ def _row_done(out: str, cy: int) -> str:
 
 def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                     workers: int | None = None, should_stop=None, on_row=None, on_start=None,
-                    resume: bool = False) -> int:
+                    resume: bool = False, select_cells=None, track=False) -> int:
     """Write the cell sources of a map into `out`, one process per row of cells.
 
     Each finished row is marked in `out`. With `resume`, the rows a stopped or
@@ -262,9 +280,13 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
         parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
             read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
         kept = [(t, (b, tx, ty, lv)) for (t, *_), (b, tx, ty, lv) in zip(lots, parsed) if b.floors]
-        placed = placed_rooms([lot for _t, lot in kept])
+        room_rows = group_buildings_by_row(placed_rooms([lot for _t, lot in kept]), origin)
         reach = [(b.width, b.height) for b, *_ in parsed]
         del parsed, kept
+
+        selection = select_cells(room_rows, origin, (w, h)) if select_cells else None
+        if selection is not None:
+            todo = [cy for cy in todo if cy in selection]
 
         if on_start:
             on_start()
@@ -287,12 +309,16 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
             for n, cy in enumerate(todo, 1):
                 if should_stop and should_stop():
                     raise knoxstop.Stopped("the compile")
-                written += _row(project, out, cy, bands[cy], placed, seed, seams, (w, h))
+                written += _row(project, out, cy, bands[cy], room_rows.get(cy, {}), seed, seams, (w, h),
+                                selection.get(cy) if selection is not None else None, track)
                 finished(cy, n)
         else:
             pool = futures.ProcessPoolExecutor(max_workers=workers)
-            jobs = {pool.submit(_row, project, out, cy, bands[cy], placed, seed, seams, (w, h)): cy
-                    for cy in todo}
+            jobs = {
+                pool.submit(_row, project, out, cy, bands[cy], room_rows.get(cy, {}),
+                            seed, seams, (w, h), selection.get(cy) if selection is not None else None, track): cy
+                for cy in todo
+            }
 
             def take(fut, cy: int) -> None:
                 nonlocal written
@@ -314,7 +340,8 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                         [c for c in todo if not os.path.exists(_row_done(out, c))], 1):
                     if should_stop and should_stop():
                         raise knoxstop.Stopped("the compile")
-                    written += _row(project, out, cy, bands[cy], placed, seed, seams, (w, h))
+                    written += _row(project, out, cy, bands[cy], room_rows.get(cy, {}), seed, seams, (w, h),
+                                selection.get(cy) if selection is not None else None, track)
                     finished(cy, n)
     name = os.path.basename(os.path.normpath(project))
     spawn = f"{name}_ZombieSpawnMap.bmp"

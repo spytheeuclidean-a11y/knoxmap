@@ -15,7 +15,8 @@ from knoxbuild.settings import Settings
 from knoxbuild.tbx import render_tbx
 from knoxbuild.world import Placement, render_pzw
 from tools.building_stats import read_header
-from tools.compile_map import compile_rust, knoxlots_exe
+from tools.compile_cells import lot_hashes, lot_names
+from tools.compile_map import compile_map, compile_rust, knoxlots_exe
 from tools.map_source import project_origin, read_lots
 
 from tests.basement_town import build_town
@@ -87,6 +88,82 @@ class BasementLotsCompile(unittest.TestCase):
         for f in glob.glob(os.path.join(project, "town*")):
             os.rename(f, os.path.join(project, name + os.path.basename(f)[4:]))
         return project
+
+    def test_moving_a_building_rebuilds_both_cells_and_matches_a_full_compile(self):
+        from pathlib import Path
+
+        project = self._copy("move")
+        ox, oy = project_origin(project)
+        boundary = (ox // SIDE + 1) * SIDE - ox
+        west = (ox // SIDE, 0)
+        east = (west[0] + 1, 0)
+        tx, ty = boundary - 20, 20
+        name = "moving.tbx"
+        plan = build_plan(10, 10, kind="military", ground=False, seed=2)
+        (Path(project) / "buildings" / name).write_text(render_tbx(plan, "moving"),
+                                                       encoding="utf-8")
+        _add_lot(project, name, tx, ty, 10, 10, 0)
+        self.assertEqual((oy + ty) // SIDE, west[1])
+        pzw = Path(project) / "move.pzw"
+        lots = Path(project) / "lots"
+        compile_rust(project, workers=1)
+        before = lot_hashes(lots)
+
+        layout = pzw.read_text(encoding="utf-8")
+        pattern = rf'(<lot x="){tx}(" y="{ty}"[^>]* map="buildings/{re.escape(name)}"/>)'
+        moved, count = re.subn(pattern, lambda m: f"{m[1]}{boundary + 4}{m[2]}", layout)
+        self.assertEqual(count, 1)
+        pzw.write_text(moved, encoding="utf-8")
+
+        phases = []
+        compile_rust(project, workers=1, on_phase=lambda text, _: phases.append(text))
+        self.assertIn("Writing lot files: 0 of 2 cells", phases)
+        partial = lot_hashes(lots)
+        changed = {name for name, digest in partial.items() if before.get(name) != digest}
+        self.assertEqual(partial.keys(), before.keys())
+        self.assertTrue(changed & lot_names({west}))
+        self.assertTrue(changed & lot_names({east}))
+        self.assertLessEqual(changed, lot_names({west, east}))
+
+        compile_map(project, workers=1, backend="rust", fresh=True)
+        self.assertEqual(lot_hashes(lots), partial)
+
+    def test_changed_building_across_cell_edge_matches_full_compile(self):
+        from pathlib import Path
+
+        project = self._copy("edited")
+        ox, _ = project_origin(project)
+        tx = (ox // SIDE + 1) * SIDE - ox - 8
+        building = Path(project) / "buildings" / "edited.tbx"
+        _add_lot(project, "edited.tbx", tx, 20, 20, 12, 0)
+        building.write_text(render_tbx(build_plan(20, 12, kind="military", ground=False, seed=2),
+                                       "edited"), encoding="utf-8")
+        compile_rust(project, workers=1)
+        before = lot_hashes(Path(project) / "lots")
+
+        # Different dimensions and kind change both room tables and tile stacks.
+        building.write_text(render_tbx(build_plan(26, 14, kind="house", ground=False, seed=4),
+                                       "edited"), encoding="utf-8")
+        phases = []
+        compile_rust(project, workers=1, on_phase=lambda text, _: phases.append(text))
+        partial = lot_hashes(Path(project) / "lots")
+        self.assertNotEqual(before, partial)
+        self.assertIn("Writing lot files: 0 of 2 cells", phases)
+        compile_map(project, workers=1, backend="rust", fresh=True)
+        self.assertEqual(partial, lot_hashes(Path(project) / "lots"))
+
+    def test_corrupt_output_forces_full_recompile(self):
+        from pathlib import Path
+
+        project = self._copy("corrupt")
+        lots = Path(project) / "lots"
+        compile_rust(project, workers=1)
+        expected = lot_hashes(lots)
+        (lots / next(iter(expected))).write_bytes(b"corrupted")
+        phases = []
+        compile_rust(project, workers=1, on_phase=lambda text, _: phases.append(text))
+        self.assertIn(f"Writing lot files: 0 of {len(expected) // 3} cells", phases)
+        self.assertEqual(lot_hashes(lots), expected)
 
     def test_a_basement_lot_compiles_to_level_minus_1(self):
         project = self._copy("one")
