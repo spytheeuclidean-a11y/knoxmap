@@ -80,16 +80,22 @@ def build_building(width: int, height: int, levels: int = 1,
         # library with a corridor through it is a third corridor.
         core = _pick_corridor(width, height, mask, rng,
                               CORRIDOR_WIDTHS if kind == "school" else NARROW_CORRIDOR_WIDTHS)
+    hug_wall = (
+        tcore is None
+        and kind != "mall"
+        and (kind != "industrial" or (width * height < 200 and min(width, height) < 12))
+    )
     if core is None and levels > 1:
         # A small house has no room for the strip beside its stairs to be
         # folded into, so the strip has to be a room of its own or nothing.
         small = min(width, height) < CORE_WIDE + 2 * MIN_ROOM
         core = _pick_core(width, height, mask, rng, street,
-                          min_gap=MIN_ROOM if kind in HOUSE_LIKE_KINDS and small else 1)
+                          min_gap=MIN_ROOM if kind in HOUSE_LIKE_KINDS and small else 1,
+                          hug_wall=hug_wall and levels < ELEVATOR_FROM_LEVELS)
     if levels > 1 and core is None:
         levels = 1          # nowhere to put a staircase, so one floor it is
 
-    stairs = _stairs_in_core(core) if core is not None and levels > 1 else None
+    stairs = _stairs_in_core(core, hug_wall=hug_wall) if core is not None and levels > 1 else None
     shaft = shaft_door = None
     if tcore is not None:
         shaft, shaft_door = tcore.lifts[0]
