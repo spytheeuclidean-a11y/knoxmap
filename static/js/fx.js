@@ -194,7 +194,12 @@ const fx = (() => {
   // ---- basemaps -------------------------------------------------------------
   function mapExtras() {
     if (typeof map === 'undefined') return;
-    const attribution = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+    // pywebview sends new-tab links to the system browser. Keep Leaflet's
+    // default attribution text and flag when changing its link target.
+    const external = 'target="_blank" rel="noopener noreferrer"';
+    const control = map.attributionControl;
+    control.setPrefix(control.options.prefix.replace('<a ', `<a ${external} `));
+    const attribution = `© <a href="https://www.openstreetmap.org/copyright" ${external}>OpenStreetMap</a> contributors`;
     const layers = {
       streets: L.tileLayer('/tiles/{z}/{x}/{y}.png', { maxZoom: 19, attribution }),
       // The same tiles, darkened in CSS.
