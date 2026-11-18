@@ -394,6 +394,8 @@ def _dress_non_home_surroundings(
         if bw < 3 or bh < 3:
             continue
         doors = door_lists.get(row["file"], [])
+        tbx_file = os.path.join(out_dir, "buildings", row["file"])
+        window_tiles = {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)} if os.path.isfile(tbx_file) else set()
         nrng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0xA5A5A5A5)
         bin_spots: list[tuple[int, int]] = []
 
@@ -407,7 +409,7 @@ def _dress_non_home_surroundings(
                     sides = [(-2, 2), (2, -2)]
                     for k in nrng.choice(sides) + (-3, 3):
                         bx_, by_ = sx + px * k, sy + py * k
-                        if place_veg(bx_, by_, C.BIN):
+                        if (bx_, by_) not in window_tiles and place_veg(bx_, by_, C.BIN):
                             bin_spots.append((bx_, by_))
                             break
                 if bench_ready and kind in _NON_HOME_BENCH_KINDS and nrng.random() < 0.75:
@@ -416,6 +418,8 @@ def _dress_non_home_surroundings(
                         ax, ay = sx + px * k, sy + py * k
                         bx_, by_ = ax + px, ay + py
                         if (can_veg(ax, ay) and can_veg(bx_, by_)
+                                and (ax, ay) not in window_tiles
+                                and (bx_, by_) not in window_tiles
                                 and is_paved(ax, ay) and is_paved(bx_, by_)):
                             veg[ay, ax] = bench[0]
                             veg[by_, bx_] = bench[1]
@@ -447,7 +451,7 @@ def _dress_non_home_surroundings(
                 run_len = nrng.randint(2, 5)
                 colour = C.FLOWERS if nrng.random() < 0.30 else C.BUSHES
                 for x, y in candidates[i:i + run_len]:
-                    if (x, y) in cand_set:
+                    if (x, y) in cand_set and not (colour == C.BUSHES and (x, y) in window_tiles):
                         place_veg(x, y, colour)
                 i += run_len + nrng.randint(1, 3)
 
@@ -489,9 +493,6 @@ def _dress_non_home_surroundings(
                 door_walls.add("E")
             elif ox - ix < 0:
                 door_walls.add("W")
-
-        tbx_file = os.path.join(out_dir, "buildings", row["file"])
-        window_tiles = {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)} if os.path.isfile(tbx_file) else set()
 
         service_ring = []
         if "S" not in door_walls:
@@ -1008,6 +1009,12 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 lights.append((lx, ly, 0, PORCH_LIGHT_LAYER, style[side]))
                 break
 
+        tbx_file = os.path.join(out_dir, "buildings", row["file"])
+        window_tiles = (
+            {(bx0 + wx, by0 + wy) for wx, wy in _outside_windows(tbx_file)}
+            if os.path.isfile(tbx_file) else set()
+        )
+
         # The drive: beside the house, from the street past the front wall.
         # Ahead of the path, so that a house far back from the street can walk
         # to its own drive.
@@ -1062,7 +1069,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                     drives.append((min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1))
                 # The dustbin at the top of the drive, on the lawn beside it.
                 bx, by = strip[0]
-                put(bx - px, by - py, C.BIN)
+                if (bx - px, by - py) not in window_tiles:
+                    put(bx - px, by - py, C.BIN)
                 break
 
         frng = random.Random((bx0 * 2654435761) ^ (by0 * 2246822519) ^ 0x517CC1B7)
@@ -1112,7 +1120,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             bed_colour = C.FLOWERS if frng.random() < 0.55 else C.BUSHES
             for k in (-2, 2, -3, 3):
                 fx, fy = sx + px * k, sy + py * k
-                if free(fx, fy) and tuple(ground[fy, fx]) not in LAWNLESS:
+                if (free(fx, fy) and tuple(ground[fy, fx]) not in LAWNLESS
+                        and not (bed_colour == C.BUSHES and (fx, fy) in window_tiles)):
                     put(fx, fy, bed_colour)
         # The mailbox, beside the path where it reaches the street.
         if home and walk and (end is not None and end not in drive_tiles or primary in merged):
@@ -1367,6 +1376,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 and not (sx - 2 <= x <= sx + 2 and sy - 2 <= y <= sy + 2)
                 and free(x, y) and tuple(ground[y, x]) in CROSSABLE
                 and tuple(veg[y, x]) == C.VEG_NOTHING
+                and (x, y) not in window_tiles
             ]
             if side_wall:
                 import math

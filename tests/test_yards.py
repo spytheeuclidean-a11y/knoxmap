@@ -419,7 +419,7 @@ class MultiDoorAndInfillFrontPaths(unittest.TestCase):
                 C.DUMPSTER_ORANGE_S0, C.DUMPSTER_ORANGE_S1,
             }
             for wx in range(11, 16):
-                self.assertNotIn(tuple(after[16, wx]), dumpster_cols)
+                self.assertNotIn(tuple(after[16, wx]), dumpster_cols | {C.BUSHES, C.BIN})
 
     def test_paint_paths_handles_mismatched_ground_base_shape(self):
         with tempfile.TemporaryDirectory() as out:
