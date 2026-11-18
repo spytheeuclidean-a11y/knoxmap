@@ -12,7 +12,9 @@ on top (an outer wall stands on grass).
 """
 from __future__ import annotations
 
+import array
 import functools
+import gc
 import json
 import os
 import re
@@ -68,7 +70,17 @@ def _free_gb() -> float:
 
 
 # A row worker peaked near 600 MB on a 418-cell town (West_Union, 196 lots in its widest row).
-GB_PER_ROW_WORKER = 1
+GB_PER_ROW_WORKER = 1.5
+MAX_WORKERS = 6
+
+
+def _default_workers() -> int:
+    """Cap default workers to half the CPU cores (max 6) and available RAM so
+    compiling stays responsive without saturating the machine."""
+    cpus = os.cpu_count() or 2
+    by_cpu = max(1, min(MAX_WORKERS, cpus // 2))
+    by_ram = max(1, int(_free_gb() // GB_PER_ROW_WORKER) or 1)
+    return max(1, min(by_cpu, by_ram))
 
 
 MARGIN = 8     # tiles a building's output can reach past the lot the project gives it
@@ -217,17 +229,19 @@ def _row(project: str, out: str, cy: int, band: list[tuple], room_columns, seed:
         depth = max((len(st) for st in stacks.values()), default=1)
         names: list[str] = []
         index: dict[str, int] = {}
-        py_arrays = [[[0] * SIDE for _ in range(SIDE)] for _ in range(nlev * depth)]
+        py_arrays = [array.array("I", [0]) * (SIDE * SIDE) for _ in range(nlev * depth)]
         for (xx, yy, z), st in stacks.items():
             base_idx = (z - min_z) * depth
+            off = yy * SIDE + xx
             for k, t in enumerate(st):
                 i = index.get(t)
                 if i is None:
                     i = index[t] = len(names) + 1
                     names.append(t)
-                py_arrays[base_idx + k][yy][xx] = i
+                py_arrays[base_idx + k][off] = i
         arrays = [
-            [np.asarray(py_arrays[li * depth + k], dtype=np.int64) for k in range(depth)]
+            [np.frombuffer(py_arrays[li * depth + k], dtype=np.uint32).reshape(SIDE, SIDE)
+             for k in range(depth)]
             for li in range(nlev)
         ]
         room_tuples = [(r["name"], r["z"], [tuple(x) for x in r["rects"]], []) for r in rooms]
@@ -277,7 +291,7 @@ def read_buildings(project: str, names: list[str], workers: int | None = None, s
     spent minutes before a single cell was built."""
     from concurrent import futures
     from concurrent.futures.process import BrokenProcessPool
-    workers = workers or os.cpu_count() or 1
+    workers = workers or _default_workers()
     if len(names) < PARALLEL_READ_FROM or workers < 2:
         return _read_rooms(project, names)
     size = max(50, min(READ_BATCH, len(names) // (workers * 4)))
@@ -336,6 +350,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
         room_rows = group_buildings_by_row(placed_rooms([lot for _t, lot in kept]), origin)
         reach = [(b.width, b.height) for b, *_ in parsed]
         del parsed, kept
+        gc.collect()
 
         selection = select_cells(room_rows, origin, (w, h)) if select_cells else None
         if selection is not None:
@@ -357,7 +372,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                 on_row(len(done) + n, rows)
 
         if workers is None:
-            workers = max(1, min(os.cpu_count() or 1, int(_free_gb() // GB_PER_ROW_WORKER) or 1))
+            workers = _default_workers()
         if workers == 1:
             for n, cy in enumerate(todo, 1):
                 if should_stop and should_stop():

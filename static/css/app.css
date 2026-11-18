@@ -1058,3 +1058,12 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .server-setup code { font-family: var(--mono); font-size: 11px; }
 .server-setup .warn { color: var(--warn); }
 .server-setup .bad { color: var(--bad); }
+
+/* Auto mode actions under Generate. */
+.gen-actions { display: flex; gap: 8px; }
+.gen-actions #generateBtn { flex: 1; }
+#autoBtn { white-space: nowrap; }
+.auto-standalone { display: flex; align-items: center; gap: 6px; margin-top: 8px;
+  font-size: 12px; color: var(--muted); cursor: pointer; }
+.ws-auto-standalone { display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; margin-right: 4px; }

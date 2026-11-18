@@ -320,6 +320,7 @@
           + item('Stop', () => requestStop(), { off: !runningMap })
           + '<hr>'
           + item('Generate map', () => click('generateBtn'), { off: off('generateBtn') || !currentRect })
+          + item('Auto (all 4 steps)', () => click('autoBtn'), { off: off('autoBtn') || !currentRect })
           + item('Build the buildings', () => click('buildingsBtn'), { off: !open || off('buildingsBtn') })
           + item('Recount the zombies', () => click('recountBtn'), { off: !open || off('recountBtn'),
               title: 'After a zombie setting changed: seconds, no rebuild' })
@@ -914,14 +915,25 @@
     else if (n && n.step) { const s = STEPS.find(x => x.id === n.step); msg = noteOf(s.note) || STEP_WHAT[s.id]; }
     else if (n && n.done) { msg = noteOf('installNote') || 'Installed.'; cls = 'ok'; }
     if (STEPS.some(s => stepState(s) === 'error')) cls = 'bad';
+    const canAuto = !n?.stop && !n?.done && !!currentRect && !currentMap && !off('autoBtn');
+    const autoChecked = !!$('autoStandalone')?.checked;
+    const autoCtrl = canAuto
+      ? `<label class="ws-auto-standalone" title="Play without Knox County (cell 0,0)"><input type="checkbox" data-flow-standalone${autoChecked ? ' checked' : ''}> Standalone</label>`
+        + '<button type="button" class="btn go" data-flow-auto title="Run Generate, Build, Compile, and Install automatically">Auto ▶</button>'
+      : '';
     const btn = !n ? '' : n.stop
       ? `<button type="button" class="btn btn-stop go" data-flow-go>${runningMap === stoppingMap ? 'Stopping…' : 'Stop'}</button>`
       : n.done ? '<button type="button" class="btn go" disabled>All done ✓</button>'
       : `<button type="button" class="btn btn-primary go" data-flow-go>${esc(n.label)} ▶</button>`;
-    flowRow.innerHTML = chips + `<span class="msg ${cls}" title="${esc(msg)}">${esc(msg)}</span>` + btn;
+    flowRow.innerHTML = chips + `<span class="msg ${cls}" title="${esc(msg)}">${esc(msg)}</span>` + autoCtrl + btn;
     if (ws.pop && !popBox.isConnected) flow.appendChild(popBox);
   }
+  flow.addEventListener('change', e => {
+    const cb = e.target.closest('[data-flow-standalone]');
+    if (cb && $('autoStandalone')) $('autoStandalone').checked = cb.checked;
+  });
   flow.addEventListener('click', e => {
+    if (e.target.closest('[data-flow-auto]')) { click('autoBtn'); return; }
     if (e.target.closest('[data-flow-go]')) { const n = nextAction(); if (n && n.run) n.run(); return; }
     const c = e.target.closest('[data-chip]');
     if (c) { ws.pop === c.dataset.chip ? closePop() : openPop(c.dataset.chip); }
@@ -1147,7 +1159,7 @@
   new MutationObserver(render).observe(results, watchSteps);
   new MutationObserver(render).observe(popBox, watchSteps);
   new MutationObserver(render).observe($('status'), { childList: true, characterData: true, subtree: true });
-  for (const id of ['generateBtn', 'gen-overlay']) new MutationObserver(render).observe($(id), { attributes: true });
+  for (const id of ['generateBtn', 'autoBtn', 'gen-overlay']) new MutationObserver(render).observe($(id), { attributes: true });
   map.on('draw:created draw:edited draw:deleted', render);
   // Polled, cheaply, for what has no event: the selection, the running map.
   let last = '';

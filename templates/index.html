@@ -427,7 +427,15 @@
     </section>
 
     <section class="panel" data-card="generate">
-      <button id="generateBtn" class="btn btn-primary" disabled>Generate map</button>
+      <div class="gen-actions">
+        <button id="generateBtn" class="btn btn-primary" disabled>Generate map</button>
+        <button id="autoBtn" class="btn" disabled
+                title="Run Generate, Build, Compile, and Install automatically">Auto</button>
+      </div>
+      <label class="auto-standalone">
+        <input type="checkbox" id="autoStandalone">
+        Standalone: play it without Knox County
+      </label>
       <div id="status"></div>
     </section>
   </aside>
