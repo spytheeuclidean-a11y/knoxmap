@@ -2723,20 +2723,21 @@ def _carve_shaft(plan: Plan, shaft: tuple[int, int, int, int],
 
 
 def _stairs_in_core(core: tuple[int, int, int, int],
-                    *, hug_wall: bool = False) -> tuple[int, int, str]:
+                    *, hug_wall: bool = False,
+                    far_wall: bool = False) -> tuple[int, int, str]:
     """The flight inside a shaft. Runs along the shaft's long axis.
 
     Set one tile in from the end so the corridor is still walkable past it.
     When `hug_wall` is True, keeps the stairs flush against one wall of the
-    shaft instead of down the middle.
+    shaft instead of down the middle (`far_wall` picks the opposite wall).
     """
     x0, y0, x1, y1 = core
     if (y1 - y0) >= (x1 - x0):
         start = min(y0 + 1, y1 - (STAIR_RUN - 1))
-        sx = x0 if hug_wall else x0 + (x1 - x0) // 2
+        sx = (x1 if far_wall else x0) if hug_wall else x0 + (x1 - x0) // 2
         return sx, max(y0, start), "N"
     start = min(x0 + 1, x1 - (STAIR_RUN - 1))
-    sy = y0 if hug_wall else y0 + (y1 - y0) // 2
+    sy = (y1 if far_wall else y0) if hug_wall else y0 + (y1 - y0) // 2
     return max(x0, start), sy, "W"
 
 
@@ -3155,6 +3156,21 @@ def _doors_off_stairs(building: "Building") -> int:
                     moved += 1
         storey.doors = [d for d in storey.doors if d is not None]
     return moved
+
+
+def _has_door_on_stairs(building: "Building") -> bool:
+    """Whether any door still opens onto the middle steps of a staircase."""
+    if not building.stairs:
+        return False
+    x, y, d = building.stairs[0]
+    dx, dy = (0, 1) if d == "N" else (1, 0)
+    steps = {(x + dx * i, y + dy * i) for i in range(1, STAIR_RUN - 1)}
+    for storey in building.storeys:
+        for dxx, dyy, dd in storey.doors:
+            before = (dxx - 1, dyy) if dd == "W" else (dxx, dyy - 1)
+            if (dxx, dyy) in steps or before in steps:
+                return True
+    return False
 
 
 def _joined_without(storey, skip: int) -> bool:
