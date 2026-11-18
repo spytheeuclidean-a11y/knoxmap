@@ -1,14 +1,15 @@
-"""Quadrant-chunked building generation and stitching for very large maps.
+"""Chunked building generation and stitching for very large maps.
 
 Maps past ``BUILD_CHUNK_MIN_CELLS`` are split along exact 300-tile cell
-boundaries into 4 quadrants (with a ``HALO_TILES`` overlap margin), built
-one quadrant at a time so peak RAM stays bounded by a single quadrant, and
+boundaries into 4, 8, or 16+ parts depending on map size (with a ``HALO_TILES``
+overlap margin), built one part at a time so peak RAM stays bounded, and
 stitched back into the final bitmaps, ``.pzw``, CSVs, spawn map, and paper map.
 """
 from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import shutil
 
@@ -29,17 +30,43 @@ HALO_TILES = 64
 
 
 def should_chunk_build(cells_x: int, cells_y: int) -> bool:
-    """Whether building generation should split into 4 cell-aligned quadrants."""
+    """Whether building generation should split into cell-aligned parts."""
     return cells_x * cells_y > BUILD_CHUNK_MIN_CELLS and cells_x >= 4 and cells_y >= 4
 
 
+def _chunk_grid(cells_x: int, cells_y: int) -> tuple[int, int]:
+    """Choose (nx, ny) grid splits: 4 parts (>12x12), 8 (50x50+), 16+ (100x100+)."""
+    total = cells_x * cells_y
+    if total >= 10000:
+        nx = max(4, math.ceil(cells_x / 25))
+        ny = max(4, math.ceil(cells_y / 25))
+    elif total >= 2500:
+        nx, ny = (4, 2) if cells_x >= cells_y else (2, 4)
+    else:
+        nx, ny = 2, 2
+    return min(nx, cells_x), min(ny, cells_y)
+
+
+def _split_cells(total_cells: int, parts: int) -> list[tuple[int, int]]:
+    base, rem = divmod(total_cells, parts)
+    out = []
+    cur = 0
+    for i in range(parts):
+        n = base + (1 if i < rem else 0)
+        out.append((cur * CELL_SIZE, n * CELL_SIZE))
+        cur += n
+    return out
+
+
 def _quadrant_boxes(cells_x: int, cells_y: int, width: int, height: int,
-                    halo: int = HALO_TILES) -> list[tuple[int, int, int, int, int, int, int, int, int]]:
-    """Return ``(qi, qx0, qy0, qw, qh, hx0, hy0, hw, hh)`` for 4 cell-aligned quadrants."""
-    mid_cx = cells_x // 2
-    mid_cy = cells_y // 2
-    x_splits = [(0, mid_cx * CELL_SIZE), (mid_cx * CELL_SIZE, width - mid_cx * CELL_SIZE)]
-    y_splits = [(0, mid_cy * CELL_SIZE), (mid_cy * CELL_SIZE, height - mid_cy * CELL_SIZE)]
+                    halo: int = HALO_TILES) -> tuple[int, int, list[tuple[int, int, int, int, int, int, int, int, int]]]:
+    """Return ``(nx, ny, boxes)`` of ``(qi, qx0, qy0, qw, qh, hx0, hy0, hw, hh)``."""
+    nx, ny = _chunk_grid(cells_x, cells_y)
+    x_splits = _split_cells(cells_x, nx)
+    y_splits = _split_cells(cells_y, ny)
+    # Clamp rightmost/bottommost slice to actual pixel width/height
+    x_splits[-1] = (x_splits[-1][0], width - x_splits[-1][0])
+    y_splits[-1] = (y_splits[-1][0], height - y_splits[-1][0])
     boxes = []
     qi = 0
     for qy0, qh in y_splits:
@@ -50,12 +77,13 @@ def _quadrant_boxes(cells_x: int, cells_y: int, width: int, height: int,
             hy1 = min(height, qy0 + qh + halo)
             boxes.append((qi, qx0, qy0, qw, qh, hx0, hy0, hx1 - hx0, hy1 - hy0))
             qi += 1
-    return boxes
+    return nx, ny, boxes
 
 
 def _feature_owner(feat: dict, proj: Projector,
-                   boxes: list[tuple[int, int, int, int, int, int, int, int, int]]) -> int:
-    """Assign each GeoJSON feature to exactly one quadrant by its centroid."""
+                   boxes: list[tuple[int, int, int, int, int, int, int, int, int]],
+                   nx: int, ny: int) -> int:
+    """Assign each GeoJSON feature to exactly one part by its centroid."""
     geom = feat.get("geometry") or {}
     coords = geom.get("coordinates") or []
     ring = coords[0] if geom.get("type") == "Polygon" else (
@@ -67,8 +95,9 @@ def _feature_owner(feat: dict, proj: Projector,
     cx = sum(x for x, _ in pts) / len(pts)
     cy = sum(y for _, y in pts) / len(pts)
     for qi, qx0, qy0, qw, qh, *_ in boxes:
-        in_x = qx0 <= cx < qx0 + qw or (qi % 2 == 1 and cx >= qx0 + qw) or (qi % 2 == 0 and cx < 0)
-        in_y = qy0 <= cy < qy0 + qh or (qi >= 2 and cy >= qy0 + qh) or (qi < 2 and cy < 0)
+        col, row = qi % nx, qi // nx
+        in_x = (qx0 <= cx < qx0 + qw) or (col == 0 and cx < qx0) or (col == nx - 1 and cx >= qx0 + qw)
+        in_y = (qy0 <= cy < qy0 + qh) or (row == 0 and cy < qy0) or (row == ny - 1 and cy >= qy0 + qh)
         if in_x and in_y:
             return qi
     return 0
@@ -110,10 +139,11 @@ def build_chunked(
     os.makedirs(os.path.join(out_dir, "tmx"), exist_ok=True)
     os.makedirs(os.path.join(out_dir, "lots"), exist_ok=True)
 
-    boxes = _quadrant_boxes(info["cells_x"], info["cells_y"], proj.width, proj.height)
-    buckets: list[list[dict]] = [[] for _ in range(4)]
+    nx, ny, boxes = _quadrant_boxes(info["cells_x"], info["cells_y"], proj.width, proj.height)
+    total_parts = len(boxes)
+    buckets: list[list[dict]] = [[] for _ in range(total_parts)]
     for feat in geo.get("features", []):
-        buckets[_feature_owner(feat, proj, boxes)].append(feat)
+        buckets[_feature_owner(feat, proj, boxes, nx, ny)].append(feat)
 
     quad_root = os.path.join(out_dir, ".quadrants")
     if os.path.isdir(quad_root):
@@ -139,7 +169,7 @@ def build_chunked(
     try:
         for qi, qx0, qy0, qw, qh, hx0, hy0, hw, hh in boxes:
             knoxstop.check(should_stop, "the buildings")
-            say(f"Building quadrant {qi + 1} of 4", qi * 0.21)
+            say(f"Building part {qi + 1} of {total_parts}", qi * 0.85 / total_parts)
             q_name = f"{map_name}_q{qi}"
             q_dir = os.path.join(quad_root, f"q{qi}")
             os.makedirs(q_dir, exist_ok=True)
@@ -177,7 +207,7 @@ def build_chunked(
 
             def q_say(text: str, frac: float | None = None, _qi: int = qi) -> None:
                 f = 0.0 if frac is None else max(0.0, min(1.0, frac))
-                say(f"Quadrant {_qi + 1}/4 — {text}", (_qi + f) * 0.21)
+                say(f"Part {_qi + 1}/{total_parts} — {text}", (_qi + f) * 0.85 / total_parts)
 
             rc = build(
                 q_dir, seed=seed + qi, min_size=min_size, max_size=max_size,
@@ -295,7 +325,7 @@ def build_chunked(
         if gun_cache:
             print(f"guaranteed rifle      : {gun_cache['kind']} - "
                   f"{gun_cache['name'] or gun_cache['building']}")
-        print(f"chunked build         : stitched 4 quadrants into {len(all_rows)} buildings")
+        print(f"chunked build         : stitched {total_parts} parts ({nx}x{ny}) into {len(all_rows)} buildings")
         say("Done", 1.0)
         return 0
     finally:

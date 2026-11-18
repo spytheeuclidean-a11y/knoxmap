@@ -49,6 +49,12 @@ class QuadrantBuildTests(unittest.TestCase):
         self.assertTrue(chunked_build.should_chunk_build(13, 12))
         self.assertTrue(chunked_build.should_chunk_build(16, 16))
 
+    def test_chunk_grid_scales_for_50x50_and_100x100_maps(self):
+        self.assertEqual(chunked_build._chunk_grid(16, 16), (2, 2))     # 4 parts
+        self.assertEqual(chunked_build._chunk_grid(50, 50), (4, 2))     # 8 parts
+        self.assertEqual(chunked_build._chunk_grid(40, 70), (2, 4))     # 8 parts
+        self.assertEqual(chunked_build._chunk_grid(100, 100), (4, 4))   # 16 parts
+
     def test_build_chunked_stitches_four_quadrants(self):
         with tempfile.TemporaryDirectory() as tmp:
             # Render a 4x4 cell (1200x1200) map with 4 houses, one in each quadrant.
