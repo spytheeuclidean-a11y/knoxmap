@@ -337,14 +337,19 @@ second without rebuilding, then compile again so the game sees the change.
 ## Known limitations
 
 KnoxMap is new, and most of it has been checked by tools rather than by
-playing. Help is very welcome here, especially screenshots from the game.
+playing. Help is very welcome here, especially screenshots from the game — see
+[the in-game test map guide](docs/INGAME_TEST_MAP.md) (`tools/make_ingame_test_map.py`)
+for a small, repeatable 1-cell route covering all of the open checks below.
 
 - **Not yet confirmed in game:** that kerb tiles face the right way, that lifts
   carry players with the Elevators mod, how labels in non-Latin scripts appear
   on the in-game map, and how 31-storey towers play.
 - **Winding old towns** have no single street grid, so their streets still step
   across the tiles where they turn.
-- **Very large buildings** (over 200 tiles across by default) are skipped.
+- **Very large buildings** (over 200 tiles across by default) are retried and
+  split into units up to the oversized cap rather than dropped outright; only
+  footprints that still cannot fit or exceed the cap are skipped, and the
+  Buildings summary reports how many were split or skipped.
 - **Overpasses** are lifted one or two storeys on Build 42's ramp tiles, which
   carry players and cars; not yet driven in game. Big interchanges come out
   busy, and tunnels are left out.

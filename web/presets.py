@@ -290,20 +290,58 @@ MAX_PRESETS = 200
 MAX_PRESET_POINTS = 5000
 
 
+class PresetsUnreadableError(Exception):
+    """Raised when presets.json exists but cannot be read or parsed."""
+
+
+def _backup_file():
+    return PRESETS_FILE.with_suffix(".json.bak")
+
+
 def _read_presets() -> dict:
+    if not PRESETS_FILE.exists():
+        return {}
     try:
         with open(PRESETS_FILE, encoding="utf-8") as f:
             data = json.load(f)
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    except (OSError, ValueError) as exc:
+        raise PresetsUnreadableError(
+            "Saved areas file could not be read.") from exc
+    if not isinstance(data, dict):
+        raise PresetsUnreadableError("Saved areas file is not a JSON object.")
+    return data
 
 
 def _write_presets(presets: dict) -> None:
+    bak = _backup_file()
+    if PRESETS_FILE.exists():
+        try:
+            with open(PRESETS_FILE, encoding="utf-8") as f:
+                existing = json.load(f)
+            if isinstance(existing, dict):
+                bak_tmp = bak.with_suffix(".bak.tmp")
+                with open(bak_tmp, "w", encoding="utf-8") as bf:
+                    json.dump(existing, bf, indent=2, ensure_ascii=False)
+                os.replace(bak_tmp, bak)
+        except (OSError, ValueError):
+            pass
     tmp = PRESETS_FILE.with_suffix(".json.tmp")
     with open(tmp, "w", encoding="utf-8") as f:
         json.dump(presets, f, indent=2, ensure_ascii=False)
     os.replace(tmp, PRESETS_FILE)
+    if not bak.exists():
+        bak_tmp = bak.with_suffix(".bak.tmp")
+        with open(bak_tmp, "w", encoding="utf-8") as bf:
+            json.dump(presets, bf, indent=2, ensure_ascii=False)
+        os.replace(bak_tmp, bak)
+
+
+def _unreadable_response():
+    return jsonify({
+        "error": "Saved areas file could not be read. Nothing was overwritten.",
+        "corrupt": True,
+        "hasBackup": _backup_file().exists(),
+    }), 500
 
 
 def _count_points(shape: dict) -> int:
@@ -314,32 +352,39 @@ def _count_points(shape: dict) -> int:
     return walk(shape.get("coordinates") or [])
 
 
-def _portable_preset(data: dict) -> tuple[dict | None, str | None]:
-    """Check a shared area before it enters the map widget or leaves this PC."""
+def _validate_area(data: dict, *, default_scale: float | None = None,
+                   require_settings: bool = True) -> tuple[dict | None, str | None]:
+    """Shared validator for both local saved areas and exported presets."""
     import math
-    if data.get("format") != "knoxmap-preset" or data.get("version") != 1:
-        return None, "This is not a KnoxMap preset version 1."
+    if not isinstance(data, dict):
+        return None, "Area data must be a JSON object."
     name = str(data.get("name") or "").strip()[:60]
     if not name:
         return None, "Give the area a name."
     try:
         south, west, north, east = (float(data[key]) for key in
                                    ("south", "west", "north", "east"))
-        scale = float(data["metersPerTile"])
+        raw_scale = data.get("metersPerTile", default_scale)
+        if raw_scale is None:
+            return None, "The preset needs a valid area and scale."
+        scale = float(raw_scale)
     except (KeyError, TypeError, ValueError, OverflowError):
-        return None, "The preset needs a valid area and scale."
-    if (not all(math.isfinite(n) for n in (south, west, north, east, scale))
-            or not (-85.05 <= south < north <= 85.05)
-            or not (-180 <= west < east <= 180)
-            or not MIN_METERS_PER_TILE <= scale <= MAX_METERS_PER_TILE):
-        return None, "The preset area or scale is outside the map's limits."
+        return None, "Draw a valid area and scale first."
+    if not all(math.isfinite(n) for n in (south, west, north, east, scale)):
+        return None, "The area coordinates or scale are not valid numbers."
+    if not (-85.05 <= south < north <= 85.05) or not (-180 <= west < east <= 180):
+        return None, ("The area must have non-zero width and height between "
+                      "-85.05° and 85.05° latitude and -180° to 180° longitude.")
+    if not MIN_METERS_PER_TILE <= scale <= MAX_METERS_PER_TILE:
+        return None, (f"Scale must be between {MIN_METERS_PER_TILE} and "
+                      f"{MAX_METERS_PER_TILE} m per tile.")
     shape = data.get("shape")
     if shape is not None:
         if not isinstance(shape, dict):
-            return None, "The preset outline is not a polygon."
+            return None, "The area outline is not a polygon."
         try:
             if _count_points(shape) > MAX_PRESET_POINTS:
-                return None, f"A shared outline can hold at most {MAX_PRESET_POINTS:,} points."
+                return None, f"An area outline can hold at most {MAX_PRESET_POINTS:,} points."
             shape, problem = _clean_shape(shape)
             if problem:
                 return None, problem
@@ -348,24 +393,39 @@ def _portable_preset(data: dict) -> tuple[dict | None, str | None]:
                             and west - 1e-5 <= lon <= east + 1e-5
                             and south - 1e-5 <= lat <= north + 1e-5)
                        for lon, lat in ring):
-                    return None, "The preset outline falls outside its area."
+                    return None, "The area outline falls outside its bounding box."
                 # _wrap_lon can turn 20.01 into 20.00999999999999. Keep
                 # share files stable across repeated imports and exports.
                 for point in ring:
                     point[0], point[1] = round(point[0], 12), round(point[1], 12)
         except (TypeError, ValueError, OverflowError, RecursionError):
-            return None, "The preset outline could not be read."
+            return None, "The area outline could not be read."
     given = data.get("settings")
-    if not isinstance(given, dict):
-        return None, "The preset needs map settings."
+    if require_settings:
+        if not isinstance(given, dict):
+            return None, "The preset needs map settings."
+    elif not isinstance(given, dict):
+        given = {}
     kind = data.get("preset") or given.get("preset")
     if not isinstance(kind, str) or kind not in PRESETS:
         kind = None
-    return {"format": "knoxmap-preset", "version": 1, "name": name,
-            "south": south, "west": west, "north": north, "east": east,
-            "metersPerTile": tidy_scale(scale),
-            "shape": shape, "preset": kind,
-            "settings": Settings.from_dict({**given, **({"preset": kind} if kind else {})}).to_dict()}, None
+    return {
+        "name": name,
+        "south": south, "west": west, "north": north, "east": east,
+        "metersPerTile": tidy_scale(scale),
+        "shape": shape, "preset": kind,
+        "settings": Settings.from_dict({**given, **({"preset": kind} if kind else {})}).to_dict(),
+    }, None
+
+
+def _portable_preset(data: dict) -> tuple[dict | None, str | None]:
+    """Check a shared area before it enters the map widget or leaves this PC."""
+    if not isinstance(data, dict) or data.get("format") != "knoxmap-preset" or data.get("version") != 1:
+        return None, "This is not a KnoxMap preset version 1."
+    area, problem = _validate_area(data, require_settings=True)
+    if problem:
+        return None, problem
+    return {"format": "knoxmap-preset", "version": 1, **area}, None
 
 
 @bp.route("/api/presets/validate", methods=["POST"])
@@ -405,45 +465,26 @@ def api_presets():
     already called that."""
     if request.method == "GET":
         with _PRESETS_LOCK:
-            presets = _read_presets()
+            try:
+                presets = _read_presets()
+            except PresetsUnreadableError:
+                return _unreadable_response()
         return jsonify({"presets": sorted(presets.values(),
                                           key=lambda p: p["name"].lower())})
-    data = _json_body()
-    name = str(data.get("name") or "").strip()[:60]
-    if not name:
-        return jsonify({"error": "Give the area a name."}), 400
-    try:
-        south, west, north, east = (float(data["south"]), float(data["west"]),
-                                    float(data["north"]), float(data["east"]))
-    except (KeyError, TypeError, ValueError):
-        return jsonify({"error": "Draw an area first."}), 400
-    if not (-90 <= south < north <= 90) or not (-180 <= west <= 180
-                                                 and -180 <= east <= 180):
-        return jsonify({"error": "That area is not on the map."}), 400
-    shape = data.get("shape")
-    if shape is not None:
-        if (not isinstance(shape, dict)
-                or shape.get("type") not in ("Polygon", "MultiPolygon")
-                or _count_points(shape) > MAX_PRESET_POINTS):
-            return jsonify({"error": "That outline is not one a saved area can hold."}), 400
-    try:
-        scale = float(data.get("metersPerTile", 1.0))
-    except (TypeError, ValueError):
-        scale = 1.0
-    scale = min(MAX_METERS_PER_TILE, max(MIN_METERS_PER_TILE, scale))
-    from knoxbuild.settings import PRESETS as BUILD_PRESETS
-    given = data.get("settings") if isinstance(data.get("settings"), dict) else {}
-    preset = given.get("preset") if given.get("preset") in BUILD_PRESETS else None
-    entry = {"name": name, "south": south, "west": west, "north": north,
-             "east": east, "shape": shape, "metersPerTile": scale,
-             "preset": preset, "settings": Settings.from_dict(given).to_dict(),
-             "saved": int(time.time())}
+    area, problem = _validate_area(_json_body(), default_scale=1.0,
+                                   require_settings=False)
+    if problem:
+        return jsonify({"error": problem}), 400
+    entry = {**area, "saved": int(time.time())}
     with _PRESETS_LOCK:
-        presets = _read_presets()
-        if name not in presets and len(presets) >= MAX_PRESETS:
+        try:
+            presets = _read_presets()
+        except PresetsUnreadableError:
+            return _unreadable_response()
+        if area["name"] not in presets and len(presets) >= MAX_PRESETS:
             return jsonify({"error": f"That is {MAX_PRESETS} saved areas. Delete "
                                      f"one first."}), 400
-        presets[name] = entry
+        presets[area["name"]] = entry
         try:
             _write_presets(presets)
         except OSError as exc:
@@ -451,10 +492,40 @@ def api_presets():
     return jsonify({"saved": entry})
 
 
+@bp.route("/api/presets/restore", methods=["POST"])
+def api_presets_restore():
+    """Restore the last readable backup of saved areas when presets.json is damaged."""
+    with _PRESETS_LOCK:
+        bak = _backup_file()
+        if not bak.exists():
+            return jsonify({"error": "No backup of saved areas was found."}), 404
+        try:
+            with open(bak, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError) as exc:
+            return failed(f"Could not read backup: {exc}", 500, exc)
+        if not isinstance(data, dict):
+            return jsonify({"error": "The backup file is not a valid saved areas object."}), 500
+        if PRESETS_FILE.exists():
+            try:
+                os.replace(PRESETS_FILE, PRESETS_FILE.with_suffix(".json.broken"))
+            except OSError:
+                pass
+        try:
+            _write_presets(data)
+        except OSError as exc:
+            return failed(f"Could not restore saved areas: {exc}", 500, exc)
+    return jsonify({"presets": sorted(data.values(),
+                                      key=lambda p: p["name"].lower())})
+
+
 @bp.route("/api/presets/<path:name>", methods=["DELETE"])
 def api_preset_delete(name: str):
     with _PRESETS_LOCK:
-        presets = _read_presets()
+        try:
+            presets = _read_presets()
+        except PresetsUnreadableError:
+            return _unreadable_response()
         if name not in presets:
             return jsonify({"error": "No saved area has that name."}), 404
         del presets[name]
