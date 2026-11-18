@@ -73,7 +73,7 @@ jobs:
           chmod +x win/build_launcher.sh
           win/build_launcher.sh
           file KnoxMap.exe
-          file KnoxMap.exe | grep -qE 'PE32\+ executable \(GUI\) x86-64' ||
+          file KnoxMap.exe | grep -qE 'PE32\+ executable .*\(GUI\).*x86-64' ||
             { echo "not a windowed 64-bit exe"; exit 1; }
 
   run_it:
