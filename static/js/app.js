@@ -733,7 +733,8 @@ async function requestForecast(s, w, n, e, mpt) {
     const res = await fetch('/api/forecast', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ south: s, west: w, north: n, east: e,
-                             metersPerTile: mpt }),
+                             metersPerTile: mpt,
+                             mapName: currentMap || undefined }),
     });
     data = await res.json();
     if (!res.ok) throw apiError(data, res);
@@ -746,7 +747,11 @@ async function requestForecast(s, w, n, e, mpt) {
   const said = [];
   for (const step of ['generate', 'build', 'compile']) {
     const seconds = data.steps && data.steps[step];
-    if (seconds) said.push(`${label[step]} about ${formatLeft(seconds)}`);
+    if (seconds) {
+      const n = data.counts && data.counts[step];
+      const runs = n ? ` (${n} ${n === 1 ? 'map' : 'maps'})` : '';
+      said.push(`${label[step]} about ${formatLeft(seconds)}${runs}`);
+    }
   }
   if (!said.length) {
     box.hidden = true;
@@ -1131,8 +1136,20 @@ document.getElementById('presetOpenLink').addEventListener('click', async () => 
 });
 
 async function loadPresets() {
+  const restoreBtn = document.getElementById('presetRestore');
+  if (restoreBtn) restoreBtn.hidden = true;
   try {
-    savedAreas = (await (await fetch('/api/presets')).json()).presets || [];
+    const res = await fetch('/api/presets');
+    const data = await res.json();
+    if (!res.ok) {
+      savedAreas = [];
+      if (data && data.corrupt) {
+        presetNote(data.error || 'Saved areas file could not be read.', 'bad');
+        if (restoreBtn && data.hasBackup) restoreBtn.hidden = false;
+      }
+    } else {
+      savedAreas = data.presets || [];
+    }
   } catch (_) { savedAreas = []; }
   const list = document.getElementById('presetList');
   list.innerHTML = savedAreas.length
@@ -1144,6 +1161,16 @@ async function loadPresets() {
     document.getElementById(id).disabled = !savedAreas.length;
   }
 }
+
+document.getElementById('presetRestore')?.addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/presets/restore', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw apiError(data, res);
+    presetNote('Restored the last readable saved areas backup.');
+    await loadPresets();
+  } catch (err) { presetNote(err.message, 'bad'); }
+});
 
 function presetNote(text, kind) {
   const el = document.getElementById('presetNote');
@@ -2798,13 +2825,18 @@ function setupPipeline(data) {
 function showLeftOut(report) {
   const box = document.getElementById('leftOut');
   if (!box) return;
-  if (!report || !report.total) { box.hidden = true; box.innerHTML = ''; return; }
+  if (!report || (!report.total && !report.oversized)) { box.hidden = true; box.innerHTML = ''; return; }
   const lines = (report.lines || []).map(l =>
     `<li>${l.n} ${escapeHtml(l.text)}</li>`).join('');
+  const oversized = report.oversized
+    ? `<div class="left-out-oversized">${escapeHtml(report.oversized)}</div>`
+    : '';
+  const head = report.total
+    ? `<div class="left-out-head">${report.total} footprint${
+      report.total === 1 ? '' : 's'} did not become a building</div><ul>${lines}</ul>`
+    : '';
   box.hidden = false;
-  box.innerHTML = `<div class="left-out-head">${report.total} footprint${
-    report.total === 1 ? '' : 's'} did not become a building</div>
-    <ul>${lines}</ul>
+  box.innerHTML = `${oversized}${head}
     <button type="button" id="whyOne" class="btn btn-small">Why is my
       building missing?</button>`;
   document.getElementById('whyOne').addEventListener('click', () => {

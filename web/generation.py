@@ -70,8 +70,11 @@ def api_forecast():
     (south, west, north, east), why = _normalise_bbox(south, west, north, east)
     if why:
         return jsonify({"error": why}), 400
+    map_name = str(data.get("mapName") or "").strip()
+    map_dir = (common.OUTPUT_DIR / map_name) if map_name and "/" not in map_name and "\\" not in map_name else None
     return jsonify(forecast(common.OUTPUT_DIR, south, west, north, east,
-                            tidy_scale(meters_per_tile)))
+                            tidy_scale(meters_per_tile),
+                            map_dir=map_dir if map_dir and map_dir.is_dir() else None))
 
 
 def _fetch_landcover(knoxdata, settings, bbox, map_name) -> None:
