@@ -1,3 +1,25 @@
+## 1.8.6.3
+
+- **Open map attribution links in the system browser**
+  (#139, `static/js/fx.js`, `tests/js/attribution.test.js`). Ensures Leaflet and both basemap attribution links open in a new tab (`target="_blank" rel="noopener noreferrer"`) so clicking them in the desktop window opens the system browser.
+
+- **Incremental cell recompilation after building edits**
+  (#141, `tools/compile_cells.py`, `tools/compile_map.py`, `tools/map_source.py`, `knoxbuild/buildheader.py`, `knoxbuild/buildtiles.py`). Tracks edited cells and recompiles only affected `knoxlots` cells instead of the entire map after building edits.
+
+- **Keep fitted railways within their mapped corridors**
+  (#142, `generator/rendering/rails.py`, `tests/test_continuous_rails.py`). Validates tile overlap for fitted railway tracks—including unequal parallel tracks—so fitted rails stay inside their mapped corridors.
+
+- **Large-map BMP memory/broadcast fixes, terrain & building ETA, and window clearance**
+  (#143, `knoxbuild/bitmaps.py`, `knoxbuild/yards.py`, `generator/chunked.py`, `generator/renderer.py`, `knoxbuild/build.py`, `knoxbuild/layout/furnishing.py`, `web/jobs.py`, `web/generation.py`, `static/js/fx.js`).
+  - Uses buffered strip reads in `bitmaps.py` (fixing `WinError 1450` on multi-GB BMPs), adds `_SubProjector.to_latlon_many`, cuts `paint_paths()` mask memory 8x with 1-byte `bytearray` masks, and refreshes stale `_ground_base.bmp`/`_veg_base.bmp` dimensions to prevent shape broadcast errors.
+  - Adds a terrain generation estimation timer and live render pass progress ticks, fixes building layout ETA/progress ticks (avoiding the `0.05` bar-offset underestimate and stale cached ETAs), and keeps interior wall decor and exterior yard props/bushes clear of windows.
+
+- **Saved area protection, refined forecasts, in-game test map, oversized landmarks & connected yard decor**
+  (#144, `web/presets.py`, `web/forecast.py`, `knoxbuild/build.py`, `knoxbuild/why.py`, `knoxbuild/yards.py`, `tools/make_ingame_test_map.py`, `docs/INGAME_TEST_MAP.md`).
+  - Protects `presets.json` when unreadable/corrupt instead of treating it as empty, keeps a `.json.bak` copy with one-click restore, and shares one area validator between Save and Export.
+  - Refines Build and Compile time estimates using building counts and floor counts once available, showing how many past maps informed each estimate.
+  - Ships a repeatable 1-cell in-game test map (`tools/make_ingame_test_map.py`, `docs/INGAME_TEST_MAP.md`), reports oversized landmark split/skipped counts in the Buildings summary and `README.md`, and keeps open-yard decor on land connected to each building (`_connected_yard()`).
+
 ## 1.8.6.2
 
 - **Chunked large-map fixes: street infill, continuous railroads & > 4 GiB BMPs**
