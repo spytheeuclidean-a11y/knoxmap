@@ -10,6 +10,8 @@
 //!
 //! Exit status 0 when everything matched, 1 when something did not, 2 on bad usage.
 
+#[path = "../worker/mod.rs"]
+mod worker;
 use knoxlots::cell::Cell;
 use knoxlots::chunkdata::ChunkData;
 use knoxlots::header::Header;
@@ -380,6 +382,11 @@ fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
     let strs: Vec<&str> = args.iter().map(String::as_str).collect();
     match strs.as_slice() {
+        ["source-worker-version"] => { println!("1"); ExitCode::SUCCESS }
+        ["source-worker", job] => match worker::run(job) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => { eprintln!("{e}"); ExitCode::FAILURE }
+        },
         ["verify", dir] => verify(dir, false),
         ["rebuild", dir] => verify(dir, true),
         ["blank-chunkdata", input, output] => blank(input, output),

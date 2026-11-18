@@ -32,6 +32,18 @@ from WorldEd's code.
 
 `compile` reads the source format in `SOURCE_FORMAT.md`.
 
+KnoxMap also uses this executable to prepare those sources. The Python
+coordinator probes `knoxlots source-worker-version`, then dispatches
+`knoxlots source-worker <job.xml>` for room tables, changed-lot footprints,
+and selected rows. Each row reads TBX buildings and a strip of the project
+bitmaps and writes its own cell sources. Python records completion, handles
+Stop, and installs the compiled lots after all selected cells succeed.
+
+Set `KNOXMAP_SOURCE_WORKER=python` to compare with the Python source worker.
+Use a fresh compile when comparing engines so cached lots are rebuilt. Older
+knoxlots executables and projects using non-24-bit bitmaps use that reader
+automatically.
+
 Exit status 0 when everything matched, 1 when not, 2 on bad usage.
 
 ## Status

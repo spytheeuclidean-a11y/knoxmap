@@ -253,7 +253,7 @@ def _row_done(out: str, cy: int) -> str:
 
 def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                     workers: int | None = None, should_stop=None, on_row=None, on_start=None,
-                    resume: bool = False, select_cells=None, track=False) -> int:
+                    resume: bool = False, select_cells=None, track=False, native_exe=None) -> int:
     """Write the cell sources of a map into `out`, one process per row of cells.
 
     Each finished row is marked in `out`. With `resume`, the rows a stopped or
@@ -277,12 +277,16 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
         lots = read_lots(project)
         # Room tables need every building at once (they touch, and a later lot takes
         # squares). Only the rooms are kept; the parsed buildings go.
-        parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
-            read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
-        kept = [(t, (b, tx, ty, lv)) for (t, *_), (b, tx, ty, lv) in zip(lots, parsed) if b.floors]
-        room_rows = group_buildings_by_row(placed_rooms([lot for _t, lot in kept]), origin)
-        reach = [(b.width, b.height) for b, *_ in parsed]
-        del parsed, kept
+        if native_exe:
+            from tools import native_source
+            room_rows, reach = native_source.tables(native_exe, project, out, lots, origin, should_stop)
+        else:
+            parsed = [(b, tx, ty, lv) for b, (_t, tx, ty, lv, _w, _h) in zip(
+                read_buildings(project, [t for t, *_ in lots], workers, should_stop), lots)]
+            kept = [(t, (b, tx, ty, lv)) for (t, *_), (b, tx, ty, lv) in zip(lots, parsed) if b.floors]
+            room_rows = group_buildings_by_row(placed_rooms([lot for _t, lot in kept]), origin)
+            reach = [(b.width, b.height) for b, *_ in parsed]
+            del parsed, kept
 
         selection = select_cells(room_rows, origin, (w, h)) if select_cells else None
         if selection is not None:
@@ -305,7 +309,13 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
 
         if workers is None:
             workers = max(1, min(os.cpu_count() or 1, int(_free_gb() // GB_PER_ROW_WORKER) or 1))
-        if workers == 1:
+        if native_exe:
+            def run_row(cy, stopping):
+                return native_source.row(native_exe, project, out, cy, bands[cy], room_rows.get(cy, {}),
+                                         origin, (w, h), selection.get(cy) if selection is not None else None,
+                                         seed, seams, rules_path(), track, stopping)
+            written = native_source.rows(todo, workers, run_row, finished, should_stop)
+        elif workers == 1:
             for n, cy in enumerate(todo, 1):
                 if should_stop and should_stop():
                     raise knoxstop.Stopped("the compile")

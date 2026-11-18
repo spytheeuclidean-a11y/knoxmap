@@ -29,7 +29,7 @@ LOT_LINE = re.compile(
 # geometry/terrain take the full path.
 COMPILER_FILES = (
     "tools/compile_map.py", "tools/compile_cells.py", "tools/map_source.py",
-    "tools/terrain_source.py", "knoxbuild/bitmaps.py", "knoxbuild/blends.py",
+    "tools/terrain_source.py", "tools/native_source.py", "knoxbuild/bitmaps.py", "knoxbuild/blends.py",
     "knoxbuild/buildheader.py", "knoxbuild/buildtiles.py", "knoxbuild/buildroofs.py",
     "knoxbuild/kcell.py", "knoxbuild/rules.py", "knoxbuild/terrain.py",
     "generator/pz_colors.py",
@@ -76,6 +76,7 @@ def moved_buildings(before, after):
 
 class CellCache:
     def __init__(self, project, exe, root, reuse, should_stop):
+        self.native_exe = None
         self.project = project
         self.should_stop = should_stop
         self.extras = [exe, *(root / p for p in COMPILER_FILES)]
@@ -164,6 +165,24 @@ class CellCache:
 
         # Collect the new footprint using the same room and tile coordinates
         # as the compositor, including furniture outside the building rectangle.
+        if self.native_exe:
+            from tools.native_source import changed_cells
+            dirty.update(changed_cells(self.native_exe, self.project,
+                                       (lot for lot in self.lots if lot[0] in self.changed),
+                                       origin, margin, self.should_stop))
+        else:
+            dirty.update(self._changed_cells(origin, side, margin))
+
+        self.partial = True
+        selection = {}
+        for cx, cy in sorted(dirty):
+            if ox // side <= cx <= (ox + w - 1) // side and oy // side <= cy <= (oy + h - 1) // side:
+                selection.setdefault(cy, []).append(cx)
+        self.selected = {(cx, cy) for cy, columns in selection.items() for cx in columns}
+        return selection
+
+    def _changed_cells(self, origin, side, margin):
+        ox, oy = origin
         reach = {}
         for t, tx, ty, base, _w, _h in self.lots:
             if t not in self.changed:
@@ -179,15 +198,7 @@ class CellCache:
                 cy = (ty + y + oy) // side
                 wy0 = cy * side - oy
                 if ty - margin < wy0 + side + margin and ty + height + margin > wy0 - margin:
-                    dirty.add(((tx + x + ox) // side, cy))
-
-        self.partial = True
-        selection = {}
-        for cx, cy in sorted(dirty):
-            if ox // side <= cx <= (ox + w - 1) // side and oy // side <= cy <= (oy + h - 1) // side:
-                selection.setdefault(cy, []).append(cx)
-        self.selected = {(cx, cy) for cy, columns in selection.items() for cx in columns}
-        return selection
+                    yield (tx + x + ox) // side, cy
 
     def save(self, src, outputs):
         if not hasattr(self, "rooms"):

@@ -1048,7 +1048,17 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
                                  "the last run", project.name, run, kept)
 
             phase("Reading the buildings", 0.0)
+            from tools import native_source
+            from knoxbuild.bitmaps import _bmp_header
+            # Older installed compilers and nonstandard bitmap encodings retain
+            # their existing Python/Pillow source reader.
+            images = (project / f"{project.name}{suffix}.bmp" for suffix in ("", "_veg"))
+            native = (os.environ.get("KNOXMAP_SOURCE_WORKER") != "python"
+                      and all((head := _bmp_header(image)) and head[3:4] == (24,) for image in images)
+                      and native_source.supported(exe))
+            cache.native_exe = exe if native else None
             make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop,
+                            native_exe=cache.native_exe,
                             on_row=lambda n, rows: phase(f"Building the cells: row {n} of {rows}",
                                                          0.05 + 0.55 * n / rows),
                             on_start=lambda: phase("Building the cells", 0.05), resume=True,
