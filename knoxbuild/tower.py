@@ -46,7 +46,7 @@ def _lift_count(width: int, height: int) -> int:
 
 def _shape(n: int, lifts_west: bool) -> TowerCore:
     """The core of an N-S hall with its top-left corner at (0, 0)."""
-    s, wide = layout.SHAFT_SIZE, layout.CORE_WIDE
+    s, wide = layout.SHAFT_SIZE, 1
     long_ = max(HALL_MIN_LONG, s * n)
     hx = s if lifts_west else SERVICE_WIDE
     svc_x = hx + wide if lifts_west else 0

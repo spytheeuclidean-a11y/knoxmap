@@ -1628,36 +1628,39 @@ def _furnish(plan: Plan, rng: random.Random,
             # Inside walls first and most of the facade left alone, because
             # the windows are laid out last and in columns: a picture on a
             # bay takes it and leaves a hole up the front of the building.
+            dedicated_stair_core = r.x1 == r.x0 or r.y1 == r.y0
             hung = 0
-            for n, slot in enumerate(
-                    inside + facade[:max(1, len(facade) // CORE_FACADE_SHARE)]):
-                if n % CORE_ART_EVERY:
-                    continue
-                art_set = (CORE_WALL_ART_CIVIC
-                           if plan.kind in ART_FREE_KINDS else CORE_WALL_ART)
-                if not art_set:
-                    break
-                if hang(art_set[hung % len(art_set)], *slot):
-                    hung += 1
-            laid = 0
-            for n, (x, y) in enumerate(
-                    (x, y) for y in range(r.y0, r.y1 + 1)
-                    for x in range(r.x0, r.x1 + 1)
-                    if plan.grid[y][x] == idx and (x, y) not in keep_clear):
-                if n % CORE_RUG_EVERY:
-                    continue
-                # A rug is two or three tiles wide, so every tile of it has to
-                # be this room's floor and clear; one hanging over the edge is
-                # a rug through the wall.
-                order = CORE_RUGS[laid % len(CORE_RUGS):] + CORE_RUGS[:laid % len(CORE_RUGS)]
-                for role in order:
-                    cells = _cells_for(role, x, y, "N")
-                    if any(_room_at(plan, cx, cy) != idx or (cx, cy) in keep_clear
-                           for cx, cy in cells):
+            if not dedicated_stair_core:
+                for n, slot in enumerate(
+                        inside + facade[:max(1, len(facade) // CORE_FACADE_SHARE)]):
+                    if n % CORE_ART_EVERY:
                         continue
-                    plan.furniture.append((role, x, y, "N"))
-                    laid += 1
-                    break
+                    art_set = (CORE_WALL_ART_CIVIC
+                               if plan.kind in ART_FREE_KINDS else CORE_WALL_ART)
+                    if not art_set:
+                        break
+                    if hang(art_set[hung % len(art_set)], *slot):
+                        hung += 1
+            laid = 0
+            if not dedicated_stair_core:
+                for n, (x, y) in enumerate(
+                        (x, y) for y in range(r.y0, r.y1 + 1)
+                        for x in range(r.x0, r.x1 + 1)
+                        if plan.grid[y][x] == idx and (x, y) not in keep_clear):
+                    if n % CORE_RUG_EVERY:
+                        continue
+                    # A rug is two or three tiles wide, so every tile of it has to
+                    # be this room's floor and clear; one hanging over the edge is
+                    # a rug through the wall.
+                    order = CORE_RUGS[laid % len(CORE_RUGS):] + CORE_RUGS[:laid % len(CORE_RUGS)]
+                    for role in order:
+                        cells = _cells_for(role, x, y, "N")
+                        if any(_room_at(plan, cx, cy) != idx or (cx, cy) in keep_clear
+                               for cx, cy in cells):
+                            continue
+                        plan.furniture.append((role, x, y, "N"))
+                        laid += 1
+                        break
             if plan.kind not in HOUSE_LIKE_KINDS:
                 # Keep stair ends, lift doors and narrow hallway necks unobstructed.
                 core_no_go = set(keep_clear) | {
@@ -2537,7 +2540,8 @@ def _pick_corridor(width: int, height: int, mask: list[list[bool]] | None,
 
 
 def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
-               rng: random.Random, street: str | None = None, min_gap: int = 1
+               rng: random.Random, street: str | None = None, min_gap: int = 1,
+               hug_wall: bool = False
                ) -> tuple[int, int, int, int] | None:
     """Reserve a stair shaft: the same rectangle on every storey.
 
@@ -2569,9 +2573,13 @@ def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
                 if any(0 < g < min_gap for g in (x0, width - (x0 + cw),
                                                  y0, height - (y0 + ch))):
                     continue
-                # Central, so the flight is not jammed against the windows.
-                score = (abs((x0 + cw / 2) - width / 2)
-                         + abs((y0 + ch / 2) - height / 2))
+                # Central, so the flight is not jammed against the windows;
+                # wall-hugging buildings prefer a perimeter wall instead.
+                if hug_wall:
+                    score = min(x0, width - (x0 + cw), y0, height - (y0 + ch))
+                else:
+                    score = (abs((x0 + cw / 2) - width / 2)
+                             + abs((y0 + ch / 2) - height / 2))
                 if street in STEP_OF:
                     # Back and side: distance from the wall opposite the
                     # street, then from the nearer side wall.
@@ -2714,18 +2722,22 @@ def _carve_shaft(plan: Plan, shaft: tuple[int, int, int, int],
     _refit(plan)
 
 
-def _stairs_in_core(core: tuple[int, int, int, int]
-                    ) -> tuple[int, int, str]:
+def _stairs_in_core(core: tuple[int, int, int, int],
+                    *, hug_wall: bool = False) -> tuple[int, int, str]:
     """The flight inside a shaft. Runs along the shaft's long axis.
 
     Set one tile in from the end so the corridor is still walkable past it.
+    When `hug_wall` is True, keeps the stairs flush against one wall of the
+    shaft instead of down the middle.
     """
     x0, y0, x1, y1 = core
     if (y1 - y0) >= (x1 - x0):
         start = min(y0 + 1, y1 - (STAIR_RUN - 1))
-        return x0 + (x1 - x0) // 2, max(y0, start), "N"
+        sx = x0 if hug_wall else x0 + (x1 - x0) // 2
+        return sx, max(y0, start), "N"
     start = min(x0 + 1, x1 - (STAIR_RUN - 1))
-    return max(x0, start), y0 + (y1 - y0) // 2, "W"
+    sy = y0 if hug_wall else y0 + (y1 - y0) // 2
+    return max(x0, start), sy, "W"
 
 
 def _clear_for_stairs(plan: Plan, x: int, y: int, d: str) -> None:
@@ -3352,6 +3364,30 @@ def _off_the_windows(storey: Plan) -> int:
     return len(gone)
 
 
+def _add_stair_railings(building: "Building") -> None:
+    """Place a railing along the open side of each staircase and its upper cutout."""
+    for lvl, (sx, sy, sd) in enumerate(building.stairs):
+        for floor_idx, step_range in ((lvl, range(STAIR_RUN - 1)),
+                                      (lvl + 1, range(1, STAIR_RUN))):
+            if floor_idx >= len(building.storeys):
+                continue
+            st = building.storeys[floor_idx]
+            w, h, grid = st.width, st.height, st.grid
+            blocked = set(st.doors) | set(st.open_edge)
+            for side_off in (0, 1):
+                for i in step_range:
+                    edge = (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
+                    ex, ey, ed = edge
+                    if edge in blocked:
+                        continue
+                    ax, ay = (ex - 1, ey) if ed == "W" else (ex, ey - 1)
+                    if not (0 <= ex < w and 0 <= ey < h and 0 <= ax < w and 0 <= ay < h):
+                        continue
+                    r_a, r_b = grid[ay][ax], grid[ey][ex]
+                    if r_a > 0 and r_a == r_b:
+                        st.railing.add(edge)
+
+
 def _clear_the_way(building: "Building") -> int:
     """Take out whatever stands between a doorway and the rooms behind it.
 
@@ -3360,6 +3396,7 @@ def _clear_the_way(building: "Building") -> int:
     connected - every audit of it passed - but the furnished building was not.
     """
     _doors_off_stairs(building)
+    _add_stair_railings(building)
     removed = sum(_off_the_doorways(storey) for storey in building.storeys)
     stairs = building.stairs[0] if building.stairs else None
     for level, storey in enumerate(building.storeys):

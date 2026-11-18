@@ -90,6 +90,31 @@ class FurnishedRoomWalkability(unittest.TestCase):
         self.assertNotIn("painting", roles)
         self.assertIn("switch", roles)
 
+    def test_wall_hugging_stairs_and_open_side_railing(self):
+        core = (2, 1, 4, 6)
+        self.assertEqual(layout._stairs_in_core(core, hug_wall=True), (2, 2, "N"))
+        self.assertEqual(layout._stairs_in_core(core, hug_wall=False), (3, 2, "N"))
+
+        # 2-storey house room with stairs at x=1 hugging West exterior wall (x=1, "W")
+        r0 = layout.Room(0, 0, 3, 5, kind="hall")
+        r1 = layout.Room(0, 0, 3, 5, kind="hall")
+        g0 = [[1] * 4 for _ in range(6)]
+        g1 = [[1] * 4 for _ in range(6)]
+        # Make x=0 a separate room so (1, y, "W") is a wall and (2, y, "W") is open
+        for y in range(6):
+            g0[y][0] = 2
+            g1[y][0] = 2
+        p0 = layout.Plan(4, 6, rooms=[r0, layout.Room(0, 0, 0, 5, kind="livingroom")], grid=g0)
+        p1 = layout.Plan(4, 6, rooms=[r1, layout.Room(0, 0, 0, 5, kind="bedroom")], grid=g1)
+        b = layout.Building(4, 6, storeys=[p0, p1], stairs=[(1, 1, "N")])
+        layout._add_stair_railings(b)
+        # Open East side of the flight gets railings; West wall side does not
+        for y in range(1, 1 + layout.STAIR_RUN - 1):
+            self.assertIn((2, y, "W"), p0.railing)
+            self.assertNotIn((1, y, "W"), p0.railing)
+        for y in range(2, 1 + layout.STAIR_RUN):
+            self.assertIn((2, y, "W"), p1.railing)
+
 
 class NothingIsWalledOffByTheLift(unittest.TestCase):
     """A lift shaft is sealed, so what it stands across is a wall.
