@@ -2157,6 +2157,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         wtr.writeheader()
         wtr.writerows(sorted(left_out, key=lambda r: (r["tile_y"], r["tile_x"])))
 
+    oversized_path = os.path.join(out_dir, f"{map_name}_oversized.json")
+    with open(oversized_path, "w", encoding="utf-8") as f:
+        json.dump({"split": split_large, "skipped": skipped["large"]}, f)
+
     total_rooms = sum(r["rooms"] for r in rows)
     total_furn = sum(r["furniture"] for r in rows)
     print(f"footprints in geojson : {len(geo['features'])}")
@@ -2166,11 +2170,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               + (" (flat roofs, masonry blocks, taller housing)" if region == "cn"
                  else " (built the default way for now)"))
     print(f"  too small (<{min_size})     : {skipped['small']}")
-    if split_large:
-        print(f"  oversized (>{max_size})     : {split_large} kept, "
-              f"cut into units that fit")
+    if split_large or skipped["large"]:
+        print(f"  oversized (>{max_size})     : {split_large} split into units, "
+              f"{skipped['large']} skipped")
     else:
-        print(f"  too large (>{max_size})   : {skipped['large']}")
+        print(f"  too large (>{max_size})   : 0")
     print(f"  outside the map     : {skipped['outside']}")
     print(f"  swallowed by others : {skipped['taken']}")
     print(f"  on the road         : {skipped['road']} (more than {round(100 * footprint.ROAD_SHARE_MAX)}% road)")

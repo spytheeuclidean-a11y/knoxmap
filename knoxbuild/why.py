@@ -9,6 +9,7 @@ Two copies of these sentences would drift apart.
 from __future__ import annotations
 
 import csv
+import json
 import os
 
 # What each reason means, in the words somebody would use about their own map.
@@ -133,6 +134,34 @@ def counts(folder: str) -> dict:
     return tally
 
 
+def oversized_summary(folder: str) -> str:
+    """Plain-English summary of oversized landmarks split into units or skipped."""
+    folder_s = str(folder).rstrip("/\\")
+    path = os.path.join(folder_s, f"{os.path.basename(folder_s)}_oversized.json")
+    split, skipped = 0, 0
+    if os.path.isfile(path):
+        try:
+            with open(path, encoding="utf-8") as f:
+                data = json.load(f)
+            split = int(data.get("split") or 0)
+            skipped = int(data.get("skipped") or 0)
+        except (OSError, ValueError, TypeError):
+            pass
+    else:
+        skipped = counts(folder).get("large", 0)
+    parts = []
+    if split:
+        noun = "building" if split == 1 else "buildings"
+        parts.append(f"{split} oversized {noun} split into units")
+    if skipped:
+        if parts:
+            parts.append(f"{skipped} skipped")
+        else:
+            noun = "building" if skipped == 1 else "buildings"
+            parts.append(f"{skipped} oversized {noun} skipped")
+    return ", ".join(parts)
+
+
 def summary(folder: str) -> dict:
     """The counts in words, biggest first, for the window to show as it is.
 
@@ -143,6 +172,7 @@ def summary(folder: str) -> dict:
     tally = counts(folder)
     return {
         "total": sum(tally.values()),
+        "oversized": oversized_summary(folder),
         "lines": [{"n": n, "reason": reason,
                    "text": SHORT.get(reason, reason)}
                   for reason, n in sorted(tally.items(), key=lambda kv: -kv[1])],

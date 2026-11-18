@@ -13,6 +13,26 @@ from knoxbuild.yards import YARD_MIN_DEPTH, _pave_patio, paint_paths, yard_plan
 
 
 class YardPlacement(unittest.TestCase):
+    def test_open_yard_decor_stays_on_building_side_of_street_or_canal(self):
+        for barrier in (C.MEDIUM_ASPHALT, C.WATER):
+            with self.subTest(barrier=barrier):
+                size = 32
+                ground = np.full((size, size, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+                ground[:, 17] = barrier
+                veg = np.full_like(ground, C.VEG_NOTHING)
+                occupied = np.zeros((size, size), dtype=bool)
+                occupied[12:18, 9:15] = True
+                roads = np.all(ground == C.MEDIUM_ASPHALT, axis=2).ravel()
+                row = dict(kind="house", tile_x=9, tile_y=12, width=6, height=6,
+                           file="house.tbx")
+                with mock.patch.object(yards_module, "_rule_ready", return_value=True):
+                    yards_module._dress_open_yards(
+                        [row], {}, ground, veg, size, size, occupied, roads,
+                        lambda x, y: not occupied[y, x], set(),
+                    )
+                self.assertTrue(np.any(veg[:, :17] != C.VEG_NOTHING))
+                self.assertFalse(np.any(veg[:, 17:] != C.VEG_NOTHING))
+
     def test_patio_paving_preserves_tiles_claimed_by_neighbor_paths(self):
         ground = np.full((3, 4, 3), C.MEDIUM_GRASS, dtype=np.uint8)
         vegetation = np.full((3, 4, 3), C.TREES, dtype=np.uint8)

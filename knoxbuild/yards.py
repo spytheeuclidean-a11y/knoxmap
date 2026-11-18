@@ -571,6 +571,23 @@ def _dress_non_home_surroundings(
                     break
 
 
+def _connected_yard(ground, occupied, roads, building_slice):
+    """Land reachable from a building wall within the local decoration area."""
+    land = ~occupied & ~roads & ~np.all(ground == C.WATER, axis=2)
+    reached = np.zeros_like(land)
+    reached[building_slice] = occupied[building_slice]
+    while True:
+        neighbors = np.zeros_like(land)
+        neighbors[1:] |= reached[:-1]
+        neighbors[:-1] |= reached[1:]
+        neighbors[:, 1:] |= reached[:, :-1]
+        neighbors[:, :-1] |= reached[:, 1:]
+        added = neighbors & land & ~reached
+        if not added.any():
+            return reached & land
+        reached |= added
+
+
 def _dress_open_yards(
     rows: list[dict],
     door_lists: dict,
@@ -589,11 +606,7 @@ def _dress_open_yards(
     bench_ready = _rule_ready("Bench")
     door_clear = fronts or set()
 
-    def can_grass(x: int, y: int) -> bool:
-        return (0 <= x < w and 0 <= y < h and free(x, y)
-                and (x, y) not in door_clear and not road_at[y * w + x]
-                and not occupied[y, x] and tuple(ground[y, x]) in CROSSABLE
-                and tuple(veg[y, x]) == C.VEG_NOTHING)
+    roads = np.asarray(road_at, dtype=np.uint8).view(bool).reshape(h, w)
 
     def clear_neighbors(x: int, y: int) -> bool:
         return all(
@@ -616,6 +629,17 @@ def _dress_open_yards(
         y1 = min(h, by0 + bh + 12)
         x0 = max(0, bx0 - 12)
         x1 = min(w, bx0 + bw + 12)
+        area = np.s_[y0:y1, x0:x1]
+        building = np.s_[max(0, by0 - y0):by0 + bh - y0,
+                         max(0, bx0 - x0):bx0 + bw - x0]
+        reachable = _connected_yard(ground[area], occupied[area], roads[area], building)
+
+        def can_grass(x: int, y: int) -> bool:
+            return (x0 <= x < x1 and y0 <= y < y1 and reachable[y - y0, x - x0]
+                    and free(x, y) and (x, y) not in door_clear
+                    and tuple(ground[y, x]) in CROSSABLE
+                    and tuple(veg[y, x]) == C.VEG_NOTHING)
+
         for y in range(y0, y1):
             for x in range(x0, x1):
                 dist = max(bx0 - x, x - (bx0 + bw - 1), by0 - y, y - (by0 + bh - 1), 0)
