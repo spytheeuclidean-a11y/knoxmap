@@ -417,8 +417,17 @@ def _generate(data):
     if slow_roads:
         log.warning("generate %s: the road router (knoxroute) was not found - routing the "
                     "roads in Python, which is far slower", map_name)
+    from web import forecast
+    est_render = None
+    try:
+        gen_rate = forecast.rates(map_dir.parent).get("generate")
+        if gen_rate:
+            est_render = max(10, int(round(gen_rate * approx_w * approx_h - osm_time)))
+    except Exception:                    # noqa: BLE001 - optional forecast
+        est_render = None
     _set_progress(map_name, stage="render", features=len(features),
-                  slowRoads=slow_roads, nativeAccelerated=native_ok)
+                  slowRoads=slow_roads, nativeAccelerated=native_ok,
+                  **({"estimatedSeconds": est_render} if est_render else {}))
     t_render_start = time.time()
     render_stage = "chunks" if (approx_w // 300) * (approx_h // 300) > 144 else "roads"
 
@@ -461,6 +470,8 @@ def _generate(data):
                             if layers else None),
             should_stop=_stopper(map_name),
             progress=lambda done, total: _set_progress(map_name, stage=render_stage, done=done, total=total),
+            render_progress=lambda frac, note=None: _set_progress(
+                map_name, stage="render", fraction=frac, note=note),
         )
     except knoxstop.Stopped:
         return _stopped(map_name, "generate")
@@ -650,9 +661,36 @@ def api_buildings():
     out = io.StringIO()
     try:
         from contextlib import redirect_stdout
+        layout_started: float | None = None
+
         def say(text: str, fraction: float | None) -> None:
+            nonlocal layout_started
+            extra: dict = {}
+            if text.startswith("Laying out buildings:"):
+                if layout_started is None:
+                    layout_started = time.time()
+                parts = text.split(":", 1)[1].split(" of ")
+                if len(parts) == 2:
+                    try:
+                        done = int(parts[0].replace(",", "").strip())
+                        total = int(parts[1].replace(",", "").strip())
+                        extra = {"done": done, "total": total,
+                                 "etaStarted": layout_started, "etaDisable": False}
+                    except ValueError:
+                        pass
+            elif text.startswith("Laying out "):
+                if layout_started is None:
+                    layout_started = time.time()
+                extra = {"done": None, "total": None, "etaStarted": layout_started,
+                         "etaDisable": True}
+            elif fraction is not None and fraction <= 0.05:
+                extra = {"done": None, "total": None, "etaStarted": None,
+                         "etaDisable": True}
+            else:
+                extra = {"done": None, "total": None, "etaStarted": None,
+                         "etaDisable": False}
             _set_progress(map_dir.name, stage="buildings", note=text,
-                          fraction=fraction)
+                          fraction=fraction, **extra)
 
         say("Starting", 0.0)
         with redirect_stdout(out):
