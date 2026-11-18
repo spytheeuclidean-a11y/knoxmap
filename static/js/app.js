@@ -837,6 +837,8 @@ function updateBboxFields() {
   fx.countUp(stats);
   loadForecast(s, w, n, e, mpt);
   btn.disabled = false;
+  const autoBtn = document.getElementById('autoBtn');
+  if (autoBtn) autoBtn.disabled = false;
   fx.step('area', 'done');
 
   const lm = document.getElementById('landmarksBtn');
@@ -898,6 +900,8 @@ function clearBboxFields() {
   stats.innerHTML = `<div class="empty-state">
     Draw an area on the map - rectangle, polygon, circle or freehand - to see what you'll get.</div>`;
   document.getElementById('generateBtn').disabled = true;
+  const autoBtn = document.getElementById('autoBtn');
+  if (autoBtn) autoBtn.disabled = true;
   document.getElementById('landmarksBtn').disabled = true;
   document.getElementById('landmark-results').innerHTML = '';
   const count = document.getElementById('landmarkCount');
@@ -2059,18 +2063,18 @@ loadMaps();
 
 // ---- generation ----
 
-document.getElementById('generateBtn').addEventListener('click', async () => {
-  if (!currentRect) return;
+async function runGenerate({ skipBigConfirm = false } = {}) {
+  if (!currentRect) return false;
   // Only what I draw with nothing drawn downloads nothing and builds nothing:
   // say so, rather than switching it off behind the user's back.
   if (document.getElementById('drawnOnly').checked
       && typeof sketchCount === 'function' && !sketchCount()
       && !window.confirm('Only what I draw is on, but nothing is drawn under Features: '
-        + 'the map will be bare ground.\n\nGenerate it anyway?')) return;
+        + 'the map will be bare ground.\n\nGenerate it anyway?')) return false;
 
   // A big map ties the app up for a long while, so say how big and how long
   // before starting rather than after.
-  {
+  if (!skipBigConfirm) {
     const { s, w, n, e } = rectBounds(currentRect);
     const { area, tilesX, tilesY } = boxSize(s, w, n, e);
     const side = Math.max(tilesX, tilesY);
@@ -2079,7 +2083,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       if (!window.confirm(`This is a big map: ${Math.round(area)} km², `
           + `${tilesX / 300} × ${tilesY / 300} cells (${tilesX} × ${tilesY} tiles).\n\n`
           + `Generate map will take ${takes}. Adding buildings and compiling `
-          + 'take longer again.\n\nGenerate it?')) return;
+          + 'take longer again.\n\nGenerate it?')) return false;
     }
   }
 
@@ -2106,8 +2110,10 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
   };
 
   const btn = document.getElementById('generateBtn');
+  const autoBtn = document.getElementById('autoBtn');
   const status = document.getElementById('status');
   btn.disabled = true;
+  if (autoBtn) autoBtn.disabled = true;
   status.className = '';
   status.textContent = 'Starting…';
   fx.step('style', 'done');
@@ -2129,7 +2135,7 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
       fx.overlay.hide();
       fx.step('terrain', '');
       fx.toast('ok', 'Stopped', 'The area and the settings are as you left them.');
-      return;
+      return false;
     }
     if (!res.ok) throw apiError(data, res);
 
@@ -2153,18 +2159,86 @@ document.getElementById('generateBtn').addEventListener('click', async () => {
                   metersPerTile: body.metersPerTile, shape: body.shape,
                   settings: data.settings || body.settings });
     loadMaps();
+    return true;
   } catch (err) {
     status.className = 'error';
     status.textContent = `Error: ${err.message}`;
     fx.overlay.fail(err.message);
     fx.step('terrain', 'error');
     fx.problem('Generation failed', err.message, err.errorId);
+    return false;
   } finally {
     stopProgress();
     showStop(null);
     btn.disabled = false;
+    if (autoBtn) autoBtn.disabled = !currentRect;
   }
-});
+}
+
+document.getElementById('generateBtn').addEventListener('click', () => runGenerate());
+
+async function runAuto() {
+  if (!currentRect) return;
+  const { s, w, n, e } = rectBounds(currentRect);
+  const { area, tilesX, tilesY } = boxSize(s, w, n, e);
+  const side = Math.max(tilesX, tilesY);
+  if (area > SLOW_ABOVE_KM2 || side > BIG_TILES_PER_SIDE) {
+    const takes = durationText(generateSeconds(area, tilesX * tilesY));
+    if (!window.confirm(`This is a big map: ${Math.round(area)} km², `
+        + `${tilesX / 300} × ${tilesY / 300} cells (${tilesX} × ${tilesY} tiles).\n\n`
+        + `Auto mode will run Generate (${takes}), Build, Compile, and Install in sequence.\n\nStart Auto mode?`)) return;
+  }
+  const status = document.getElementById('status');
+  const standalone = !!document.getElementById('autoStandalone')?.checked;
+  if (!await runGenerate({ skipBigConfirm: true })) return;
+
+  if (standalone && currentMap) {
+    status.className = '';
+    status.textContent = 'Auto mode: setting standalone placement…';
+    try {
+      const res = await fetch(`/api/placement/${encodeURIComponent(currentMap)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ standalone: true }),
+      });
+      if (res.ok) {
+        const box = document.getElementById('placeStandalone');
+        if (box) box.checked = true;
+        if (typeof loadPlacement === 'function') loadPlacement();
+      }
+    } catch (_) { /* build will read placement.json */ }
+  }
+
+  status.className = '';
+  status.textContent = 'Auto mode (2/4): Building…';
+  if (!await runBuildings()) {
+    status.className = 'error';
+    status.textContent = 'Auto mode stopped at Build.';
+    return;
+  }
+
+  status.className = '';
+  status.textContent = 'Auto mode (3/4): Compiling…';
+  if (!await startCompile(false)) {
+    status.className = 'error';
+    status.textContent = 'Auto mode stopped at Compile.';
+    return;
+  }
+
+  status.className = '';
+  status.textContent = 'Auto mode (4/4): Installing…';
+  if (!await runInstall()) {
+    status.className = 'error';
+    status.textContent = 'Auto mode stopped at Install.';
+    return;
+  }
+
+  status.className = 'success';
+  status.textContent = `Auto mode complete — "${currentMap}" generated, built, compiled, and installed.`;
+  fx.toast('ok', 'Auto mode complete',
+           `${currentMap} is ready to play${standalone ? ' (standalone)' : ''}.`);
+}
+
+document.getElementById('autoBtn')?.addEventListener('click', () => runAuto());
 
 // ---- a town that came out empty ---------------------------------------------
 //
@@ -2876,7 +2950,7 @@ function showBuilt(text) {
                       + 'File → Generate Lots 8x8 → All Cells…');
 }
 
-document.getElementById('buildingsBtn').addEventListener('click', async () => {
+async function runBuildings() {
   const btn = document.getElementById('buildingsBtn');
   btn.disabled = true;
   note('buildingsNote', 'Generating…');
@@ -2908,22 +2982,26 @@ document.getElementById('buildingsBtn').addEventListener('click', async () => {
     if (wasStopped(data, res)) {
       note('buildingsNote', 'Stopped. The terrain and the area are still here — press Build again.');
       fx.toast('ok', 'Stopped', 'Nothing was thrown away.');
-      return;
+      return false;
     }
     if (!res.ok) throw apiError(data, res);
     if (data.terrain) renderResults(data.terrain);
     renderCensus(data.population);
     showBuilt(`${data.count} buildings → ${data.pzw}`);
     showLeftOut(data.left_out);
+    return true;
   } catch (err) {
     note('buildingsNote', err.message, 'bad');
+    return false;
   } finally {
     over = true;
     clearInterval(watch);
     showStop(null);
     btn.disabled = false;
   }
-});
+}
+
+document.getElementById('buildingsBtn').addEventListener('click', () => runBuildings());
 
 document.getElementById('worldedBtn').addEventListener('click', async () => {
   try {
@@ -2960,7 +3038,7 @@ async function checkLots() {
   } catch (_) { /* keep polling quietly */ }
 }
 
-document.getElementById('installBtn').addEventListener('click', async () => {
+async function runInstall() {
   const btn = document.getElementById('installBtn');
   btn.disabled = true;
   note('installNote', 'Installing…');
@@ -3007,13 +3085,17 @@ document.getElementById('installBtn').addEventListener('click', async () => {
     document.getElementById('publishCard').hidden = false;
     showServerSetup();
     loadMaps();
+    return true;
   } catch (err) {
     note('installNote', err.message, 'bad');
     btn.disabled = false;
+    return false;
   } finally {
     stopWatching();
   }
-});
+}
+
+document.getElementById('installBtn').addEventListener('click', () => runInstall());
 
 // ---- zombie census ------------------------------------------------------------
 //
@@ -3142,11 +3224,12 @@ async function startCompile(onlyFailed) {
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
-    pollCompile();
+    return await pollCompile();
   } catch (err) {
     note('compileNote', err.message, 'bad');
     showStop(null);
     btn.disabled = false;
+    return false;
   }
 }
 
@@ -3188,66 +3271,74 @@ function formatLeft(seconds) {
 
 function pollCompile() {
   clearInterval(compileTimer);
-  compileTimer = setInterval(async () => {
-    try {
-      const res = await fetch(
-        `/api/compile-status?map=${encodeURIComponent(currentMap)}`);
-      const p = await res.json();
-      if (p.state === 'stopping') {
-        note('compileNote', 'Stopping — waiting for WorldEd to close…');
-        return;
-      }
-      if (p.state === 'running' && p.phase) {
-        // The Rust compile: no batches, so it says where it is.
-        fx.progress('compile', Math.round(100 * p.fraction));
-        note('compileNote', `Compiling — ${p.phase} (${Math.round(100 * p.fraction)}%)…`);
-        return;
-      }
-      if (p.state === 'running') {
-        const pct = p.expected ? Math.floor(100 * p.cells / p.expected) : 0;
-        // The batch counter is the honest one on a big map: cell files land in
-        // bursts and stay flat for minutes inside a batch, which reads as a
-        // hang. Batches tick over steadily.
-        const batch = p.batches ? ` — batch ${p.batch}/${p.batches}` : '';
-        fx.progress('compile', p.batches ? Math.max(pct, 100 * (p.batch - 1) / p.batches) : pct);
-        // Time left, once a few batches have set the pace; and the number
-        // running at once when WorldEd made the compile ease off.
-        const left = p.etaSeconds ? ` — about ${formatLeft(p.etaSeconds)} left` : '';
-        const eased = p.workers && p.workersStart && p.workers < p.workersStart
-          ? ` — ${p.workers} at a time, down from ${p.workersStart} after WorldEd errors` : '';
-        // A map compiled before only redoes what has changed since.
-        const inc = p.incremental && p.incremental.batches < p.incremental.of
-          ? ` (only the ${p.incremental.changed} changed cell${p.incremental.changed === 1 ? '' : 's'}`
-            + ` and what touches them: ${p.incremental.batches} of ${p.incremental.of} batches)` : '';
-        note('compileNote',
-             `Compiling${batch}${inc}${left} — ${p.tmx} cells converted, `
-             + `${p.cells}/${p.expected || '?'} compiled (${pct}%)${eased}…`);
-        return;
-      }
-      clearInterval(compileTimer);
-      showStop(null);
-      document.getElementById('compileBtn').disabled = false;
-      if (p.state === 'stopped') {
-        fx.progress('compile', 0);
-        note('compileNote', 'Stopped. The cells already compiled are kept — '
-                            + 'press Compile to carry on from there.');
-        fx.toast('ok', 'Stopped', 'Compiling picks up where it left off.');
-        return;
-      }
-      if (p.state === 'error') {
-        lastErrorId = p.errorId || null;
-        note('compileNote', p.error || 'Compile failed.', 'bad');
-        return;
-      }
-      if (p.state === 'done') {
-        fx.progress('compile', 100);
-        document.getElementById('installBtn').disabled = false;
-        if (showFailedCells(p.failed, p.cells)) return;
-        note('compileNote', `${p.cells} cells compiled.`, 'ok');
-        note('installNote', 'Ready to install.');
-      }
-    } catch (_) { /* keep watching */ }
-  }, 2000);
+  return new Promise(resolve => {
+    compileTimer = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `/api/compile-status?map=${encodeURIComponent(currentMap)}`);
+        const p = await res.json();
+        if (p.state === 'stopping') {
+          note('compileNote', 'Stopping — waiting for WorldEd to close…');
+          return;
+        }
+        if (p.state === 'running' && p.phase) {
+          // The Rust compile: no batches, so it says where it is.
+          fx.progress('compile', Math.round(100 * p.fraction));
+          note('compileNote', `Compiling — ${p.phase} (${Math.round(100 * p.fraction)}%)…`);
+          return;
+        }
+        if (p.state === 'running') {
+          const pct = p.expected ? Math.floor(100 * p.cells / p.expected) : 0;
+          // The batch counter is the honest one on a big map: cell files land in
+          // bursts and stay flat for minutes inside a batch, which reads as a
+          // hang. Batches tick over steadily.
+          const batch = p.batches ? ` — batch ${p.batch}/${p.batches}` : '';
+          fx.progress('compile', p.batches ? Math.max(pct, 100 * (p.batch - 1) / p.batches) : pct);
+          // Time left, once a few batches have set the pace; and the number
+          // running at once when WorldEd made the compile ease off.
+          const left = p.etaSeconds ? ` — about ${formatLeft(p.etaSeconds)} left` : '';
+          const eased = p.workers && p.workersStart && p.workers < p.workersStart
+            ? ` — ${p.workers} at a time, down from ${p.workersStart} after WorldEd errors` : '';
+          // A map compiled before only redoes what has changed since.
+          const inc = p.incremental && p.incremental.batches < p.incremental.of
+            ? ` (only the ${p.incremental.changed} changed cell${p.incremental.changed === 1 ? '' : 's'}`
+              + ` and what touches them: ${p.incremental.batches} of ${p.incremental.of} batches)` : '';
+          note('compileNote',
+               `Compiling${batch}${inc}${left} — ${p.tmx} cells converted, `
+               + `${p.cells}/${p.expected || '?'} compiled (${pct}%)${eased}…`);
+          return;
+        }
+        clearInterval(compileTimer);
+        showStop(null);
+        document.getElementById('compileBtn').disabled = false;
+        if (p.state === 'stopped') {
+          fx.progress('compile', 0);
+          note('compileNote', 'Stopped. The cells already compiled are kept — '
+                              + 'press Compile to carry on from there.');
+          fx.toast('ok', 'Stopped', 'Compiling picks up where it left off.');
+          resolve(false);
+          return;
+        }
+        if (p.state === 'error') {
+          lastErrorId = p.errorId || null;
+          note('compileNote', p.error || 'Compile failed.', 'bad');
+          resolve(false);
+          return;
+        }
+        if (p.state === 'done') {
+          fx.progress('compile', 100);
+          document.getElementById('installBtn').disabled = false;
+          if (showFailedCells(p.failed, p.cells)) {
+            resolve(false);
+            return;
+          }
+          note('compileNote', `${p.cells} cells compiled.`, 'ok');
+          note('installNote', 'Ready to install.');
+          resolve(true);
+        }
+      } catch (_) { /* keep watching */ }
+    }, 2000);
+  });
 }
 
 // ---- links straight to a place ----------------------------------------------------
