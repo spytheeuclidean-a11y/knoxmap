@@ -27,17 +27,25 @@ def _eta(now: dict) -> int | None:
     """Seconds left in the stage `now` describes, from the pace it has set.
 
     The share of the work done - tiles, files, buildings - against the time
-    since the stage began. None until there is enough of both to mean anything.
+    since the stage began, or a prior-map `estimatedSeconds` fallback before
+    progress ticks arrive. None until there is enough of both to mean anything.
     """
+    if now.get("etaDisable"):
+        return None
     done, total = now.get("done"), now.get("total")
     share = done / total if done and total and 0 < done < total else now.get("fraction")
-    started = now.get("started")
-    if not isinstance(share, (int, float)) or not 0 < share < 1 or not started:
+    started = now.get("etaStarted") or now.get("started")
+    if not started:
         return None
     elapsed = time.time() - started
     if elapsed < ETA_AFTER_SECONDS:
         return None
-    return max(1, int(round(elapsed / share * (1 - share))))
+    if isinstance(share, (int, float)) and 0 < share < 1:
+        return max(1, int(round(elapsed / share * (1 - share))))
+    est = now.get("estimatedSeconds")
+    if isinstance(est, (int, float)) and est > elapsed:
+        return max(1, int(round(est - elapsed)))
+    return None
 
 
 def _set_progress(map_name: str, **fields) -> None:
@@ -146,4 +154,11 @@ def api_stop():
 @bp.route("/api/progress")
 def api_progress():
     with _PROGRESS_LOCK:
-        return jsonify(_PROGRESS.get(request.args.get("map", ""), {}))
+        now = dict(_PROGRESS.get(request.args.get("map", ""), {}))
+    if now:
+        left = _eta(now)
+        if left is None:
+            now.pop("etaSeconds", None)
+        else:
+            now["etaSeconds"] = left
+    return jsonify(now)

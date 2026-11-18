@@ -157,6 +157,29 @@ class TheTimeLeftOfTheStepRunning(unittest.TestCase):
             jobs._set_progress("eta-map", stage="fences", fraction=0.9)
         self.assertNotIn("etaSeconds", jobs._PROGRESS["eta-map"])
 
+    def test_estimated_seconds_fallback_before_progress_ticks(self):
+        with mock.patch.object(jobs.time, "time", return_value=1000.0):
+            # Too early (under ETA_AFTER_SECONDS)
+            self.assertIsNone(jobs._eta({"estimatedSeconds": 600, "started": 998.0}))
+            # Uses remaining estimate before live progress arrives
+            self.assertEqual(jobs._eta({"estimatedSeconds": 600, "started": 940.0}), 540)
+            # Live fraction overrides the fallback estimate
+            self.assertEqual(jobs._eta({"estimatedSeconds": 600, "fraction": 0.5, "started": 940.0}), 60)
+            # Once elapsed exceeds estimatedSeconds, stops guessing
+            self.assertIsNone(jobs._eta({"estimatedSeconds": 600, "started": 300.0}))
+
+    def test_buildings_layout_uses_done_total_and_eta_started(self):
+        with mock.patch.object(jobs.time, "time", return_value=1000.0):
+            # Prep offset (0.05) with etaDisable=True should not invent a 1-min ETA
+            self.assertIsNone(jobs._eta({"fraction": 0.05, "started": 990.0,
+                                         "etaDisable": True}))
+            # 96 of 8342 buildings in 10s -> ~859s left, not ~84s from 0.056 fraction
+            self.assertEqual(
+                jobs._eta({"done": 96, "total": 8342, "fraction": 0.0563,
+                           "started": 900.0, "etaStarted": 990.0}),
+                859,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
