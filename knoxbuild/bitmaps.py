@@ -218,3 +218,71 @@ def read_rgb_rows(path: str, top: int, bottom: int, width: int | None = None) ->
         w, h = img.size
         cols = min(width, w) if width else w
         return np.array(img.convert("RGB").crop((0, top, cols, min(bottom, h))))
+
+
+def read_window(path: str, x0: int, y0: int, win_w: int, win_h: int,
+                *, bits: int = 24) -> np.ndarray:
+    """Read ``[y0:y0+win_h, x0:x0+win_w]`` from a BMP using buffered strip I/O."""
+    hdr = _bmp_header(path)
+    if hdr is not None and hdr[3] == bits:
+        w, height, bottom_up, _bits, offset = hdr
+        bpp = bits // 8
+        stride = (w * bpp + 3) // 4 * 4
+        x1 = min(w, x0 + win_w)
+        y1 = min(height, y0 + win_h)
+        cw = max(0, x1 - x0)
+        ch = max(0, y1 - y0)
+        shape = (ch, cw, 3) if bpp == 3 else (ch, cw)
+        out = np.empty(shape, dtype=np.uint8)
+        if cw == 0 or ch == 0:
+            return out
+        if os.path.getsize(path) >= offset + stride * height:
+            with open(path, "rb") as fh:
+                for top in range(y0, y1, STRIP_ROWS):
+                    bottom = min(top + STRIP_ROWS, y1)
+                    count = bottom - top
+                    src_top = (height - bottom) if bottom_up else top
+                    fh.seek(offset + src_top * stride)
+                    buf = fh.read(count * stride)
+                    src = np.frombuffer(buf, dtype=np.uint8).reshape(count, stride)
+                    if bottom_up:
+                        src = src[::-1]
+                    if bpp == 3:
+                        px = src[:, x0 * 3:x1 * 3].reshape(count, cw, 3)
+                        out[top - y0:bottom - y0] = px[:, :, ::-1]
+                    else:
+                        out[top - y0:bottom - y0] = src[:, x0:x1]
+            return out
+    with Image.open(path) as img:
+        mode = "RGB" if bits == 24 else "L"
+        return np.array(img.convert(mode).crop((x0, y0, x0 + win_w, y0 + win_h)))
+
+
+def write_window(path: str, x0: int, y0: int, arr: np.ndarray) -> None:
+    """Write ``arr`` into an existing uncompressed BMP at ``(x0, y0)`` in strips."""
+    hdr = _bmp_header(path)
+    win_h, win_w = arr.shape[:2]
+    if hdr is not None and hdr[3] in (8, 24):
+        w, height, bottom_up, bits, offset = hdr
+        bpp = bits // 8
+        stride = (w * bpp + 3) // 4 * 4
+        if os.path.getsize(path) >= offset + stride * height:
+            row_bytes = win_w * bpp
+            with open(path, "r+b") as fh:
+                for dy in range(win_h):
+                    gy = y0 + dy
+                    if not (0 <= gy < height):
+                        continue
+                    src_y = (height - 1 - gy) if bottom_up else gy
+                    fh.seek(offset + src_y * stride + x0 * bpp)
+                    if bpp == 3:
+                        fh.write(np.ascontiguousarray(arr[dy, :, ::-1]).tobytes())
+                    else:
+                        fh.write(np.ascontiguousarray(arr[dy]).tobytes())
+                    if row_bytes == 0:
+                        continue
+            return
+    with Image.open(path) as img:
+        base = img.copy()
+    base.paste(Image.fromarray(arr), (x0, y0))
+    base.save(path, format="BMP")
