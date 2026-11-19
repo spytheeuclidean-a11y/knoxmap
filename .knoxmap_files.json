@@ -220,6 +220,7 @@
     "rust/knoxroute/Cargo.toml",
     "rust/knoxroute/src/box_any.rs",
     "rust/knoxroute/src/clear_road_veg.rs",
+    "rust/knoxroute/src/footprints.rs",
     "rust/knoxroute/src/main.rs",
     "rust/knoxroute/src/paint_kerbs.rs",
     "rust/knoxroute/src/rails.rs",
