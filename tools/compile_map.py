@@ -1050,11 +1050,31 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
             phase("Reading the buildings", 0.0)
             from tools import native_source
             from knoxbuild.bitmaps import _bmp_header
+
+            def _plain_24bit_pair(paths) -> bool:
+                dims = None
+                for image in paths:
+                    head = _bmp_header(str(image))
+                    if not head or head[3] != 24:
+                        return False
+                    w, h, _bu, _bpp, offset = head
+                    stride = (3 * w + 3) & ~3
+                    try:
+                        if os.path.getsize(image) < offset + stride * h:
+                            return False
+                    except OSError:
+                        return False
+                    if dims is None:
+                        dims = (w, h)
+                    elif dims != (w, h):
+                        return False
+                return dims is not None
+
             # Older installed compilers and nonstandard bitmap encodings retain
             # their existing Python/Pillow source reader.
-            images = (project / f"{project.name}{suffix}.bmp" for suffix in ("", "_veg"))
+            images = tuple(project / f"{project.name}{suffix}.bmp" for suffix in ("", "_veg"))
             native = (os.environ.get("KNOXMAP_SOURCE_WORKER") != "python"
-                      and all((head := _bmp_header(image)) and head[3:4] == (24,) for image in images)
+                      and _plain_24bit_pair(images)
                       and native_source.supported(exe))
             cache.native_exe = exe if native else None
             make_map_source(str(project), str(src), seams=True, workers=workers, should_stop=should_stop,

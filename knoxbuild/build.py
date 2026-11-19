@@ -1511,235 +1511,235 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     used_presets = collections.Counter()
     fp_session = FootprintSession(occupied, avoid=road_weight, lots=lots)
     try:
-      for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
-        # Between buildings: nothing is written to disk until the whole run
-        # is laid out, so stopping here costs only the time spent.
-        if placed_so_far % 64 == 0:
-            knoxstop.check(should_stop, "the buildings")
-        # This loop is one process and, on a city, most of an hour: without a
-        # word from it the window sat on "Reading the map" at 0% the whole time.
-        if placed_so_far % 2000 == 0 and order:
-            say(f"Placing buildings: {min(placed_so_far, len(order)):,} of {len(order):,}",
-                0.04 * min(1.0, placed_so_far / len(order)))
-        feat = geo["features"][i]
-        oversize = False
-        if retry:
-            # A building past max_size is not thrown away any more: the
-            # factory and the hangar are the landmarks a place is known by,
-            # and dropping them left a hole exactly where the eye looks. The
-            # gate measured the real building's long side, so it is tried
-            # again without that one gate (place claimed nothing before
-            # refusing) and cut into units that fit further down, in
-            # row_units - which is what it is anyway, works of that size
-            # being several blocks wall to wall.
-            fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
-                                          snap_degrees=settings.square_buildings,
-                                          alignment=settings.building_alignment)
-            oversize = fp is not None
-        else:
-            fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
-                                          snap_degrees=settings.square_buildings,
-                                          alignment=settings.building_alignment)
-            if fp is None and reason == "large":
-                if -_neg_area <= MAX_OVERSIZE_TILES:
-                    deferred_large.append((_neg_area, i, px))
-                else:
-                    skipped["large"] += 1
-                    note_left_out(feat, "large")
-                continue
-        if fp is None:
-            skipped[reason] += 1
-            note_left_out(feat, reason)
-            continue
-        x0, y0, w, h = fp.x0, fp.y0, fp.width, fp.height
-        if fp.angle <= 8.0:
-            squared += 1
+        for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
+          # Between buildings: nothing is written to disk until the whole run
+          # is laid out, so stopping here costs only the time spent.
+          if placed_so_far % 64 == 0:
+              knoxstop.check(should_stop, "the buildings")
+          # This loop is one process and, on a city, most of an hour: without a
+          # word from it the window sat on "Reading the map" at 0% the whole time.
+          if placed_so_far % 2000 == 0 and order:
+              say(f"Placing buildings: {min(placed_so_far, len(order)):,} of {len(order):,}",
+                  0.04 * min(1.0, placed_so_far / len(order)))
+          feat = geo["features"][i]
+          oversize = False
+          if retry:
+              # A building past max_size is not thrown away any more: the
+              # factory and the hangar are the landmarks a place is known by,
+              # and dropping them left a hole exactly where the eye looks. The
+              # gate measured the real building's long side, so it is tried
+              # again without that one gate (place claimed nothing before
+              # refusing) and cut into units that fit further down, in
+              # row_units - which is what it is anyway, works of that size
+              # being several blocks wall to wall.
+              fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
+                                            snap_degrees=settings.square_buildings,
+                                            alignment=settings.building_alignment)
+              oversize = fp is not None
+          else:
+              fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
+                                            snap_degrees=settings.square_buildings,
+                                            alignment=settings.building_alignment)
+              if fp is None and reason == "large":
+                  if -_neg_area <= MAX_OVERSIZE_TILES:
+                      deferred_large.append((_neg_area, i, px))
+                  else:
+                      skipped["large"] += 1
+                      note_left_out(feat, "large")
+                  continue
+          if fp is None:
+              skipped[reason] += 1
+              note_left_out(feat, reason)
+              continue
+          x0, y0, w, h = fp.x0, fp.y0, fp.width, fp.height
+          if fp.angle <= 8.0:
+              squared += 1
 
-        tags = feat.get("properties", {})
-        # Rooms the mapper drew inside it, if OSM has any for this building
-        # (renderer._buildings_geojson attaches them to their building).
-        mapped = feat.get("properties", {}).get("rooms") or []
-        btag = (tags.get("building") or "").strip().lower()
-        cx = x0 + w / 2
-        cy = y0 + h / 2
-        # From here down this building is built to its zone's settings rather
-        # than the map's: how tall it may be, whether it is flats, how big its
-        # rooms are, whose tiles it is built from.
-        here = zoning.settings_at(cx, cy)
-        real_m2 = fp.tiles * metres_per_tile * metres_per_tile
-        special = classify_building(tags)
-        # What is really in it: its own tags and the shops, restaurants and
-        # offices mapped as points inside it.
-        inside = [tags] + _points_inside(points, px, points_taken)
-        uses = uses_of(inside)
-        special = _business_kind(special, uses)
-        special = mall_by_name(special, tags, uses, real_m2)
-        if special == "garage":
-            sheds += 1
-        entrance_points = _entrances_inside(points, px)
-        hotel = is_hotel(inside)
-        if ("gasstore", "storage") in uses:
-            stations.append((x0, y0, w, h, street_side(x0, y0, w, h)))
-        offices_only = bool(uses) and all(u == ("office", "office") for u in uses)
-        if uses:
-            with_uses += 1
-        if offices_only and special in (None, "house"):
-            special = "civic"          # an office building
-        elif uses and not offices_only and special in (None, "house", "shed"):
-            special = "shop"           # flats over it, below, if it is tall
-        if special is None and (btag in SHED_VALUES or (
-                btag in ("", "yes") and real_m2 <= SHED_MAX_M2)):
-            special = "shed"
-            sheds += 1
-        nearby = (context.neighbour_levels(cx, cy)
-                  if levels_from_tags(tags, here) is None else None)
-        if special is None and nearby is not None and nearby >= 3 \
-                and real_m2 >= NEIGHBOUR_FLATS_M2 and btag not in HOUSE_TAGS:
-            # Among tagged blocks of flats, a big untagged building is one more.
-            special = "apartment"
-        if special is None:
-            around = areas.kind_for(cx, cy, fp.tiles)
-            # A tall building in a shopping street is flats over shops; the
-            # mapper's height says so more reliably than the zoning does.
-            if around == "shop" and (levels_from_tags(tags, here) or 0) >= 3:
-                around = None
-            if around:
-                special = around
-                from_area += 1
-        commercial = special is not None or tags.get("building") in COMMERCIAL_TAGS
-        if special is None and looks_like_apartment(tags, fp.tiles, style_rng,
-                                                    here):
-            special = "apartment"
-            commercial = True
-        levels, measured = building_levels(tags, special, fp.tiles,
-                                           style_rng, here,
-                                           metres_per_tile=metres_per_tile,
-                                           region=region)
-        if measured:
-            from_osm += 1
-        elif nearby is not None and (special or "house") in FOLLOWS_NEIGHBOURS:
-            top = here.max_levels
-            if special is None:
-                # A Chinese self-built house runs a storey taller than the
-                # game's houses before the neighbours' heights are heard.
-                top = min(top, HOUSE_MAX_LEVELS + 1 if region == "cn"
-                          else HOUSE_MAX_LEVELS)
-            levels = max(1, min(top, int(round(nearby)) +
-                                style_rng.choice((-1, 0, 0, 1))))
-            from_near += 1
-        if flats_by_height(special, levels, btag, fp.tiles, here):
-            special = "apartment"
-            commercial = True
-        if hotel:
-            special = "apartment"      # its flats are guest rooms
-        elif any(back == "theatre" for _front, back in uses):
-            # A theatre is its auditorium behind a foyer on the street, and a
-            # few storeys of hall, not a tower.
-            special = "civic"
-            levels = min(levels, THEATRE_MAX_LEVELS)
-        elif special in ("shop", "restaurant") and uses and levels >= 3 and \
-                btag not in ("retail", "commercial", "supermarket", "shop", "kiosk"):
-            # A pizza place in a five-storey building is flats over a pizza
-            # place, not a five-storey pizza place - unless the building is
-            # offices: a company inside it, or a name like "Americas Tower".
-            offices = ("office", "office") in uses or btag == "office" or re.search(
-                r"\b(tower|building|plaza|center|centre|exchange)\b", tags.get("name") or "", re.I)
-            special = "civic" if offices else "apartment"
-        local_density = context.density(cx, cy)
-        profile = BuildingProfile.infer(tags, special, local_density, real_m2,
-                                        levels, seed + i * 31)
-        # Hotels are dressed as the city's big buildings, army bases as works,
-        # and the public buildings that have no walls of their own as civic.
-        style = pick_style(STYLE_AS.get("civic" if hotel else special, special),
-                           x0, y0, style_rng, here,
-                           density=local_density, profile=profile,
-                           region=region)
-        # A zone may pin its buildings to one set of walls - the estate on the
-        # hill all the same brick - however many styles the rest of the map
-        # has. A name nothing answers to leaves the style it would have had.
-        pinned = zoning.style_at(cx, cy)
-        if pinned:
-            style = style_named(pinned, special) or style
-        if profile.wear < 0.18 and style.get("grime"):
-            style = dict(style)
-            style.pop("grime", None)
+          tags = feat.get("properties", {})
+          # Rooms the mapper drew inside it, if OSM has any for this building
+          # (renderer._buildings_geojson attaches them to their building).
+          mapped = feat.get("properties", {}).get("rooms") or []
+          btag = (tags.get("building") or "").strip().lower()
+          cx = x0 + w / 2
+          cy = y0 + h / 2
+          # From here down this building is built to its zone's settings rather
+          # than the map's: how tall it may be, whether it is flats, how big its
+          # rooms are, whose tiles it is built from.
+          here = zoning.settings_at(cx, cy)
+          real_m2 = fp.tiles * metres_per_tile * metres_per_tile
+          special = classify_building(tags)
+          # What is really in it: its own tags and the shops, restaurants and
+          # offices mapped as points inside it.
+          inside = [tags] + _points_inside(points, px, points_taken)
+          uses = uses_of(inside)
+          special = _business_kind(special, uses)
+          special = mall_by_name(special, tags, uses, real_m2)
+          if special == "garage":
+              sheds += 1
+          entrance_points = _entrances_inside(points, px)
+          hotel = is_hotel(inside)
+          if ("gasstore", "storage") in uses:
+              stations.append((x0, y0, w, h, street_side(x0, y0, w, h)))
+          offices_only = bool(uses) and all(u == ("office", "office") for u in uses)
+          if uses:
+              with_uses += 1
+          if offices_only and special in (None, "house"):
+              special = "civic"          # an office building
+          elif uses and not offices_only and special in (None, "house", "shed"):
+              special = "shop"           # flats over it, below, if it is tall
+          if special is None and (btag in SHED_VALUES or (
+                  btag in ("", "yes") and real_m2 <= SHED_MAX_M2)):
+              special = "shed"
+              sheds += 1
+          nearby = (context.neighbour_levels(cx, cy)
+                    if levels_from_tags(tags, here) is None else None)
+          if special is None and nearby is not None and nearby >= 3 \
+                  and real_m2 >= NEIGHBOUR_FLATS_M2 and btag not in HOUSE_TAGS:
+              # Among tagged blocks of flats, a big untagged building is one more.
+              special = "apartment"
+          if special is None:
+              around = areas.kind_for(cx, cy, fp.tiles)
+              # A tall building in a shopping street is flats over shops; the
+              # mapper's height says so more reliably than the zoning does.
+              if around == "shop" and (levels_from_tags(tags, here) or 0) >= 3:
+                  around = None
+              if around:
+                  special = around
+                  from_area += 1
+          commercial = special is not None or tags.get("building") in COMMERCIAL_TAGS
+          if special is None and looks_like_apartment(tags, fp.tiles, style_rng,
+                                                      here):
+              special = "apartment"
+              commercial = True
+          levels, measured = building_levels(tags, special, fp.tiles,
+                                             style_rng, here,
+                                             metres_per_tile=metres_per_tile,
+                                             region=region)
+          if measured:
+              from_osm += 1
+          elif nearby is not None and (special or "house") in FOLLOWS_NEIGHBOURS:
+              top = here.max_levels
+              if special is None:
+                  # A Chinese self-built house runs a storey taller than the
+                  # game's houses before the neighbours' heights are heard.
+                  top = min(top, HOUSE_MAX_LEVELS + 1 if region == "cn"
+                            else HOUSE_MAX_LEVELS)
+              levels = max(1, min(top, int(round(nearby)) +
+                                  style_rng.choice((-1, 0, 0, 1))))
+              from_near += 1
+          if flats_by_height(special, levels, btag, fp.tiles, here):
+              special = "apartment"
+              commercial = True
+          if hotel:
+              special = "apartment"      # its flats are guest rooms
+          elif any(back == "theatre" for _front, back in uses):
+              # A theatre is its auditorium behind a foyer on the street, and a
+              # few storeys of hall, not a tower.
+              special = "civic"
+              levels = min(levels, THEATRE_MAX_LEVELS)
+          elif special in ("shop", "restaurant") and uses and levels >= 3 and \
+                  btag not in ("retail", "commercial", "supermarket", "shop", "kiosk"):
+              # A pizza place in a five-storey building is flats over a pizza
+              # place, not a five-storey pizza place - unless the building is
+              # offices: a company inside it, or a name like "Americas Tower".
+              offices = ("office", "office") in uses or btag == "office" or re.search(
+                  r"\b(tower|building|plaza|center|centre|exchange)\b", tags.get("name") or "", re.I)
+              special = "civic" if offices else "apartment"
+          local_density = context.density(cx, cy)
+          profile = BuildingProfile.infer(tags, special, local_density, real_m2,
+                                          levels, seed + i * 31)
+          # Hotels are dressed as the city's big buildings, army bases as works,
+          # and the public buildings that have no walls of their own as civic.
+          style = pick_style(STYLE_AS.get("civic" if hotel else special, special),
+                             x0, y0, style_rng, here,
+                             density=local_density, profile=profile,
+                             region=region)
+          # A zone may pin its buildings to one set of walls - the estate on the
+          # hill all the same brick - however many styles the rest of the map
+          # has. A name nothing answers to leaves the style it would have had.
+          pinned = zoning.style_at(cx, cy)
+          if pinned:
+              style = style_named(pinned, special) or style
+          if profile.wear < 0.18 and style.get("grime"):
+              style = dict(style)
+              style.pop("grime", None)
 
-        name = tags.get("name") or ""
-        real_name = name if is_notable(tags, special) else ""
-        # A row of shops or a terrace of houses is one polygon here; built as
-        # one building it is the "uber building" players reported. Each unit
-        # becomes its own building, standing wall to wall with the next.
-        units = row_units(fp, special, btag, len(uses), metres_per_tile,
-                          max_side=max_size if oversize else None,
-                          split=not settings.max_buildings)
-        if oversize:
-            split_large += 1
-        unit_mapped = _rooms_by_unit(mapped, fp, units, proj)
-        placed_entrances = [(x, y, tags) for x, y, tags in entrance_points]
-        if fp.point_rotation or fp.point_offset != (0.0, 0.0):
-            placed_entrances = [(*fp.transform_point(x, y), tags)
-                                for x, y, tags in entrance_points]
-        entrances_by_unit = _entrances_by_unit(placed_entrances, units)
-        if len(units) > 1:
-            rows_split += 1
-            units_made += len(units)
-        # A real hospital's size shapes the people its spawn map holds.
-        hifld = hospitals.profile(tags)
-        has_zone_presets = zoning.any_presets()
-        for n, unit in enumerate(units):
-            ux0, uy0 = unit.x0, unit.y0
-            uw, uh = unit.width, unit.height
-            umask = unit.mask_list()
-            # Each unit keeps one of the uses found in the whole row, in the
-            # order they were found, so a parade of shops is a parade and not
-            # seven copies of the same one.
-            unit_uses = [uses[n % len(uses)]] if uses and len(units) > 1 else uses
-            fname = f"{map_name}_{i:04d}.tbx" if len(units) == 1 else \
-                f"{map_name}_{i:04d}_{n:02d}.tbx"
-            if hifld:
-                hifld_by_fname[fname] = hifld
-            label = (f"{name} {n + 1}" if name and len(units) > 1 else
-                     name or f"{map_name} building {i}")
-            if ("gunstore", "storage") in unit_uses:
-                gunshops.add(fname)
-            # A hand-built building for this plot: one its zone names, or one
-            # built to stand in for this kind of building where that kind is
-            # switched on. The zone is asked first, because a zone is the
-            # mapper saying it about this part of the map in particular.
-            # Chosen from the unit's own seed, so a rebuild puts the same
-            # building back on the same spot.
-            preset_file = None
-            if preset_library:
-                pick = None
-                wanted = (set(zoning.presets_at(ux0 + uw / 2, uy0 + uh / 2))
-                          if has_zone_presets else set())
-                if wanted:
-                    pick = P.choose([p for p in preset_library
-                                     if p["name"] in wanted],
-                                    uw, uh, seed + i * 31 + n)
-                elif (special or "house") in preset_kinds:
-                    pick = P.choose_for_kind(preset_library, special or "house",
-                                             uw, uh, seed + i * 31 + n)
-                if pick is not None:
-                    preset_file = pick["file"]
-                    used_presets[pick["name"]] += 1
-            jobs.append((uw, uh, levels, commercial, seed + i * 31 + n, special, umask,
-                         here, style, label, os.path.join(bdir, fname),
-                         street_side(ux0, uy0, uw, uh),
-                         # Shops under flats where the town is built up.
-                         context.density(cx, cy) >= RETAIL_DENSITY,
-                         # What the ground floor really is, and a hotel's rooms.
-                         unit_uses, hotel, entrances_by_unit[n], profile,
-                         unit_mapped[n],
-                         btag in ("garage", "garages")
-                         or special in ("garage", "fire", "fire_police",
-                                        "industrial", "barn"),
-                         preset_file))
-            outline = px if len(units) == 1 else [
-                (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
-            decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
-                            measured, commercial, style, umask,
-                            real_name if n == 0 else ""))
+          name = tags.get("name") or ""
+          real_name = name if is_notable(tags, special) else ""
+          # A row of shops or a terrace of houses is one polygon here; built as
+          # one building it is the "uber building" players reported. Each unit
+          # becomes its own building, standing wall to wall with the next.
+          units = row_units(fp, special, btag, len(uses), metres_per_tile,
+                            max_side=max_size if oversize else None,
+                            split=not settings.max_buildings)
+          if oversize:
+              split_large += 1
+          unit_mapped = _rooms_by_unit(mapped, fp, units, proj)
+          placed_entrances = [(x, y, tags) for x, y, tags in entrance_points]
+          if fp.point_rotation or fp.point_offset != (0.0, 0.0):
+              placed_entrances = [(*fp.transform_point(x, y), tags)
+                                  for x, y, tags in entrance_points]
+          entrances_by_unit = _entrances_by_unit(placed_entrances, units)
+          if len(units) > 1:
+              rows_split += 1
+              units_made += len(units)
+          # A real hospital's size shapes the people its spawn map holds.
+          hifld = hospitals.profile(tags)
+          has_zone_presets = zoning.any_presets()
+          for n, unit in enumerate(units):
+              ux0, uy0 = unit.x0, unit.y0
+              uw, uh = unit.width, unit.height
+              umask = unit.mask_list()
+              # Each unit keeps one of the uses found in the whole row, in the
+              # order they were found, so a parade of shops is a parade and not
+              # seven copies of the same one.
+              unit_uses = [uses[n % len(uses)]] if uses and len(units) > 1 else uses
+              fname = f"{map_name}_{i:04d}.tbx" if len(units) == 1 else \
+                  f"{map_name}_{i:04d}_{n:02d}.tbx"
+              if hifld:
+                  hifld_by_fname[fname] = hifld
+              label = (f"{name} {n + 1}" if name and len(units) > 1 else
+                       name or f"{map_name} building {i}")
+              if ("gunstore", "storage") in unit_uses:
+                  gunshops.add(fname)
+              # A hand-built building for this plot: one its zone names, or one
+              # built to stand in for this kind of building where that kind is
+              # switched on. The zone is asked first, because a zone is the
+              # mapper saying it about this part of the map in particular.
+              # Chosen from the unit's own seed, so a rebuild puts the same
+              # building back on the same spot.
+              preset_file = None
+              if preset_library:
+                  pick = None
+                  wanted = (set(zoning.presets_at(ux0 + uw / 2, uy0 + uh / 2))
+                            if has_zone_presets else set())
+                  if wanted:
+                      pick = P.choose([p for p in preset_library
+                                       if p["name"] in wanted],
+                                      uw, uh, seed + i * 31 + n)
+                  elif (special or "house") in preset_kinds:
+                      pick = P.choose_for_kind(preset_library, special or "house",
+                                               uw, uh, seed + i * 31 + n)
+                  if pick is not None:
+                      preset_file = pick["file"]
+                      used_presets[pick["name"]] += 1
+              jobs.append((uw, uh, levels, commercial, seed + i * 31 + n, special, umask,
+                           here, style, label, os.path.join(bdir, fname),
+                           street_side(ux0, uy0, uw, uh),
+                           # Shops under flats where the town is built up.
+                           context.density(cx, cy) >= RETAIL_DENSITY,
+                           # What the ground floor really is, and a hotel's rooms.
+                           unit_uses, hotel, entrances_by_unit[n], profile,
+                           unit_mapped[n],
+                           btag in ("garage", "garages")
+                           or special in ("garage", "fire", "fire_police",
+                                          "industrial", "barn"),
+                           preset_file))
+              outline = px if len(units) == 1 else [
+                  (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
+              decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
+                              measured, commercial, style, umask,
+                              real_name if n == 0 else ""))
     finally:
         fp_session.close()
 

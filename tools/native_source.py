@@ -16,8 +16,11 @@ from knoxbuild.buildheader import group_buildings_by_row
 
 def supported(exe):
     cmd = [str(exe), "source-worker-version"]
-    probe = subprocess.run(cmd, capture_output=True, timeout=15,
-                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        probe = subprocess.run(cmd, capture_output=True, timeout=15,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (subprocess.TimeoutExpired, OSError):
+        return False
     return probe.returncode == 0 and probe.stdout.strip() == b"1"
 
 
@@ -63,7 +66,7 @@ def changed_cells(exe, project, lots, origin, margin, should_stop):
 
 
 def tables(exe, project, out, lots, origin, should_stop):
-    with tempfile.TemporaryDirectory(dir=out) as tmp:
+    with tempfile.TemporaryDirectory(prefix="knoxlots_tables_") as tmp:
         result = Path(tmp) / "tables.xml"
         job = ET.Element("tables", project=os.path.abspath(project), out=str(result.resolve()))
         _lots(job, lots)
@@ -90,7 +93,7 @@ def row(exe, project, out, cy, band, room_columns, origin, size, columns,
     w, h = size
     if columns is None:
         columns = range(ox // 256, (ox + w - 1) // 256 + 1)
-    with tempfile.TemporaryDirectory(dir=out) as tmp:
+    with tempfile.TemporaryDirectory(prefix="knoxlots_row_") as tmp:
         job = ET.Element("row", project=os.path.abspath(project), out=os.path.abspath(out),
                          cy=str(cy), ox=str(ox), oy=str(oy), width=str(w), height=str(h),
                          seed=str(seed), seams=str(int(seams)), rules=os.path.abspath(rules))

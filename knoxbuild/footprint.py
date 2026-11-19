@@ -661,7 +661,7 @@ class FootprintSession:
                 [binary, "--footprints"],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
                 bufsize=0,
                 **kw,
             )
@@ -677,17 +677,36 @@ class FootprintSession:
             proc.stdin.flush()
             ack = _read_exact(proc.stdout, 4)
             if ack != _FP_MAGIC:
+                self._warn_fallback(proc, f"unexpected handshake {ack!r}")
                 self._kill(proc)
                 return
             self._proc = proc
             self.native = True
-        except Exception:
+        except Exception as exc:
+            self._warn_fallback(locals().get("proc"), f"startup failed: {exc}")
             if "proc" in locals():
                 self._kill(proc)
 
     @staticmethod
+    def _warn_fallback(proc: subprocess.Popen | None, detail: str) -> None:
+        err_text = ""
+        if proc is not None and proc.stderr is not None and proc.poll() is not None:
+            try:
+                err_text = proc.stderr.read().decode("utf-8", errors="replace").strip()
+            except Exception:
+                err_text = ""
+        msg = f"FootprintSession falling back to Python: {detail}"
+        if err_text:
+            msg = f"{msg} ({err_text})"
+        try:
+            import knoxlog
+            knoxlog.log.warning(msg)
+        except Exception:
+            pass
+
+    @staticmethod
     def _kill(proc: subprocess.Popen) -> None:
-        for stream in (proc.stdin, proc.stdout):
+        for stream in (proc.stdin, proc.stdout, proc.stderr):
             if stream is not None:
                 try:
                     stream.close()
@@ -715,6 +734,8 @@ class FootprintSession:
                 proc.stdin.close()
             if proc.stdout is not None:
                 proc.stdout.close()
+            if proc.stderr is not None:
+                proc.stderr.close()
             proc.wait(timeout=2.0)
         except Exception:
             self._kill(proc)
@@ -758,7 +779,8 @@ class FootprintSession:
             else:
                 raw = _read_exact(stdout, fw * fh)
                 out_mask = np.frombuffer(raw, dtype=np.uint8).reshape((fh, fw)) != 0
-        except Exception:
+        except Exception as exc:
+            self._warn_fallback(self._proc, f"worker error: {exc}")
             self.close()
             return place(px, self._occupied, min_side=min_side, max_side=max_side,
                          snap_degrees=snap_degrees, avoid=self._avoid,
