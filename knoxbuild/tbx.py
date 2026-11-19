@@ -826,26 +826,32 @@ def render_tbx(plan: Plan | Building, name: str,
         # opening in the floor above by itself. Only N and W are valid
         # directions - Stairs::bounds returns an empty rect for anything else,
         # and an empty rect is treated as an invalid object.
-        if level + 1 < len(storeys) and level < len(building.stairs):
+        if level < len(building.stairs):
             sx, sy, sdir = building.stairs[level]
             dx, dy = (0, 1) if sdir == "N" else (1, 0)
-            above_grid = storeys[level + 1].grid
-            tx, ty = sx - dx, sy - dy
-            has_upper = (
-                0 <= ty < len(above_grid)
-                and 0 <= tx < len(above_grid[0])
-                and above_grid[ty][tx] > 0
-                and all(
-                    0 <= sy + dy * i < len(above_grid)
-                    and 0 <= sx + dx * i < len(above_grid[0])
-                    and above_grid[sy + dy * i][sx + dx * i] > 0
-                    for i in range(STAIR_RUN)
+            is_basement = bool(storey.kind and storey.kind.startswith("basement_"))
+            if not roof or is_basement:
+                has_upper = True
+            elif level + 1 < len(storeys):
+                above_grid = storeys[level + 1].grid
+                tx, ty = sx - dx, sy - dy
+                has_upper = (
+                    0 <= ty < len(above_grid)
+                    and 0 <= tx < len(above_grid[0])
+                    and above_grid[ty][tx] > 0
+                    and all(
+                        0 <= sy + dy * i < len(above_grid)
+                        and 0 <= sx + dx * i < len(above_grid[0])
+                        and above_grid[sy + dy * i][sx + dx * i] > 0
+                        for i in range(STAIR_RUN)
+                    )
                 )
-            )
+            else:
+                has_upper = False
             if has_upper:
                 flight_stairs_idx = (
                     C.stairs_for_kind(storey.kind, stairs_rng)
-                    if (storey.kind and storey.kind.startswith("basement_"))
+                    if is_basement
                     else stairs_idx
                 )
                 attrs = [("type", "stairs"), ("x", sx), ("y", sy),
