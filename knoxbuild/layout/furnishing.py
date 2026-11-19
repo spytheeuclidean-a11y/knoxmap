@@ -3173,6 +3173,43 @@ def _has_door_on_stairs(building: "Building") -> bool:
     return False
 
 
+def _valid_stairs_on_building(building: "Building",
+                              stairs: tuple[int, int, str],
+                              *, allow_narrow_core: bool = False) -> bool:
+    """Whether `stairs` has valid floor, upper landing (no roof), and width."""
+    x, y, d = stairs
+    dx, dy = (0, 1) if d == "N" else (1, 0)
+    px, py = dy, dx
+    for lvl in range(len(building.storeys) - 1):
+        s0, s1 = building.storeys[lvl], building.storeys[lvl + 1]
+        for s in (s0, s1):
+            rooms = {
+                s.grid[y + dy * i][x + dx * i]
+                if 0 <= x + dx * i < s.width and 0 <= y + dy * i < s.height
+                else 0
+                for i in range(STAIR_RUN)
+            }
+            if len(rooms) != 1 or 0 in rooms:
+                return False
+            rid = next(iter(rooms))
+            if not allow_narrow_core:
+                has_beside = any(
+                    0 <= x + ox < s.width and 0 <= y + oy < s.height
+                    and s.grid[y + oy][x + ox] == rid
+                    for ox, oy in ((px, py), (-px, -py))
+                )
+                if not has_beside:
+                    return False
+        # Top landing on the upper floor must exist and share the stair room
+        # (never step off the top of the stairs onto a roof or into a wall).
+        tx, ty = x - dx, y - dy
+        if not (0 <= tx < s1.width and 0 <= ty < s1.height):
+            return False
+        if s1.grid[ty][tx] == 0 or s1.grid[ty][tx] != s1.grid[y][x]:
+            return False
+    return True
+
+
 def _joined_without(storey, skip: int) -> bool:
     """Whether the two rooms either side of door `skip` still meet through the
     other doors and open edges, so that door can go without shutting one in."""
