@@ -76,7 +76,7 @@ const i18n = (() => {
     }
     if (node.nodeType !== Node.ELEMENT_NODE) return;
     if (node.closest && node.closest('[data-no-translate]')) return;
-    for (const attr of ['placeholder', 'title', 'aria-label']) {
+    for (const attr of ['placeholder', 'title', 'aria-label', 'label', 'alt']) {
       const value = node.getAttribute && node.getAttribute(attr);
       const next = value && say(value);
       if (next && next !== value) node.setAttribute(attr, next);
@@ -105,7 +105,7 @@ const i18n = (() => {
   function observe() {
     watching.observe(document.body, {
       subtree: true, childList: true, characterData: true,
-      attributeFilter: ['placeholder', 'title', 'aria-label'],
+      attributeFilter: ['placeholder', 'title', 'aria-label', 'label', 'alt'],
     });
   }
 

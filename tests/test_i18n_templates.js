@@ -33,6 +33,24 @@ vm.runInContext(fs.readFileSync(path.join(root, 'static', 'js', 'i18n.js'), 'utf
 (async () => {
   await vm.runInContext("i18n.use('russian', false)", context);
   const t = s => vm.runInContext(`i18n.t(${JSON.stringify(s)})`, context);
+  assert.equal(t('Standalone'), 'Отдельная карта');
+  assert.equal(t('Vanilla 45° grid'), 'Игровая сетка 45°');
+  assert.equal(t('Downloads now use 1 server of yours.'),
+               'Для загрузки используется указанный сервер, всего — 1.');
+  assert.equal(t('Downloads now use 3 servers of yours.'),
+               'Для загрузки используются указанные серверы, всего — 3.');
+  const attributes = {
+    label: '1 m per tile (recommended)', value: '1', alt: 'The plan of this building',
+  };
+  context.document.body.childNodes.push({
+    nodeType: 1, childNodes: [],
+    getAttribute: name => attributes[name] ?? null,
+    setAttribute: (name, value) => { attributes[name] = value; },
+  });
+  vm.runInContext('i18n.translateAll()', context);
+  assert.equal(attributes.label, '1 м на тайл (рекомендуется)');
+  assert.equal(attributes.alt, 'План здания');
+  assert.equal(attributes.value, '1');
   assert.equal(t('Shape area'), 'Площадь фигуры');
   assert.equal(t('Map area'), 'Площадь карты');
   assert.equal(t('Map data source set to auto'), 'Источник данных карты: auto');
