@@ -12,7 +12,7 @@ from PIL import Image
 
 from generator.osm import OSMFeature
 from generator import renderer
-from knoxbuild import bitmaps, chunked_build
+from knoxbuild import bitmaps, chunked_build, placement
 from knoxbuild.build import build
 from knoxbuild.settings import Settings
 
@@ -77,9 +77,14 @@ class QuadrantBuildTests(unittest.TestCase):
             renderer.render(feats, south, west, south + dlat, west + dlon,
                             meters_per_tile=1.0, output_dir=tmp, map_name="qmap")
 
+            # Standalone placement at (0, 0) must not be clobbered to (70, 0) by quadrant sub-builds.
+            placement.save(tmp, (0, 0), standalone_flag=True)
+
             with mock.patch.object(chunked_build, "BUILD_CHUNK_MIN_CELLS", 4):
                 rc = build(tmp, settings=Settings.from_dict({"preset": "town", "seed": 42}))
             self.assertEqual(rc, 0)
+            self.assertEqual(placement.project_origin(tmp, "qmap"), (0, 0))
+            self.assertEqual(placement.where_is(tmp, "qmap")["built"], (0, 0))
             self.assertFalse(os.path.exists(os.path.join(tmp, ".quadrants")))
             self.assertTrue(os.path.isfile(os.path.join(tmp, "qmap.pzw")))
             self.assertTrue(os.path.isfile(os.path.join(tmp, "qmap_ZombieSpawnMap.bmp")))

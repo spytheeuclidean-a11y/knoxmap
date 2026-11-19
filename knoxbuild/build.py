@@ -1219,15 +1219,18 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # Where this map stands in the world, beside any other KnoxMap map on
     # this PC rather than on top of it (knoxbuild/world.py). Everything
     # below - the paper map, the zones, the compiled cells - is written from
-    # here on, so it is settled first.
+    # here on, so it is settled first. Quadrant sub-builds (_stitch_out)
+    # inherit the parent chunked build's origin rather than picking a fresh
+    # one for their temporary .quadrants/q* folder.
     from .world import origin, set_origin
     from . import placement as _placement
-    set_origin(_placement.settled_origin(
-        out_dir, info.get("map_name") or os.path.basename(out_dir.rstrip("\\/")),
-        info["cells_x"], info["cells_y"]))
-    # Keep the saved choice in step with the project, so the window and the
-    # compiled cells never disagree about where the map is.
-    _placement.save(out_dir, origin())
+    if _stitch_out is None:
+        set_origin(_placement.settled_origin(
+            out_dir, info.get("map_name") or os.path.basename(out_dir.rstrip("\\/")),
+            info["cells_x"], info["cells_y"]))
+        # Keep the saved choice in step with the project, so the window and the
+        # compiled cells never disagree about where the map is.
+        _placement.save(out_dir, origin())
 
     # Record what this build actually used, whoever started it. Without this
     # a map generated from the command line cannot be reproduced, and the app
