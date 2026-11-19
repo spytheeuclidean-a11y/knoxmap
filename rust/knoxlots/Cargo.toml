@@ -6,6 +6,7 @@ license = "MIT"
 description = "Reads and writes Project Zomboid lot files (.lotheader, .lotpack, chunkdata) for KnoxMap"
 
 [dependencies]
+roxmltree = "0.20"
 
 [profile.release]
 opt-level = 3
