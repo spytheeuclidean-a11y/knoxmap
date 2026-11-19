@@ -34,7 +34,7 @@ import knoxstop
 from .areas import AreaIndex
 from .fences import build_fences
 from . import footprint
-from .footprint import place
+from .footprint import FootprintSession
 from .layout import build_building, thin_building
 from .uses import is_hotel, uses_of
 from .context import Context, style_fits
@@ -1509,8 +1509,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         if preset_kinds:
             print(f"presets for           : {', '.join(sorted(preset_kinds))}")
     used_presets = collections.Counter()
-
-    for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
+    fp_session = FootprintSession(occupied, avoid=road_weight, lots=lots)
+    try:
+      for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
         # Between buildings: nothing is written to disk until the whole run
         # is laid out, so stopping here costs only the time spent.
         if placed_so_far % 64 == 0:
@@ -1531,16 +1532,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             # refusing) and cut into units that fit further down, in
             # row_units - which is what it is anyway, works of that size
             # being several blocks wall to wall.
-            fp, reason = place(px, occupied, min_side=min_size, max_side=1e9,
-                       snap_degrees=settings.square_buildings,
-                       avoid=road_weight, lots=lots,
-                       alignment=settings.building_alignment)
+            fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
+                                          snap_degrees=settings.square_buildings,
+                                          alignment=settings.building_alignment)
             oversize = fp is not None
         else:
-            fp, reason = place(px, occupied, min_side=min_size, max_side=max_size,
-                       snap_degrees=settings.square_buildings,
-                       avoid=road_weight, lots=lots,
-                       alignment=settings.building_alignment)
+            fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
+                                          snap_degrees=settings.square_buildings,
+                                          alignment=settings.building_alignment)
             if fp is None and reason == "large":
                 if -_neg_area <= MAX_OVERSIZE_TILES:
                     deferred_large.append((_neg_area, i, px))
@@ -1741,6 +1740,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
                             measured, commercial, style, umask,
                             real_name if n == 0 else ""))
+    finally:
+        fp_session.close()
 
     say("Fitting the buildings together", 0.04)
 

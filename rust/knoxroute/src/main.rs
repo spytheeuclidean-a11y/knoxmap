@@ -16,6 +16,7 @@ use std::io::{self, BufWriter, Read, Write};
 
 mod box_any;
 mod clear_road_veg;
+mod footprints;
 mod paint_kerbs;
 mod rails;
 mod smooth_roads;
@@ -598,6 +599,10 @@ fn main() {
     }
     if std::env::args().nth(1).as_deref() == Some("--paint-kerbs") {
         paint_kerbs::run();
+        return;
+    }
+    if std::env::args().nth(1).as_deref() == Some("--footprints") {
+        footprints::run();
         return;
     }
     let mut r = Reader { inner: io::stdin() };
