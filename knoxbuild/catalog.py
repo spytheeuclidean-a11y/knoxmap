@@ -1111,13 +1111,13 @@ def escalator_tiles(x: int, y: int, base_level: int = 0,
 
 
 RAILING_TILES = {"West": "fencing_01_002", "North": "fencing_01_001",
-                 "NorthWest": "fencing_01_003", "SouthEast": "fencing_01_003",
+                 "NorthWest": "fencing_01_003", "SouthEast": "fencing_01_000",
                  "WestWindow": "fencing_01_002", "NorthWindow": "fencing_01_001",
                  "WestDoor": "fencing_01_002", "NorthDoor": "fencing_01_001"}
 RAILING_EXT = {"category": "exterior_walls", "tiles": dict(RAILING_TILES)}
 RAILING = {"category": "interior_walls",
            "tiles": {"West": "fencing_01_002", "North": "fencing_01_001",
-                     "NorthWest": "fencing_01_003", "SouthEast": "fencing_01_003",
+                     "NorthWest": "fencing_01_003", "SouthEast": "fencing_01_000",
                      "WestWindow": "fencing_01_002", "NorthWindow": "fencing_01_001",
                      "WestDoor": "fencing_01_002", "NorthDoor": "fencing_01_001"}}
 

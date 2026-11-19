@@ -786,8 +786,9 @@ def render_tbx(plan: Plan | Building, name: str,
                 ("dir", "N" if d == "W" else "W"), ("Tile", 0)]) + "/>")
 
         if storey.railing and rail_idx:
-            for x, y, d in sorted(storey.railing):
-                rail_attrs = [("type", "wall"), ("length", 1),
+            for d, fixed, start, length in _wall_runs(sorted(storey.railing)):
+                x, y = (fixed, start) if d == "W" else (start, fixed)
+                rail_attrs = [("type", "wall"), ("length", length),
                               ("InteriorTile", rail_idx), ("ExteriorTrim", 0),
                               ("InteriorTrim", 0), ("x", x), ("y", y),
                               ("dir", "N" if d == "W" else "W"),

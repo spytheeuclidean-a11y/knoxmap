@@ -3418,27 +3418,26 @@ def _off_the_windows(storey: Plan) -> int:
 
 
 def _add_stair_railings(building: "Building") -> None:
-    """Place a railing along the open side of each staircase and its upper cutout."""
+    """Place a railing along the open side of each upper-floor stair cutout."""
     for lvl, (sx, sy, sd) in enumerate(building.stairs):
-        for floor_idx, step_range in ((lvl, range(STAIR_RUN - 1)),
-                                      (lvl + 1, range(1, STAIR_RUN))):
-            if floor_idx >= len(building.storeys):
-                continue
-            st = building.storeys[floor_idx]
-            w, h, grid = st.width, st.height, st.grid
-            blocked = set(st.doors) | set(st.open_edge)
-            for side_off in (0, 1):
-                for i in step_range:
-                    edge = (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
-                    ex, ey, ed = edge
-                    if edge in blocked:
-                        continue
-                    ax, ay = (ex - 1, ey) if ed == "W" else (ex, ey - 1)
-                    if not (0 <= ex < w and 0 <= ey < h and 0 <= ax < w and 0 <= ay < h):
-                        continue
-                    r_a, r_b = grid[ay][ax], grid[ey][ex]
-                    if r_a > 0 and r_a == r_b:
-                        st.railing.add(edge)
+        floor_idx = lvl + 1
+        if floor_idx >= len(building.storeys):
+            continue
+        st = building.storeys[floor_idx]
+        w, h, grid = st.width, st.height, st.grid
+        blocked = set(st.doors) | set(st.open_edge)
+        for side_off in (0, 1):
+            for i in range(1, STAIR_RUN):
+                edge = (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
+                ex, ey, ed = edge
+                if edge in blocked:
+                    continue
+                ax, ay = (ex - 1, ey) if ed == "W" else (ex, ey - 1)
+                if not (0 <= ex < w and 0 <= ey < h and 0 <= ax < w and 0 <= ay < h):
+                    continue
+                r_a, r_b = grid[ay][ax], grid[ey][ex]
+                if r_a > 0 and r_a == r_b:
+                    st.railing.add(edge)
 
 
 def _clear_the_way(building: "Building") -> int:
