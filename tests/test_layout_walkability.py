@@ -111,9 +111,10 @@ class FurnishedRoomWalkability(unittest.TestCase):
         # Railings only start on the second floor (lvl + 1) around the stairwell cutout,
         # and end in a post (fencing_01_000) rather than jutting out with a corner piece.
         self.assertEqual(p0.railing, set())
-        for y in range(2, 1 + layout.STAIR_RUN):
+        for y in range(2, layout.STAIR_RUN):
             self.assertIn((2, y, "W"), p1.railing)
             self.assertNotIn((1, y, "W"), p1.railing)
+        self.assertNotIn((2, layout.STAIR_RUN, "W"), p1.railing)
         self.assertEqual(layout.C.RAILING["tiles"]["SouthEast"], "fencing_01_000")
 
     def test_stairs_reject_roof_landing_and_one_tile_hallway(self):

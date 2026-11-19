@@ -3427,7 +3427,7 @@ def _add_stair_railings(building: "Building") -> None:
         w, h, grid = st.width, st.height, st.grid
         blocked = set(st.doors) | set(st.open_edge)
         for side_off in (0, 1):
-            for i in range(1, STAIR_RUN):
+            for i in range(1, STAIR_RUN - 1):
                 edge = (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
                 ex, ey, ed = edge
                 if edge in blocked:
