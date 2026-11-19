@@ -191,6 +191,35 @@ class FurnishedRoomWalkability(unittest.TestCase):
             any(_has_door_depth(plan, side, door) for side in ("N", "S", "W", "E"))
         )
 
+    def test_render_tbx_omits_stairs_on_one_storey_or_roof_landing(self):
+        from knoxbuild.tbx import render_tbx
+
+        g0 = [[1] * 4 for _ in range(7)]
+        p0 = layout.Plan(4, 7, rooms=[layout.Room(0, 0, 3, 6, kind="hall")], grid=g0)
+        b_one = layout.Building(4, 7, storeys=[p0], stairs=[(1, 1, "N")])
+        self.assertNotIn('type="stairs"', render_tbx(b_one, "one_storey"))
+
+        g1_roof = [[1] * 4 for _ in range(7)]
+        g1_roof[0] = [0] * 4
+        p1_roof = layout.Plan(4, 7, rooms=[layout.Room(0, 1, 3, 6, kind="hall")], grid=g1_roof)
+        b_roof = layout.Building(4, 7, storeys=[p0, p1_roof], stairs=[(1, 1, "N")])
+        self.assertNotIn('type="stairs"', render_tbx(b_roof, "roof_landing"))
+
+    def test_mend_fragments_eliminates_long_one_tile_wide_rooms(self):
+        from knoxbuild.layout.dwellings import _mend_fragments
+
+        # A 1x20 strip (area 20 >= SLIVER) beside a regular room must be folded away.
+        grid = [[1 if x == 0 else 2 for x in range(5)] for _ in range(20)]
+        plan = layout.Plan(
+            5, 20,
+            rooms=[layout.Room(0, 0, 0, 19, kind="hall"),
+                   layout.Room(1, 0, 4, 19, kind="livingroom")],
+            grid=grid,
+        )
+        _mend_fragments(plan)
+        self.assertEqual(len(plan.rooms), 1)
+        self.assertTrue(all(v == 1 for row in plan.grid for v in row))
+
 
 class NothingIsWalledOffByTheLift(unittest.TestCase):
     """A lift shaft is sealed, so what it stands across is a wall.

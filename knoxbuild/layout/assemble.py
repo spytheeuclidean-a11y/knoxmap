@@ -317,14 +317,19 @@ def _clear_railing_at(building: "Building", pair: list) -> None:
 
 def _shop_doors(plan: "Plan", street: str | None) -> None:
     """A street door into each shop on a block of flats' ground floor."""
+    from .openings import _door_on_run, _has_door_depth
+
     for idx, room in enumerate(plan.rooms, 1):
         if room.is_core or room.is_shaft or room.kind not in RETAIL_ROOMS | FRONT_ROOMS:
             continue
         runs = [(side, wall) for side, wall in _outside_runs(plan, idx) if len(wall) >= 3]
         if not runs:
             continue
-        side, wall = max(runs, key=lambda r: (r[0] == street, len(r[1])))
-        door = wall[len(wall) // 2]
+        deep = [(side, wall) for side, wall in runs
+                if any(_has_door_depth(plan, side, e) for e in wall)]
+        pool = deep if deep else runs
+        side, wall = max(pool, key=lambda r: (r[0] == street, len(r[1])))
+        door = _door_on_run(plan, side, wall)
         if door not in plan.doors:
             plan.doors.append(door)
 

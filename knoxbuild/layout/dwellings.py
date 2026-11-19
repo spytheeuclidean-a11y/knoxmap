@@ -634,8 +634,10 @@ def _too_small(cells, drawn: bool = False) -> bool:
     # is exactly that. Only the ragged wedges a diagonal wall leaves go.
     if len(cells) == len(xs) * len(ys) and min(len(xs), len(ys)) >= 3:
         return False
-    return len(cells) < SLIVER or (min(len(xs), len(ys)) <= SLIVER_THICKNESS
-                                   and len(cells) < 3 * SLIVER)
+    return (len(cells) < SLIVER
+            or min(len(xs), len(ys)) < 2
+            or (min(len(xs), len(ys)) <= SLIVER_THICKNESS
+                and len(cells) < 3 * SLIVER))
 
 
 def _pieces(room: Room, mask: list[list[bool]]) -> list[set[tuple[int, int]]]:
