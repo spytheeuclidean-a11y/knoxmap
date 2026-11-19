@@ -80,6 +80,11 @@ def build_building(width: int, height: int, levels: int = 1,
         # library with a corridor through it is a third corridor.
         core = _pick_corridor(width, height, mask, rng,
                               CORRIDOR_WIDTHS if kind == "school" else NARROW_CORRIDOR_WIDTHS)
+    hug_wall = (
+        tcore is None
+        and kind != "mall"
+        and (kind != "industrial" or (width * height < 200 and min(width, height) < 12))
+    )
     if core is None and levels > 1:
         # A small house has no room for the strip beside its stairs to be
         # folded into, so the strip has to be a room of its own or nothing.
@@ -89,7 +94,7 @@ def build_building(width: int, height: int, levels: int = 1,
     if levels > 1 and core is None:
         levels = 1          # nowhere to put a staircase, so one floor it is
 
-    stairs = _stairs_in_core(core) if core is not None and levels > 1 else None
+    stairs = _stairs_in_core(core, hug_wall=hug_wall) if core is not None and levels > 1 else None
     shaft = shaft_door = None
     if tcore is not None:
         shaft, shaft_door = tcore.lifts[0]
@@ -147,10 +152,29 @@ def build_building(width: int, height: int, levels: int = 1,
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
                         grand=bool(storeys) and storeys[0].grand)
     if stairs is not None:
+        from .furnishing import _has_door_on_stairs, _doors_off_stairs
         for lvl in range(levels - 1):
             building.stairs.append(stairs)
             _clear_for_stairs(storeys[lvl], *stairs)
             _clear_for_stairs(storeys[lvl + 1], *stairs)
+        if hug_wall and core is not None:
+            saved_doors = [list(s.doors) for s in storeys]
+            _doors_off_stairs(building)
+            if _has_door_on_stairs(building):
+                for alt in (_stairs_in_core(core, hug_wall=True, far_wall=True),
+                            _stairs_in_core(core, hug_wall=False)):
+                    if alt == stairs:
+                        continue
+                    for s, orig in zip(storeys, saved_doors):
+                        s.doors = list(orig)
+                    building.stairs = [alt] * (levels - 1)
+                    _doors_off_stairs(building)
+                    if not _has_door_on_stairs(building):
+                        stairs = alt
+                        for lvl in range(levels - 1):
+                            _clear_for_stairs(storeys[lvl], *stairs)
+                            _clear_for_stairs(storeys[lvl + 1], *stairs)
+                        break
     # Windows last and for the whole building at once, so they stack in
     # columns instead of each floor scattering its own.
     _place_windows(building, kind, shop_ground=shops)

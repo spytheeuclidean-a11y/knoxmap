@@ -12,6 +12,9 @@ on top (an outer wall stands on grass).
 """
 from __future__ import annotations
 
+import array
+import functools
+import gc
 import json
 import os
 import re
@@ -67,10 +70,27 @@ def _free_gb() -> float:
 
 
 # A row worker peaked near 600 MB on a 418-cell town (West_Union, 196 lots in its widest row).
-GB_PER_ROW_WORKER = 1
+GB_PER_ROW_WORKER = 1.5
+MAX_WORKERS = 6
+
+
+def _default_workers() -> int:
+    """Cap default workers to half the CPU cores (max 6) and available RAM so
+    compiling stays responsive without saturating the machine."""
+    cpus = os.cpu_count() or 2
+    by_cpu = max(1, min(MAX_WORKERS, cpus // 2))
+    by_ram = max(1, int(_free_gb() // GB_PER_ROW_WORKER) or 1)
+    return max(1, min(by_cpu, by_ram))
 
 
 MARGIN = 8     # tiles a building's output can reach past the lot the project gives it
+
+
+@functools.lru_cache(maxsize=4)
+def _rules_and_blends(rules_file: str):
+    rules = load_rules(rules_file)
+    blends = load_blends(os.path.join(os.path.dirname(rules_file), "Blends.txt"))
+    return rules, blends
 
 
 def _row(project: str, out: str, cy: int, band: list[tuple], room_columns, seed: int, seams: bool,
@@ -88,9 +108,7 @@ def _row(project: str, out: str, cy: int, band: list[tuple], room_columns, seed:
     # A window opened before a local update may still submit the old list.
     if isinstance(room_columns, list):
         room_columns = group_buildings_by_row(room_columns, origin).get(cy, {})
-    rules_file = rules_path()
-    rules = load_rules(rules_file)
-    blends = load_blends(os.path.join(os.path.dirname(rules_file), "Blends.txt"))
+    rules, blends = _rules_and_blends(rules_path())
     parsed = [(parse_tbx(_read_text(os.path.join(project, "buildings", f"{t}.tbx"))),
                tx, ty, lv) for t, tx, ty, lv in band]
     footprints = {}
@@ -107,13 +125,28 @@ def _row(project: str, out: str, cy: int, band: list[tuple], room_columns, seed:
     for b, tx, ty, base in parsed:
         for z, floor in enumerate(b.floors):
             for y, row in enumerate(floor.rooms):
-                for x, v in enumerate(row):
-                    if v > 0:
-                        room_squares.add((tx + x, ty + y, base + z))
+                if any(row):
+                    ry = ty + y
+                    for x, v in enumerate(row):
+                        if v > 0:
+                            room_squares.add((tx + x, ry, base + z))
     del parsed
+    # Pre-bucket world building tiles by cell column so each cell only touches its own tiles.
+    world_0_by_cx: dict[int, dict[tuple[int, int], list[str]]] = {}
+    world_z_by_cx: dict[int, list[tuple[int, int, int, list[str]]]] = {}
+    for (wx, wy, z), bt in world.items():
+        if wy0 <= wy < wy0 + SIDE:
+            c_col = (wx + ox) // SIDE
+            lx, ly = wx - (c_col * SIDE - ox), wy - wy0
+            if z == 0:
+                world_0_by_cx.setdefault(c_col, {})[(lx, ly)] = bt
+            else:
+                world_z_by_cx.setdefault(c_col, []).append((lx, ly, z, bt))
+    del world
+
     pal = Palette()
+    id_to_name: list[str] = []
     written = 0
-    wy0 = cy * SIDE - oy
     y_lo, y_hi = max(wy0 - 1, 0), min(wy0 + SIDE + 1, h)
     land_strip = bitmaps.read_rgb_rows(land_path, y_lo, y_hi, w)
     veg_strip = bitmaps.read_rgb_rows(veg_path, y_lo, y_hi, w)
@@ -139,26 +172,53 @@ def _row(project: str, out: str, cy: int, band: list[tuple], room_columns, seed:
         layers = {k: v[1:-1, 1:-1] for k, v in layers.items()}
         inside = inside[1:-1, 1:-1]
         order = stack_order(layers)
+        if len(id_to_name) < len(pal.names):
+            id_to_name.extend(tile_name(n) for n in pal.names[len(id_to_name):])
+
+        active = [(k == "0_Furniture", layers[k].tolist())
+                  for k in order if layers[k].any()]
+        inside_rows = inside.tolist()
+        cell_w0 = world_0_by_cx.get(cx)
+        cell_wz = world_z_by_cx.get(cx, ())
 
         # the stacks of the cell: level 0 is ground and buildings, above and below it
         # (basements) buildings only
         stacks: dict[tuple[int, int, int], list[str]] = {}
-        for yy in range(SIDE):
-            for xx in range(SIDE):
-                wx, wy = wx0 + xx, wy0 + yy
-                g = []
-                bt = world.get((wx, wy, 0), [])
-                if inside[yy, xx]:
-                    # a fence clears the ground's furniture (a garden bed under it); walls do not
-                    fenced = any(t.startswith("fencing_") for t in bt)
-                    g = [tile_name(pal.names[layers[k][yy, xx]]) for k in order
-                         if layers[k][yy, xx] and not (fenced and k == "0_Furniture")]
-                st = merge_stack(g, bt, (wx, wy, 0) in room_squares)
-                if st:
-                    stacks[(xx, yy, 0)] = st
-        for (wx, wy, z), bt in world.items():
-            if z != 0 and wx0 <= wx < wx0 + SIDE and wy0 <= wy < wy0 + SIDE:
-                stacks[(wx - wx0, wy - wy0, z)] = bt
+        if cell_w0:
+            for yy in range(SIDE):
+                wy = wy0 + yy
+                in_row = inside_rows[yy]
+                row_layers = [(is_furn, arr[yy]) for is_furn, arr in active]
+                for xx in range(SIDE):
+                    bt = cell_w0.get((xx, yy))
+                    if bt is not None:
+                        if (wx0 + xx, wy, 0) in room_squares:
+                            if bt:
+                                stacks[(xx, yy, 0)] = bt
+                            continue
+                        fenced = any(t.startswith("fencing_") for t in bt)
+                    else:
+                        bt = []
+                        fenced = False
+                    if in_row[xx]:
+                        g = [id_to_name[v] for is_furn, r_arr in row_layers
+                             if (v := r_arr[xx]) and not (fenced and is_furn)]
+                    else:
+                        g = []
+                    st = g + bt if bt else g
+                    if st:
+                        stacks[(xx, yy, 0)] = st
+        else:
+            for yy in range(SIDE):
+                in_row = inside_rows[yy]
+                row_layers = [arr[yy] for _is_furn, arr in active]
+                for xx in range(SIDE):
+                    if in_row[xx]:
+                        g = [id_to_name[v] for r_arr in row_layers if (v := r_arr[xx])]
+                        if g:
+                            stacks[(xx, yy, 0)] = g
+        for lx, ly, z, bt in cell_wz:
+            stacks[(lx, ly, z)] = bt
         # A building's rooms are listed in the cell of its north-west corner,
         # which need not hold a square of its basement: the cell's levels
         # cover what its room table names as well as its squares.
@@ -169,14 +229,21 @@ def _row(project: str, out: str, cy: int, band: list[tuple], room_columns, seed:
         depth = max((len(st) for st in stacks.values()), default=1)
         names: list[str] = []
         index: dict[str, int] = {}
-        arrays = [[np.zeros((SIDE, SIDE), np.int64) for _ in range(depth)] for _ in range(nlev)]
+        py_arrays = [array.array("I", [0]) * (SIDE * SIDE) for _ in range(nlev * depth)]
         for (xx, yy, z), st in stacks.items():
+            base_idx = (z - min_z) * depth
+            off = yy * SIDE + xx
             for k, t in enumerate(st):
                 i = index.get(t)
                 if i is None:
                     i = index[t] = len(names) + 1
                     names.append(t)
-                arrays[z - min_z][k][yy, xx] = i
+                py_arrays[base_idx + k][off] = i
+        arrays = [
+            [np.frombuffer(py_arrays[li * depth + k], dtype=np.uint32).reshape(SIDE, SIDE)
+             for k in range(depth)]
+            for li in range(nlev)
+        ]
         room_tuples = [(r["name"], r["z"], [tuple(x) for x in r["rects"]], []) for r in rooms]
         data = cell_source(cx, cy, names, arrays, min_z=min_z, rooms=room_tuples,
                            buildings=buildings)
@@ -224,7 +291,7 @@ def read_buildings(project: str, names: list[str], workers: int | None = None, s
     spent minutes before a single cell was built."""
     from concurrent import futures
     from concurrent.futures.process import BrokenProcessPool
-    workers = workers or os.cpu_count() or 1
+    workers = workers or _default_workers()
     if len(names) < PARALLEL_READ_FROM or workers < 2:
         return _read_rooms(project, names)
     size = max(50, min(READ_BATCH, len(names) // (workers * 4)))
@@ -287,6 +354,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
             room_rows = group_buildings_by_row(placed_rooms([lot for _t, lot in kept]), origin)
             reach = [(b.width, b.height) for b, *_ in parsed]
             del parsed, kept
+            gc.collect()
 
         selection = select_cells(room_rows, origin, (w, h)) if select_cells else None
         if selection is not None:
@@ -308,7 +376,7 @@ def make_map_source(project: str, out: str, seed: int = 1, seams: bool = False,
                 on_row(len(done) + n, rows)
 
         if workers is None:
-            workers = max(1, min(os.cpu_count() or 1, int(_free_gb() // GB_PER_ROW_WORKER) or 1))
+            workers = _default_workers()
         if native_exe:
             def run_row(cy, stopping):
                 return native_source.row(native_exe, project, out, cy, bands[cy], room_rows.get(cy, {}),

@@ -241,6 +241,12 @@ class BuildBuildingTower(unittest.TestCase):
         b = layout.build_building(30, 40, levels=12, kind="civic", seed=3)
         self.assertIsNotNone(b.storeys[-1].mask)
 
+    def test_skyscraper_has_dedicated_one_tile_stair_core(self):
+        core = tower.pick_core(30, 30, None, random.Random(1))
+        self.assertIsNotNone(core)
+        sx0, sy0, sx1, sy1 = core.stair
+        self.assertTrue(sx0 == sx1 or sy0 == sy1)
+
     def test_a_footprint_with_no_room_for_a_core_falls_back(self):
         mask = [[not (x >= 8 and y < 12) for x in range(20)] for y in range(20)]
         self.assertIsNone(tower.pick_core(20, 20, mask, random.Random(1 ^ 0x70E2)))

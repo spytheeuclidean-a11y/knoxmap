@@ -34,7 +34,7 @@ import knoxstop
 from .areas import AreaIndex
 from .fences import build_fences
 from . import footprint
-from .footprint import place
+from .footprint import FootprintSession
 from .layout import build_building, thin_building
 from .uses import is_hotel, uses_of
 from .context import Context, style_fits
@@ -1139,7 +1139,9 @@ def _make_all(jobs: list[tuple], tick=None, should_stop=None,
 
 def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           max_size: int | None = None, settings: Settings | None = None,
-          should_stop=None, progress=None) -> int:
+          should_stop=None, progress=None,
+          _proj_override=None, _skip_chunked: bool = False,
+          _stitch_out: dict | None = None) -> int:
     """Generate every building for a rendered map.
 
     The explicit seed/min_size/max_size arguments are kept so the command line
@@ -1185,13 +1187,22 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         geo = {**geo, "features": []}
 
     bbox = info["bbox"]
-    proj = Projector.build(bbox["south"], bbox["west"], bbox["north"],
-                           bbox["east"], info["meters_per_tile"],
-                           info.get("rotation") or 0.0)
-    if (proj.width, proj.height) != (info["width_tiles"], info["height_tiles"]):
+    proj = _proj_override or Projector.build(
+        bbox["south"], bbox["west"], bbox["north"],
+        bbox["east"], info["meters_per_tile"],
+        info.get("rotation") or 0.0)
+    if _proj_override is None and (proj.width, proj.height) != (info["width_tiles"], info["height_tiles"]):
         print("projection does not match the rendered BMP - is this folder "
               "from a different Knoxify version?", file=sys.stderr)
         return 2
+    if not _skip_chunked:
+        from .chunked_build import build_chunked, should_chunk_build
+        if should_chunk_build(int(info.get("cells_x") or 0), int(info.get("cells_y") or 0)):
+            return build_chunked(
+                out_dir, map_name, info, geo, proj,
+                seed=seed, min_size=min_size, max_size=max_size,
+                settings=settings, should_stop=should_stop, progress=progress,
+            )
     road_hierarchy = _load_road_hierarchy(out_dir, map_name, proj)
 
     # What part of the world the survey is of, read from the names on its own
@@ -1208,15 +1219,18 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # Where this map stands in the world, beside any other KnoxMap map on
     # this PC rather than on top of it (knoxbuild/world.py). Everything
     # below - the paper map, the zones, the compiled cells - is written from
-    # here on, so it is settled first.
+    # here on, so it is settled first. Quadrant sub-builds (_stitch_out)
+    # inherit the parent chunked build's origin rather than picking a fresh
+    # one for their temporary .quadrants/q* folder.
     from .world import origin, set_origin
     from . import placement as _placement
-    set_origin(_placement.settled_origin(
-        out_dir, info.get("map_name") or os.path.basename(out_dir.rstrip("\\/")),
-        info["cells_x"], info["cells_y"]))
-    # Keep the saved choice in step with the project, so the window and the
-    # compiled cells never disagree about where the map is.
-    _placement.save(out_dir, origin())
+    if _stitch_out is None:
+        set_origin(_placement.settled_origin(
+            out_dir, info.get("map_name") or os.path.basename(out_dir.rstrip("\\/")),
+            info["cells_x"], info["cells_y"]))
+        # Keep the saved choice in step with the project, so the window and the
+        # compiled cells never disagree about where the map is.
+        _placement.save(out_dir, origin())
 
     # Record what this build actually used, whoever started it. Without this
     # a map generated from the command line cannot be reproduced, and the app
@@ -1495,8 +1509,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         if preset_kinds:
             print(f"presets for           : {', '.join(sorted(preset_kinds))}")
     used_presets = collections.Counter()
-
-    for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
+    fp_session = FootprintSession(occupied, avoid=road_weight, lots=lots)
+    try:
+      for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
         # Between buildings: nothing is written to disk until the whole run
         # is laid out, so stopping here costs only the time spent.
         if placed_so_far % 64 == 0:
@@ -1517,16 +1532,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             # refusing) and cut into units that fit further down, in
             # row_units - which is what it is anyway, works of that size
             # being several blocks wall to wall.
-            fp, reason = place(px, occupied, min_side=min_size, max_side=1e9,
-                       snap_degrees=settings.square_buildings,
-                       avoid=road_weight, lots=lots,
-                       alignment=settings.building_alignment)
+            fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
+                                          snap_degrees=settings.square_buildings,
+                                          alignment=settings.building_alignment)
             oversize = fp is not None
         else:
-            fp, reason = place(px, occupied, min_side=min_size, max_side=max_size,
-                       snap_degrees=settings.square_buildings,
-                       avoid=road_weight, lots=lots,
-                       alignment=settings.building_alignment)
+            fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
+                                          snap_degrees=settings.square_buildings,
+                                          alignment=settings.building_alignment)
             if fp is None and reason == "large":
                 if -_neg_area <= MAX_OVERSIZE_TILES:
                     deferred_large.append((_neg_area, i, px))
@@ -1727,6 +1740,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
                             measured, commercial, style, umask,
                             real_name if n == 0 else ""))
+    finally:
+        fp_session.close()
 
     say("Fitting the buildings together", 0.04)
 
@@ -1997,10 +2012,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # they could spawn.
     from . import guns
     from .world import CELL_SIZE
-    gun_cache = guns.write(
-        out_dir, map_name,
-        guns.choose(rows, gunshops) if settings.guaranteed_rifle else None,
-        origin(), CELL_SIZE)
+    gun_cache = None
+    if _stitch_out is None:
+        gun_cache = guns.write(
+            out_dir, map_name,
+            guns.choose(rows, gunshops) if settings.guaranteed_rifle else None,
+            origin(), CELL_SIZE)
     say("Front paths, yards and porch lights", 0.62)
     from .yards import paint_paths
     drives: list = []
@@ -2118,9 +2135,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     with ThreadPoolExecutor(max_workers=5) as pool:
         job_fences = pool.submit(build_fences, out_dir, map_name, proj, occupied,
                                  areas, bdir, extra=yard_fences, keep_clear=fence_clear)
-        job_spawn = pool.submit(make_spawn_map)
+        job_spawn = pool.submit(make_spawn_map) if _stitch_out is None else None
         job_paper = pool.submit(worldmap.write, out_dir, map_name, proj, info,
-                                outlines)
+                                outlines) if _stitch_out is None else None
         job_zones = pool.submit(
             _detect_zones, os.path.join(out_dir, f"{map_name}.bmp"), placements,
             settings=settings, areas=areas, drives=drives, keep_clear=forecourts,
@@ -2130,13 +2147,27 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         # town zones: a fence lot spans its whole cell and would mark it all town.
         job_structures = pool.submit(build_structures, out_dir, map_name, bdir)
         fence_placements, fence_tiles = job_fences.result()
-        population = job_spawn.result()
-        paper_map = job_paper.result()
+        population = job_spawn.result() if job_spawn is not None else None
+        paper_map = job_paper.result() if job_paper is not None else None
         zones = job_zones.result()
         structure_placements, raised = job_structures.result()
     placements = (placements + fence_placements + structure_placements +
                   pump_placements + prop_placements + landmark_placements
                   + vignette_placements + light_placements + escalator_placements)
+
+    if _stitch_out is not None:
+        _stitch_out.update({
+            "placements": placements,
+            "zones": zones,
+            "rows": rows,
+            "left_out": left_out,
+            "peopled": peopled,
+            "outlines": outlines,
+            "gunshops": gunshops,
+            "split_large": split_large,
+            "skipped_large": skipped["large"],
+        })
+        return 0
 
     say("Writing the WorldEd project", 0.95)
     pzw_path = os.path.join(out_dir, f"{map_name}.pzw")
