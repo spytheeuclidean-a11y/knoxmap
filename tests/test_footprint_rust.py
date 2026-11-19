@@ -177,11 +177,12 @@ class TestFootprintRustParity(unittest.TestCase):
                 os.environ["KNOXMAP_FOOTPRINT_RUST"] = old
 
         occ2 = np.zeros((60, 60), dtype=bool)
-        with FootprintSession(occ2, binary="__nonexistent_knoxroute_bin__") as sess:
-            self.assertFalse(sess.native)
-            fp, reason = sess.place(_rect_poly(30, 30, 10, 8), min_side=4)
-            self.assertEqual(reason, "ok")
-            self.assertIsNotNone(fp)
+        with self.assertLogs("knoxmap", level="WARNING"):
+            with FootprintSession(occ2, binary="__nonexistent_knoxroute_bin__") as sess:
+                self.assertFalse(sess.native)
+                fp, reason = sess.place(_rect_poly(30, 30, 10, 8), min_side=4)
+                self.assertEqual(reason, "ok")
+                self.assertIsNotNone(fp)
 
 
 if __name__ == "__main__":
