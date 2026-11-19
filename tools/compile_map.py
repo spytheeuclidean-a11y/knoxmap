@@ -1055,7 +1055,7 @@ def compile_rust(project_dir: str, on_progress=None, should_stop=None, workers: 
                 dims = None
                 for image in paths:
                     head = _bmp_header(str(image))
-                    if not head or head[3] != 24:
+                    if not head or len(head) < 5 or head[3] != 24:
                         return False
                     w, h, _bu, _bpp, offset = head
                     stride = (3 * w + 3) & ~3
