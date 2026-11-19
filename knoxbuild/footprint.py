@@ -8,6 +8,10 @@ and notches. Rectangle uses the minimum rotated rectangle as a clean box.
 from __future__ import annotations
 
 import math
+import os
+import struct
+import subprocess
+import sys
 
 import numpy as np
 import shapely
@@ -415,29 +419,20 @@ def _clear_of(mask: np.ndarray, x0: int, y0: int, avoid: np.ndarray,
     return x0 + ox, y0 + oy
 
 
-def place(px: list[tuple[float, float]], occupied: np.ndarray,
-          min_side: float = 0, max_side: float = 1e9,
-          snap_degrees: float = SNAP_DEGREES,
-          avoid: np.ndarray | None = None,
-          lots: np.ndarray | None = None,
-          alignment: str = "smart"
-          ) -> tuple[Footprint | None, str]:
-    """Rasterise a projected footprint, claiming its tiles in `occupied`.
+def _prepare_mask(
+    px: list[tuple[float, float]],
+    min_side: float,
+    max_side: float,
+    snap_degrees: float,
+    alignment: str,
+):
+    """Validate and rasterise a polygon into an initial grid mask.
 
-    Returns the footprint and why not when there is none: "small", "large",
-    "outside" or "taken". Size is judged on the real building's sides, before
-    anything is claimed, so a rejected building never blocks its neighbours.
-
-    Tiles another building already owns are left to it. Real neighbours share
-    walls; two buildings claiming the same tile would put one wall inside the
-    other.
-
-    `lots` is the ground already covered by a building's lot rectangle rather
-    than by its tiles (_clear_box). Passed in, the footprint is cut back until
-    its own rectangle stands clear of every other, and its rectangle is
-    claimed there in turn.
+    Returns ``(None, reason)`` when rejected on size, otherwise a tuple
+    ``(x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
+    point_origin, point_rotation)``. When ``full_rect`` is True, ``mask`` is
+    ``None`` so native callers avoid allocating an all-True array.
     """
-    map_h, map_w = occupied.shape
     poly = _polygon(px)
     if poly.is_empty or poly.area <= 0:
         return None, "small"
@@ -484,13 +479,49 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
         w, h = max(1, int(round(w))), max(1, int(round(h)))
         x0 = int(round(cx - w / 2))
         y0 = int(round(cy - h / 2))
+        return (x0, y0, w, h, True, None, angle, sides[0], sides[1],
+                point_origin, point_rotation), "ok"
+
+    minx, miny, maxx, maxy = poly.bounds
+    x0, y0 = int(math.floor(minx)), int(math.floor(miny))
+    x1, y1 = int(math.ceil(maxx)), int(math.ceil(maxy))
+    xs, ys = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
+    mask = shapely.contains_xy(poly, xs, ys)
+    h, w = mask.shape
+    return (x0, y0, w, h, False, mask, angle, sides[0], sides[1],
+            point_origin, point_rotation), "ok"
+
+
+def place(px: list[tuple[float, float]], occupied: np.ndarray,
+          min_side: float = 0, max_side: float = 1e9,
+          snap_degrees: float = SNAP_DEGREES,
+          avoid: np.ndarray | None = None,
+          lots: np.ndarray | None = None,
+          alignment: str = "smart"
+          ) -> tuple[Footprint | None, str]:
+    """Rasterise a projected footprint, claiming its tiles in `occupied`.
+
+    Returns the footprint and why not when there is none: "small", "large",
+    "outside" or "taken". Size is judged on the real building's sides, before
+    anything is claimed, so a rejected building never blocks its neighbours.
+
+    Tiles another building already owns are left to it. Real neighbours share
+    walls; two buildings claiming the same tile would put one wall inside the
+    other.
+
+    `lots` is the ground already covered by a building's lot rectangle rather
+    than by its tiles (_clear_box). Passed in, the footprint is cut back until
+    its own rectangle stands clear of every other, and its rectangle is
+    claimed there in turn.
+    """
+    map_h, map_w = occupied.shape
+    prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+    if prep is None:
+        return None, reason
+    (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
+     point_origin, point_rotation) = prep
+    if full_rect:
         mask = np.ones((h, w), dtype=bool)
-    else:
-        minx, miny, maxx, maxy = poly.bounds
-        x0, y0 = int(math.floor(minx)), int(math.floor(miny))
-        x1, y1 = int(math.ceil(maxx)), int(math.ceil(maxy))
-        xs, ys = np.meshgrid(np.arange(x0, x1) + 0.5, np.arange(y0, y1) + 0.5)
-        mask = shapely.contains_xy(poly, xs, ys)
 
     before_nudge = (x0, y0)
     if avoid is not None:
@@ -535,5 +566,206 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
     occupied[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] |= mask
     if lots is not None:
         lots[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] = True
-    return Footprint(fx0, fy0, mask, angle, sides[0], sides[1],
+    return Footprint(fx0, fy0, mask, angle, short_side, long_side,
                      point_origin, point_rotation, point_offset), "ok"
+
+
+_FP_MAGIC = b"KFP1"
+_FP_FLAG_AVOID = 1 << 0
+_FP_FLAG_LOTS = 1 << 1
+_FP_FLAG_INIT_OCC = 1 << 2
+_FP_FLAG_INIT_LOTS = 1 << 3
+_FP_CMD_QUIT = b"\x00"
+_FP_STATUS_REASON = {1: "road", 2: "outside", 3: "taken"}
+_FP_PLACE_HDR = struct.Struct("<BiiiidB")
+_FP_OK_HDR = struct.Struct("<iiiiiiB")
+
+
+def _read_exact(stream, n: int) -> bytes:
+    buf = bytearray(n)
+    view = memoryview(buf)
+    got = 0
+    while got < n:
+        chunk = stream.read(n - got)
+        if not chunk:
+            raise EOFError("knoxroute --footprints closed unexpectedly")
+        view[got:got + len(chunk)] = chunk
+        got += len(chunk)
+    return bytes(buf)
+
+
+class FootprintSession:
+    """Persistent `knoxroute --footprints` worker for batch footprint placement.
+
+    Loads `avoid`, `occupied`, and `lots` into the native process once and
+    keeps the caller's NumPy `occupied`/`lots` arrays in sync as buildings are
+    placed. Falls back transparently to Python `place()` when the native binary
+    is unavailable, predates `--footprints`, or `KNOXMAP_FOOTPRINT_RUST=0`.
+    """
+
+    def __init__(self, occupied: np.ndarray,
+                 avoid: np.ndarray | None = None,
+                 lots: np.ndarray | None = None,
+                 binary: str | None = None):
+        self._occupied = occupied
+        self._avoid = avoid
+        self._lots = lots
+        self._proc: subprocess.Popen | None = None
+        self.native = False
+        if os.environ.get("KNOXMAP_FOOTPRINT_RUST", "1") == "0":
+            return
+        self._start(binary)
+
+    def _start(self, binary: str | None) -> None:
+        if binary is None:
+            try:
+                from generator.roadgraph import rustsearch
+                binary = rustsearch.exe()
+            except Exception:
+                return
+        if not binary:
+            return
+        map_h, map_w = self._occupied.shape
+        if map_w <= 0 or map_h <= 0:
+            return
+
+        flags = 0
+        avoid_u8: np.ndarray | None = None
+        if self._avoid is not None:
+            if self._avoid.shape != (map_h, map_w):
+                return
+            if self._avoid.size and (int(self._avoid.min()) < 0 or int(self._avoid.max()) > 255):
+                return
+            avoid_u8 = np.ascontiguousarray(self._avoid, dtype=np.uint8)
+            flags |= _FP_FLAG_AVOID
+
+        occ_u8: np.ndarray | None = None
+        if self._occupied.any():
+            occ_u8 = np.ascontiguousarray(self._occupied, dtype=np.uint8)
+            flags |= _FP_FLAG_INIT_OCC
+
+        lots_u8: np.ndarray | None = None
+        if self._lots is not None:
+            if self._lots.shape != (map_h, map_w):
+                return
+            flags |= _FP_FLAG_LOTS
+            if self._lots.any():
+                lots_u8 = np.ascontiguousarray(self._lots, dtype=np.uint8)
+                flags |= _FP_FLAG_INIT_LOTS
+
+        kw: dict = {}
+        if sys.platform == "win32":
+            kw["creationflags"] = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            proc = subprocess.Popen(
+                [binary, "--footprints"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                bufsize=0,
+                **kw,
+            )
+            assert proc.stdin is not None and proc.stdout is not None
+            proc.stdin.write(_FP_MAGIC)
+            proc.stdin.write(struct.pack("<iiB", map_w, map_h, flags))
+            if avoid_u8 is not None:
+                proc.stdin.write(memoryview(avoid_u8))
+            if occ_u8 is not None:
+                proc.stdin.write(memoryview(occ_u8))
+            if lots_u8 is not None:
+                proc.stdin.write(memoryview(lots_u8))
+            proc.stdin.flush()
+            ack = _read_exact(proc.stdout, 4)
+            if ack != _FP_MAGIC:
+                self._kill(proc)
+                return
+            self._proc = proc
+            self.native = True
+        except Exception:
+            if "proc" in locals():
+                self._kill(proc)
+
+    @staticmethod
+    def _kill(proc: subprocess.Popen) -> None:
+        for stream in (proc.stdin, proc.stdout):
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=1.0)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+    def close(self) -> None:
+        proc = self._proc
+        self._proc = None
+        self.native = False
+        if proc is None:
+            return
+        try:
+            if proc.stdin is not None:
+                proc.stdin.write(_FP_CMD_QUIT)
+                proc.stdin.flush()
+                proc.stdin.close()
+            if proc.stdout is not None:
+                proc.stdout.close()
+            proc.wait(timeout=2.0)
+        except Exception:
+            self._kill(proc)
+
+    def __enter__(self) -> "FootprintSession":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def place(self, px: list[tuple[float, float]],
+              min_side: float = 0, max_side: float = 1e9,
+              snap_degrees: float = SNAP_DEGREES,
+              alignment: str = "smart") -> tuple[Footprint | None, str]:
+        if not self.native or self._proc is None:
+            return place(px, self._occupied, min_side=min_side, max_side=max_side,
+                         snap_degrees=snap_degrees, avoid=self._avoid,
+                         lots=self._lots, alignment=alignment)
+
+        prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+        if prep is None:
+            return None, reason
+        (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
+         point_origin, point_rotation) = prep
+
+        try:
+            stdin = self._proc.stdin
+            stdout = self._proc.stdout
+            assert stdin is not None and stdout is not None
+            stdin.write(_FP_PLACE_HDR.pack(1, x0, y0, w, h, float(min_side), int(full_rect)))
+            if not full_rect:
+                mask_u8 = np.ascontiguousarray(mask, dtype=np.uint8)
+                stdin.write(memoryview(mask_u8))
+            stdin.flush()
+            status = _read_exact(stdout, 1)[0]
+            if status != 0:
+                return None, _FP_STATUS_REASON.get(status, "taken")
+            fx0, fy0, fw, fh, ox, oy, full_out = _FP_OK_HDR.unpack(_read_exact(stdout, _FP_OK_HDR.size))
+            if full_out:
+                out_mask = np.ones((fh, fw), dtype=bool)
+            else:
+                raw = _read_exact(stdout, fw * fh)
+                out_mask = np.frombuffer(raw, dtype=np.uint8).reshape((fh, fw)) != 0
+        except Exception:
+            self.close()
+            return place(px, self._occupied, min_side=min_side, max_side=max_side,
+                         snap_degrees=snap_degrees, avoid=self._avoid,
+                         lots=self._lots, alignment=alignment)
+
+        self._occupied[fy0:fy0 + fh, fx0:fx0 + fw] |= out_mask
+        if self._lots is not None:
+            self._lots[fy0:fy0 + fh, fx0:fx0 + fw] = True
+        return Footprint(fx0, fy0, out_mask, angle, short_side, long_side,
+                         point_origin, point_rotation, (ox, oy)), "ok"
