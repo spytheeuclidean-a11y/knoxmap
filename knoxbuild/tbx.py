@@ -225,6 +225,25 @@ def _chimneys(grid: list[list[int]], width: int, height: int,
     return out
 
 
+def _edge_runs(edges) -> list[tuple[str, int, int, int]]:
+    """Collapse contiguous `(x, y, "W"|"N")` wall edges into `(dir, fixed, start, length)` runs."""
+    lines: dict[tuple[str, int], list[int]] = {}
+    for x, y, d in edges:
+        lines.setdefault((d, x if d == "W" else y), []).append(y if d == "W" else x)
+    runs: list[tuple[str, int, int, int]] = []
+    for (d, fixed), along in sorted(lines.items()):
+        along = sorted(set(along))
+        start = prev = along[0]
+        for pos in along[1:]:
+            if pos == prev + 1:
+                prev = pos
+            else:
+                runs.append((d, fixed, start, prev - start + 1))
+                start = prev = pos
+        runs.append((d, fixed, start, prev - start + 1))
+    return runs
+
+
 def _storefront_runs(storey, doors) -> list[tuple[str, int, int, int]]:
     """The ground floor's shop glass as straight runs of wall: (edge dir,
     fixed coordinate, first tile along, length). A run spans from its first
@@ -786,7 +805,7 @@ def render_tbx(plan: Plan | Building, name: str,
                 ("dir", "N" if d == "W" else "W"), ("Tile", 0)]) + "/>")
 
         if storey.railing and rail_idx:
-            for d, fixed, start, length in _wall_runs(sorted(storey.railing)):
+            for d, fixed, start, length in _edge_runs(storey.railing):
                 x, y = (fixed, start) if d == "W" else (start, fixed)
                 rail_attrs = [("type", "wall"), ("length", length),
                               ("InteriorTile", rail_idx), ("ExteriorTrim", 0),
