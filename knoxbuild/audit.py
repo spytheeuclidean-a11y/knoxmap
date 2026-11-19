@@ -183,8 +183,12 @@ def audit(building, kind):
     elif len(building.storeys) >= ELEVATOR_FROM_LEVELS and \
             min(building.width, building.height) >= ELEVATOR_MIN_SIDE:
         problems["tall building without a lift"] += 1
+    is_tower = bool(getattr(building, "tower", False)) or any(
+        getattr(s, "tower", None) is not None for s in building.storeys
+    )
     for lvl, (x, y, d) in enumerate(building.stairs):
         dx, dy = (0, 1) if d == "N" else (1, 0)
+        px, py = dy, dx
         run = [(x + dx * i, y + dy * i) for i in range(STAIR_RUN)]
         for s in (building.storeys[lvl], building.storeys[lvl + 1]):
             rooms = {s.grid[ry][rx] if 0 <= rx < s.width and 0 <= ry < s.height
@@ -192,6 +196,22 @@ def audit(building, kind):
             if len(rooms) != 1 or 0 in rooms:
                 problems["stairs crossing a wall"] += 1
                 break
+            if not is_tower:
+                rid = next(iter(rooms))
+                has_beside = any(
+                    0 <= x + ox < s.width and 0 <= y + oy < s.height
+                    and s.grid[y + oy][x + ox] == rid
+                    for ox, oy in ((px, py), (-px, -py))
+                )
+                if not has_beside:
+                    problems["stairs in 1-tile hallway"] += 1
+                    break
+        s1 = building.storeys[lvl + 1]
+        tx, ty = x - dx, y - dy
+        if not (0 <= tx < s1.width and 0 <= ty < s1.height) or s1.grid[ty][tx] == 0:
+            problems["stairs onto roof"] += 1
+        elif s1.grid[ty][tx] != s1.grid[y][x]:
+            problems["stairs crossing a wall"] += 1
         blocked = {(x + dx * i, y + dy * i) for i in range(STAIR_RUN)}
         # The steps between the two landings cannot be walked across, so a
         # door that opens onto one cannot be used.

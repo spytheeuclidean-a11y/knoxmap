@@ -436,6 +436,37 @@ def _outside_runs(plan: Plan, idx: int) -> list[tuple[str, list[tuple[int, int, 
     return runs
 
 
+def _has_door_depth(plan: Plan, side: str, edge: tuple[int, int, str]) -> bool:
+    """Whether stepping inward from `edge` has at least two tiles in the same room.
+
+    Prevents exterior doors from landing on a 1-tile-deep strip where the
+    visitor immediately hits a solid wall one tile inside the doorway.
+    """
+    ex, ey, _ed = edge
+    ix, iy = {
+        "N": (ex, ey),
+        "S": (ex, ey - 1),
+        "W": (ex, ey),
+        "E": (ex - 1, ey),
+    }[side]
+    dx, dy = {"N": (0, 1), "S": (0, -1), "W": (1, 0), "E": (-1, 0)}[side]
+    nx, ny = ix + dx, iy + dy
+    if not (0 <= ix < plan.width and 0 <= iy < plan.height):
+        return False
+    if not (0 <= nx < plan.width and 0 <= ny < plan.height):
+        return False
+    rid = plan.grid[iy][ix]
+    return rid > 0 and plan.grid[ny][nx] == rid
+
+
+def _door_on_run(plan: Plan, side: str,
+                 wall: list[tuple[int, int, str]]) -> tuple[int, int, str]:
+    """Pick the middle of `wall`, preferring edges with >= 2 tiles of room depth."""
+    deep = [e for e in wall if _has_door_depth(plan, side, e)]
+    pool = deep if deep else wall
+    return pool[len(pool) // 2]
+
+
 # Where the way in goes, in order of preference. Never straight into a
 # bathroom or a bedroom unless there is truly nothing else.
 ENTRY_KINDS = ["hall", "lobby", "livingroom", "restaurant", "church",
@@ -481,9 +512,10 @@ def _exterior_door(plan: Plan, rng: random.Random,
 
     def score(run):
         side, wall = run
+        deep = any(_has_door_depth(plan, side, e) for e in wall)
         # Facing the street, as front doors do; without that the door went on
         # the south wall and half the paths wrapped round houses.
-        return (len(wall) >= 3, side == (street or "S"),
+        return (deep, len(wall) >= 3, side == (street or "S"),
                 from_stairs(wall), len(wall))
 
     # The street comes before the room. Taking the best room first and then
@@ -496,7 +528,8 @@ def _exterior_door(plan: Plan, rng: random.Random,
     facing = [(idx, run) for idx in candidates
               if plan.rooms[idx - 1].kind in order
               for run in _outside_runs(plan, idx)
-              if run[0] == (street or "S") and len(run[1]) >= 3]
+              if run[0] == (street or "S") and len(run[1]) >= 3
+              and any(_has_door_depth(plan, run[0], e) for e in run[1])]
     if not facing:
         # No room anybody would arrive in reaches the street side - a large
         # house cut in wings can have nothing but bedrooms there. Any room
@@ -505,22 +538,27 @@ def _exterior_door(plan: Plan, rng: random.Random,
         facing = [(idx, run) for idx in candidates
                   if plan.rooms[idx - 1].kind not in ("bathroom", "closet")
                   for run in _outside_runs(plan, idx)
-                  if run[0] == (street or "S") and len(run[1]) >= 3]
+                  if run[0] == (street or "S") and len(run[1]) >= 3
+                  and any(_has_door_depth(plan, run[0], e) for e in run[1])]
     if facing:
-        idx, (_side, wall) = min(facing, key=lambda ir: (
+        idx, (side, wall) = min(facing, key=lambda ir: (
             order.get(plan.rooms[ir[0] - 1].kind, 50),
             -from_stairs(ir[1][1]), -len(ir[1][1])))
-        front = wall[len(wall) // 2]
+        front = _door_on_run(plan, side, wall)
         plan.doors.append(front)
         _more_ways_in(plan, front)
         return
 
-    for idx in candidates:
-        runs = _outside_runs(plan, idx)
-        if not runs:
-            continue
-        side, wall = max(runs, key=score)
-        front = wall[len(wall) // 2]
+    all_runs = [(idx, side, wall)
+                for idx in candidates
+                for side, wall in _outside_runs(plan, idx)]
+    if all_runs:
+        deep_runs = [(idx, side, wall) for idx, side, wall in all_runs
+                     if any(_has_door_depth(plan, side, e) for e in wall)]
+        pool = deep_runs if deep_runs else all_runs
+        _idx, side, wall = max(pool, key=lambda item: (
+            -candidates.index(item[0]), score((item[1], item[2]))))
+        front = _door_on_run(plan, side, wall)
         plan.doors.append(front)
         _more_ways_in(plan, front)
         return
@@ -619,8 +657,10 @@ def _entrance_wall(plan: Plan, x: float, y: float,
         if room.is_shaft:
             continue
         room_rank = 0 if room.kind in preferred else 1
-        for _side, wall in _outside_runs(plan, idx):
+        for side, wall in _outside_runs(plan, idx):
             for ex, ey, direction in wall:
+                if (ex, ey, direction) in plan.party:
+                    continue
                 if direction == "W":
                     dx = ex - x
                     dy = max(ey - y, 0.0, y - ey - 1)
@@ -628,10 +668,11 @@ def _entrance_wall(plan: Plan, x: float, y: float,
                     dx = max(ex - x, 0.0, x - ex - 1)
                     dy = ey - y
                 distance = dx * dx + dy * dy
-                choices.append((distance, room_rank, ex, ey, direction))
+                no_depth = 0 if _has_door_depth(plan, side, (ex, ey, direction)) else 1
+                choices.append((no_depth, distance, room_rank, ex, ey, direction))
     if not choices:
         return None
-    distance, _room_rank, ex, ey, direction = min(choices)
+    _no_depth, distance, _room_rank, ex, ey, direction = min(choices)
     if distance > 2.25:
         return None
     return ex, ey, direction
@@ -660,24 +701,24 @@ def _more_ways_in(plan: Plan, front: tuple[int, int, str]) -> None:
     """
     if plan.kind in (None, "house"):
         return          # a house has its front door and its back door
-    walls: list[tuple[int, list]] = []
+    walls: list[tuple[int, str, list]] = []
     for idx in range(1, len(plan.rooms) + 1):
         room = plan.rooms[idx - 1]
         if room.is_shaft:
             continue
         private = room.kind in PRIVATE_ROOMS
-        for _side, wall in _outside_runs(plan, idx):
-            if len(wall) >= 3:
-                walls.append((len(wall) - (1000 if private else 0), wall))
-    perimeter = sum(len(wall) for _rank, wall in walls)
+        for side, wall in _outside_runs(plan, idx):
+            if len(wall) >= 3 and any(_has_door_depth(plan, side, e) for e in wall):
+                walls.append((len(wall) - (1000 if private else 0), side, wall))
+    perimeter = sum(len(wall) for _rank, _side, wall in walls)
     want = min(MAX_EXTERIOR_DOORS, perimeter // DOOR_EVERY_TILES)
     placed = [(front[0], front[1])]
     # Longest walls first, and never twice on one stretch or beside a door
     # already hung. Rooms nobody enters a building through come last.
-    for _rank, wall in sorted(walls, key=lambda r: -r[0]):
+    for _rank, side, wall in sorted(walls, key=lambda r: -r[0]):
         if len(placed) >= want:
             break
-        spot = wall[len(wall) // 2]
+        spot = _door_on_run(plan, side, wall)
         if any(abs(spot[0] - px) + abs(spot[1] - py) < DOORS_APART_TILES
                for px, py in placed):
             continue
@@ -705,10 +746,13 @@ def _back_door(plan: Plan, street: str | None = None) -> None:
             for idx, room in enumerate(plan.rooms, 1):
                 if room.kind != kind or room.is_shaft:
                     continue
-                runs = [wall for side, wall in _outside_runs(plan, idx)
+                runs = [(side, wall) for side, wall in _outside_runs(plan, idx)
                         if len(wall) >= 3 and (side == wanted if wanted else
                         abs(wall[len(wall) // 2][0] - fx) + abs(wall[len(wall) // 2][1] - fy) > 6)]
-                if runs:
-                    wall = max(runs, key=len)
-                    plan.doors.append(wall[len(wall) // 2])
+                deep = [(side, wall) for side, wall in runs
+                        if any(_has_door_depth(plan, side, e) for e in wall)]
+                pool = deep if deep else runs
+                if pool:
+                    side, wall = max(pool, key=lambda item: len(item[1]))
+                    plan.doors.append(_door_on_run(plan, side, wall))
                     return

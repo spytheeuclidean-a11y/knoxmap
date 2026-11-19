@@ -16,7 +16,7 @@ import zlib
 from xml.sax.saxutils import quoteattr
 
 from . import catalog as C
-from .layout import ROOM_STYLE, Building, Plan, _erika_ready, roof_rects
+from .layout import ROOM_STYLE, STAIR_RUN, Building, Plan, _erika_ready, roof_rects
 
 
 def _stable_seed(*parts) -> int:
@@ -223,6 +223,25 @@ def _chimneys(grid: list[list[int]], width: int, height: int,
             out.append(("roof_chimney", x, y, rng.choice(("W", "N"))))
             break
     return out
+
+
+def _edge_runs(edges) -> list[tuple[str, int, int, int]]:
+    """Collapse contiguous `(x, y, "W"|"N")` wall edges into `(dir, fixed, start, length)` runs."""
+    lines: dict[tuple[str, int], list[int]] = {}
+    for x, y, d in edges:
+        lines.setdefault((d, x if d == "W" else y), []).append(y if d == "W" else x)
+    runs: list[tuple[str, int, int, int]] = []
+    for (d, fixed), along in sorted(lines.items()):
+        along = sorted(set(along))
+        start = prev = along[0]
+        for pos in along[1:]:
+            if pos == prev + 1:
+                prev = pos
+            else:
+                runs.append((d, fixed, start, prev - start + 1))
+                start = prev = pos
+        runs.append((d, fixed, start, prev - start + 1))
+    return runs
 
 
 def _storefront_runs(storey, doors) -> list[tuple[str, int, int, int]]:
@@ -786,8 +805,9 @@ def render_tbx(plan: Plan | Building, name: str,
                 ("dir", "N" if d == "W" else "W"), ("Tile", 0)]) + "/>")
 
         if storey.railing and rail_idx:
-            for x, y, d in sorted(storey.railing):
-                rail_attrs = [("type", "wall"), ("length", 1),
+            for d, fixed, start, length in _edge_runs(storey.railing):
+                x, y = (fixed, start) if d == "W" else (start, fixed)
+                rail_attrs = [("type", "wall"), ("length", length),
                               ("InteriorTile", rail_idx), ("ExteriorTrim", 0),
                               ("InteriorTrim", 0), ("x", x), ("y", y),
                               ("dir", "N" if d == "W" else "W"),
@@ -828,14 +848,35 @@ def render_tbx(plan: Plan | Building, name: str,
         # and an empty rect is treated as an invalid object.
         if level < len(building.stairs):
             sx, sy, sdir = building.stairs[level]
-            flight_stairs_idx = (
-                C.stairs_for_kind(storey.kind, stairs_rng)
-                if (storey.kind and storey.kind.startswith("basement_"))
-                else stairs_idx
-            )
-            attrs = [("type", "stairs"), ("x", sx), ("y", sy),
-                     ("dir", sdir), ("Tile", flight_stairs_idx)]
-            out.append(f"  <object{_attrs(attrs)}/>")
+            dx, dy = (0, 1) if sdir == "N" else (1, 0)
+            is_basement = bool(storey.kind and storey.kind.startswith("basement_"))
+            if not roof or is_basement:
+                has_upper = True
+            elif level + 1 < len(storeys):
+                above_grid = storeys[level + 1].grid
+                tx, ty = sx - dx, sy - dy
+                has_upper = (
+                    0 <= ty < len(above_grid)
+                    and 0 <= tx < len(above_grid[0])
+                    and above_grid[ty][tx] > 0
+                    and all(
+                        0 <= sy + dy * i < len(above_grid)
+                        and 0 <= sx + dx * i < len(above_grid[0])
+                        and above_grid[sy + dy * i][sx + dx * i] > 0
+                        for i in range(STAIR_RUN)
+                    )
+                )
+            else:
+                has_upper = False
+            if has_upper:
+                flight_stairs_idx = (
+                    C.stairs_for_kind(storey.kind, stairs_rng)
+                    if is_basement
+                    else stairs_idx
+                )
+                attrs = [("type", "stairs"), ("x", sx), ("y", sy),
+                         ("dir", sdir), ("Tile", flight_stairs_idx)]
+                out.append(f"  <object{_attrs(attrs)}/>")
         for hx, hy in sorted(getattr(storey, "holes", ())):   # a plan cached before holes
             out.append(f"  <object{_attrs([('type', 'hole'), ('x', hx), ('y', hy)])}/>")
 

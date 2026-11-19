@@ -108,12 +108,121 @@ class FurnishedRoomWalkability(unittest.TestCase):
         p1 = layout.Plan(4, 6, rooms=[r1, layout.Room(0, 0, 0, 5, kind="bedroom")], grid=g1)
         b = layout.Building(4, 6, storeys=[p0, p1], stairs=[(1, 1, "N")])
         layout._add_stair_railings(b)
-        # Open East side of the flight gets railings; West wall side does not
-        for y in range(1, 1 + layout.STAIR_RUN - 1):
-            self.assertIn((2, y, "W"), p0.railing)
-            self.assertNotIn((1, y, "W"), p0.railing)
-        for y in range(2, 1 + layout.STAIR_RUN):
+        # Railings only start on the second floor (lvl + 1) around the stairwell cutout,
+        # and end in a post (fencing_01_000) rather than jutting out with a corner piece.
+        self.assertEqual(p0.railing, set())
+        for y in range(2, layout.STAIR_RUN):
             self.assertIn((2, y, "W"), p1.railing)
+            self.assertNotIn((1, y, "W"), p1.railing)
+        self.assertNotIn((2, layout.STAIR_RUN, "W"), p1.railing)
+        # Top floor wraps the railing across the far end of the cutout.
+        self.assertIn((1, layout.STAIR_RUN, "N"), p1.railing)
+        self.assertEqual(layout.C.RAILING["tiles"]["SouthEast"], "fencing_01_000")
+
+    def test_stairs_reject_roof_landing_and_one_tile_hallway(self):
+        from knoxbuild import audit
+
+        # 1) Top landing (1, 0) is outside upper storey -> roof / nowhere
+        g0 = [[1] * 4 for _ in range(7)]
+        g1 = [[1] * 4 for _ in range(7)]
+        g1[0] = [0] * 4
+        p0 = layout.Plan(4, 7, rooms=[layout.Room(0, 0, 3, 6, kind="hall")], grid=g0)
+        p1 = layout.Plan(4, 7, rooms=[layout.Room(0, 1, 3, 6, kind="hall")], grid=g1)
+        b_roof = layout.Building(4, 7, storeys=[p0, p1], stairs=[(1, 1, "N")])
+        self.assertFalse(layout._valid_stairs_on_building(b_roof, (1, 1, "N")))
+        self.assertGreater(audit.audit(b_roof, "house").get("stairs onto roof", 0), 0)
+
+        # 2) 1-tile-wide hallway on a non-tower house -> rejected
+        g_narrow0 = [[2, 1, 2, 2] for _ in range(7)]
+        g_narrow1 = [[2, 1, 2, 2] for _ in range(7)]
+        b_narrow = layout.Building(
+            4, 7,
+            storeys=[
+                layout.Plan(4, 7, rooms=[layout.Room(1, 0, 1, 6, kind="hall"),
+                                         layout.Room(0, 0, 3, 6, kind="livingroom")], grid=g_narrow0),
+                layout.Plan(4, 7, rooms=[layout.Room(1, 0, 1, 6, kind="hall"),
+                                         layout.Room(0, 0, 3, 6, kind="bedroom")], grid=g_narrow1),
+            ],
+            stairs=[(1, 1, "N")],
+        )
+        self.assertFalse(layout._valid_stairs_on_building(b_narrow, (1, 1, "N")))
+        self.assertGreater(audit.audit(b_narrow, "house").get("stairs in 1-tile hallway", 0), 0)
+        # Skyscraper stair cores are explicitly allowed to be 1 tile wide.
+        self.assertTrue(layout._valid_stairs_on_building(
+            b_narrow, (1, 1, "N"), allow_narrow_core=True))
+
+        # 3) Valid 3-wide wall-hugging stairs pass both checks
+        g_ok0 = [[1] * 4 for _ in range(7)]
+        g_ok1 = [[1] * 4 for _ in range(7)]
+        b_ok = layout.Building(
+            4, 7,
+            storeys=[
+                layout.Plan(4, 7, rooms=[layout.Room(0, 0, 3, 6, kind="hall")], grid=g_ok0),
+                layout.Plan(4, 7, rooms=[layout.Room(0, 0, 3, 6, kind="hall")], grid=g_ok1),
+            ],
+            stairs=[(0, 1, "N")],
+        )
+        self.assertTrue(layout._valid_stairs_on_building(b_ok, (0, 1, "N")))
+        self.assertEqual(audit.audit(b_ok, "house").get("stairs onto roof", 0), 0)
+        self.assertEqual(audit.audit(b_ok, "house").get("stairs in 1-tile hallway", 0), 0)
+
+    def test_exterior_door_avoids_one_tile_deep_wall(self):
+        from knoxbuild.layout.openings import _exterior_door, _has_door_depth
+
+        # South facade has a 1-tile-deep strip of room 1 (y=3, x=1..4) with room 2
+        # right behind it (y=0..2), while the West/East sides of room 1 (x=0, y=0..3)
+        # have >= 2 tiles of depth. _exterior_door must not put the door on the
+        # 1-tile-deep South wall facing room 2's wall.
+        g = [
+            [1, 1, 2, 2, 2, 1],
+            [1, 1, 2, 2, 2, 1],
+            [1, 1, 2, 2, 2, 1],
+            [1, 1, 1, 1, 1, 1],
+        ]
+        plan = layout.Plan(
+            6, 4,
+            rooms=[layout.Room(0, 0, 5, 3, kind="hall"),
+                   layout.Room(2, 0, 4, 2, kind="storage")],
+            grid=g,
+            kind="school",
+        )
+        _exterior_door(plan, layout.random.Random(1), street="S")
+        self.assertTrue(plan.doors)
+        door = plan.doors[0]
+        # Must not land on the 1-tile-deep South strip at x in 2..4, y=4
+        self.assertFalse(door[2] == "N" and door[1] == 4 and 2 <= door[0] <= 4)
+        self.assertTrue(
+            any(_has_door_depth(plan, side, door) for side in ("N", "S", "W", "E"))
+        )
+
+    def test_render_tbx_omits_stairs_on_one_storey_or_roof_landing(self):
+        from knoxbuild.tbx import render_tbx
+
+        g0 = [[1] * 4 for _ in range(7)]
+        p0 = layout.Plan(4, 7, rooms=[layout.Room(0, 0, 3, 6, kind="hall")], grid=g0)
+        b_one = layout.Building(4, 7, storeys=[p0], stairs=[(1, 1, "N")])
+        self.assertNotIn('type="stairs"', render_tbx(b_one, "one_storey"))
+
+        g1_roof = [[1] * 4 for _ in range(7)]
+        g1_roof[0] = [0] * 4
+        p1_roof = layout.Plan(4, 7, rooms=[layout.Room(0, 1, 3, 6, kind="hall")], grid=g1_roof)
+        b_roof = layout.Building(4, 7, storeys=[p0, p1_roof], stairs=[(1, 1, "N")])
+        self.assertNotIn('type="stairs"', render_tbx(b_roof, "roof_landing"))
+
+    def test_mend_fragments_eliminates_long_one_tile_wide_rooms(self):
+        from knoxbuild.layout.dwellings import _mend_fragments
+
+        # A 1x20 strip (area 20 >= SLIVER) beside a regular room must be folded away.
+        grid = [[1 if x == 0 else 2 for x in range(5)] for _ in range(20)]
+        plan = layout.Plan(
+            5, 20,
+            rooms=[layout.Room(0, 0, 0, 19, kind="hall"),
+                   layout.Room(1, 0, 4, 19, kind="livingroom")],
+            grid=grid,
+        )
+        _mend_fragments(plan)
+        self.assertEqual(len(plan.rooms), 1)
+        self.assertTrue(all(v == 1 for row in plan.grid for v in row))
 
 
 class NothingIsWalledOffByTheLift(unittest.TestCase):

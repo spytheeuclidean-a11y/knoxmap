@@ -150,31 +150,53 @@ def build_building(width: int, height: int, levels: int = 1,
     # hall, and that has to be known before they are laid out.
     storeys = [_storey(lvl) for lvl in range(levels)]
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
-                        grand=bool(storeys) and storeys[0].grand)
+                        grand=bool(storeys) and storeys[0].grand,
+                        tower=tcore is not None)
     if stairs is not None:
-        from .furnishing import _has_door_on_stairs, _doors_off_stairs
-        for lvl in range(levels - 1):
-            building.stairs.append(stairs)
-            _clear_for_stairs(storeys[lvl], *stairs)
-            _clear_for_stairs(storeys[lvl + 1], *stairs)
+        from .furnishing import (
+            _doors_off_stairs,
+            _has_door_on_stairs,
+            _valid_stairs_on_building,
+        )
+        allow_narrow = tcore is not None
+        candidates = [stairs]
         if hug_wall and core is not None:
-            saved_doors = [list(s.doors) for s in storeys]
+            for alt in (_stairs_in_core(core, hug_wall=True, far_wall=True),
+                        _stairs_in_core(core, hug_wall=False)):
+                if alt not in candidates:
+                    candidates.append(alt)
+        saved_doors = [list(s.doors) for s in storeys]
+        chosen = None
+        for cand in candidates:
+            if not _valid_stairs_on_building(building, cand,
+                                             allow_narrow_core=allow_narrow):
+                continue
+            for s, orig in zip(storeys, saved_doors):
+                s.doors = list(orig)
+            building.stairs = [cand] * (levels - 1)
             _doors_off_stairs(building)
-            if _has_door_on_stairs(building):
-                for alt in (_stairs_in_core(core, hug_wall=True, far_wall=True),
-                            _stairs_in_core(core, hug_wall=False)):
-                    if alt == stairs:
-                        continue
-                    for s, orig in zip(storeys, saved_doors):
-                        s.doors = list(orig)
-                    building.stairs = [alt] * (levels - 1)
-                    _doors_off_stairs(building)
-                    if not _has_door_on_stairs(building):
-                        stairs = alt
-                        for lvl in range(levels - 1):
-                            _clear_for_stairs(storeys[lvl], *stairs)
-                            _clear_for_stairs(storeys[lvl + 1], *stairs)
-                        break
+            if not _has_door_on_stairs(building):
+                chosen = cand
+                break
+            if chosen is None:
+                chosen = cand
+        if chosen is not None:
+            stairs = chosen
+            for s, orig in zip(storeys, saved_doors):
+                s.doors = list(orig)
+            building.stairs = [stairs] * (levels - 1)
+            _doors_off_stairs(building)
+            for lvl in range(levels - 1):
+                _clear_for_stairs(storeys[lvl], *stairs)
+                _clear_for_stairs(storeys[lvl + 1], *stairs)
+        else:
+            # No valid staircase (e.g. top landing onto roof or 1-tile hall):
+            # drop to a single storey rather than leaving stairs to nowhere.
+            for s, orig in zip(storeys, saved_doors):
+                s.doors = list(orig)
+            stairs = None
+            building.stairs = []
+            building.storeys = storeys[:1]
     # Windows last and for the whole building at once, so they stack in
     # columns instead of each floor scattering its own.
     _place_windows(building, kind, shop_ground=shops)
@@ -296,14 +318,19 @@ def _clear_railing_at(building: "Building", pair: list) -> None:
 
 def _shop_doors(plan: "Plan", street: str | None) -> None:
     """A street door into each shop on a block of flats' ground floor."""
+    from .openings import _door_on_run, _has_door_depth
+
     for idx, room in enumerate(plan.rooms, 1):
         if room.is_core or room.is_shaft or room.kind not in RETAIL_ROOMS | FRONT_ROOMS:
             continue
         runs = [(side, wall) for side, wall in _outside_runs(plan, idx) if len(wall) >= 3]
         if not runs:
             continue
-        side, wall = max(runs, key=lambda r: (r[0] == street, len(r[1])))
-        door = wall[len(wall) // 2]
+        deep = [(side, wall) for side, wall in runs
+                if any(_has_door_depth(plan, side, e) for e in wall)]
+        pool = deep if deep else runs
+        side, wall = max(pool, key=lambda r: (r[0] == street, len(r[1])))
+        door = _door_on_run(plan, side, wall)
         if door not in plan.doors:
             plan.doors.append(door)
 

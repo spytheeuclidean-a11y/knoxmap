@@ -2452,6 +2452,7 @@ class Building:
     profile: object | None = None
     # A large house (Plan.grand): its rooms take a mansion's finishes.
     grand: bool = False
+    tower: bool = False
 
     @property
     def rooms(self) -> list[Room]:
@@ -3173,6 +3174,43 @@ def _has_door_on_stairs(building: "Building") -> bool:
     return False
 
 
+def _valid_stairs_on_building(building: "Building",
+                              stairs: tuple[int, int, str],
+                              *, allow_narrow_core: bool = False) -> bool:
+    """Whether `stairs` has valid floor, upper landing (no roof), and width."""
+    x, y, d = stairs
+    dx, dy = (0, 1) if d == "N" else (1, 0)
+    px, py = dy, dx
+    for lvl in range(len(building.storeys) - 1):
+        s0, s1 = building.storeys[lvl], building.storeys[lvl + 1]
+        for s in (s0, s1):
+            rooms = {
+                s.grid[y + dy * i][x + dx * i]
+                if 0 <= x + dx * i < s.width and 0 <= y + dy * i < s.height
+                else 0
+                for i in range(STAIR_RUN)
+            }
+            if len(rooms) != 1 or 0 in rooms:
+                return False
+            rid = next(iter(rooms))
+            if not allow_narrow_core:
+                has_beside = any(
+                    0 <= x + ox < s.width and 0 <= y + oy < s.height
+                    and s.grid[y + oy][x + ox] == rid
+                    for ox, oy in ((px, py), (-px, -py))
+                )
+                if not has_beside:
+                    return False
+        # Top landing on the upper floor must exist and share the stair room
+        # (never step off the top of the stairs onto a roof or into a wall).
+        tx, ty = x - dx, y - dy
+        if not (0 <= tx < s1.width and 0 <= ty < s1.height):
+            return False
+        if s1.grid[ty][tx] == 0 or s1.grid[ty][tx] != s1.grid[y][x]:
+            return False
+    return True
+
+
 def _joined_without(storey, skip: int) -> bool:
     """Whether the two rooms either side of door `skip` still meet through the
     other doors and open edges, so that door can go without shutting one in."""
@@ -3381,27 +3419,34 @@ def _off_the_windows(storey: Plan) -> int:
 
 
 def _add_stair_railings(building: "Building") -> None:
-    """Place a railing along the open side of each staircase and its upper cutout."""
+    """Place a railing along the open side of each upper-floor stair cutout."""
     for lvl, (sx, sy, sd) in enumerate(building.stairs):
-        for floor_idx, step_range in ((lvl, range(STAIR_RUN - 1)),
-                                      (lvl + 1, range(1, STAIR_RUN))):
-            if floor_idx >= len(building.storeys):
+        floor_idx = lvl + 1
+        if floor_idx >= len(building.storeys):
+            continue
+        st = building.storeys[floor_idx]
+        w, h, grid = st.width, st.height, st.grid
+        blocked = set(st.doors) | set(st.open_edge)
+        candidates = [
+            (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
+            for side_off in (0, 1)
+            for i in range(1, STAIR_RUN - 1)
+        ]
+        # On the top floor there is no next flight rising from the far end of
+        # the cutout, so wrap the railing across that end to close the hole.
+        if floor_idx == len(building.storeys) - 1:
+            end_edge = (sx, sy + STAIR_RUN - 1, "N") if sd == "N" else (sx + STAIR_RUN - 1, sy, "W")
+            candidates.append(end_edge)
+        for edge in candidates:
+            ex, ey, ed = edge
+            if edge in blocked:
                 continue
-            st = building.storeys[floor_idx]
-            w, h, grid = st.width, st.height, st.grid
-            blocked = set(st.doors) | set(st.open_edge)
-            for side_off in (0, 1):
-                for i in step_range:
-                    edge = (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
-                    ex, ey, ed = edge
-                    if edge in blocked:
-                        continue
-                    ax, ay = (ex - 1, ey) if ed == "W" else (ex, ey - 1)
-                    if not (0 <= ex < w and 0 <= ey < h and 0 <= ax < w and 0 <= ay < h):
-                        continue
-                    r_a, r_b = grid[ay][ax], grid[ey][ex]
-                    if r_a > 0 and r_a == r_b:
-                        st.railing.add(edge)
+            ax, ay = (ex - 1, ey) if ed == "W" else (ex, ey - 1)
+            if not (0 <= ex < w and 0 <= ey < h and 0 <= ax < w and 0 <= ay < h):
+                continue
+            r_a, r_b = grid[ay][ax], grid[ey][ex]
+            if r_a > 0 and r_a == r_b:
+                st.railing.add(edge)
 
 
 def _clear_the_way(building: "Building") -> int:
