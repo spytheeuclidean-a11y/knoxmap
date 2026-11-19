@@ -124,10 +124,11 @@ def build_chunked(
         if progress:
             progress(text, fraction)
 
-    set_origin(_placement.settled_origin(
+    map_origin = _placement.settled_origin(
         out_dir, info.get("map_name") or os.path.basename(out_dir.rstrip("\\/")),
-        info["cells_x"], info["cells_y"]))
-    _placement.save(out_dir, origin())
+        info["cells_x"], info["cells_y"])
+    set_origin(map_origin)
+    _placement.save(out_dir, map_origin)
     try:
         knoxfiles.write(os.path.join(out_dir, "settings.json"),
                         settings.to_dict(), indent=2)
@@ -280,6 +281,7 @@ def build_chunked(
             total_skipped_large += int(stitch.get("skipped_large", 0))
 
         say("Stitching quadrants together", 0.88)
+        set_origin(map_origin)
         gun_cache = guns.write(
             out_dir, map_name,
             guns.choose(all_rows, gunshops) if settings.guaranteed_rifle else None,
