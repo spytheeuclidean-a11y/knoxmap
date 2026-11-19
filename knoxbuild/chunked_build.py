@@ -238,15 +238,31 @@ def build_chunked(
                         shutil.move(os.path.join(q_bdir, fname),
                                     os.path.join(bdir, prefix + fname))
 
-            for p in stitch.get("placements", ()):
+            # Keep each basement with its parent building even when a site-wide
+            # installation basement extends past the quadrant's origin boundary.
+            kept_parents: set[str] = set()
+            q_placements = stitch.get("placements", ())
+            for p in q_placements:
+                bname = os.path.basename(p.tbx_path)
+                if bname.endswith("_bsmt.tbx"):
+                    continue
                 if ix0 <= p.tile_x < ix0 + qw and iy0 <= p.tile_y < iy0 + qh:
+                    kept_parents.add(bname[:-4])
+            for p in q_placements:
+                bname = os.path.basename(p.tbx_path)
+                is_bsmt = bname.endswith("_bsmt.tbx")
+                keep = (bname[:-len("_bsmt.tbx")] in kept_parents) if is_bsmt else (
+                    ix0 <= p.tile_x < ix0 + qw and iy0 <= p.tile_y < iy0 + qh
+                )
+                if keep:
                     rel_dir = os.path.dirname(p.tbx_path)
-                    new_name = prefix + os.path.basename(p.tbx_path)
+                    new_name = prefix + bname
                     new_tbx = f"{rel_dir}/{new_name}" if rel_dir else new_name
                     all_placements.append(Placement(
                         tbx_path=new_tbx,
                         tile_x=p.tile_x + hx0, tile_y=p.tile_y + hy0,
                         width=p.width, height=p.height, on_top=p.on_top,
+                        levels=p.levels, base_level=p.base_level,
                     ))
             for z in stitch.get("zones", ()):
                 zx0 = max(qx0, z.tile_x + hx0)

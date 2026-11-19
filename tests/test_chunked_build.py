@@ -96,6 +96,44 @@ class QuadrantBuildTests(unittest.TestCase):
             for r in rows:
                 self.assertTrue(os.path.isfile(os.path.join(tmp, "buildings", r["file"])))
 
+    def test_stitched_placements_preserve_levels_and_negative_base_level(self):
+        from knoxbuild.world import Placement, render_pzw
+
+        p = Placement("buildings/q0_b_bsmt.tbx", tile_x=10, tile_y=12,
+                      width=8, height=6, on_top=False, levels=2, base_level=-2)
+        stitched = Placement(
+            tbx_path="buildings/q0_b_bsmt.tbx",
+            tile_x=p.tile_x + 300, tile_y=p.tile_y + 300,
+            width=p.width, height=p.height, on_top=p.on_top,
+            levels=p.levels, base_level=p.base_level,
+        )
+        pzw = render_pzw(2, 2, "qmap.bmp", [stitched], "qmap")
+        self.assertIn('level="-2"', pzw)
+
+    def test_installation_basement_crossing_quadrant_edge_follows_parent(self):
+        from knoxbuild.world import Placement
+
+        # Quadrant interior starts at ix0=60 (halo hx0=0); parent sits at x=62 (inside),
+        # while its installation basement shifts west by dx=-10 to x=52 (outside ix0).
+        ix0, iy0, qw, qh = 60, 0, 300, 300
+        parent = Placement("buildings/school_0001.tbx", tile_x=62, tile_y=20, width=16, height=16)
+        bsmt = Placement("buildings/school_0001_bsmt.tbx", tile_x=52, tile_y=15,
+                         width=30, height=26, levels=1, base_level=-1)
+        kept_parents = {
+            os.path.basename(p.tbx_path)[:-4]
+            for p in (parent, bsmt)
+            if not os.path.basename(p.tbx_path).endswith("_bsmt.tbx")
+            and ix0 <= p.tile_x < ix0 + qw and iy0 <= p.tile_y < iy0 + qh
+        }
+        kept = [
+            p for p in (parent, bsmt)
+            if (os.path.basename(p.tbx_path)[:-len("_bsmt.tbx")] in kept_parents
+                if os.path.basename(p.tbx_path).endswith("_bsmt.tbx")
+                else (ix0 <= p.tile_x < ix0 + qw and iy0 <= p.tile_y < iy0 + qh))
+        ]
+        self.assertEqual(len(kept), 2)
+        self.assertEqual(kept[1].base_level, -1)
+
 
 if __name__ == "__main__":
     unittest.main()

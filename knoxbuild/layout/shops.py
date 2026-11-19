@@ -103,10 +103,15 @@ def _fit_out_sections(plan: Plan, rng: random.Random, sections: list[int],
             if plan.rooms[i - 1].kind not in interiors.STORES:
                 plan.rooms[i - 1].kind = uses[0][0]
         return
-    kinds = list(interiors.STORE_WEIGHTS)
-    rng.shuffle(kinds)
-    for n, i in enumerate(sections):
-        plan.rooms[i - 1].kind = kinds[n % len(kinds)]
+    used_kinds: set[str] = set()
+    for i in sections:
+        kind = interiors.store_kind(rng)
+        for _ in range(4):
+            if kind not in used_kinds:
+                break
+            kind = interiors.store_kind(rng)
+        used_kinds.add(kind)
+        plan.rooms[i - 1].kind = kind
     adj = _neighbours(plan)
     for i, room in enumerate(plan.rooms, 1):
         if room.kind == "grocerystorage" and not any(
