@@ -1,3 +1,30 @@
+## 1.8.6.4
+
+- **Chunked large-map buildings, lighter compile workers, and Auto mode**
+  (#145, `knoxbuild/chunked_build.py`, `knoxbuild/build.py`, `knoxbuild/bitmaps.py`, `tools/map_source.py`, `templates/index.html`, `static/js/app.js`, `static/js/shell.js`).
+  - Splits building generation on maps larger than 12x12 cells into 4, 8, or 16+ quadrants along exact 300-tile cell boundaries with streaming bitmap slicing/stitching (`read_window()` / `write_window()`).
+  - Speeds up and lightens Python cell-source workers (`Rules.txt`/`Blends.txt` caching, `uint32` arrays, capped default workers) and adds **Auto** mode (with **Standalone** option) to run Generate, Build, Compile, and Install in sequence.
+
+- **Wall-hugging stairs, skyscraper stair cores, and Rust footprint placement**
+  (#146, `knoxbuild/layout/furnishing.py`, `knoxbuild/layout/assemble.py`, `knoxbuild/tower.py`, `knoxbuild/footprint.py`, `rust/knoxroute/src/footprints.rs`).
+  - Places stairs flush against a shaft wall (with opposite-wall fallback to avoid trapped doors), adds open-side stairwell railings (`_add_stair_railings()`), and gives skyscrapers a dedicated 1-tile-wide enclosed stair core.
+  - Ports the building footprint placement loop to `knoxroute --footprints` (`FootprintSession`) with bit-for-bit parity and automatic Python fallback.
+
+- **Native Rust cell-source compiler worker**
+  (#147, `rust/knoxlots/src/worker/`, `tools/native_source.py`, `tools/map_source.py`, `tools/compile_map.py`). Compiles KnoxMap cell sources natively in `knoxlots` for faster map compilation, with Python fallback when unavailable.
+
+- **Complete Russian and Spanish 1.8.6 localization**
+  (#148, #150, `lang/russian.txt`, `lang/espanol.txt`, `lang/english.txt`, `knoxbuild/designer.py`, `static/js/i18n.js`, `tools/make_lang_template.py`, `.knoxmap_files.json`). Completes Russian workspace and building editor translations, updates Spanish 1.8.6 translation coverage, and updates `.knoxmap_files.json`.
+
+- **Valid stair landings, exterior door depth, and wrapped top-floor railings**
+  (#149, `knoxbuild/layout/assemble.py`, `knoxbuild/layout/furnishing.py`, `knoxbuild/layout/openings.py`, `knoxbuild/tbx.py`, `knoxbuild/audit.py`). Ensures multi-storey staircases always land in a valid room (never onto a roof or 1-tile hall), trims upper-floor stairwell railings and wraps the top-floor far end, and avoids 1-tile-deep exterior doors.
+
+- **Reworked gun, jewelry, and electronics store interiors and chunked basement fixes**
+  (#152, `knoxbuild/interiors.py`, `knoxbuild/layout/shops.py`, `knoxbuild/uses.py`, `knoxbuild/chunked_build.py`). Increases retail gun store frequency, reworks gun, jewelry, and electronics store interiors, and preserves basement `levels`/`base_level` and `*_bsmt.tbx` placements across chunked quadrants.
+
+- **Native source worker and FootprintSession hardening**
+  (#153, `tools/native_source.py`, `tools/compile_map.py`, `knoxbuild/footprint.py`, `knoxbuild/build.py`, `tests/test_native_source.py`). Verifies plain 24-bit BMP pairs before selecting the native worker, uses system temp directories, logs `FootprintSession` fallback warnings, and expands Rust-vs-Python parity and constant-sync tests.
+
 ## 1.8.6.3
 
 - **Open map attribution links in the system browser**
