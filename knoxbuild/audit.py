@@ -183,7 +183,9 @@ def audit(building, kind):
     elif len(building.storeys) >= ELEVATOR_FROM_LEVELS and \
             min(building.width, building.height) >= ELEVATOR_MIN_SIDE:
         problems["tall building without a lift"] += 1
-    is_tower = any(getattr(s, "tower", None) is not None for s in building.storeys)
+    is_tower = bool(getattr(building, "tower", False)) or any(
+        getattr(s, "tower", None) is not None for s in building.storeys
+    )
     for lvl, (x, y, d) in enumerate(building.stairs):
         dx, dy = (0, 1) if d == "N" else (1, 0)
         px, py = dy, dx

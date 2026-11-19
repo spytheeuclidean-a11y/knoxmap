@@ -2452,6 +2452,7 @@ class Building:
     profile: object | None = None
     # A large house (Plan.grand): its rooms take a mansion's finishes.
     grand: bool = False
+    tower: bool = False
 
     @property
     def rooms(self) -> list[Room]:

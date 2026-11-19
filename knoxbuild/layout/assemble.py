@@ -150,7 +150,8 @@ def build_building(width: int, height: int, levels: int = 1,
     # hall, and that has to be known before they are laid out.
     storeys = [_storey(lvl) for lvl in range(levels)]
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
-                        grand=bool(storeys) and storeys[0].grand)
+                        grand=bool(storeys) and storeys[0].grand,
+                        tower=tcore is not None)
     if stairs is not None:
         from .furnishing import (
             _doors_off_stairs,
