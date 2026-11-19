@@ -44,6 +44,8 @@ HOUSE_ROOMS = ("livingroom", "openplan", "kitchen", "dining", "bedroom",
 
 
 def room_label(kind: str) -> str:
+    if kind == "prisoncells":
+        return "Prison cells"
     style = L.ROOM_STYLE.get(kind)
     return style[1] if style else kind
 
