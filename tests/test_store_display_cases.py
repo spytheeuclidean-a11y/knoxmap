@@ -47,6 +47,35 @@ class StoreDisplayCases(unittest.TestCase):
             if plan.grid[y][x] in anchors:
                 self.assertFalse(tiles_for(role) & butcher_tiles, (role, x, y))
 
+    def test_gunstore_has_elevated_retail_weight(self):
+        import random
+        self.assertGreaterEqual(interiors.STORE_WEIGHTS["gunstore"], 3)
+        rng = random.Random(7)
+        picks = [interiors.store_kind(rng) for _ in range(300)]
+        self.assertGreaterEqual(picks.count("gunstore"), 8)
+
+    def test_jewelry_and_electronics_store_interiors(self):
+        _, _, jewelry_furn = sales_floor("jewelrystore", 3)
+        j_roles = {role for role, *_ in jewelry_furn}
+        self.assertIn("shop_display", j_roles)
+        self.assertIn("shop_counter", j_roles)
+        self.assertIn("register", j_roles)
+        self.assertNotIn("shop_aisle", j_roles)
+        self.assertTrue(j_roles & {"chair", "armchair", "mirror", "plant"})
+
+        _, _, elec_furn = sales_floor("electronicsstore", 4)
+        e_roles = {role for role, *_ in elec_furn}
+        self.assertIn("shop_counter", e_roles)
+        self.assertIn("register", e_roles)
+        self.assertTrue(e_roles & {"tv", "radio"})
+        self.assertTrue(e_roles & {"washer", "dishwasher", "shop_fridge_white"})
+
+        _, _, gun_furn = sales_floor("gunstore", 5)
+        g_roles = {role for role, *_ in gun_furn}
+        self.assertIn("gun_locker", g_roles)
+        self.assertIn("shop_display", g_roles)
+        self.assertIn("register", g_roles)
+
 
 if __name__ == "__main__":
     unittest.main()

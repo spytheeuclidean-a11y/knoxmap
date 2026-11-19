@@ -76,11 +76,16 @@ _LIKE = {
                                 "front": ["shop_case"]}),
     "departmentstore": ("clothingstore", {"wall": ["shop_shelf", "clothes_rack"]}),
     "sportstore": ("clothingstore", {"wall": ["metal_rack", "shop_shelf"], "front": ["mannequin_male"]}),
-    "jewelrystore": ("pharmacy", {"rows": "shop_display", "wall": ["shop_case"], "front": ["mirror"]}),
+    "jewelrystore": ("pharmacy", {"rows": "shop_display", "wall": ["shop_case"],
+                                  "back": ["shop_display", "filing_cabinet_pale"],
+                                  "front": ["mirror", "plant"]}),
     "camerastore": ("pharmacy", {"rows": "shop_display", "wall": ["shop_shelf_white"]}),
     "musicstore": ("bookstore", {"front": ["shop_case"]}),
     "movierental": ("bookstore", {"wall": ["shop_shelf"]}),
-    "gunstore": ("toolstore", {"rows": "shop_display", "wall": ["metal_rack"]}),
+    "gunstore": ("toolstore", {"rows": "shop_display",
+                               "wall": ["gun_locker", "shop_display", "metal_rack"],
+                               "back": ["gun_locker", "crate"],
+                               "counter": "shop_display", "front": ["mannequin_male"]}),
     "gardenstore": ("toolstore", {"front": ["plant", "plant"], "wall": ["shop_shelf_wood", "plant"]}),
     "armysurplus": ("toolstore", {"rows": "metal_rack", "wall": ["clothes_rack", "metal_rack"],
                                   "front": ["shop_display"]}),
@@ -98,7 +103,9 @@ _LIKE = {
                                     "wall": ["shop_shelf_wood", "shop_display"],
                                     "front": ["mirror"]}),
     "sewingstore": ("clothingstore", {"rows": "shop_display", "wall": ["shop_shelf_wood"]}),
-    "electronicsstore": ("camerastore", {"wall": ["shop_shelf", "shop_case"]}),
+    "electronicsstore": ("toolstore", {"rows": "shop_shelf", "wall": ["metal_rack", "shop_shelf_white"],
+                                      "back": ["counter_2", "shop_fridge_white"],
+                                      "counter": "shop_counter", "front": ["tv", "radio"]}),
     "housewarestore": ("generalstore", {"wall": ["shop_shelf_wood", "dresser"]}),
     "cornerstore": ("conveniencestore", {"produce": 2}),
     "optometrist": ("pharmacy", {"front": ["mirror"]}),
@@ -145,7 +152,7 @@ STORE_WEIGHTS = {
     "gardenstore": 1, "bakery": 2, "butcher": 1, "musicstore": 1,
     "movierental": 1, "giftstore": 1, "toystore": 1, "candystore": 1,
     "artstore": 1, "petstore": 1, "camerastore": 1, "jewelrystore": 1,
-    "gunstore": 1, "hunting": 1, "armysurplus": 1,
+    "gunstore": 3, "hunting": 1, "armysurplus": 1,
 }
 # Rows of shelving need this much floor, and the rows this much space apart
 # (the shelf and a two-tile aisle).
@@ -337,9 +344,299 @@ def furnish_service_bay(plan, idx: int, room, rng: random.Random,
     return True
 
 
+def _store_setup(plan, idx: int, room, door_tiles: set, keep_clear: set,
+                 street: str | None):
+    cells = _cells(plan, idx, room)
+    if len(cells) < MIN_SALES_FLOOR:
+        return None
+    front = _front_side(plan, idx, cells, street)
+    frame = Frame(cells, front)
+    blocked = set(keep_clear)
+    for dx, dy in door_tiles:
+        if (dx, dy) in cells:
+            blocked |= {(dx + i, dy + j) for i in (-1, 0, 1) for j in (-1, 0, 1)}
+    return cells, front, frame, blocked
+
+
+def _furnish_jewelrystore(plan, idx: int, room, rng: random.Random,
+                          door_tiles: set, keep_clear: set,
+                          street: str | None) -> bool:
+    """Boutique jewelry showroom: perimeter display cases, central glass island,
+    appraisal/checkout counter, mirrors, plants, and consultation seating."""
+    L = _layout()
+    setup = _store_setup(plan, idx, room, door_tiles, keep_clear, street)
+    if setup is None:
+        return False
+    cells, front, frame, blocked = setup
+    back_to = OPPOSITE[front]
+    left, right = (("W", "E") if frame.along_x else ("N", "S"))
+    placed: set[tuple[int, int]] = set()
+
+    def put(role, x, y, orient, ring=False) -> bool:
+        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
+        if got is None:
+            return False
+        plan.furniture.append((role, x, y, orient))
+        placed.update(got)
+        if ring:
+            placed.update((cx + i, cy + j) for cx, cy in got
+                          for i in (-1, 0, 1) for j in (-1, 0, 1))
+        return True
+
+    # 1. Checkout & appraisal counter near the front entrance.
+    doors_in = [(x, y) for x, y in door_tiles if (x, y) in cells]
+    front_tiles = [(a, frame.xy(a, 0)) for a in range(frame.length)]
+    door_along = next((a for a, xy in front_tiles if xy in doors_in), frame.length // 2)
+    run = 3 if frame.length >= 9 else 2
+    for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
+        spots = [frame.xy(start + k, 2) for k in range(run)]
+        orient = L._facing("shop_counter", back_to)
+        if all(_fits(plan, idx, "shop_counter", x, y, orient, blocked | placed) for x, y in spots):
+            for x, y in spots:
+                put("shop_counter", x, y, orient)
+            mx, my = spots[len(spots) // 2]
+            plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
+            cx, cy = frame.xy(start + len(spots) // 2, 1)
+            put("chair", cx, cy, L._facing("chair", front))
+            placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
+            break
+
+    # 2. Back vault/consultation line: display cases, safe/filing cabinet, seating.
+    back_orient = L._facing("shop_display", back_to)
+    for a in range(1, frame.length - 1):
+        bx, by = frame.xy(a, frame.depth - 1)
+        if a == 1 and put("filing_cabinet_pale", bx, by, back_orient):
+            continue
+        if a % 4 == 0 and put("armchair", bx, by, back_orient):
+            continue
+        put("shop_display", bx, by, back_orient)
+        ax, ay = frame.xy(a, frame.depth - 2)
+        if (ax, ay) in cells:
+            placed.add((ax, ay))
+
+    # 3. Side walls: perimeter glass cases + mirrors/paintings on N/W walls.
+    for side, along in ((left, 0), (right, frame.length - 1)):
+        orient = L._facing("shop_display", side)
+        for d in range(2, frame.depth - 1):
+            sx, sy = frame.xy(along, d)
+            if put("shop_display", sx, sy, orient):
+                fx, fy = frame.xy(along + (1 if side == left else -1), d)
+                if (fx, fy) in cells:
+                    placed.add((fx, fy))
+        if side in ("N", "W"):
+            for d in range(2, frame.depth - 1, 3):
+                _hang(plan, idx, "mirror" if d % 2 == 0 else "painting",
+                      *frame.xy(along, d), side)
+
+    # 4. Central boutique showcase island (no grocery aisles).
+    if frame.length >= 7 and frame.depth >= 7:
+        mid_a0 = max(2, frame.length // 2 - 2)
+        mid_a1 = min(frame.length - 3, frame.length // 2 + 1)
+        mid_d = frame.depth // 2
+        island_orient = L._facing("shop_display", front)
+        for a in range(mid_a0, mid_a1 + 1):
+            ix, iy = frame.xy(a, mid_d)
+            if put("shop_display", ix, iy, island_orient):
+                if a == mid_a0:
+                    plan.furniture.append(("register", ix, iy, L._facing("register", front)))
+        # Consultation chairs facing the showcase island.
+        for a in (mid_a0, mid_a1):
+            cx, cy = frame.xy(a, mid_d - 1)
+            put("chair", cx, cy, L._facing("chair", back_to))
+
+    # 5. Front window accents: indoor plants.
+    for a in (1, frame.length - 2):
+        px, py = frame.xy(a, 0)
+        put("plant", px, py, L._facing("plant", front))
+    return True
+
+
+def _furnish_electronicsstore(plan, idx: int, room, rng: random.Random,
+                             door_tiles: set, keep_clear: set,
+                             street: str | None) -> bool:
+    """Electronics & appliance showroom: TV/audio wall stands, appliance row,
+    central demo tables, tech-support desk, and media/accessory shelving."""
+    L = _layout()
+    setup = _store_setup(plan, idx, room, door_tiles, keep_clear, street)
+    if setup is None:
+        return False
+    cells, front, frame, blocked = setup
+    back_to = OPPOSITE[front]
+    left, right = (("W", "E") if frame.along_x else ("N", "S"))
+    placed: set[tuple[int, int]] = set()
+
+    def put(role, x, y, orient, ring=False) -> bool:
+        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
+        if got is None:
+            return False
+        plan.furniture.append((role, x, y, orient))
+        placed.update(got)
+        if ring:
+            placed.update((cx + i, cy + j) for cx, cy in got
+                          for i in (-1, 0, 1) for j in (-1, 0, 1))
+        return True
+
+    # 1. Checkout & tech-support counter near the front.
+    doors_in = [(x, y) for x, y in door_tiles if (x, y) in cells]
+    front_tiles = [(a, frame.xy(a, 0)) for a in range(frame.length)]
+    door_along = next((a for a, xy in front_tiles if xy in doors_in), frame.length // 2)
+    run = 3 if frame.length >= 9 else 2
+    for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
+        spots = [frame.xy(start + k, 2) for k in range(run)]
+        orient = L._facing("shop_counter", back_to)
+        if all(_fits(plan, idx, "shop_counter", x, y, orient, blocked | placed) for x, y in spots):
+            for x, y in spots:
+                put("shop_counter", x, y, orient)
+            mx, my = spots[len(spots) // 2]
+            plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
+            placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
+            break
+
+    # 2. Back wall: TV & audio demo stands alternating with metal inventory racks.
+    back_orient = L._facing("counter_2", back_to)
+    inward_orient = L._facing("tv", back_to)
+    a = 1
+    while a < frame.length - 1:
+        bx, by = frame.xy(a, frame.depth - 1)
+        if a % 3 == 1 and put("counter_2", bx, by, back_orient):
+            top_role = "tv" if (a // 3) % 2 == 0 else "radio"
+            if inward_orient in C.FURNITURE.get(top_role, {}):
+                plan.furniture.append((top_role, bx, by, inward_orient))
+            a += 1
+        elif put("metal_rack", bx, by, L._facing("metal_rack", back_to)):
+            a += len(C.FURNITURE["metal_rack"][L._facing("metal_rack", back_to)])
+        else:
+            a += 1
+
+    # 3. Side walls: left wall = appliance line (washer, dishwasher, microwave, fridge);
+    #    right wall = white display shelving & TV/audio stands.
+    appliances = ["washer", "dishwasher", "shop_fridge_white", "counter_2"]
+    for d in range(2, frame.depth - 1):
+        lx, ly = frame.xy(0, d)
+        app = appliances[(d - 2) % len(appliances)]
+        orient = L._facing(app, left)
+        if put(app, lx, ly, orient) and app == "counter_2":
+            m_orient = L._facing("microwave", left)
+            if m_orient in C.FURNITURE.get("microwave", {}):
+                plan.furniture.append(("microwave", lx, ly, m_orient))
+        rx, ry = frame.xy(frame.length - 1, d)
+        r_role = "shop_shelf_white" if d % 2 == 0 else "shop_shelf"
+        put(r_role, rx, ry, L._facing(r_role, right))
+
+    # 4. Center floor: demo tables with TVs/radios in front, media shelving behind.
+    if frame.length >= 7 and frame.depth >= 7:
+        for a in range(2, frame.length - 2, 3):
+            tx, ty = frame.xy(a, 4)
+            t_orient = L._facing("table", front)
+            if put("table", tx, ty, t_orient, ring=True):
+                demo = "tv" if a % 2 == 0 else "radio"
+                d_orient = L._facing(demo, front)
+                if d_orient in C.FURNITURE.get(demo, {}):
+                    plan.furniture.append((demo, tx, ty, d_orient))
+        for a in range(2, frame.length - 2, 3):
+            for d in range(6, frame.depth - 2):
+                sx, sy = frame.xy(a, d)
+                s_orient = L._facing("shop_shelf", left)
+                put("shop_shelf", sx, sy, s_orient)
+
+    # 5. Front tech-corner snack/accent piece.
+    for role, a in (("vending_snacks", 1), ("plant", frame.length - 2)):
+        fx, fy = frame.xy(a, 0)
+        put(role, fx, fy, L._facing(role, front))
+    return True
+
+
+def _furnish_gunstore(plan, idx: int, room, rng: random.Random,
+                      door_tiles: set, keep_clear: set,
+                      street: str | None) -> bool:
+    """Firearms & ammo shop: gun lockers along walls, glass display counters,
+    ammo/accessory shelving, crates, and a checkout register."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 12:
+        return False
+    front = _front_side(plan, idx, cells, street)
+    frame = Frame(cells, front)
+    blocked = set(keep_clear)
+    for dx, dy in door_tiles:
+        if (dx, dy) in cells:
+            blocked |= {(dx + i, dy + j) for i in (-1, 0, 1) for j in (-1, 0, 1)}
+    back_to = OPPOSITE[front]
+    left, right = (("W", "E") if frame.along_x else ("N", "S"))
+    placed: set[tuple[int, int]] = set()
+
+    def put(role, x, y, orient, ring=False) -> bool:
+        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
+        if got is None:
+            return False
+        plan.furniture.append((role, x, y, orient))
+        placed.update(got)
+        if ring:
+            placed.update((cx + i, cy + j) for cx, cy in got
+                          for i in (-1, 0, 1) for j in (-1, 0, 1))
+        return True
+
+    # 1. Glass display checkout counter near the front.
+    doors_in = [(x, y) for x, y in door_tiles if (x, y) in cells]
+    front_tiles = [(a, frame.xy(a, 0)) for a in range(frame.length)]
+    door_along = next((a for a, xy in front_tiles if xy in doors_in), frame.length // 2)
+    run = 3 if frame.length >= 8 else 2
+    for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
+        spots = [frame.xy(start + k, 2) for k in range(run)]
+        orient = L._facing("shop_display", back_to)
+        if all(_fits(plan, idx, "shop_display", x, y, orient, blocked | placed) for x, y in spots):
+            for x, y in spots:
+                put("shop_display", x, y, orient)
+            mx, my = spots[len(spots) // 2]
+            plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
+            placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
+            break
+
+    # 2. Back wall: bank of gun lockers + stacked crates.
+    back_orient = L._facing("gun_locker", back_to)
+    for a in range(1, frame.length - 1):
+        bx, by = frame.xy(a, frame.depth - 1)
+        if a == frame.length - 2 and put("crate", bx, by, L._facing("crate", back_to)):
+            if rng.random() < 0.6:
+                plan.furniture.append(("crate_top", bx, by, L._facing("crate_top", back_to)))
+            continue
+        put("gun_locker", bx, by, back_orient)
+
+    # 3. Side walls: alternating gun lockers, glass cases, and metal/wood racks.
+    for side, along in ((left, 0), (right, frame.length - 1)):
+        for d in range(1, frame.depth - 1):
+            sx, sy = frame.xy(along, d)
+            if d % 3 == 1 and put("gun_locker", sx, sy, L._facing("gun_locker", side)):
+                continue
+            if d % 3 == 2 and put("shop_display", sx, sy, L._facing("shop_display", side)):
+                continue
+            rack = "metal_rack" if side in ("N", "W") else "shop_display"
+            put(rack, sx, sy, L._facing(rack, side))
+
+    # 4. Central glass display island in larger gun stores.
+    if frame.length >= 7 and frame.depth >= 7:
+        mid_a0 = max(2, frame.length // 2 - 1)
+        mid_a1 = min(frame.length - 3, frame.length // 2 + 1)
+        mid_d = frame.depth // 2
+        for a in range(mid_a0, mid_a1 + 1):
+            ix, iy = frame.xy(a, mid_d)
+            put("shop_display", ix, iy, L._facing("shop_display", front))
+
+    # 5. Front window display.
+    fx, fy = frame.xy(max(1, frame.length - 2), 0)
+    put("mannequin_male", fx, fy, L._facing("mannequin_male", back_to))
+    return True
+
+
 def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
                   keep_clear: set, street: str | None) -> bool:
     """Fit out a shop's sales floor. False if the room is too small to."""
+    if room.kind == "jewelrystore":
+        return _furnish_jewelrystore(plan, idx, room, rng, door_tiles, keep_clear, street)
+    if room.kind == "electronicsstore":
+        return _furnish_electronicsstore(plan, idx, room, rng, door_tiles, keep_clear, street)
+    if room.kind == "gunstore":
+        return _furnish_gunstore(plan, idx, room, rng, door_tiles, keep_clear, street)
     L = _layout()
     spec = STORES[room.kind]
     cells = _cells(plan, idx, room)
