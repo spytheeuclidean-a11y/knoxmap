@@ -3426,18 +3426,26 @@ def _add_stair_railings(building: "Building") -> None:
         st = building.storeys[floor_idx]
         w, h, grid = st.width, st.height, st.grid
         blocked = set(st.doors) | set(st.open_edge)
-        for side_off in (0, 1):
-            for i in range(1, STAIR_RUN - 1):
-                edge = (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
-                ex, ey, ed = edge
-                if edge in blocked:
-                    continue
-                ax, ay = (ex - 1, ey) if ed == "W" else (ex, ey - 1)
-                if not (0 <= ex < w and 0 <= ey < h and 0 <= ax < w and 0 <= ay < h):
-                    continue
-                r_a, r_b = grid[ay][ax], grid[ey][ex]
-                if r_a > 0 and r_a == r_b:
-                    st.railing.add(edge)
+        candidates = [
+            (sx + side_off, sy + i, "W") if sd == "N" else (sx + i, sy + side_off, "N")
+            for side_off in (0, 1)
+            for i in range(1, STAIR_RUN - 1)
+        ]
+        # On the top floor there is no next flight rising from the far end of
+        # the cutout, so wrap the railing across that end to close the hole.
+        if floor_idx == len(building.storeys) - 1:
+            end_edge = (sx, sy + STAIR_RUN - 1, "N") if sd == "N" else (sx + STAIR_RUN - 1, sy, "W")
+            candidates.append(end_edge)
+        for edge in candidates:
+            ex, ey, ed = edge
+            if edge in blocked:
+                continue
+            ax, ay = (ex - 1, ey) if ed == "W" else (ex, ey - 1)
+            if not (0 <= ex < w and 0 <= ey < h and 0 <= ax < w and 0 <= ay < h):
+                continue
+            r_a, r_b = grid[ay][ax], grid[ey][ex]
+            if r_a > 0 and r_a == r_b:
+                st.railing.add(edge)
 
 
 def _clear_the_way(building: "Building") -> int:

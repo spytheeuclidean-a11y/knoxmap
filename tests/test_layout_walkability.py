@@ -115,6 +115,8 @@ class FurnishedRoomWalkability(unittest.TestCase):
             self.assertIn((2, y, "W"), p1.railing)
             self.assertNotIn((1, y, "W"), p1.railing)
         self.assertNotIn((2, layout.STAIR_RUN, "W"), p1.railing)
+        # Top floor wraps the railing across the far end of the cutout.
+        self.assertIn((1, layout.STAIR_RUN, "N"), p1.railing)
         self.assertEqual(layout.C.RAILING["tiles"]["SouthEast"], "fencing_01_000")
 
     def test_stairs_reject_roof_landing_and_one_tile_hallway(self):
