@@ -354,6 +354,7 @@ KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 16.0, "shed": 20.0, "church": 12.0
                    # the game spawns loot per room and a hangar of one room
                    # the size of a street would hold almost nothing.
                    "hangar": 70.0,
+                   "terminal": 4.0,
                    "castle": 14.0, "stadium": 11.0, "mall": 16.0,
                    "shop": 2.0, "school": 9.0, "civic": 2.5,
                    "restaurant": 1.5, "medical": 1.3, "offices": 3.0,
@@ -394,6 +395,7 @@ KIND_MAX_ROOM = {"church": 340, "library": 280, "school": 170, "gym": 320,
                  # Knox County's own hangar is one room the size of the
                  # building; 460 would cut it in three.
                  "hangar": 1800,
+                 "terminal": 900,
                  "civic": 170, "fire": 220, "fire_police": 220, "medical": 140,
                  # A great hall and a concourse. Without an entry here the cap
                  # is MAX_ROOM_AREA whatever KIND_ROOM_SCALE says, which is

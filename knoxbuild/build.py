@@ -133,10 +133,10 @@ SPECIAL_BY_VALUE = {
     # roof over the whole span. Laid out as a warehouse it came out as a
     # row of offices and stockrooms, which is what an airport looked like.
     "hangar": "hangar",
-    # The rest of an airfield is civic: a terminal is a concourse and a
-    # desk, a control tower is a stair and a room at the top.
-    "terminal": "civic", "control_tower": "civic",
-    "airport_terminal": "civic",
+    # Airport passenger terminals have their own concourse/gate seating layout;
+    # control towers stay civic (tall tower core).
+    "terminal": "terminal", "airport_terminal": "terminal",
+    "concourse": "terminal", "control_tower": "civic",
     "factory": "industrial", "works": "industrial", "manufacture": "industrial",
     "garage": "garage", "garages": "garage", "car_repair": "garage",
     "barn": "barn", "farm": "barn", "farm_auxiliary": "barn",
@@ -177,6 +177,8 @@ SPECIAL_BY_NAME = [
     # with the word in the name and nothing else, so three of them came out
     # as brick houses with two hundred rooms in them.
     ("hangar", "hangar"),
+    ("terminal", "terminal"), ("concourse", "terminal"),
+    ("fbo", "terminal"), ("airport", "terminal"), ("airfield", "terminal"),
     ("cathedral", "church"), ("hospital", "medical"), ("clinic", "medical"),
     ("pharmacy", "medical"), ("warehouse", "industrial"),
     ("factory", "industrial"), ("mill", "industrial"), ("plant", "industrial"),
@@ -206,6 +208,7 @@ DEFAULT_LEVELS = {
     "barn": (1, 1),
     "shed": (1, 1),
     "hangar": (1, 1),
+    "terminal": (1, 2),
     "church": (1, 1),
     "apartment": (3, 5),
     "civic": (2, 3),
@@ -629,6 +632,7 @@ MORE_INSIDE = {
     "apartment": ("brick", "painted", "stucco", "render"),
     "industrial": ("panel", "stucco"),
     "hangar": ("panel", "stucco"),
+    "terminal": ("panel", "stucco", "painted"),
     "barn": ("timber", "panel"),
     "medical": ("painted", "stucco"),
     "restaurant": ("painted", "panel"),

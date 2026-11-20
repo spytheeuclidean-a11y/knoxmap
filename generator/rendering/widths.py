@@ -31,10 +31,9 @@ ROAD_WIDTHS_M = {
     "runway": 30.0,
     "taxiway": 15.0,
 }
-# The pale shoulder either side of a runway, as the game's own airfield has
-# it: concrete out to the grass, so the strip reads as a runway and not as a
-# very wide road. Metres each side.
-RUNWAY_SHOULDER_M = 9.0
+# Paved shoulder either side of a runway (FAA/ICAO commercial standard is
+# ~3-4.5 m; 9 m each side produced an oversized concrete slab). Metres each side.
+RUNWAY_SHOULDER_M = 3.5
 
 # What a tagged width may be believed up to, by category. A street tagged
 # sixty metres wide is a mistake somebody made; a runway tagged forty-five

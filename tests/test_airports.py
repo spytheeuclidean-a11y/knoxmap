@@ -192,9 +192,9 @@ class AHangarIsOneSpan(unittest.TestCase):
             with self.subTest(tags=tags):
                 self.assertEqual(classify_building(tags), "hangar")
 
-    def test_a_terminal_and_a_tower_are_civic_buildings(self):
+    def test_a_terminal_and_a_tower_are_classified_distinctly(self):
         from knoxbuild.build import classify_building
-        self.assertEqual(classify_building({"aeroway": "terminal"}), "civic")
+        self.assertEqual(classify_building({"aeroway": "terminal"}), "terminal")
         self.assertEqual(classify_building({"aeroway": "control_tower"}), "civic")
 
     def test_an_ordinary_hangar_is_a_single_room(self):
@@ -319,20 +319,42 @@ class AHangarIsOneSpan(unittest.TestCase):
             with self.subTest(i=i):
                 self.assertEqual(style["exterior"]["tiles"]["West"], AIRFIELD_WALL)
 
-    def test_and_mostly_glass(self):
-        # An airport is panes, not a blank shed wall. A pane a tile is what
-        # the glass-tower rule gives a civic block of eight storeys; a
-        # terminal is the same wall of glass without the height.
+    def test_terminal_is_glass_and_hangar_is_solid_walled(self):
+        # An airport terminal has a glass curtain wall (1, 1); a hangar has
+        # solid industrial walls with sparse high windows (8, 12).
         from knoxbuild.layout import build_building
         from knoxbuild.layout.furnishing import FACADE_SPACING
         from knoxbuild.settings import Settings
-        self.assertEqual(FACADE_SPACING["hangar"], (1, 1))
-        built = build_building(40, 24, levels=1, kind="hangar", seed=5,
-                               settings=Settings())
-        panes = sum(len(storey.windows) for storey in built.storeys)
-        # The wall round a 40x24 building is 128 tiles; anything like a
-        # blank shed comes out in single figures.
+        self.assertEqual(FACADE_SPACING["terminal"], (1, 1))
+        self.assertEqual(FACADE_SPACING["hangar"], (8, 12))
+        term = build_building(40, 24, levels=1, kind="terminal", seed=5,
+                              settings=Settings())
+        panes = sum(len(storey.windows) for storey in term.storeys)
         self.assertGreater(panes, 60)
+
+    def test_terminal_has_gate_seating_and_checkin_counters(self):
+        from knoxbuild.layout import build_building
+        from knoxbuild.settings import Settings
+        built = build_building(32, 20, levels=1, kind="terminal", seed=7,
+                               settings=Settings())
+        furn = [item[0] for s in built.storeys for item in s.furniture]
+        self.assertGreaterEqual(furn.count("chair"), 8)
+        self.assertTrue(any(k in furn for k in ("counter_2", "counter")))
+        self.assertIn("register", furn)
+
+    def test_hangar_keeps_center_open_and_has_no_bookshelves(self):
+        from knoxbuild.layout import build_building
+        from knoxbuild.settings import Settings
+        built = build_building(30, 20, levels=1, kind="hangar", seed=5,
+                               settings=Settings())
+        s = built.storeys[0]
+        furn = [item[0] for item in s.furniture]
+        self.assertNotIn("shelf", furn)
+        self.assertTrue(any(k in furn for k in ("metal_rack", "crate", "counter")))
+        # Central aircraft bay must remain clear of furniture.
+        center = {(x, y) for x in range(8, 22) for y in range(6, 14)}
+        in_center = [(x, y) for _k, x, y, _o in s.furniture if (x, y) in center]
+        self.assertEqual(in_center, [])
 
     def test_that_style_is_taken_from_the_catalog_not_retyped(self):
         # A second copy of the same forty tile names is a second copy to
@@ -394,18 +416,22 @@ class ThePianoKeys(unittest.TestCase):
         count, _ground, _px = self.painted([self.at(0.05, 0.05), self.at(0.95, 0.95)])
         self.assertGreater(count, 0)
 
-    def test_they_are_at_the_ends_and_not_down_the_middle(self):
+    def test_threshold_bars_are_denser_at_the_ends_than_the_middle(self):
         import numpy as np
         pts = [self.at(0.5, 0.05), self.at(0.5, 0.95)]
         _count, ground, px = self.painted(pts)
         marks = np.all(ground == C.PALE_CONCRETE, axis=2)
         ys = np.nonzero(marks)[0]
         self.assertTrue(ys.size)
-        top, bottom = px[0][1], px[-1][1]
+        top, bottom = min(px[0][1], px[-1][1]), max(px[0][1], px[-1][1])
+        span = bottom - top
         middle = (top + bottom) / 2.0
-        quarter = abs(bottom - top) / 4.0
-        in_middle = int(np.sum(np.abs(ys - middle) < quarter / 2))
-        self.assertEqual(in_middle, 0, "bars painted down the middle of the strip")
+        # Ends have full-width piano keys + edge stripes; middle has only edge
+        # stripes and dashed centerline, so ends carry much higher mark density.
+        at_ends = int(np.sum((ys <= top + span * 0.15) | (ys >= bottom - span * 0.15)))
+        in_middle = int(np.sum(np.abs(ys - middle) <= span * 0.15))
+        self.assertGreater(in_middle, 0, "expected edge stripes / centerline in middle")
+        self.assertGreater(at_ends, in_middle)
 
     def test_nothing_is_painted_off_the_strip(self):
         import numpy as np
@@ -435,9 +461,15 @@ class WhatTheTagsCallIt(unittest.TestCase):
         from knoxbuild.build import classify_building
         for tags in ({"aeroway": "terminal"},
                      {"building": "airport_terminal"},
-                     {"aeroway": "control_tower"}):
+                     {"building": "yes", "name": "Addington Field Terminal"}):
             with self.subTest(tags=tags):
-                self.assertEqual(classify_building(tags), "civic")
+                self.assertEqual(classify_building(tags), "terminal")
+        self.assertEqual(classify_building({"aeroway": "control_tower"}), "civic")
+
+    def test_untagged_airfield_building_is_hangar(self):
+        from knoxbuild.areas import KIND_FOR_AREA
+        self.assertEqual(KIND_FOR_AREA["airfield"], "hangar")
+        self.assertEqual(KIND_FOR_AREA["apron"], "hangar")
 
     def test_a_height_tag_does_not_put_a_floor_in_a_hangar(self):
         # Louisville's is tagged eight storeys, which measures the roof over

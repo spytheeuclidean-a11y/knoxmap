@@ -395,7 +395,10 @@ ROOM_STYLE = {
     # the building is a hangar and roof it like one (knoxbuild/tbx.py) -
     # a flat roof with air handling units on it is a distribution shed.
     "hangar": (C.FLOOR_LINO, "Warehouse",
-               ["crate", "crate", "shelf", "counter"]),
+               ["metal_rack", "crate", "counter", "bin"]),
+    # Airport passenger terminal concourse / gate lounge.
+    "terminal": (C.FLOOR_TILE_PALE, "Lobby",
+                 ["chair", "counter_2", "vending", "plant", "bin"]),
     # Nothing goes in a lift car; the door is hung separately (see _furnish).
     "elevator": (C.FLOOR_LINO, "Elevator", []),
     # The game's own shed room: its loot is carpentry, farming and metalwork
@@ -466,6 +469,11 @@ SPECIAL_MIXES = {
     # store off it. Not offices: a hangar is not an office block.
     "hangar":     (["hangar", "mechanic", "storage"],
                    ["hangar", "mechanic"]),
+    # Airport passenger terminal: big concourse/gate lounge with check-in &
+    # seating, plus restrooms, cafe, gift shop, security, office, and baggage.
+    "terminal":   (["terminal", "bathroom", "cafe", "giftstore", "security",
+                    "office", "storage", "bathroom", "breakroom"],
+                   ["terminal", "office", "storage", "bathroom"]),
     "garage":     (["garage"], ["garage"]),
     # A base's buildings: army stores (the game's army loot), offices,
     # dormitory rooms, a mess kitchen.

@@ -563,6 +563,10 @@ def api_server_setup():
     if rec.get("needsErika") or _mod_uses_erika(rec.get("modRoot")):
         extra.append(knoxpaths.ERIKAS_TILES_MOD_ID)
         workshop.append(knoxpaths.ERIKAS_TILES_WORKSHOP_ID)
+    if _mod_requires_airport(rec.get("modRoot")):
+        for req_mod, req_wid in knoxpaths.AIRPORT_REQUIRED_MODS:
+            extra.append(req_mod)
+            workshop.append(req_wid)
     try:
         report = serverconf.apply(server, mod_id, folder, title=title,
                                   standalone=standalone, extra_mods=extra,
@@ -574,6 +578,27 @@ def api_server_setup():
     log.info("server setup %s on %s: %s", map_dir.name, server,
              "; ".join(report["changed"]) or "nothing to change")
     return jsonify(report)
+
+
+def _mod_requires_airport(mod_root) -> bool:
+    """Whether the installed mod's mod.info requires the Wingsmith aircraft mods."""
+    from pathlib import Path
+
+    if not mod_root:
+        return False
+    want = {m for m, _w in knoxpaths.AIRPORT_REQUIRED_MODS}
+    try:
+        info = Path(str(mod_root)) / "mod.info"
+        if not info.is_file():
+            return False
+        for line in info.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.lower().startswith("require="):
+                reqs = {p.strip().lstrip("\\") for p in line.split("=", 1)[1].split(",")}
+                if reqs & want:
+                    return True
+    except OSError:
+        return False
+    return False
 
 
 def _mod_uses_erika(mod_root) -> bool:

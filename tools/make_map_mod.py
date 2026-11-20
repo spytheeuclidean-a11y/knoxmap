@@ -651,9 +651,36 @@ def save_bytes(cells: list[str]) -> int:
     return total
 
 
+def _has_airport(project_dir: str) -> bool:
+    """Whether this map contains an airport (airfield/apron areas or hangar/terminal buildings)."""
+    import csv as _csv
+    import glob as _glob
+    import json as _json
+
+    for path in _glob.glob(os.path.join(project_dir, "*_areas.geojson")):
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = _json.load(fh)
+            for feat in data.get("features") or ():
+                if (feat.get("properties") or {}).get("category") in ("airfield", "apron"):
+                    return True
+        except (OSError, ValueError):
+            continue
+    for path in _glob.glob(os.path.join(project_dir, "*_placements.csv")):
+        try:
+            with open(path, newline="", encoding="utf-8") as fh:
+                for row in _csv.DictReader(fh):
+                    if row.get("kind") in ("hangar", "terminal"):
+                        return True
+        except OSError:
+            continue
+    return False
+
+
 def write_server_setup(mod_root: str, mod_id: str, name: str,
                        map_folder: str, needs_erika: bool = False,
-                       standalone: bool = False) -> str:
+                       standalone: bool = False,
+                       needs_airport: bool = False) -> str:
     """The files and lines a dedicated server needs, ready to copy.
 
     A map mod is enough for a player on their own; a server needs three more
@@ -728,7 +755,18 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
         "",
         "   Without it the map loads with its tiles missing - walls and shop",
         "   fronts you can see straight through.",
-        "",] if needs_erika else []) + [
+        "",] if needs_erika else []) + ([
+        "   This map has an airport, so the server and every player need the",
+        "   Wingsmith aircraft mods as well:",
+        "",
+        "      Mods=" + ";".join(
+            ([knoxpaths_module().ERIKAS_TILES_MOD_ID] if needs_erika else [])
+            + [m for m, _w in knoxpaths_module().AIRPORT_REQUIRED_MODS]
+            + [mod_id]),
+        "      WorkshopItems=" + ";".join(
+            ([knoxpaths_module().ERIKAS_TILES_WORKSHOP_ID] if needs_erika else [])
+            + [w for _m, w in knoxpaths_module().AIRPORT_REQUIRED_MODS]),
+        "",] if needs_airport else []) + [
         f"3. Copy server/{regions} into Zomboid/Server/ and rename it to",
         "   <your server name>_spawnregions.lua, matching the .ini's name.",
         "   Without it players spawn in Muldraugh, not here.",
@@ -980,19 +1018,36 @@ def package(project_dir: str, name: str, mod_id: str,
             f"id={mod_id}\n"
             f"description={desc}\n"
             f"poster=poster.png\n")
-    # A map built with Erika's Tiles cannot load without it. The compiled
-    # headers list every tile the map uses - buildings, shop signs and the
-    # street signs alike.
+    # Aircraft standing on this map's own aprons, for whoever has the
+    # Wingsmith aircraft mods. Every place those mods know is on the game's
+    # own map, so a generated airfield stood empty however many were
+    # installed (knoxbuild/aircraft.py).
+    n_stands = 0
+    try:
+        from knoxbuild import aircraft as knox_aircraft
+        n_stands = knox_aircraft.write(project_dir, mod_root, mod_id,
+                                       _world_origin_tiles(project_dir),
+                                       os.path.basename(map_dir))
+    except Exception as exc:        # noqa: BLE001 - never lose a mod to it
+        print(f"  aircraft stands skipped: {type(exc).__name__}: {exc}")
+
+    # A map built with Erika's Tiles cannot load without it. A map with an
+    # airport (aprons, airfield areas, terminals, or hangars) requires the
+    # Wingsmith aircraft mods so planes spawn on the airfield.
     #
-    # The value is the other mod's id, exactly as its own mod.info spells it
-    # and with nothing in front of it: this said "require=\Erikas_Tiles",
-    # which matches no mod at all, so the game let the map load with the
-    # tiles missing. A missing tile draws as nothing, which is why players
-    # saw shop fronts and walls they could see straight through.
+    # The value is each required mod's id, exactly as its own mod.info spells
+    # it and with nothing in front of it.
     uses_erika = any(f.endswith(".lotheader") and b"_erika_" in _Path(f).read_bytes()
                      for f in cells)
+    needs_airport = n_stands > 0 or _has_airport(project_dir)
+    kp = knoxpaths_module()
+    requires = []
     if uses_erika:
-        info += f"require={knoxpaths_module().ERIKAS_TILES_MOD_ID}\n"
+        requires.append(kp.ERIKAS_TILES_MOD_ID)
+    if needs_airport:
+        requires.extend(req_id for req_id, _wid in kp.AIRPORT_REQUIRED_MODS)
+    if requires:
+        info += f"require={','.join(requires)}\n"
     os.makedirs(os.path.join(mod_root, "42"), exist_ok=True)
     for where in ("", "common", "42"):
         with open(os.path.join(mod_root, where, "mod.info"), "w",
@@ -1006,22 +1061,11 @@ def package(project_dir: str, name: str, mod_id: str,
     write_how_to_play(mod_root, name, n_cells, big_map)
     regions = write_server_setup(mod_root, mod_id, name,
                                  folder_name(name, mod_id),
-                                 needs_erika=uses_erika, standalone=is_standalone)
+                                 needs_erika=uses_erika, standalone=is_standalone,
+                                 needs_airport=needs_airport)
     n_pois = write_spawn_selector(project_dir, mod_root, mod_id, name)
     reset_loot = write_reset_loot(mod_root)
     gun_cache = write_gun_cache(project_dir, mod_root, mod_id)
-    # Aircraft standing on this map's own aprons, for whoever has the
-    # Wingsmith aircraft mods. Every place those mods know is on the game's
-    # own map, so a generated airfield stood empty however many were
-    # installed (knoxbuild/aircraft.py).
-    n_stands = 0
-    try:
-        from knoxbuild import aircraft as knox_aircraft
-        n_stands = knox_aircraft.write(project_dir, mod_root, mod_id,
-                                       _world_origin_tiles(project_dir),
-                                       os.path.basename(map_dir))
-    except Exception as exc:        # noqa: BLE001 - never lose a mod to it
-        print(f"  aircraft stands skipped: {type(exc).__name__}: {exc}")
     extra_names = [os.path.basename(e) for e in extras]
     if n_spawns:
         extra_names.append(f"spawnpoints.lua ({n_spawns} spawn points)")

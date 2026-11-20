@@ -2345,6 +2345,114 @@ def furnish_industrial_floor(plan, idx: int, room, rng: random.Random, occupied:
     return ["metal_rack", "crate", "filing_cabinet", "corkboard", "water_cooler"]
 
 
+def furnish_terminal(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                     keeps_open=None) -> list[str] | None:
+    """Airport terminal concourse: check-in/gate counter banks, rows of gate
+    waiting chairs with walking aisles, and flight-info / vending amenities."""
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    back = OPPOSITE[front]
+    frame = Frame(cells, front)
+
+    # 1. Check-in / gate counter bank(s) toward the back/service side.
+    counters_placed = 0
+    counter_d = max(2, frame.depth - 3)
+    counter_len = min(5, max(3, frame.length // 4))
+    bank_starts = [max(2, frame.length // 2 - counter_len // 2)]
+    if frame.length >= 18:
+        bank_starts = [2, max(2, frame.length - counter_len - 2)]
+    for start_a in bank_starts:
+        if start_a + counter_len > frame.length - 1:
+            continue
+        tiles = [frame.xy(start_a + k, counter_d) for k in range(counter_len)]
+        if _counter_with_register(plan, idx, tiles, back, occupied, no_go, keeps_open,
+                                   add_register=True, add_chair=True):
+            counters_placed += 1
+
+    # 2. Organized rows of gate waiting chairs across the concourse floor,
+    # leaving perimeter walkways and a central concourse aisle.
+    seats_placed = 0
+    mid = frame.length // 2
+    max_seat_d = max(2, counter_d - 2)
+    row_idx = 0
+    for d in range(2, max_seat_d, 3):
+        facing = front if row_idx % 2 == 0 else back
+        for a in range(2, frame.length - 2):
+            if frame.length >= 12 and mid - 1 <= a <= mid + 1:
+                continue  # Central concourse walkway.
+            if a % 5 == 0 and a > 2:
+                continue  # Side cross-aisles between seating blocks.
+            x, y = frame.xy(a, d)
+            if _put(plan, idx, "chair", x, y, facing, occupied, no_go, keeps_open):
+                seats_placed += 1
+        row_idx += 1
+
+    # 3. Terminal amenities (vending, plants, bins) tucked near side ends.
+    for a in (1, frame.length - 2):
+        for d, kind in ((1, "plant"), (max(2, counter_d - 1), "vending"),
+                        (counter_d, "bin")):
+            if 0 < a < frame.length - 1 and 0 < d < frame.depth - 1:
+                _put(plan, idx, kind, *frame.xy(a, d), front, occupied, no_go, keeps_open)
+
+    if counters_placed == 0 and seats_placed < 3:
+        return None
+    return ["vending", "vending_snacks", "water_cooler", "plant", "bin", "tv", "clock"]
+
+
+def furnish_hangar(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                   keeps_open=None) -> list[str] | None:
+    """Aircraft hangar: wide-open central bay for parked planes, flanked along
+    the perimeter walls by aviation maintenance workbenches, metal racks, and crates."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    back = OPPOSITE[front]
+    blocked = set(no_go) | _bay_lane_cells(plan, idx, cells)
+
+    placed = 0
+    # 1. Maintenance log desk in one back corner.
+    desk_placed = False
+    for wall in (back, "N", "W"):
+        if desk_placed:
+            break
+        for wx, wy in _against(plan, idx, cells, wall)[1:4]:
+            if (wx, wy) in blocked:
+                continue
+            orient = L._facing("desk_dark", wall)
+            ax, ay = L._wall_anchor("desk_dark", wx, wy, orient, wall)
+            if _put_desk_set(plan, idx, "desk_dark", ax, ay, wall, occupied, blocked, keeps_open):
+                desk_placed = True
+                placed += 1
+                break
+
+    # 2. Aviation maintenance bays strictly along the back and side walls so
+    # the entire center of the hangar stays open for aircraft.
+    side_walls = [w for w in ("N", "S", "E", "W") if w != front]
+    kit = ("metal_rack", "counter", "crate", "metal_rack", "crate")
+    for wall in side_walls:
+        run = _against(plan, idx, cells, wall)
+        orient = L._facing("metal_rack", wall)
+        for i, (wx, wy) in enumerate(run[1:-1]):
+            if i % 3 == 2:
+                continue  # Keep breathing room between tool/storage bays.
+            if (wx, wy) in blocked:
+                continue
+            item = kit[i % len(kit)]
+            item_orient = L._facing(item, wall) if item != "crate" else "N"
+            if _put(plan, idx, item, wx, wy, item_orient, occupied, blocked, keeps_open):
+                placed += 1
+                if item == "crate" and rng.random() < 0.5 and "crate_top" in C.FURNITURE:
+                    plan.furniture.append(("crate_top", wx, wy, "N"))
+
+    if placed < 2:
+        return None
+    return ["metal_rack", "crate", "counter", "bin", "clock", "water_cooler"]
+
+
 # ---- who lives here -----------------------------------------------------------
 #
 # A home's rooms used to be the same whoever lived in them. A household is
