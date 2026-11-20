@@ -632,7 +632,7 @@ MORE_INSIDE = {
     "apartment": ("brick", "painted", "stucco", "render"),
     "industrial": ("panel", "stucco"),
     "hangar": ("panel", "stucco"),
-    "terminal": ("panel", "stucco", "painted"),
+    "terminal": ("stucco", "panel"),
     "barn": ("timber", "panel"),
     "medical": ("painted", "stucco"),
     "restaurant": ("painted", "panel"),

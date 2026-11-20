@@ -2347,8 +2347,8 @@ def furnish_industrial_floor(plan, idx: int, room, rng: random.Random, occupied:
 
 def furnish_terminal(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
                      keeps_open=None) -> list[str] | None:
-    """Airport terminal concourse: check-in/gate counter banks, rows of gate
-    waiting chairs with walking aisles, and flight-info / vending amenities."""
+    """Airport terminal concourse: check-in counter banks, gate podiums,
+    back-to-back rows of gate waiting seating, baggage counter, and amenities."""
     cells = _cells(plan, idx, room)
     if len(cells) < 24 or min(room.w, room.h) < 5:
         return None
@@ -2356,12 +2356,13 @@ def furnish_terminal(plan, idx: int, room, rng: random.Random, occupied: set, no
     back = OPPOSITE[front]
     frame = Frame(cells, front)
 
-    # 1. Check-in / gate counter bank(s) toward the back/service side.
+    # 1. Check-in / ticket counter bank(s) toward the back/airside wall and
+    # gate boarding podium(s) near the front/airside doors.
     counters_placed = 0
     counter_d = max(2, frame.depth - 3)
-    counter_len = min(5, max(3, frame.length // 4))
+    counter_len = min(6, max(3, frame.length // 4))
     bank_starts = [max(2, frame.length // 2 - counter_len // 2)]
-    if frame.length >= 18:
+    if frame.length >= 16:
         bank_starts = [2, max(2, frame.length - counter_len - 2)]
     for start_a in bank_starts:
         if start_a + counter_len > frame.length - 1:
@@ -2371,28 +2372,42 @@ def furnish_terminal(plan, idx: int, room, rng: random.Random, occupied: set, no
                                    add_register=True, add_chair=True):
             counters_placed += 1
 
-    # 2. Organized rows of gate waiting chairs across the concourse floor,
+    # 2. Baggage drop / claim counter strip near one side of the concourse.
+    if frame.length >= 14 and frame.depth >= 7:
+        bag_a = frame.length - 3
+        for d in range(2, min(frame.depth - 3, 6)):
+            x, y = frame.xy(bag_a, d)
+            if _put(plan, idx, "counter", x, y, back, occupied, no_go, keeps_open):
+                if d % 2 == 0 and bag_a + 1 < frame.length - 1:
+                    _put(plan, idx, "crate", *frame.xy(bag_a + 1, d), "N",
+                         occupied, no_go, keeps_open)
+
+    # 3. Back-to-back rows of gate waiting chairs across the concourse floor,
     # leaving perimeter walkways and a central concourse aisle.
     seats_placed = 0
     mid = frame.length // 2
-    max_seat_d = max(2, counter_d - 2)
+    max_seat_d = max(3, counter_d - 1)
     row_idx = 0
-    for d in range(2, max_seat_d, 3):
-        facing = front if row_idx % 2 == 0 else back
-        for a in range(2, frame.length - 2):
+    for d in range(2, max_seat_d, 2):
+        # Pairs of rows every 3rd step (gap at row_idx % 3 == 2 for walking aisles).
+        if row_idx % 3 == 2:
+            row_idx += 1
+            continue
+        facing = front if row_idx % 3 == 0 else back
+        for a in range(2, frame.length - 3):
             if frame.length >= 12 and mid - 1 <= a <= mid + 1:
                 continue  # Central concourse walkway.
-            if a % 5 == 0 and a > 2:
-                continue  # Side cross-aisles between seating blocks.
+            if a % 6 == 0 and a > 2:
+                continue  # Cross-aisles between gate seating blocks.
             x, y = frame.xy(a, d)
             if _put(plan, idx, "chair", x, y, facing, occupied, no_go, keeps_open):
                 seats_placed += 1
         row_idx += 1
 
-    # 3. Terminal amenities (vending, plants, bins) tucked near side ends.
+    # 4. Terminal vending, water cooler, plants, and bins along side walls.
     for a in (1, frame.length - 2):
-        for d, kind in ((1, "plant"), (max(2, counter_d - 1), "vending"),
-                        (counter_d, "bin")):
+        for d, kind in ((1, "plant"), (2, "vending"), (3, "vending_snacks"),
+                        (max(2, counter_d - 1), "water_cooler"), (counter_d, "bin")):
             if 0 < a < frame.length - 1 and 0 < d < frame.depth - 1:
                 _put(plan, idx, kind, *frame.xy(a, d), front, occupied, no_go, keeps_open)
 

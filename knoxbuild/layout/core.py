@@ -469,11 +469,11 @@ SPECIAL_MIXES = {
     # store off it. Not offices: a hangar is not an office block.
     "hangar":     (["hangar", "mechanic", "storage"],
                    ["hangar", "mechanic"]),
-    # Airport passenger terminal: big concourse/gate lounge with check-in &
-    # seating, plus restrooms, cafe, gift shop, security, office, and baggage.
-    "terminal":   (["terminal", "bathroom", "cafe", "giftstore", "security",
-                    "office", "storage", "bathroom", "breakroom"],
-                   ["terminal", "office", "storage", "bathroom"]),
+    # Airport passenger terminal: large open concourse/gate lounge with check-in
+    # & gate seating, plus restrooms, cafe, security, and gift shop (no offices).
+    "terminal":   (["terminal", "bathroom", "cafe", "security", "giftstore",
+                    "terminal", "bathroom"],
+                   ["terminal", "bathroom"]),
     "garage":     (["garage"], ["garage"]),
     # A base's buildings: army stores (the game's army loot), offices,
     # dormitory rooms, a mess kitchen.
