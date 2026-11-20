@@ -16,7 +16,9 @@ from collections import deque
 
 from generator import pz_colors as C
 
-WORKS_KINDS = ("industrial",)
+# A hangar takes the same yard as a works: hard ground to the walls, worn
+# at the edge where it meets the grass. Left out, it stood on a lawn.
+WORKS_KINDS = ("industrial", "hangar")
 YARD_MIN, YARD_MAX = 6, 10       # tiles of yard out from the walls
 YARD_EDGE = 3                    # weeds past the yard; no gravel or dirt fringe
 DRIVE_MAX = 120

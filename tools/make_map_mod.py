@@ -1010,6 +1010,18 @@ def package(project_dir: str, name: str, mod_id: str,
     n_pois = write_spawn_selector(project_dir, mod_root, mod_id, name)
     reset_loot = write_reset_loot(mod_root)
     gun_cache = write_gun_cache(project_dir, mod_root, mod_id)
+    # Aircraft standing on this map's own aprons, for whoever has the
+    # Wingsmith aircraft mods. Every place those mods know is on the game's
+    # own map, so a generated airfield stood empty however many were
+    # installed (knoxbuild/aircraft.py).
+    n_stands = 0
+    try:
+        from knoxbuild import aircraft as knox_aircraft
+        n_stands = knox_aircraft.write(project_dir, mod_root, mod_id,
+                                       _world_origin_tiles(project_dir),
+                                       os.path.basename(map_dir))
+    except Exception as exc:        # noqa: BLE001 - never lose a mod to it
+        print(f"  aircraft stands skipped: {type(exc).__name__}: {exc}")
     extra_names = [os.path.basename(e) for e in extras]
     if n_spawns:
         extra_names.append(f"spawnpoints.lua ({n_spawns} spawn points)")
@@ -1018,6 +1030,8 @@ def package(project_dir: str, name: str, mod_id: str,
     if zone_counts:
         extra_names.append(f"objects.lua ({zone_counts.get('ParkingStall', 0)} parking stalls, "
                            f"{zone_counts.get('TownZone', 0)} town zones)")
+    if n_stands:
+        extra_names.append(f"aircraft stands ({n_stands} on the aprons)")
     extra_names.append(f"Spawn Selector support ({n_pois} places)")
     if spawn_picture:
         extra_names.append("spawnSelectImagePyramid.zip (the map's picture for the spawn picker)")

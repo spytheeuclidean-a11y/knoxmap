@@ -43,6 +43,13 @@ HOUSE_ROOMS = ("livingroom", "openplan", "kitchen", "dining", "bedroom",
                "storage", "garage", "shed")
 
 
+# Rooms the generator uses that nobody draws by hand, because the editor
+# already offers the same room under its own name: "hangar" is a warehouse
+# floor with a separate key, kept so the build can tell a hangar from a
+# distribution shed and roof it differently (knoxbuild/tbx.py).
+INTERNAL_ROOMS = {"hangar"}
+
+
 def room_label(kind: str) -> str:
     if kind == "prisoncells":
         return "Prison cells"
@@ -80,6 +87,7 @@ def room_kinds(kind: str | None = None) -> list[dict]:
     # With no kind chosen the rooms a house is made of are the ones offered
     # first, so saying they are "in this kind of building" would be saying
     # nothing: they are named for what they are.
+    first = [name for name in first if name not in INTERNAL_ROOMS]
     out = [entry(name, "In this kind of building" if kind else "Rooms of a house")
            for name in first]
     house = [name for name in HOUSE_ROOMS
@@ -90,6 +98,7 @@ def room_kinds(kind: str | None = None) -> list[dict]:
     # hand it is a sealed box with no way in and no lift in it.
     rest = sorted((name for name in L.ROOM_STYLE
                    if name not in first and name not in house
+                   and name not in INTERNAL_ROOMS
                    and L.ROOM_STYLE[name][2]),
                   key=room_label)
     out += [entry(name, "Every other room") for name in rest]

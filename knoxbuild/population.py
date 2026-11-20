@@ -35,6 +35,11 @@ CHUNK = C.SPAWN_MAP_SCALE     # tiles per spawn-map pixel, each way
 DAYTIME_M2_PER_PERSON = {
     "school": 8, "restaurant": 10, "church": 6, "shop": 15, "medical": 15,
     "civic": 20, "industrial": 60, "barn": 250,
+    # A hangar is a shed with aircraft in it: a couple of mechanics over
+    # a thousand square metres, not a works' shift. Without a line here it
+    # took the 25 every unlisted kind takes and a small hangar held as many
+    # people as an office block.
+    "hangar": 300,
 }
 RESIDENTIAL = {"house", "apartment"}
 

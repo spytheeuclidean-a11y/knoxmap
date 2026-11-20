@@ -31,6 +31,10 @@ if TYPE_CHECKING:
 # sixteen tiles for flats) left city blocks looking like warehouses.
 FACADE_SPACING = {
     "house": (3, 4), "apartment": (3, 3), "barn": (10, 20), "shed": (12, 24),
+    # An airport is glass: a pane every tile, both sides. That is what the
+    # glass-tower rule below does for a civic block of eight storeys and
+    # more, and a terminal is the same wall of panes without the height.
+    "hangar": (1, 1),
     "garage": (12, 24),
     "industrial": (6, 9), "shop": (3, 5), "restaurant": (3, 5),
     "civic": (2, 2), "school": (3, 3), "church": (4, 5), "medical": (3, 3),

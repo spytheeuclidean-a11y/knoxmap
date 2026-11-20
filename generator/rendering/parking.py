@@ -12,9 +12,8 @@ from __future__ import annotations
 import math
 
 from ..osm import OSMFeature
-from .geometry import _pixel_width
 from .projection import Projector
-from .widths import _sidewalk_width_m, _verge_width_m, _way_width_m
+from .widths import (_sidewalk_width_m, _verge_width_m, road_width_tiles)
 
 MIN_LOT_AREA = 9.0          # tiles^2; skip tiny noise scraps
 MIN_SIDE = 4                # narrowest squared lot dimension (tiles)
@@ -171,7 +170,7 @@ def _square_coarse_bays(poly, width: int, height: int):
 
 
 def _road_corridor_half_width(feat: OSMFeature, cat: str, meters_per_tile: float) -> float:
-    w_road = _pixel_width(_way_width_m(feat, cat), meters_per_tile)
+    w_road = road_width_tiles(feat, cat, meters_per_tile)
     v_m = _verge_width_m(feat, cat)
     verge_side = max(1, int(v_m / meters_per_tile + 0.49)) if v_m > 0 else 0
     s_m = _sidewalk_width_m(feat, cat)

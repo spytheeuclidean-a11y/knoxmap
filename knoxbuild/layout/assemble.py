@@ -347,6 +347,13 @@ def _stair_foot(stairs: tuple[int, int, str] | None) -> tuple[int, int] | None:
 # A great hall and a concourse are big rooms; neither building is cut into
 # bedsits.
 KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 16.0, "shed": 20.0, "church": 12.0,
+                   # A hangar is one span: cutting it into rooms is the one
+                   # thing that stops it reading as a hangar. At this scale a
+                   # 46x26 one is a single room and only a genuinely huge
+                   # one is divided into bays - which it has to be, because
+                   # the game spawns loot per room and a hangar of one room
+                   # the size of a street would hold almost nothing.
+                   "hangar": 70.0,
                    "castle": 14.0, "stadium": 11.0, "mall": 16.0,
                    "shop": 2.0, "school": 9.0, "civic": 2.5,
                    "restaurant": 1.5, "medical": 1.3, "offices": 3.0,
@@ -384,6 +391,9 @@ MAX_ROOM_AREA = 120
 # these are the buildings the game itself spends it on.
 KIND_MAX_ROOM = {"church": 340, "library": 280, "school": 170, "gym": 320,
                  "industrial": 460, "barn": 460, "shed": 460, "military": 150,
+                 # Knox County's own hangar is one room the size of the
+                 # building; 460 would cut it in three.
+                 "hangar": 1800,
                  "civic": 170, "fire": 220, "fire_police": 220, "medical": 140,
                  # A great hall and a concourse. Without an entry here the cap
                  # is MAX_ROOM_AREA whatever KIND_ROOM_SCALE says, which is

@@ -106,7 +106,11 @@ def _tile(n: int) -> str:
 
 # Land uses that are fenced off in real life, and their smallest size in
 # tiles - a hundred-tile "base" is a war memorial, not a barracks.
-FENCED_SITES = {"military": 400}
+# An airfield is fenced right round in the game's own map, and it is the
+# fence as much as the concrete that says what the place is. The least area
+# is large because a fence round every private airstrip in a field would be
+# a lot of fence for nothing.
+FENCED_SITES = {"military": 400, "airfield": 20000}
 
 
 def _fenced_sites(areas) -> list:
@@ -162,7 +166,8 @@ def style_for(tags: dict, area: str | None) -> str:
     if kind in {"chain_link", "chain", "mesh"}:
         if metres is not None:
             return by_height("short_chainlink", metres)
-        return "tall_chainlink" if area in {"industrial", "military"} else "short_chainlink"
+        return ("tall_chainlink" if area in {"industrial", "military", "airfield"}
+                else "short_chainlink")
     if kind in {"wood", "wooden", "split_rail", "board", "panel"}:
         if short_park:
             return "short_wooden"
@@ -179,6 +184,7 @@ def style_for(tags: dict, area: str | None) -> str:
         return "tall_concrete"
     return by_height({
         "industrial": "tall_chainlink", "military": "tall_chainlink",
+        "airfield": "tall_chainlink",
         "schoolyard": "short_chainlink", "sports": "short_chainlink",
         "residential": "tall_wooden", "cemetery": "black_metal",
         "worship_grounds": "black_metal", "hospital_grounds": "black_metal",

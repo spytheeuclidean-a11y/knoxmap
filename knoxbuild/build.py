@@ -128,6 +128,15 @@ SPECIAL_BY_VALUE = {
     # department, furniture, gift, toy and book stores of 150 to 400 tiles.
     "mall": "mall", "department_store": "mall",
     "industrial": "industrial", "warehouse": "industrial",
+    # A hangar is one volume with nothing in it but what is parked there,
+    # and the game's own airfield builds it that way: a long shed with a
+    # roof over the whole span. Laid out as a warehouse it came out as a
+    # row of offices and stockrooms, which is what an airport looked like.
+    "hangar": "hangar",
+    # The rest of an airfield is civic: a terminal is a concourse and a
+    # desk, a control tower is a stair and a room at the top.
+    "terminal": "civic", "control_tower": "civic",
+    "airport_terminal": "civic",
     "factory": "industrial", "works": "industrial", "manufacture": "industrial",
     "garage": "garage", "garages": "garage", "car_repair": "garage",
     "barn": "barn", "farm": "barn", "farm_auxiliary": "barn",
@@ -164,6 +173,10 @@ SPECIAL_BY_VALUE = {
 SPECIAL_BY_NAME = [
     ("school", "school"), ("academy", "school"), ("college", "school"),
     ("university", "school"), ("church", "church"), ("chapel", "church"),
+    # Big airports do not tag their hangars: Louisville's are building=yes
+    # with the word in the name and nothing else, so three of them came out
+    # as brick houses with two hundred rooms in them.
+    ("hangar", "hangar"),
     ("cathedral", "church"), ("hospital", "medical"), ("clinic", "medical"),
     ("pharmacy", "medical"), ("warehouse", "industrial"),
     ("factory", "industrial"), ("mill", "industrial"), ("plant", "industrial"),
@@ -184,11 +197,15 @@ SPECIAL_BY_NAME = [
 # Storeys, when OSM does not say and the area tables in regional.py do not
 # cover the kind either. A town of nothing but bungalows reads as a film set
 # - the skyline is what tells you whether you are downtown or in the suburbs.
+# Kinds that are one tall volume however high the mapper measured them.
+ONE_STOREY_WHATEVER_OSM_SAYS = {"hangar"}
+
 DEFAULT_LEVELS = {
     "industrial": (1, 1),
     "garage": (1, 1),
     "barn": (1, 1),
     "shed": (1, 1),
+    "hangar": (1, 1),
     "church": (1, 1),
     "apartment": (3, 5),
     "civic": (2, 3),
@@ -490,6 +507,11 @@ def building_levels(tags: dict, kind: str | None, area_tiles: int,
     from .regional import area_level_pool
 
     measured = levels_from_tags(tags, settings)
+    if kind in ONE_STOREY_WHATEVER_OSM_SAYS:
+        # A height tag on a hangar measures the roof over one tall space,
+        # not two floors: eight metres came out as a hangar with a first
+        # floor in it, which is not a building anything can be rolled into.
+        return 1, measured is not None
     if measured is not None:
         return measured, True
     lo, hi = DEFAULT_LEVELS.get(kind or "", (1, 2))
@@ -542,7 +564,7 @@ def classify_building(tags: dict) -> str | None:
     matched: list[str] = []
     for key in ("amenity", "shop", "healthcare", "leisure", "tourism",
                 "office", "industrial", "craft", "military", "historic",
-                "building"):
+                "aeroway", "building"):
         raw = (tags.get(key) or "").strip().lower()
         if not raw:
             continue

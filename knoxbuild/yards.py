@@ -387,7 +387,10 @@ def _dress_non_home_surroundings(
 
     for row in rows:
         kind = row.get("kind", "")
-        if kind in ("house", "garage", "industrial"):
+        # A hangar stands on the apron, not in a garden: the foundation
+        # planting put a bed of shrubs and flowers against the wall an
+        # aircraft is rolled through.
+        if kind in ("house", "garage", "industrial", "hangar"):
             continue
         bx0, by0 = row["tile_x"], row["tile_y"]
         bw, bh = row["width"], row["height"]
@@ -618,7 +621,7 @@ def _dress_open_yards(
 
     for row in rows:
         kind = row.get("kind", "")
-        if kind in ("garage", "industrial"):
+        if kind in ("garage", "industrial", "hangar"):
             continue
         bx0, by0 = row["tile_x"], row["tile_y"]
         bw, bh = row["width"], row["height"]

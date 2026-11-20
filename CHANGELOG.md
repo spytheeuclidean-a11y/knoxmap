@@ -1,3 +1,119 @@
+## 1.8.7
+
+- **Airports**
+  (`generator/osm.py`, `generator/renderer.py`, `generator/rendering/landcover.py`,
+  `generator/rendering/widths.py`, `generator/rendering/furniture.py`,
+  `knoxbuild/build.py`, `knoxbuild/catalog.py`, `knoxbuild/fences.py`).
+  `aeroway` was neither downloaded nor painted, so an airfield came out as a
+  field with service roads across it.
+  - **The field is laid:** runways, taxiways, aprons and the aerodrome are
+    fetched and painted, runway over everything it crosses, and the aerodrome
+    is fenced.
+  - **The runway has its pale shoulder**, as the game's own airfield does.
+    `RUNWAY_SHOULDER_M` was written down and nothing painted it, so thirty
+    metres of bare tarmac in a field read as a very wide road.
+  - **Nothing grows between the runways.** The passes that scatter trees and
+    scrub over open grass had the largest sheet of open grass in the town to
+    work with, and the strip came out lined with trees on both sides. The
+    mapper's own woods inside the fence still stand.
+  - **Nothing stands beside the runway.** Street furniture goes by the tarmac,
+    not by what the tarmac is for, so a runway was given lamps reaching out
+    over it and a drain in its gutter. It keeps its edge lines.
+  - **A taxiway is marked yellow down the middle**, which is what tells it
+    from the runway it leads to when both are the same grey. Markings still
+    need the way to run along the tile grid: a diagonal runway gets none,
+    because the game ships no diagonal paint.
+  - **A hangar is one span:** one tall storey however high the mapper measured
+    it, one room rather than a row of offices and stockrooms, a flat bare roof
+    rather than a distribution shed's air handling units, pale walls and a
+    pane every tile. A terminal and a control tower are built as civic
+    buildings, and a hangar holds a hangar's worth of people, not an office
+    block's.
+  - **Aircraft parked on the aprons**
+    (`knoxbuild/aircraft.py`, `tools/make_map_mod.py`). [RKC]WINGSMITH
+    Aircraft is a framework, and every aircraft mod on it lists the places
+    one is found - all of them on the game's own map, so a generated
+    airfield stood empty however many were installed. The map mod now ships
+    a small Lua that hands the same thing to every registered aircraft:
+    stands on this map's biggest aprons, clear of the buildings, as absolute
+    world tiles - two to an airfield, since the mod puts one aircraft on
+    each place it is given and marks it done for every aircraft mod, and a
+    map with two airfields gets two at each. It does nothing at all without Wingsmith, and the aircraft
+    mod still checks each spot is clear before it puts anything on it.
+
+    A standalone map gets them too. Wingsmith switches spawning off for the
+    whole world unless the map it is playing names `Muldraugh, KY`, because
+    every place it knows is on the game's own map - and a standalone map
+    does not name Muldraugh at all, so none of this was ever reached. The
+    stands are on this map, so when this map is the one being played it is
+    told to carry on, and nobody else's world is touched.
+
+  - **A runway no longer looks like a very wide street**
+    (`generator/rendering/landcover.py`). It was painted the same grey as an
+    ordinary road and carried the same markings, so on the ground there was
+    nothing left to tell them apart. It is now the darkest surface the
+    palette has, between its pale shoulders, with the threshold bars at each
+    end - a silhouette nothing else on the map has. The taxiway keeps the
+    lighter grey, so those two read apart as well. (`DARK_ASPHALT`, not
+    `DARKEST_ASPHALT`: measured off `blends_street_01`, what the names map
+    to through Rules.txt runs PALE_CONCRETE 127, DARKEST_ASPHALT 122,
+    MEDIUM_ASPHALT 112, DARK_ASPHALT 102, so the darkest surface is the one
+    called dark and the palest is the one called concrete.)
+  - **The piano keys at each runway end**
+    (`generator/rendering/airfield.py`). A runway with nothing on it but a
+    centre line is a very wide road, and standing on one you could not tell
+    an airfield from a dual carriageway. Each end now carries the block of
+    threshold bars across its full width, and a long strip the pair of
+    aiming-point bars 300 m in. They are painted into the ground as pale
+    concrete rather than laid as line tiles: the game ships painted lines
+    for the north and west edge of a square and none on the diagonal, which
+    is where half of all runways land, and a ground marking rasterises at
+    any angle the way a road does. Wider than the real thing on purpose -
+    a 1.75 m stripe is one tile at 2 m a tile and reads as nothing.
+  - **A runway is one straight line on the Vanilla 45-degree grid**
+    (`generator/vanilla_grid.py`). Aeroway was the only thing left on the map
+    still rasterised at whatever angle the real one runs, so beside streets
+    snapped to 45 degrees the airfield was a set of ragged staircases. It
+    does not go through the street router - that answers a heading it cannot
+    make with a chamfer, and Bowman Field's two runways came back as
+    fourteen and twelve alternating legs - so a straight runway or taxiway is
+    laid as one straight line on the nearest of the eight headings, keeping
+    its length and its middle, and one that genuinely bends is left as the
+    map has it.
+  - **A hangar stands on a yard, not in a garden**
+    (`knoxbuild/yards.py`, `knoxbuild/works.py`). The passes that name the
+    kinds keeping their hard ground listed the works and the garage and not
+    the hangar, so it came out with a bed of shrubs and flowers against the
+    wall an aircraft is rolled through.
+
+- **Maps no longer land on top of the ones already installed**
+  (`knoxbuild/world.py`). Two fixes to the same thing:
+  - A compiled cell is named `<x>_<y>.lotheader`, the way the game's own
+    maps are. The pattern that read them back wanted a base name in front
+    of that, which nothing writes, so the scan found nothing at all and
+    every map was laid down on 70,0 over whatever was already there -
+    which is the one thing the packing exists to prevent.
+  - A map mod from the Workshop sits outside the Zomboid folder, so
+    looking only there missed every subscribed map. Steam's own library
+    folders are read as well now. The aircraft mods are what brought this
+    up: [RKC]BOEING 737-200 carries a cabin map at cell 100,9, inside the
+    run a second or third map would otherwise be given.
+
+- **Streets are as wide as the game's own**
+  (`generator/rendering/widths.py`, `generator/renderer.py`,
+  `generator/rendering/roads.py`, `generator/rendering/shape.py`,
+  `generator/rendering/parking.py`). The widths are in metres and divided by
+  the map's scale, so at 2 m a tile a 6 m street came out three tiles: one
+  car, no room to pass, and a town that read as a plan of itself rather than
+  a place. Measured on the squares of the game's own Muldraugh, the median
+  street is 8 tiles of asphalt - vanilla's roads are wider than the real
+  ones they stand for, because two cars have to pass on them. A road is now
+  never narrower than that, whatever the scale makes of its width, and the
+  pavement and verge are added after the floor so the kerbs, the road
+  hierarchy and the map's shape still agree about where the road ends. On a
+  2 m map the median street goes from 4 tiles to 9. A tagged `width=` or
+  `lanes=` still wins where it is wider.
+
 ## 1.8.6.4
 
 - **Chunked large-map buildings, lighter compile workers, and Auto mode**

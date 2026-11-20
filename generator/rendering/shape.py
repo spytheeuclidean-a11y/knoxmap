@@ -5,9 +5,9 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from ..osm import OSMFeature
-from .geometry import _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
+from .geometry import _draw_roads, _feature_coords_px, _is_polygon
 from .projection import Projector
-from .widths import _sidewalk_width_m, _way_width_m
+from .widths import _sidewalk_width_m, road_width_tiles
 
 
 # Roads that carry on past the edge of a drawn shape. Cutting every road at the
@@ -42,8 +42,8 @@ def _clip_to_shape(landscape: Image.Image, shape, buckets: dict[str, list[OSMFea
         for feat in buckets.get(cat, []):
             if _is_polygon(feat):
                 continue
-            width = _pixel_width(_way_width_m(feat, cat)
-                                 + 2 * _sidewalk_width_m(feat, cat), mpt)
+            width = road_width_tiles(feat, cat, mpt,
+                                     _sidewalk_width_m(feat, cat))
             strokes.append((width, _feature_coords_px(feat, proj)))
     _draw_roads(keep, strokes, 255)
     for cat in ("water", "pool", "coastline"):

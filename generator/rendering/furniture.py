@@ -134,7 +134,8 @@ def _long_runs(mask, min_len: int, axis: int):
 
 def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                             road_hierarchy: Image.Image | None = None,
-                            buildings: Image.Image | None = None) -> dict:
+                            buildings: Image.Image | None = None,
+                            airstrip=None) -> dict:
     """Lamps, hydrants and drains along the kerbs; grime, cracks and litter.
 
     A generated street was clean tarmac, kerb and pavement and nothing else;
@@ -142,6 +143,11 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     diagram. They go by the kerbs already painted: a lamp stands on the
     pavement one tile back from a straight kerb with its arm over the road, a
     hydrant likewise, a drain in the gutter in front of it.
+
+    `airstrip` is the runways and taxiways: a runway is tarmac like any other
+    to this pass, so it was given street lamps reaching out over it, a drain
+    in its gutter and a bench beside it. It keeps its edge lines - a real
+    runway has those - and nothing else.
     """
     import numpy as np
 
@@ -236,6 +242,9 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
         empty &= ~pick
         edge_lines += int(pick.sum())
     counts["edge lines"] = edge_lines
+    # Past the edge lines, nothing stands on a runway or beside one.
+    if airstrip is not None:
+        empty &= ~airstrip
 
     # Along each straight edge of the carriageway, road on one side: the lamp
     # stands a tile or two off the tarmac (past the kerb or on the verge) with
@@ -365,7 +374,11 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     continue
                 # A drain takes the gutter square from its edge line; other
                 # props need an empty sidewalk or verge tile, not a road or lot.
-                if what == "drain" and not np.array_equal(vp[py, px], edge):
+                # It is the one prop that does not ask whether the square is
+                # free, so the runway has to be refused it by name.
+                if what == "drain" and (not np.array_equal(vp[py, px], edge)
+                                        or (airstrip is not None
+                                            and airstrip[py, px])):
                     continue
                 if what != "drain" and (not empty[py, px] or driveable[py, px]
                                          or not roadside[py, px]):

@@ -394,6 +394,14 @@ OVERPASS_FILTERS: Sequence[str] = (
     'way["leisure"="park"]',
     'way["leisure"="garden"]',
     'way["leisure"="pitch"]',
+    # airfields: the runway, what taxis along it and the apron it stands on.
+    # The terminal and the hangars come down as buildings like any others.
+    'way["aeroway"="runway"]',
+    'way["aeroway"="taxiway"]',
+    'way["aeroway"="apron"]',
+    'way["aeroway"="helipad"]',
+    'way["aeroway"="aerodrome"]',
+    'relation["aeroway"="aerodrome"]',
     # sand / beach
     'way["natural"="beach"]',
     'way["natural"="sand"]',
@@ -1333,6 +1341,22 @@ def classify(tags: dict, area: bool = False) -> str | None:
             area and tags.get("highway") == "footway"
             and tags.get("covered") in ("colonnade", "arcade", "yes")):
         return "plaza"
+
+    # An airfield, before the roads: a runway is drawn as a line like a road
+    # and is nothing like one - thirty metres of concrete that everything
+    # else gives way to. Without these an airport came out as a field with
+    # a few service roads on it.
+    aeroway = tags.get("aeroway")
+    if aeroway:
+        if aeroway in {"runway", "landingstrip"}:
+            return "runway"
+        if aeroway in {"taxiway", "taxilane"}:
+            return "taxiway"
+        if aeroway in {"apron", "helipad", "holding_position"}:
+            return "apron"
+        if aeroway == "aerodrome" and area:
+            return "airfield"
+        # terminal, hangar and tower are buildings, and are built as ones.
 
     h = tags.get("highway")
     if h:

@@ -155,7 +155,8 @@ def kinds() -> list[dict]:
               "industrial": "Factory or warehouse", "garage": "Garage",
               "barn": "Barn or farm building", "military": "Military",
               "castle": "Castle or manor", "stadium": "Sports ground",
-              "shed": "Shed or outbuilding"}
+              "shed": "Shed or outbuilding",
+              "hangar": "Aircraft hangar"}
     # "house" and "shed" are what the build calls a building its tags say
     # nothing special about, so neither is in the table of tag values.
     found = {"house", "shed"} | set(SPECIAL_BY_VALUE.values())
