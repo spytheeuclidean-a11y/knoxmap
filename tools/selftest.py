@@ -318,9 +318,9 @@ def dense_town() -> list:
                          [(40, i * 70), (560, i * 70)]))
     for bx in range(1, 7):
         for by in range(1, 7):
-            x0, y0 = bx * 70 + 6, by * 70 + 6
+            x0, y0 = bx * 70 + 9, by * 70 + 9
             for n in range(7):
-                x = x0 + n * 7.5
+                x = x0 + n * 7.2
                 feats.append(way({"building": "house"}, box(x, y0, x + 7, y0 + 10)))
     for tags, corner in (({"amenity": "police", "name": "Town Police"}, (90, 300, 102, 309)),
                          ({"amenity": "fire_station", "name": "Fire Station"}, (120, 300, 133, 310)),

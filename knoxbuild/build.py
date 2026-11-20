@@ -615,6 +615,7 @@ BORROWED_STYLE = {"library": "civic",
 MORE_WALLS = {
     "church": ("brick", "stucco", "render", "painted"),
     "industrial": ("brick", "panel", "stucco"),
+    "hangar": ("panel", "stucco"),
     "barn": ("timber", "panel", "clapboard"),
 }
 # ...and the walls inside. Every variant of a kind shared one interior wall,
@@ -628,6 +629,7 @@ MORE_INSIDE = {
     "shop": ("painted", "panel"),
     "apartment": ("brick", "painted", "stucco", "render"),
     "industrial": ("panel", "stucco"),
+    "hangar": ("panel", "stucco"),
     "barn": ("timber", "panel"),
     "medical": ("painted", "stucco"),
     "restaurant": ("painted", "panel"),
