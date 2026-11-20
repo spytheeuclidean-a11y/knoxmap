@@ -2403,14 +2403,15 @@ def furnish_terminal(plan, idx: int, room, rng: random.Random, occupied: set, no
 
 def furnish_hangar(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
                    keeps_open=None) -> list[str] | None:
-    """Aircraft hangar: wide-open central bay for parked planes, flanked along
-    the perimeter walls by aviation maintenance workbenches, metal racks, and crates."""
+    """Aircraft hangar: perimeter maintenance racks/crates plus organized floor
+    work islands (workbenches, parts racks, cargo pallets) with rolling aisles."""
     L = _layout()
     cells = _cells(plan, idx, room)
     if len(cells) < 24 or min(room.w, room.h) < 5:
         return None
     front = _front_side(plan, idx, cells, None)
     back = OPPOSITE[front]
+    frame = Frame(cells, front)
     blocked = set(no_go) | _bay_lane_cells(plan, idx, cells)
 
     placed = 0
@@ -2429,13 +2430,11 @@ def furnish_hangar(plan, idx: int, room, rng: random.Random, occupied: set, no_g
                 placed += 1
                 break
 
-    # 2. Aviation maintenance bays strictly along the back and side walls so
-    # the entire center of the hangar stays open for aircraft.
+    # 2. Aviation maintenance bays along the back and side walls.
     side_walls = [w for w in ("N", "S", "E", "W") if w != front]
     kit = ("metal_rack", "counter", "crate", "metal_rack", "crate")
     for wall in side_walls:
         run = _against(plan, idx, cells, wall)
-        orient = L._facing("metal_rack", wall)
         for i, (wx, wy) in enumerate(run[1:-1]):
             if i % 3 == 2:
                 continue  # Keep breathing room between tool/storage bays.
@@ -2447,6 +2446,37 @@ def furnish_hangar(plan, idx: int, room, rng: random.Random, occupied: set, no_g
                 placed += 1
                 if item == "crate" and rng.random() < 0.5 and "crate_top" in C.FURNITURE:
                     plan.furniture.append(("crate_top", wx, wy, "N"))
+
+    # 3. Interior floor maintenance & cargo islands with a central rolling aisle
+    # so large hangars are furnished throughout instead of barren in the middle.
+    if frame.length >= 10 and frame.depth >= 8:
+        rack_orient = "W" if frame.along_x else "N"
+        mid = frame.length // 2
+        row_idx = 0
+        for d in range(3, frame.depth - 3, 4):
+            mode = row_idx % 3
+            for a in range(3, frame.length - 3):
+                # Keep a central rolling aisle down the middle of wide hangars.
+                if frame.length >= 16 and mid - 2 <= a <= mid + 2:
+                    continue
+                # Leave cross-walkways between floor islands.
+                if (a - 3) % 5 >= 3:
+                    continue
+                x, y = frame.xy(a, d)
+                if (x, y) in blocked:
+                    continue
+                if mode == 0:
+                    if _put(plan, idx, "metal_rack", x, y, rack_orient, occupied, blocked, keeps_open):
+                        placed += 1
+                elif mode == 1:
+                    if _put(plan, idx, "counter", x, y, front, occupied, blocked, keeps_open):
+                        placed += 1
+                else:
+                    if _put(plan, idx, "crate", x, y, "N", occupied, blocked, keeps_open):
+                        placed += 1
+                        if rng.random() < 0.65 and "crate_top" in C.FURNITURE:
+                            plan.furniture.append(("crate_top", x, y, "N"))
+            row_idx += 1
 
     if placed < 2:
         return None

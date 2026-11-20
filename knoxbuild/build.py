@@ -1536,6 +1536,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         if preset_kinds:
             print(f"presets for           : {', '.join(sorted(preset_kinds))}")
     used_presets = collections.Counter()
+    has_terminal = any(classify_building(f.get("properties") or {}) == "terminal"
+                       for f in geo["features"])
     fp_session = FootprintSession(occupied, avoid=road_weight, lots=lots)
     try:
         for placed_so_far, (_neg_area, i, px, retry) in enumerate(candidates()):
@@ -1630,6 +1632,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               # mapper's height says so more reliably than the zoning does.
               if around == "shop" and (levels_from_tags(tags, here) or 0) >= 3:
                   around = None
+              # When an airfield has untagged buildings and no explicit terminal,
+              # promote the first compact medium/large building to a terminal so
+              # regional airfields get a proper concourse alongside their hangars.
+              if (around == "hangar" and not has_terminal
+                      and fp.tiles >= 200
+                      and max(fp.width, fp.height) <= 2.2 * max(1, min(fp.width, fp.height))):
+                  around = "terminal"
+                  has_terminal = True
               if around:
                   special = around
                   from_area += 1

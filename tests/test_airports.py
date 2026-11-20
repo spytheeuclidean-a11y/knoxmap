@@ -342,7 +342,7 @@ class AHangarIsOneSpan(unittest.TestCase):
         self.assertTrue(any(k in furn for k in ("counter_2", "counter")))
         self.assertIn("register", furn)
 
-    def test_hangar_keeps_center_open_and_has_no_bookshelves(self):
+    def test_hangar_has_interior_maintenance_bays_and_no_bookshelves(self):
         from knoxbuild.layout import build_building
         from knoxbuild.settings import Settings
         built = build_building(30, 20, levels=1, kind="hangar", seed=5,
@@ -351,10 +351,10 @@ class AHangarIsOneSpan(unittest.TestCase):
         furn = [item[0] for item in s.furniture]
         self.assertNotIn("shelf", furn)
         self.assertTrue(any(k in furn for k in ("metal_rack", "crate", "counter")))
-        # Central aircraft bay must remain clear of furniture.
-        center = {(x, y) for x in range(8, 22) for y in range(6, 14)}
-        in_center = [(x, y) for _k, x, y, _o in s.furniture if (x, y) in center]
-        self.assertEqual(in_center, [])
+        # Interior floor should have maintenance/cargo islands, not be barren.
+        interior = {(x, y) for x in range(3, 27) for y in range(3, 17)}
+        in_interior = [(x, y) for _k, x, y, _o in s.furniture if (x, y) in interior]
+        self.assertGreaterEqual(len(in_interior), 6)
 
     def test_that_style_is_taken_from_the_catalog_not_retyped(self):
         # A second copy of the same forty tile names is a second copy to
