@@ -471,6 +471,15 @@ class WhatTheTagsCallIt(unittest.TestCase):
         self.assertEqual(KIND_FOR_AREA["airfield"], "hangar")
         self.assertEqual(KIND_FOR_AREA["apron"], "hangar")
 
+    def test_runways_taxiways_and_aprons_are_drawn_on_worldmap(self):
+        from knoxbuild import worldmap
+        self.assertEqual(worldmap.HIGHWAY_VALUE["runway"], "primary")
+        self.assertEqual(worldmap.HIGHWAY_VALUE["taxiway"], "secondary")
+        self.assertEqual(worldmap.AREA_VALUE["runway"], ("highway", "primary"))
+        self.assertEqual(worldmap.AREA_VALUE["apron"], ("highway", "tertiary"))
+        self.assertIn("airfield", worldmap.PLACE_CATEGORIES)
+        self.assertEqual(worldmap.BUILDING_VALUE["terminal"], "CommunityServices")
+
     def test_a_height_tag_does_not_put_a_floor_in_a_hangar(self):
         # Louisville's is tagged eight storeys, which measures the roof over
         # one tall space, not eight floors to walk about on.
