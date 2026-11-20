@@ -2448,8 +2448,9 @@ def furnish_hangar(plan, idx: int, room, rng: random.Random, occupied: set, no_g
                     plan.furniture.append(("crate_top", wx, wy, "N"))
 
     # 3. Interior floor maintenance & cargo islands with a central rolling aisle
-    # so large hangars are furnished throughout instead of barren in the middle.
-    if frame.length >= 10 and frame.depth >= 8:
+    # for large wide maintenance hangars. Smaller T-hangar bays (<= 320 tiles or
+    # narrow <= 20 tiles) keep their center clear for parked aircraft.
+    if len(cells) > 320 and min(room.w, room.h) > 20 and frame.length >= 10 and frame.depth >= 8:
         rack_orient = "W" if frame.along_x else "N"
         mid = frame.length // 2
         row_idx = 0

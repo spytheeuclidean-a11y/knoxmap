@@ -351,10 +351,31 @@ class AHangarIsOneSpan(unittest.TestCase):
         furn = [item[0] for item in s.furniture]
         self.assertNotIn("shelf", furn)
         self.assertTrue(any(k in furn for k in ("metal_rack", "crate", "counter")))
-        # Interior floor should have maintenance/cargo islands, not be barren.
+        # Interior floor should have maintenance/cargo islands on large wide hangars.
         interior = {(x, y) for x in range(3, 27) for y in range(3, 17)}
         in_interior = [(x, y) for _k, x, y, _o in s.furniture if (x, y) in interior]
-        self.assertGreaterEqual(len(in_interior), 6)
+        # 30x20 has min(w,h)=20 so it acts as a single aircraft bay (center clear).
+        self.assertEqual(in_interior, [])
+
+    def test_t_hangar_row_splits_into_bays_with_bay_doors(self):
+        from knoxbuild.layout import build_building
+        from knoxbuild.settings import Settings
+        built = build_building(83, 15, levels=1, kind="hangar", seed=5,
+                               garage_door=True, settings=Settings())
+        self.assertGreaterEqual(len(built.rooms), 5)
+        self.assertTrue(all(r.kind == "hangar" for r in built.rooms))
+        s = built.storeys[0]
+        # Every bay gets its own 3-tile roll-up hangar bay door.
+        self.assertGreaterEqual(len(getattr(s, "garage_door_tiles", ())), 3 * len(built.rooms))
+        # Each T-hangar bay keeps its middle open for an aircraft.
+        for r in built.rooms:
+            if r.w >= 8 and r.h >= 8:
+                center = {(x, y) for x in range(r.x0 + 3, r.x1 - 2)
+                          for y in range(r.y0 + 3, r.y1 - 2)}
+                self.assertEqual(
+                    [(x, y) for _k, x, y, _o in s.furniture if (x, y) in center],
+                    [],
+                )
 
     def test_that_style_is_taken_from_the_catalog_not_retyped(self):
         # A second copy of the same forty tile names is a second copy to
