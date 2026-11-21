@@ -212,6 +212,51 @@ class WhereTheMapsSit(unittest.TestCase):
             self.assertTrue(any("RKC_WS_Interiors" in p for p in found), found)
 
 
+class AirportRequiredMods(unittest.TestCase):
+    """Maps with airports require Wingsmith (3822736282) and LV200Airliner (3824463369)."""
+
+    def test_workshop_and_mod_ids(self):
+        import knoxpaths
+        self.assertEqual(
+            knoxpaths.AIRPORT_REQUIRED_MODS,
+            (("Wingsmith", "3822736282"), ("LV200Airliner", "3824463369")),
+        )
+
+    def test_has_airport_detects_airfield_area_and_buildings(self):
+        import json
+        import os
+        import tempfile
+        from tools import make_map_mod as M
+
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(M._has_airport(tmp))
+            areas = os.path.join(tmp, "town_areas.geojson")
+            with open(areas, "w", encoding="utf-8") as fh:
+                json.dump({"type": "FeatureCollection", "features": [
+                    {"type": "Feature", "properties": {"category": "airfield"},
+                     "geometry": {"type": "Polygon", "coordinates": []}},
+                ]}, fh)
+            self.assertTrue(M._has_airport(tmp))
+
+        with tempfile.TemporaryDirectory() as tmp:
+            csv_path = os.path.join(tmp, "town_placements.csv")
+            with open(csv_path, "w", encoding="utf-8") as fh:
+                fh.write("id,kind\n1,terminal\n")
+            self.assertTrue(M._has_airport(tmp))
+
+    def test_server_setup_lists_airport_mods(self):
+        import os
+        import tempfile
+        from tools import make_map_mod as M
+
+        with tempfile.TemporaryDirectory() as tmp:
+            M.write_server_setup(tmp, "mymap", "My Map", "My Map",
+                                 needs_airport=True)
+            txt = io_read(os.path.join(tmp, "SERVER SETUP.txt"))
+            self.assertIn("Mods=Wingsmith;LV200Airliner;mymap", txt)
+            self.assertIn("WorkshopItems=3822736282;3824463369", txt)
+
+
 def io_read(path):
     with open(path, encoding="utf-8") as fh:
         return fh.read()

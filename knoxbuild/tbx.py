@@ -789,7 +789,7 @@ def render_tbx(plan: Plan | Building, name: str,
                           if (x, y, direction) in garage_tiles else None)
             if garage_pos is not None:
                 # IsoDoor links panels along +x for N walls and -y for W walls.
-                garage_slot = garage_pos
+                garage_slot = garage_pos % len(C.GARAGE_DOOR)
                 # Garage sprites supply their own frame; clear the single-door jambs.
                 out.append("  <object" + _attrs([
                     ("type", "wall"), ("length", 1), ("InteriorTile", 0),

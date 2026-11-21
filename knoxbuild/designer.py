@@ -47,7 +47,7 @@ HOUSE_ROOMS = ("livingroom", "openplan", "kitchen", "dining", "bedroom",
 # already offers the same room under its own name: "hangar" is a warehouse
 # floor with a separate key, kept so the build can tell a hangar from a
 # distribution shed and roof it differently (knoxbuild/tbx.py).
-INTERNAL_ROOMS = {"hangar"}
+INTERNAL_ROOMS = {"hangar", "terminal"}
 
 
 def room_label(kind: str) -> str:

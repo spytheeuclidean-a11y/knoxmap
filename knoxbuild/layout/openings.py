@@ -564,7 +564,7 @@ def _exterior_door(plan: Plan, rng: random.Random,
         return
 
 
-VEHICLE_BAY_ROOMS = {"firegarage", "garage", "garagestorage", "mechanic", "warehouse"}
+VEHICLE_BAY_ROOMS = {"firegarage", "garage", "garagestorage", "mechanic", "warehouse", "hangar"}
 
 
 def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:

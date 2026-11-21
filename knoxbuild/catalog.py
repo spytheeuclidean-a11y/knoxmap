@@ -865,9 +865,10 @@ ROOM_COLORS = {
  'classroom': '124 133 52',
  'church': '181 113 9',
  'warehouse': '80 35 46',
- # KnoxMap's own: a hangar floor, which the game is told is a Warehouse.
+ # KnoxMap's own: a hangar floor (Warehouse) and an airport terminal concourse (Lobby).
  # BuildingEd colours rooms by this table and a missing one is a crash.
  'hangar': '80 35 46',
+ 'terminal': '130 165 190',
  'garage': '20 179 103',
  'clinic': '157 252 219',
  'bar': '166 30 246',
@@ -1321,7 +1322,7 @@ POSTERS = ['poster_0', 'poster_1', 'poster_2', 'poster_3', 'poster_4', 'poster_5
 AIRFIELD_WALL = "walls_commercial_03_048"
 
 
-def _airfield_style():
+def _airfield_style(name: str = "hangar"):
     base = dict(SPECIAL_STYLES["civic"])
     for variants in SPECIAL_STYLE_VARIANTS.values():
         for variant in variants:
@@ -1329,9 +1330,11 @@ def _airfield_style():
             if west == AIRFIELD_WALL:
                 base = dict(variant)
                 break
-    base["name"] = "hangar"
+    base["name"] = name
     return base
 
 
-SPECIAL_STYLES["hangar"] = _airfield_style()
+SPECIAL_STYLES["hangar"] = _airfield_style("hangar")
 SPECIAL_STYLE_VARIANTS["hangar"] = [SPECIAL_STYLES["hangar"]]
+SPECIAL_STYLES["terminal"] = _airfield_style("terminal")
+SPECIAL_STYLE_VARIANTS["terminal"] = [SPECIAL_STYLES["terminal"]]

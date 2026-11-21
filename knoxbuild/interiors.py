@@ -2345,6 +2345,160 @@ def furnish_industrial_floor(plan, idx: int, room, rng: random.Random, occupied:
     return ["metal_rack", "crate", "filing_cabinet", "corkboard", "water_cooler"]
 
 
+def furnish_terminal(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                     keeps_open=None) -> list[str] | None:
+    """Airport terminal concourse: check-in counter banks, gate podiums,
+    back-to-back rows of gate waiting seating, baggage counter, and amenities."""
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    back = OPPOSITE[front]
+    frame = Frame(cells, front)
+
+    # 1. Check-in / ticket counter bank(s) toward the back/airside wall and
+    # gate boarding podium(s) near the front/airside doors.
+    counters_placed = 0
+    counter_d = max(2, frame.depth - 3)
+    counter_len = min(6, max(3, frame.length // 4))
+    bank_starts = [max(2, frame.length // 2 - counter_len // 2)]
+    if frame.length >= 16:
+        bank_starts = [2, max(2, frame.length - counter_len - 2)]
+    for start_a in bank_starts:
+        if start_a + counter_len > frame.length - 1:
+            continue
+        tiles = [frame.xy(start_a + k, counter_d) for k in range(counter_len)]
+        if _counter_with_register(plan, idx, tiles, back, occupied, no_go, keeps_open,
+                                   add_register=True, add_chair=True):
+            counters_placed += 1
+
+    # 2. Baggage drop / claim counter strip near one side of the concourse.
+    if frame.length >= 14 and frame.depth >= 7:
+        bag_a = frame.length - 3
+        for d in range(2, min(frame.depth - 3, 6)):
+            x, y = frame.xy(bag_a, d)
+            if _put(plan, idx, "counter", x, y, back, occupied, no_go, keeps_open):
+                if d % 2 == 0 and bag_a + 1 < frame.length - 1:
+                    _put(plan, idx, "crate", *frame.xy(bag_a + 1, d), "N",
+                         occupied, no_go, keeps_open)
+
+    # 3. Back-to-back rows of gate waiting chairs across the concourse floor,
+    # leaving perimeter walkways and a central concourse aisle.
+    seats_placed = 0
+    mid = frame.length // 2
+    max_seat_d = max(3, counter_d - 1)
+    row_idx = 0
+    for d in range(2, max_seat_d, 2):
+        # Pairs of rows every 3rd step (gap at row_idx % 3 == 2 for walking aisles).
+        if row_idx % 3 == 2:
+            row_idx += 1
+            continue
+        facing = front if row_idx % 3 == 0 else back
+        for a in range(2, frame.length - 3):
+            if frame.length >= 12 and mid - 1 <= a <= mid + 1:
+                continue  # Central concourse walkway.
+            if a % 6 == 0 and a > 2:
+                continue  # Cross-aisles between gate seating blocks.
+            x, y = frame.xy(a, d)
+            if _put(plan, idx, "chair", x, y, facing, occupied, no_go, keeps_open):
+                seats_placed += 1
+        row_idx += 1
+
+    # 4. Terminal vending, water cooler, plants, and bins along side walls.
+    for a in (1, frame.length - 2):
+        for d, kind in ((1, "plant"), (2, "vending"), (3, "vending_snacks"),
+                        (max(2, counter_d - 1), "water_cooler"), (counter_d, "bin")):
+            if 0 < a < frame.length - 1 and 0 < d < frame.depth - 1:
+                _put(plan, idx, kind, *frame.xy(a, d), front, occupied, no_go, keeps_open)
+
+    if counters_placed == 0 and seats_placed < 3:
+        return None
+    return ["vending", "vending_snacks", "water_cooler", "plant", "bin", "tv", "clock"]
+
+
+def furnish_hangar(plan, idx: int, room, rng: random.Random, occupied: set, no_go: set,
+                   keeps_open=None) -> list[str] | None:
+    """Aircraft hangar: perimeter maintenance racks/crates plus organized floor
+    work islands (workbenches, parts racks, cargo pallets) with rolling aisles."""
+    L = _layout()
+    cells = _cells(plan, idx, room)
+    if len(cells) < 24 or min(room.w, room.h) < 5:
+        return None
+    front = _front_side(plan, idx, cells, None)
+    back = OPPOSITE[front]
+    frame = Frame(cells, front)
+    blocked = set(no_go) | _bay_lane_cells(plan, idx, cells)
+
+    placed = 0
+    # 1. Maintenance log desk in one back corner.
+    desk_placed = False
+    for wall in (back, "N", "W"):
+        if desk_placed:
+            break
+        for wx, wy in _against(plan, idx, cells, wall)[1:4]:
+            if (wx, wy) in blocked:
+                continue
+            orient = L._facing("desk_dark", wall)
+            ax, ay = L._wall_anchor("desk_dark", wx, wy, orient, wall)
+            if _put_desk_set(plan, idx, "desk_dark", ax, ay, wall, occupied, blocked, keeps_open):
+                desk_placed = True
+                placed += 1
+                break
+
+    # 2. Aviation maintenance bays along the back and side walls.
+    side_walls = [w for w in ("N", "S", "E", "W") if w != front]
+    kit = ("metal_rack", "counter", "crate", "metal_rack", "crate")
+    for wall in side_walls:
+        run = _against(plan, idx, cells, wall)
+        for i, (wx, wy) in enumerate(run[1:-1]):
+            if i % 3 == 2:
+                continue  # Keep breathing room between tool/storage bays.
+            if (wx, wy) in blocked:
+                continue
+            item = kit[i % len(kit)]
+            item_orient = L._facing(item, wall) if item != "crate" else "N"
+            if _put(plan, idx, item, wx, wy, item_orient, occupied, blocked, keeps_open):
+                placed += 1
+                if item == "crate" and rng.random() < 0.5 and "crate_top" in C.FURNITURE:
+                    plan.furniture.append(("crate_top", wx, wy, "N"))
+
+    # 3. Interior floor maintenance & cargo islands with a central rolling aisle
+    # for large wide maintenance hangars. Smaller T-hangar bays (<= 320 tiles or
+    # narrow <= 20 tiles) keep their center clear for parked aircraft.
+    if len(cells) > 320 and min(room.w, room.h) > 20 and frame.length >= 10 and frame.depth >= 8:
+        rack_orient = "W" if frame.along_x else "N"
+        mid = frame.length // 2
+        row_idx = 0
+        for d in range(3, frame.depth - 3, 4):
+            mode = row_idx % 3
+            for a in range(3, frame.length - 3):
+                # Keep a central rolling aisle down the middle of wide hangars.
+                if frame.length >= 16 and mid - 2 <= a <= mid + 2:
+                    continue
+                # Leave cross-walkways between floor islands.
+                if (a - 3) % 5 >= 3:
+                    continue
+                x, y = frame.xy(a, d)
+                if (x, y) in blocked:
+                    continue
+                if mode == 0:
+                    if _put(plan, idx, "metal_rack", x, y, rack_orient, occupied, blocked, keeps_open):
+                        placed += 1
+                elif mode == 1:
+                    if _put(plan, idx, "counter", x, y, front, occupied, blocked, keeps_open):
+                        placed += 1
+                else:
+                    if _put(plan, idx, "crate", x, y, "N", occupied, blocked, keeps_open):
+                        placed += 1
+                        if rng.random() < 0.65 and "crate_top" in C.FURNITURE:
+                            plan.furniture.append(("crate_top", x, y, "N"))
+            row_idx += 1
+
+    if placed < 2:
+        return None
+    return ["metal_rack", "crate", "counter", "bin", "clock", "water_cooler"]
+
+
 # ---- who lives here -----------------------------------------------------------
 #
 # A home's rooms used to be the same whoever lived in them. A household is

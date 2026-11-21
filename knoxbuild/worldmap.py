@@ -49,18 +49,24 @@ BUILDING_VALUE = {
     "church": "CommunityServices", "medical": "Medical",
     "industrial": "Industrial", "barn": "Industrial", "shed": "yes",
     "hangar": "Industrial",
+    "terminal": "CommunityServices",
 }
 # Road classes as the map style knows them. It has no class for a service
-# lane, so those draw as the smallest street.
+# lane or an airfield strip, so runways draw as primary, taxiways as secondary,
+# and service lanes as the smallest street.
 HIGHWAY_VALUE = {
     "road_major": "primary", "road_medium": "secondary",
     "road_minor": "tertiary", "road_service": "tertiary",
     "pedestrian": "tertiary",
     "dirt_path": "trail", "paved_path": "tertiary",
+    "runway": "primary", "taxiway": "secondary",
 }
 RAIL_WIDTH_M = 4.0
 AREA_VALUE = {"water": ("water", "river"), "pool": ("water", "river"),
-              "forest": ("natural", "forest")}
+              "forest": ("natural", "forest"),
+              "runway": ("highway", "primary"),
+              "taxiway": ("highway", "secondary"),
+              "apron": ("highway", "tertiary")}
 # Streets worth a name on the map. Footpaths carry names too, but labelling
 # every alley and pavement buries the streets people navigate by.
 NAMED_CLASSES = {"road_major", "road_medium", "road_minor", "road_service",
@@ -92,11 +98,11 @@ BUILDING_SCALE = 0.6
 # Only buildings people would give directions by, and not every one of them:
 # a label per corner shop buries the map.
 LABELLED_KINDS = {"school", "church", "medical", "civic", "industrial", "shop",
-                  "restaurant", "house", "apartment"}
+                  "restaurant", "house", "apartment", "terminal"}
 MIN_LABELLED_TILES = 150
 MAX_BUILDING_LABELS = 40
 MIN_PLACE_TILES = 400
-PLACE_CATEGORIES = {"park", "plaza", "cemetery", "sports", "grass"}
+PLACE_CATEGORIES = {"park", "plaza", "cemetery", "sports", "grass", "airfield"}
 
 
 def write(out_dir: str, map_name: str, proj, info: dict,

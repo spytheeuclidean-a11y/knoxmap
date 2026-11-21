@@ -150,8 +150,7 @@ def build_building(width: int, height: int, levels: int = 1,
     # hall, and that has to be known before they are laid out.
     storeys = [_storey(lvl) for lvl in range(levels)]
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
-                        grand=bool(storeys) and storeys[0].grand,
-                        tower=tcore is not None)
+                        grand=bool(storeys) and storeys[0].grand)
     if stairs is not None:
         from .furnishing import (
             _doors_off_stairs,
@@ -316,6 +315,57 @@ def _clear_railing_at(building: "Building", pair: list) -> None:
         storey.open_edge |= opened
 
 
+def _is_t_hangar(width: int, height: int) -> bool:
+    """Long, narrow airfield hangar rows are T-hangar blocks with individual bays."""
+    long_side = max(width, height)
+    short_side = max(1, min(width, height))
+    return long_side >= 35 and long_side >= 2.3 * short_side
+
+
+def _t_hangar_bays(plan: "Plan", width: int, height: int) -> None:
+    """Slice a long T-hangar row into ~14-tile-wide aircraft bays."""
+    if width >= height:
+        n = max(2, round(width / 14))
+        for i in range(n):
+            x0 = (i * width) // n
+            x1 = ((i + 1) * width) // n - 1
+            if x1 >= x0:
+                plan.rooms.append(Room(x0, 0, x1, height - 1, kind="hangar", fixed=True))
+    else:
+        n = max(2, round(height / 14))
+        for i in range(n):
+            y0 = (i * height) // n
+            y1 = ((i + 1) * height) // n - 1
+            if y1 >= y0:
+                plan.rooms.append(Room(0, y0, width - 1, y1, kind="hangar", fixed=True))
+
+
+def _t_hangar_bay_doors(plan: "Plan", street: str | None) -> None:
+    """Give every T-hangar bay its own 3-tile roll-up bay door on the taxiway side."""
+    long_sides = ("N", "S") if plan.width >= plan.height else ("E", "W")
+    preferred = street if street in long_sides else long_sides[0]
+    bay_tiles = list(getattr(plan, "garage_door_tiles", ()) or ())
+    for idx, room in enumerate(plan.rooms, 1):
+        if room.kind != "hangar":
+            continue
+        runs = [(side, wall) for side, wall in _outside_runs(plan, idx)
+                if side in long_sides and len(wall) >= 3]
+        if not runs:
+            continue
+        _side, wall = max(runs, key=lambda r: (r[0] == preferred, len(r[1])))
+        if any(e in wall for e in bay_tiles):
+            continue
+        mid = len(wall) // 2
+        start = min(max(0, mid - 1), len(wall) - 3)
+        opening = wall[start:start + 3]
+        for edge in opening:
+            if edge not in plan.doors:
+                plan.doors.append(edge)
+            if edge not in bay_tiles:
+                bay_tiles.append(edge)
+    plan.garage_door_tiles = tuple(bay_tiles)
+
+
 def _shop_doors(plan: "Plan", street: str | None) -> None:
     """A street door into each shop on a block of flats' ground floor."""
     from .openings import _door_on_run, _has_door_depth
@@ -354,6 +404,7 @@ KIND_ROOM_SCALE = {"industrial": 6.0, "barn": 16.0, "shed": 20.0, "church": 12.0
                    # the game spawns loot per room and a hangar of one room
                    # the size of a street would hold almost nothing.
                    "hangar": 70.0,
+                   "terminal": 24.0,
                    "castle": 14.0, "stadium": 11.0, "mall": 16.0,
                    "shop": 2.0, "school": 9.0, "civic": 2.5,
                    "restaurant": 1.5, "medical": 1.3, "offices": 3.0,
@@ -394,6 +445,7 @@ KIND_MAX_ROOM = {"church": 340, "library": 280, "school": 170, "gym": 320,
                  # Knox County's own hangar is one room the size of the
                  # building; 460 would cut it in three.
                  "hangar": 1800,
+                 "terminal": 1200,
                  "civic": 170, "fire": 220, "fire_police": 220, "medical": 140,
                  # A great hall and a concourse. Without an entry here the cap
                  # is MAX_ROOM_AREA whatever KIND_ROOM_SCALE says, which is
@@ -493,6 +545,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
                                        for front, _back in (uses or ()))
                      else "garage")
         plan.rooms.append(Room(0, 0, width - 1, height - 1, kind=room_kind))
+    elif mix_kind == "hangar" and _is_t_hangar(width, height):
+        _t_hangar_bays(plan, width, height)
     else:
         # Reserve one small room for a bathroom when the building's mix has one.
         house_floor = not (shop_floor or commercial
@@ -543,6 +597,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
         if kind == "shop" and len(sections) > 1:
             _fit_out_sections(plan, rng, sections, uses)
     elif mix_kind == "garage":
+        pass
+    elif mix_kind == "hangar" and _is_t_hangar(width, height):
         pass
     elif mix_kind and mix_kind in SPECIAL_MIXES:
         mix, fill = SPECIAL_MIXES[mix_kind]
@@ -621,7 +677,10 @@ def build_plan(width: int, height: int, commercial: bool = False,
         # them clear.
         _open_shopfronts(plan)
     if ground and garage_door:
-        _widen_vehicle_entry(plan, street)
+        if kind == "hangar" and len(plan.rooms) > 1:
+            _t_hangar_bay_doors(plan, street)
+        else:
+            _widen_vehicle_entry(plan, street)
     _furnish(plan, rng, stairs, street, is_ground=ground)
     if mix_kind == "mall":
         _clear_concourse(plan)

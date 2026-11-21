@@ -40,6 +40,7 @@ DAYTIME_M2_PER_PERSON = {
     # took the 25 every unlisted kind takes and a small hangar held as many
     # people as an office block.
     "hangar": 300,
+    "terminal": 14,
 }
 RESIDENTIAL = {"house", "apartment"}
 
