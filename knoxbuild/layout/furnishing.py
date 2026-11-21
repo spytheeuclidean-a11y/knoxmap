@@ -949,7 +949,8 @@ _OPPOSITE_SIDE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 def _furnish_living(plan: Plan, idx: int, room: Room,
                     occupied: set[tuple[int, int]],
                     keep_clear: set[tuple[int, int]],
-                    palette: dict[str, str], keeps_open=None) -> bool:
+                    palette: dict[str, str], keeps_open=None,
+                    rng: random.Random | None = None) -> bool:
     """The television against a wall, the sofa straight across from it facing
     it, the coffee table between, an armchair at the side and a rug under the
     table: how people arrange a living room. Tries each wall and each spot
@@ -993,14 +994,23 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
         outside = sum(_room_at(plan, tile(a, 0)[0] - into[0], tile(a, 0)[1] - into[1]) == 0
                       for a in range(length))
         options.append((blocked, outside, -min(depth, 8), side, tile, length, depth, along))
-    options.sort(key=lambda o: o[:4])
+    if rng is None:
+        options.sort(key=lambda o: o[:4])
+    else:
+        # Keep the wall scores, but let equally suitable walls trade places.
+        rng.shuffle(options)
+        options.sort(key=lambda o: o[:3])
 
     fallback = None
     for _blocked, _outside, _d, side, tile, length, depth, along in options:
         # Leave out the table when the room only fits the television and sofa.
         sofa_d = 4 if depth >= 6 else min(3, depth - 1)
         centre = length // 2
-        spots = sorted(range(1, length - 1), key=lambda a: (abs(a - centre), a))
+        spots = list(range(1, length - 1))
+        if rng is not None and rng.random() < 0.5:
+            spots.reverse()
+        spots.sort(key=lambda a: abs(a - centre))
+        armchair_sides = (-1, 1) if rng is not None and rng.random() < 0.5 else (1, -1)
         table_orient = "N" if side in "NS" else "W"
         for a in spots:
             tv_at, tv_cells = footprint("tv", _facing("tv", side), tile(a, 0))
@@ -1012,7 +1022,7 @@ def _furnish_living(plan: Plan, idx: int, room: Room,
                     (sofa, sf_orient, sf_at, sf_cells)]
             parts = pair + [("coffee_table", table_orient, tb_at, tb_cells)]
             # The armchair at the end of the table, turned to face it.
-            for lateral in (1, -1):
+            for lateral in armchair_sides:
                 back = _SIDE_OF_VECTOR[(along[0] * lateral, along[1] * lateral)]
                 ac_orient = _facing(armchair, back)
                 ac_at, ac_cells = footprint(armchair, ac_orient, tile(a + 3 * lateral, 2))
@@ -1058,7 +1068,7 @@ def _furnish_middle(plan: Plan, idx: int, room: Room,
                     occupied: set[tuple[int, int]],
                     keep_clear: set[tuple[int, int]],
                     palette: dict[str, str] | None = None,
-                    keeps_open=None) -> int:
+                    keeps_open=None, rng: random.Random | None = None) -> int:
     """Put the room's centre group(s) in its open middle. Returns how many.
     keeps_open(tiles), when given, may refuse a spot that cuts the floor."""
     spec = CENTRE_GROUPS.get(room.kind)
@@ -1071,7 +1081,7 @@ def _furnish_middle(plan: Plan, idx: int, room: Room,
         return 0          # a box room in a house is a cupboard, not a stockroom
     palette = palette or {}
     if room.kind == "livingroom" and _furnish_living(
-            plan, idx, room, occupied, keep_clear, palette, keeps_open):
+            plan, idx, room, occupied, keep_clear, palette, keeps_open, rng):
         return 1
     if room.kind == "livingroom":
         return 0
@@ -1468,10 +1478,10 @@ def _room_walkway(plan: Plan, idx: int, door_tiles: set,
     return walk
 
 
-def _furnish(plan: Plan, rng: random.Random,
+def _furnish(plan: Plan, storey_rng: random.Random,
              stairs: tuple[int, int, str] | None = None,
              street: str | None = None,
-             is_ground: bool = True) -> None:
+             is_ground: bool = True, flat_seed: str | None = None) -> None:
     """Push furniture against room walls, skipping tiles a door needs clear.
 
     Every room, the corridor and stair hall included, first gets a light
@@ -1498,9 +1508,10 @@ def _furnish(plan: Plan, rng: random.Random,
         plan.furniture.append(("elevator_door", lx, ly, ld))
 
     from .. import interiors
-    # Each home its own furniture: one palette per flat, or per storey of a
-    # house, drawn from a seed of this storey's own.
-    home_seed = rng.random()
+    # A repeated apartment plan has a furnishing seed of its own. From it,
+    # draw one palette and household per flat, then furnish each room from
+    # its own seed so one room's rolls cannot change the next room.
+    home_seed = storey_rng.random()
     palettes: dict[int, dict[str, str]] = {}
     # Who lives in each home (interiors.household), and which of its rooms
     # are a child's so far, for a teenager to be given one.
@@ -1714,17 +1725,21 @@ def _furnish(plan: Plan, rng: random.Random,
                             added_core += 1
                             break
             continue
+        flat = flat_seed is not None and r.unit > 0
+        unit_seed = f"{flat_seed}:{r.unit}" if flat else f"{home_seed}:{r.unit}"
+        room_seed = f"{unit_seed}:{idx}" if flat else f"{home_seed}:{idx}"
+        rng = random.Random(room_seed) if flat else storey_rng
         # A shop's sales floor is fitted out as a whole - rows of shelving,
         # the till by the door - not from a list pushed against its walls.
         if r.kind in interiors.STORES and interiors.furnish_store(
                 plan, idx, r, rng, door_tiles, stair_tiles | walk, street):
-            interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
+            interiors.dress_room(plan, idx, r, random.Random(f"{room_seed}:dress"),
                                  door_edges, no_go, keeps_open, walk)
             continue
         pal = palettes.get(r.unit)
         if pal is None:
             pal = palettes[r.unit] = interiors.palette(
-                random.Random(f"{home_seed}:{r.unit}"), profile=plan.profile)
+                random.Random(unit_seed), profile=plan.profile)
         _, _, base = ROOM_STYLE[r.kind]
         # A one-tile-wide spot takes nothing standing (see _off_narrow_spots).
         # Counted as taken from the start, the piece goes somewhere it can be
@@ -1743,7 +1758,7 @@ def _furnish(plan: Plan, rng: random.Random,
         if r.kind in ("garage", "mechanic", "firegarage") and interiors.furnish_service_bay(
                 plan, idx, r, rng, door_tiles, keep_clear,
                 mechanic=(r.kind in ("mechanic", "firegarage"))):
-            interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
+            interiors.dress_room(plan, idx, r, random.Random(f"{room_seed}:dress"),
                                  door_edges, no_go, keeps_open, walk)
             continue
         if r.kind == "lobby" and plan.kind not in HOUSE_LIKE_KINDS:
@@ -1864,12 +1879,13 @@ def _furnish(plan: Plan, rng: random.Random,
         if plan.kind in HOME_KINDS and not r.is_core:
             home = households.get(r.unit)
             if home is None:
-                seed = plan.profile.seed if plan.profile else home_seed
+                seed = (f"{plan.profile.seed}:{r.unit}"
+                        if plan.profile and not flat else unit_seed)
                 home = households[r.unit] = interiors.household(
-                    random.Random(f"{seed}:{r.unit}:household"), plan)
+                    random.Random(f"{seed}:household"), plan)
             base = interiors.for_household(base, r, home, kid_rooms, random.Random(
-                f"{home_seed}:{idx}:who"))
-            base = interiors.extras(base, r, random.Random(f"{home_seed}:{idx}:extras"))
+                f"{room_seed}:who"))
+            base = interiors.extras(base, r, random.Random(f"{room_seed}:extras"))
         # One piece per four tiles, which is 2.5 per 10 m2 - about what a
         # living room or a bedroom holds. A room packed with furniture by
         # its nature gets more: Knox County's classrooms run to 8.2 pieces
@@ -1942,13 +1958,16 @@ def _furnish(plan: Plan, rng: random.Random,
         # Boxes are not a wall of them: a few, apart, some stacked two high.
         crates: set[tuple[int, int]] = set()
         crate_cap = max(2, len(floor_slots) // CRATE_ONE_IN)
+        placement_rng = (random.Random(f"{room_seed}:placement")
+                         if flat and r.kind in ("livingroom", "bedroom", "kidsbedroom") else None)
 
         def centre():
             # The middle, with an aisle round it the wall pieces must leave
             # free; placed after them, it almost never found room.
             before = len(plan.furniture)
             if not office and not eatery and not trade_fitted:
-                _furnish_middle(plan, idx, r, occupied, keep_clear, pal, keeps_open)
+                _furnish_middle(plan, idx, r, occupied, keep_clear, pal, keeps_open,
+                                placement_rng)
             if r.kind == "livingroom" and not any(
                     role == "tv" for role, *_ in plan.furniture[before:]):
                 wishlist[:] = [role for role in wishlist if role != "tv"]
@@ -2079,7 +2098,7 @@ def _furnish(plan: Plan, rng: random.Random,
             bed = next((role for role in wishlist if role in (pal.get("double_bed"), pal.get("bed"))
                         or role.startswith(("double_bed", "bed", "bunk_bed"))), None)
             if bed and interiors.bed_against_wall(plan, idx, r, slots, occupied, no_go,
-                                                  bed, "nightstand", keeps_open):
+                                                  bed, "nightstand", keeps_open, placement_rng):
                 wishlist.remove(bed)
                 if "sidetable" in wishlist:
                     wishlist.remove("sidetable")
@@ -2123,7 +2142,7 @@ def _furnish(plan: Plan, rng: random.Random,
         _stand_on_something(plan, idx, r, pal)
         plan.sleeve |= sleeve
         if not r.is_core:
-            interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
+            interiors.dress_room(plan, idx, r, random.Random(f"{room_seed}:dress"),
                                  door_edges, no_go, keeps_open, walk)
 
 

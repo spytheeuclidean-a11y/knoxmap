@@ -332,6 +332,24 @@ def check_dwellings(check) -> None:
           f"({kinds['kitchen'] / 12:.0f} kitchens, {kinds['bathroom'] / 12:.0f} "
           f"bathrooms, {beds / 12:.0f} bedrooms per building)")
 
+    def flats():
+        return build_building(30, 22, levels=5, seed=19, kind="apartment")
+
+    upper = flats().storeys[1:]
+    check(len(upper) == 4 and all(p.rooms == upper[0].rooms and p.grid == upper[0].grid
+                                  for p in upper),
+          "typical apartment storeys repeat the same floor plan")
+    # Count the positions of main pieces rather than catalog roles: even
+    # before the fix, the final wood tone pass varied the bed sprites.
+    positions = [{(x, y, d) for role, x, y, d in p.furniture
+                  if role.startswith(("bed", "double_bed", "bunk_bed", "crib", "sofa", "tv"))}
+                 for p in upper]
+    check(len(positions) == 4 and all(positions)
+          and all(a != b for a, b in zip(positions, positions[1:])),
+          "repeated apartment floors vary where beds and seating go")
+    check([p.furniture for p in upper] == [p.furniture for p in flats().storeys[1:]],
+          "the same seed reproduces the apartment furniture")
+
 
 def check_facing(check) -> None:
     """Nothing is drawn against a wall it has no sprite for.

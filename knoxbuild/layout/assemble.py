@@ -44,9 +44,9 @@ def build_building(width: int, height: int, levels: int = 1,
     OpenStreetMap says the ground floor is (knoxbuild/uses.py), as (front
     room, back room); `hotel` makes a block of flats' flats hotel rooms.
 
-    Each storey is laid out separately rather than copied, because a block of
-    flats whose every floor is identical reads as a rendering error; only the
-    staircase has to line up, and it does because the shaft is reserved first.
+    Blocks of flats repeat the plan on floors that share a footprint, with
+    different furnishings on each floor. The staircase lines up because its
+    shaft is reserved first.
     """
     levels = max(1, levels)
     rng = random.Random(seed ^ 0x5745)
@@ -682,7 +682,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
             _t_hangar_bay_doors(plan, street)
         else:
             _widen_vehicle_entry(plan, street)
-    _furnish(plan, rng, stairs, street, is_ground=ground)
+    flat_seed = f"{seed}:{level}:flats" if kind == "apartment" and not hotel else None
+    _furnish(plan, rng, stairs, street, is_ground=ground, flat_seed=flat_seed)
     if mix_kind == "mall":
         _clear_concourse(plan)
         _place_kiosks(plan, rng, ground)

@@ -1744,7 +1744,9 @@ def to_building(lay: Layout, seed: int = 0, profile=None, party: dict | None = N
         storeys.append(plan)
     building = L.Building(width=house.width, height=house.height, storeys=storeys, profile=profile)
     for lvl, plan in enumerate(storeys):
-        L._furnish(plan, random.Random(seed + 977 * lvl), lay.stairs, house.street)
+        flat_seed = f"{seed}:{lvl}:flats" if plan.kind == "apartment" else None
+        L._furnish(plan, random.Random(seed + 977 * lvl), lay.stairs, house.street,
+                   flat_seed=flat_seed)
     pubs = _pubs() if lay.programme.endswith("@pub") else None
     if pubs:
         for plan in storeys:
