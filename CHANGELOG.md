@@ -114,6 +114,30 @@
   2 m map the median street goes from 4 tiles to 9. A tagged `width=` or
   `lanes=` still wins where it is wider.
 
+- **Airport runway markings, terminals, T-hangar bays, in-game map & required mods**
+  (#156, `generator/rendering/airfield.py`, `generator/rendering/widths.py`,
+  `knoxbuild/build.py`, `knoxbuild/interiors.py`, `knoxbuild/layout/assemble.py`,
+  `knoxbuild/worldmap.py`, `knoxpaths.py`, `tools/make_map_mod.py`, `web/system.py`).
+  - **FAA/ICAO runway markings and shoulders:** Narrowed `RUNWAY_SHOULDER_M` to
+    `3.5 m` and added angle-invariant side/edge stripes, split threshold piano
+    keys, dashed runway centerlines, aiming point bars, touchdown zones, and
+    taxiway hold-short bars on both line- and polygon-mapped runways.
+  - **Dedicated airport terminals:** Promoted `aeroway=terminal`,
+    `building=airport_terminal`, concourses, named terminal/FBO buildings, and
+    one compact untagged airfield building to `"terminal"` with glass curtain
+    walls, open concourse halls (no office cubicles), check-in/gate counter
+    banks, rows of gate waiting seating, baggage counters, and terminal amenities.
+  - **T-hangar bays & furnished wide hangars:** Split long narrow T-hangar rows
+    into individual ~14-tile aircraft bays with 3-tile roll-up bay doors and
+    clear aircraft stalls; added floor maintenance & cargo bays to wide
+    hangars; classified untagged `airfield`/`apron` buildings as hangars.
+  - **In-game world map & required mods:** Draws runways, taxiways, aprons,
+    airfields, and terminals on the in-game world/paper map, and automatically
+    requires `[RKC]WINGSMITH Aircraft` (`Wingsmith`, `3822736282`) and
+    `[RKC]BOEING 737-200 / RV-HOPE` (`LV200Airliner`, `3824463369`) in
+    `mod.info`, `SERVER SETUP.txt`, and `/api/server-setup` for maps with
+    airports.
+
 ## 1.8.6.4
 
 - **Chunked large-map buildings, lighter compile workers, and Auto mode**
