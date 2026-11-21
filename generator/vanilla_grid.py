@@ -13,6 +13,21 @@ import math
 from .mapped_roads import ROAD_CATEGORIES, _douglas_peucker
 from .osm import OSMFeature
 
+# A runway and a taxiway are lines on the same tile grid as the streets, and
+# left at whatever angle the real one runs they were the only lines on the
+# map still rasterised as a ragged staircase. They do not go through the
+# router with the streets, though: the router answers a heading it cannot
+# make with a chamfer, and Bowman Field's runways - at 149 and -127 degrees,
+# nowhere near a multiple of 45 - came back as fourteen and twelve
+# alternating legs. A runway with a dogleg in it is not a runway. So a
+# straight one is laid as one straight line on the nearest of the eight
+# headings, and one that genuinely bends is left as the map has it.
+AIRSIDE_CATEGORIES = frozenset({"runway", "taxiway"})
+# How far from the line between its ends a way may wander and still count as
+# straight: tiles, or this share of its own length, whichever is larger.
+STRAIGHT_TOLERANCE_TILES = 2.0
+STRAIGHT_TOLERANCE_SHARE = 0.01
+
 SIMPLIFY_TOLERANCE_TILES = 3.0
 LOOP_SIMPLIFY_TOLERANCE_TILES = 1.0
 SMALL_LOOP_SPAN_TILES = 18.0
@@ -242,15 +257,48 @@ def _route_stretch(raw_pts: list[tuple[float, float]],
     return routed
 
 
+def _straighten(feat: OSMFeature, proj) -> bool:
+    """Lay a straight runway or taxiway along the nearest of the eight headings.
+
+    Its length and its middle are kept, so it stands where it stood; only its
+    bearing moves, by at most 22.5 degrees - the same bargain every street on
+    the map has already made at this setting. A way that genuinely bends is
+    left alone rather than straightened into something it is not.
+    """
+    pts = [proj.to_px(lat, lon) for lat, lon in feat.geometry]
+    (ax, ay), (bx, by) = pts[0], pts[-1]
+    dx, dy = bx - ax, by - ay
+    length = math.hypot(dx, dy)
+    if length < 1.0:
+        return False
+    allowed = max(STRAIGHT_TOLERANCE_TILES, length * STRAIGHT_TOLERANCE_SHARE)
+    for px, py in pts[1:-1]:
+        if abs(dx * (ay - py) - (ax - px) * dy) / length > allowed:
+            return False
+    step = math.radians(45)
+    angle = round(math.atan2(dy, dx) / step) * step
+    ux, uy = math.cos(angle), math.sin(angle)
+    mx, my = (ax + bx) / 2.0, (ay + by) / 2.0
+    half = length / 2.0
+    ends = [(mx - ux * half, my - uy * half), (mx + ux * half, my + uy * half)]
+    feat.geometry = [proj.to_latlon(x, y) for x, y in ends]
+    return True
+
+
 def apply_vanilla_grid(features: list[OSMFeature], proj, classify, is_polygon) -> int:
     """Rewrite road features onto an exact 0/45/90-degree integer tile grid."""
     road_feats: list[OSMFeature] = []
     node_counts: dict[tuple[int, int], int] = {}
+    straightened = 0
 
     for feat in features:
         if feat.kind != "way" or is_polygon(feat) or len(feat.geometry) < 2:
             continue
-        if classify(feat.tags) not in ROAD_CATEGORIES:
+        cat = classify(feat.tags)
+        if cat in AIRSIDE_CATEGORIES:
+            straightened += int(_straighten(feat, proj))
+            continue
+        if cat not in ROAD_CATEGORIES:
             continue
         road_feats.append(feat)
         seen_in_way: set[tuple[int, int]] = set()
@@ -295,4 +343,4 @@ def apply_vanilla_grid(features: list[OSMFeature], proj, classify, is_polygon) -
         if len(new_px) >= 2:
             feat.geometry = [proj.to_latlon(float(x), float(y)) for x, y in new_px]
             changed += 1
-    return changed
+    return changed + straightened

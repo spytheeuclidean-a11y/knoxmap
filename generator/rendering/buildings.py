@@ -179,6 +179,11 @@ BUILDING_TAGS = {
     # What tells a drive-in from any other cinema: knoxbuild/landmarks.py puts
     # its board up by the road only when this says so.
     "drive_in",
+    # What else says what a building is for. Without these a barracks is an
+    # untagged shed, an airport terminal is a big box, and the zombies
+    # standing in them are dressed for nowhere in particular
+    # (knoxbuild/zombie_types.py).
+    "aeroway", "military", "emergency", "sport", "club", "landuse",
 }
 
 

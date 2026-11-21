@@ -28,6 +28,7 @@ KIND_COLOURS = {
     "industrial": (110, 90, 70), "fire": (255, 120, 0), "police": (40, 70, 200),
     "fire_police": (180, 90, 140),
     "library": (120, 220, 220), "stadium": (60, 160, 90), "mall": (200, 60, 200),
+    "hangar": (150, 150, 110),
 }
 OTHER = (200, 200, 200)
 

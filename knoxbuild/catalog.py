@@ -865,6 +865,9 @@ ROOM_COLORS = {
  'classroom': '124 133 52',
  'church': '181 113 9',
  'warehouse': '80 35 46',
+ # KnoxMap's own: a hangar floor, which the game is told is a Warehouse.
+ # BuildingEd colours rooms by this table and a missing one is a crash.
+ 'hangar': '80 35 46',
  'garage': '20 179 103',
  'clinic': '157 252 219',
  'bar': '166 30 246',
@@ -1306,3 +1309,29 @@ FURNITURE_LAYERS.update({'altar': 'Furniture',
  'weight_machine': 'Furniture',
  'weight_machine_alt': 'Furniture'})
 POSTERS = ['poster_0', 'poster_1', 'poster_2', 'poster_3', 'poster_4', 'poster_5', 'poster_6', 'poster_7']
+
+
+# What an airport is built of. The vanilla terminal and tower (world tile
+# 15494-15510, 2470-2526) are walls_commercial_03 tile 16 - but that is the
+# tan brick off that sheet, and an airport is white and mostly glass. Tile 48
+# is the same sheet's pale block: smooth, almost white, no coursing, and the
+# palest wall the tools ship that is not somebody's branding. The sheet is
+# already here as one of the shop variants, so this takes it rather than
+# keeping a second copy of the same forty tile names.
+AIRFIELD_WALL = "walls_commercial_03_048"
+
+
+def _airfield_style():
+    base = dict(SPECIAL_STYLES["civic"])
+    for variants in SPECIAL_STYLE_VARIANTS.values():
+        for variant in variants:
+            west = (variant.get("exterior") or {}).get("tiles", {}).get("West")
+            if west == AIRFIELD_WALL:
+                base = dict(variant)
+                break
+    base["name"] = "hangar"
+    return base
+
+
+SPECIAL_STYLES["hangar"] = _airfield_style()
+SPECIAL_STYLE_VARIANTS["hangar"] = [SPECIAL_STYLES["hangar"]]

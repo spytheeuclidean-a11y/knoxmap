@@ -66,29 +66,70 @@ def _project_box(pzw_path: str) -> tuple[int, int, int, int] | None:
     return int(o.group(1)), int(o.group(2)), int(w.group(1)), int(w.group(2))
 
 
+def _map_folders(roots) -> list:
+    """Every compiled map folder under these mod roots.
+
+    A mod from the Zomboid folder is `<mod>/common/media/maps/<map>`; one
+    from the Workshop has the Steam item's own folder over the top of that,
+    and some put the mod in a `mods/` folder inside it again.
+    """
+    out = []
+    for root in roots:
+        try:
+            if not root.is_dir():
+                continue
+        except OSError:
+            continue
+        for pattern in ("*/common/media/maps/*",
+                        "*/mods/*/common/media/maps/*",
+                        "*/*/common/media/maps/*"):
+            try:
+                out.extend(root.glob(pattern))
+            except OSError:
+                continue
+    return out
+
+
 def _installed_boxes() -> list[tuple[int, int, int, int]]:
     """Where the maps already installed on this PC sit, from the names of
-    their compiled cells (<base>_<cell x>_<cell y>.lotheader). Compiled cells
-    are 256 tiles, not 300, so they are converted back."""
+    their compiled cells. Compiled cells are 256 tiles, not 300, so they are
+    converted back.
+
+    A cell is named `<x>_<y>.lotheader`, the way the game's own maps are and
+    the way this one writes them. The pattern used to require a base name in
+    front of it, which nothing produces, so this found nothing at all and
+    every map was laid down on 70,0 on top of whatever was already there -
+    which is the one thing the packing below exists to prevent.
+    """
     import os
     import re
 
+    roots = []
     try:
         import knoxpaths
-        mods = knoxpaths.zomboid_user_dir() / "mods"
+        roots.append(knoxpaths.zomboid_user_dir() / "mods")
+        # And the ones Steam downloaded. A map mod from the Workshop sits
+        # outside the Zomboid folder entirely, so looking only there missed
+        # every subscribed map and laid this one on top of it. The aircraft
+        # mods are the reason this came up: [RKC]BOEING 737-200 carries a
+        # cabin map at cell 100,9, which is inside the run a second or third
+        # KnoxMap map would otherwise be given.
+        for library in knoxpaths._steam_libraries():
+            workshop = library / "steamapps" / "workshop" / "content" / "108600"
+            if workshop.is_dir():
+                roots.append(workshop)
     except Exception:      # noqa: BLE001 - no Zomboid folder, nothing installed
-        return []
+        if not roots:
+            return []
     boxes = []
-    if not mods.is_dir():
-        return []
-    for maps in mods.glob("*/common/media/maps/*"):
+    for maps in _map_folders(roots):
         cells = []
         try:
             entries = os.listdir(maps)
         except OSError:
             continue
         for entry in entries:
-            m = re.fullmatch(r".*_(\d+)_(\d+)\.lotheader", entry)
+            m = re.fullmatch(r"(?:.*_)?(\d+)_(\d+)\.lotheader", entry)
             if m:
                 cells.append((int(m.group(1)), int(m.group(2))))
         if not cells:

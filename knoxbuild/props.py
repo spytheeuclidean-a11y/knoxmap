@@ -642,7 +642,8 @@ def _runs(mask: np.ndarray, axis: int) -> tuple[np.ndarray, np.ndarray]:
     return length.T, ends.T
 
 
-def _road_ends(main: np.ndarray, margin: int = 2) -> list[tuple[int, int]]:
+def _road_ends(main: np.ndarray, margin: int = 2,
+               tarmac: np.ndarray | None = None) -> list[tuple[int, int]]:
     """Where a main road stops: the square that ends a run longer than the road
     is wide, and that runs along the road rather than across it.
 
@@ -660,7 +661,25 @@ def _road_ends(main: np.ndarray, margin: int = 2) -> list[tuple[int, int]]:
     inside = np.zeros_like(main)
     inside[margin:-margin, margin:-margin] = True   # the border is the checkpoint's
     ys, xs = np.nonzero(ends & inside)
-    return list(zip(xs.tolist(), ys.tolist()))
+    # A wide or rotated road can trigger _runs along its kerb; keep only points
+    # where the road actually stops (long run one way, <= 6 tiles the other).
+    import math
+    surface = tarmac if tarmac is not None else main
+    dirs = [(math.cos(k * math.pi / 16.0), math.sin(k * math.pi / 16.0))
+            for k in range(16)]
+    out = []
+    for x, y in zip(xs.tolist(), ys.tolist()):
+        for dx, dy in dirs:
+            ahead = sum(1 for d in range(1, 41)
+                        if 0 <= round(x + dx * d) < width and 0 <= round(y + dy * d) < height
+                        and surface[round(y + dy * d), round(x + dx * d)])
+            behind = sum(1 for d in range(1, 41)
+                         if 0 <= round(x - dx * d) < width and 0 <= round(y - dy * d) < height
+                         and surface[round(y - dy * d), round(x - dx * d)])
+            if max(ahead, behind) >= 30 and min(ahead, behind) <= 2:
+                out.append((x, y))
+                break
+    return out
 
 
 def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray,
@@ -715,10 +734,13 @@ def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray
 
     if road_hierarchy is not None:
         main = road_hierarchy[:height, :width] >= MAIN_ROAD
+        tarmac = np.zeros((height, width), dtype=bool)
+        for colour in CARRIAGEWAY:
+            tarmac |= np.all(ground == np.array(colour, dtype=ground.dtype), axis=2)
         # A block belongs where a road actually stops, not at intervals along
         # it: a cordon every few hundred metres reads as scenery, and the point
         # of the scene is that this road, here, is the end of the way.
-        ends = _road_ends(main)
+        ends = _road_ends(main, tarmac=tarmac)
         middle_x, middle_y = width / 2, height / 2
         ends.sort(key=lambda p: -((p[0] - middle_x) ** 2 + (p[1] - middle_y) ** 2))
         picked: list = []

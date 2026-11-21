@@ -48,6 +48,7 @@ BUILDING_VALUE = {
     "school": "CommunityServices", "civic": "CommunityServices",
     "church": "CommunityServices", "medical": "Medical",
     "industrial": "Industrial", "barn": "Industrial", "shed": "yes",
+    "hangar": "Industrial",
 }
 # Road classes as the map style knows them. It has no class for a service
 # lane, so those draw as the smallest street.

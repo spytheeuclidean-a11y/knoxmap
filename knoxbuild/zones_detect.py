@@ -117,7 +117,12 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
         from shapely import STRtree
         from shapely.prepared import prep
         built = STRtree(buildings) if buildings else None
-        lots = [shape for shape, props in areas._items if props.get("category") == "parking"]
+        # An apron is a car park for aeroplanes, and the game has no
+        # aeroplanes - but the game's own airfield has its apron and its
+        # terminal car park laid out in stalls with vehicles on them, and an
+        # empty slab of concrete is the thing that reads as unfinished.
+        lots = [shape for shape, props in areas._items
+                if props.get("category") in ("parking", "apron")]
         for lot in lots:
             lot_prep = prep(lot)
             bounds = tuple(int(v) for v in lot.bounds)

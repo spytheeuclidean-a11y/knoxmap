@@ -25,7 +25,55 @@ ROAD_WIDTHS_M = {
     "paved_path": 2.5,
     "pier": 3.0,
     "railway": 4.0,
+    # An airfield. A runway is the widest thing a town has by a long way:
+    # a county strip is 18-23 m, a regional one 30, an international 45-60.
+    # 30 is the middle of that and what an untagged one gets.
+    "runway": 30.0,
+    "taxiway": 15.0,
 }
+# The pale shoulder either side of a runway, as the game's own airfield has
+# it: concrete out to the grass, so the strip reads as a runway and not as a
+# very wide road. Metres each side.
+RUNWAY_SHOULDER_M = 9.0
+
+# What a tagged width may be believed up to, by category. A street tagged
+# sixty metres wide is a mistake somebody made; a runway tagged forty-five
+# is a runway.
+MAX_TAGGED_WIDTH_M = {"runway": 80.0, "taxiway": 45.0}
+# The narrowest a road may come out, in tiles, whatever the scale makes of
+# its width in metres.
+#
+# Measured on the squares of the game's own Muldraugh (four cells, 894 runs
+# of street): the median street is 8 tiles of asphalt, 515 runs are 8 wide,
+# 187 are 6 and 76 are 10. Vanilla's roads are wider than the real ones they
+# stand for, because two cars have to pass on them and a player has to walk
+# between them - and a width in metres divided by the map's scale does not
+# know that. At 2 m a tile a 6 m street came out 3 tiles: one car, no room
+# to pass, and a town that read as a plan of itself rather than a place.
+MIN_ROAD_TILES = {
+    "road_major": 10,
+    "road_medium": 8,
+    "road_minor": 6,
+    "road_service": 3,
+}
+
+
+def road_width_tiles(feat: OSMFeature, cat: str, metres_per_tile: float,
+                     extra_m: float = 0.0) -> int:
+    """How many tiles wide to draw this way, never narrower than the game's own.
+
+    `extra_m` is a band on each side - a pavement, a shoulder - added after
+    the floor, so that widening the carriageway widens what sits beside it
+    with it and the two keep agreeing about where the road ends.
+    """
+    from .geometry import _pixel_width
+    tiles = max(_pixel_width(_way_width_m(feat, cat), metres_per_tile),
+                MIN_ROAD_TILES.get(cat, 0))
+    if extra_m > 0:
+        tiles += 2 * _pixel_width(extra_m, metres_per_tile)
+    return tiles
+
+
 ROAD_WIDTHS_BY_HIERARCHY_M = {
     "motorway": 24.0, "trunk": 16.0, "primary": 12.0,
     "secondary": 9.0, "tertiary": 7.0, "residential": 6.0,
@@ -86,7 +134,7 @@ def _way_width_m(feat: OSMFeature, cat: str) -> float:
             # "nan" is a number to float(), and min(30.0, nan) is 30.0: a road
             # tagged width=nan came out thirty metres wide.
             if math.isfinite(given):
-                return max(2.0, min(30.0, given))
+                return max(2.0, min(MAX_TAGGED_WIDTH_M.get(cat, 30.0), given))
         except (ValueError, IndexError):      # IndexError: a width of " "
             pass
     lanes = feat.tags.get("lanes")
@@ -106,6 +154,16 @@ def _way_width_m(feat: OSMFeature, cat: str) -> float:
 
 def _road_markings(feat: OSMFeature, cat: str) -> list[tuple[str, float]]:
     """(color, offset in metres) for lane markings across a road centerline."""
+    # A runway has one marking and it is not a lane divider: the dashed white
+    # line down the middle that the game's own airfield has. Lane counting
+    # would otherwise put seven stripes across thirty metres of concrete.
+    if cat == "runway":
+        return [("white", 0.0)]
+    # A taxiway carries one yellow line down the centre - that is what the
+    # colour means on an airfield, and what tells a taxiway from the runway
+    # it leads to when both are the same grey.
+    if cat == "taxiway":
+        return [("yellow", 0.0)]
     width = _way_width_m(feat, cat)
     if any(str(feat.tags.get(key, "")).lower() == "no"
            for key in ("centreline", "centerline", "road_marking")):

@@ -9,10 +9,11 @@ from PIL import Image, ImageDraw
 from .. import pz_colors as C
 from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, road_hierarchy
 from .crossings import paint_crossings
-from .geometry import _draw_roads, _feature_coords_px, _is_polygon, _pixel_width
+from .geometry import _draw_roads, _feature_coords_px, _is_polygon
 from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES, MAX_PAVED_BLOCK
 from .projection import Projector
 from .widths import (ROAD_WIDTHS_M, _road_markings, _sidewalk_width_m,
+                     road_width_tiles,
                      _way_width_m)
 
 
@@ -27,10 +28,10 @@ def _road_hierarchy_image(buckets: dict[str, list[OSMFeature]], proj: Projector)
             for feat in buckets.get(cat, []):
                 if _is_polygon(feat) or road_hierarchy(feat.tags) != hierarchy:
                     continue
-                width = _way_width_m(feat, cat)
-                if cat in ROAD_WIDTHS_M:
-                    width += 2 * _sidewalk_width_m(feat, cat)
-                strokes.append((_pixel_width(width, proj.meters_per_tile), _feature_coords_px(feat, proj)))
+                extra = (_sidewalk_width_m(feat, cat) if cat in ROAD_WIDTHS_M
+                         else 0.0)
+                strokes.append((road_width_tiles(feat, cat, proj.meters_per_tile, extra),
+                                _feature_coords_px(feat, proj)))
         _draw_roads(image, strokes, code)
     return image
 
@@ -397,7 +398,7 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
     # make a tile-grid zigzag.
     mpt = proj.meters_per_tile
     marks = []
-    for cat in ("road_major", "road_medium", "road_minor"):
+    for cat in ("road_major", "road_medium", "road_minor", "runway", "taxiway"):
         for feat in buckets.get(cat, []):
             if _is_polygon(feat):
                 continue

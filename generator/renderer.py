@@ -90,8 +90,10 @@ from .rendering.vegetation import (BOX_STRIP_ROWS, GARDEN_CLEAR_OF_HOUSE,
                                    _paint_woodland, _plant_big_trees,
                                    tree_rules_ready)  # noqa: F401
 from .rendering.widths import (ROAD_WIDTHS_BY_HIERARCHY_M, ROAD_WIDTHS_M,
+                               RUNWAY_SHOULDER_M,
                                SIDEWALK_BY_HIERARCHY_M, SIDEWALK_M,
                                VERGE_BY_HIERARCHY_M, VERGE_M, _road_markings,
+                               road_width_tiles,
                                _sidewalk_width_m, _verge_width_m, _way_width_m)  # noqa: F401
 
 
@@ -284,6 +286,45 @@ def _polygon_mask(feats, proj):
             if len(ring) >= 3:
                 draw.polygon(ring, fill=255)
     return np.asarray(mask) > 0
+
+
+# Everything inside the aerodrome fence, plus the concrete itself where the
+# field is not mapped as an aerodrome at all - a bare strip in a field is
+# still a strip, and the trees have to keep off the length of it.
+AIRSIDE_CLEAR_M = 60.0
+
+
+def _strips_mask(buckets, proj, clear_m: float | None):
+    """The runways and taxiways, each stroked `clear_m` wider than it is.
+
+    With no `clear_m` each is stroked its own width plus its shoulder and a
+    little over: what an aircraft stands on, rather than the ground round it.
+    """
+    lines = [(cat, f) for cat in ("runway", "taxiway")
+             for f in buckets.get(cat, []) if not _is_polygon(f)]
+    if not lines:
+        return None
+    reach = Image.new("L", (proj.width, proj.height), 0)
+    draw = ImageDraw.Draw(reach)
+    for cat, feat in lines:
+        if clear_m is not None:
+            metres = clear_m
+        else:
+            metres = _way_width_m(feat, cat) + 2 * RUNWAY_SHOULDER_M + 4
+        width = max(3, int(round(metres / proj.meters_per_tile)))
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 2:
+                draw.line(ring, fill=255, width=width, joint="curve")
+    return np.asarray(reach) > 0
+
+
+def _airside_mask(buckets, proj):
+    """Bool array over the aerodrome and its concrete, or None where there is none."""
+    feats = (buckets.get("airfield", []) + buckets.get("apron", []))
+    mask = _polygon_mask(feats, proj) if feats else None
+    # A runway or taxiway drawn as a line: keep the trees a wingspan clear of
+    # it even where nobody mapped the aerodrome round it.
+    return _either(mask, _strips_mask(buckets, proj, AIRSIDE_CLEAR_M))
 
 
 def _paint_landcover(landscape: Image.Image, grid) -> None:
@@ -579,7 +620,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                     for feat in buckets.get(road, []):
                         if _is_polygon(feat):
                             continue
-                        w_road = _pixel_width(_way_width_m(feat, road), meters_per_tile)
+                        w_road = road_width_tiles(feat, road, meters_per_tile)
                         v_m = _verge_width_m(feat, road)
                         verge_side = max(1, int(v_m / meters_per_tile + 0.49)) if v_m > 0 else 0
                         if not is_sidewalk:
@@ -601,8 +642,20 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         fill = LANDSCAPE_FILL.get(cat)
         if fill is None:
             continue
+        if cat == "runway":
+            # The pale shoulder either side, laid before the asphalt and wider
+            # than it, as the game's own airfield has it. Without it thirty
+            # metres of plain tarmac in a field is a very wide road, which is
+            # what every runway looked like: RUNWAY_SHOULDER_M was written
+            # down and never painted.
+            shoulder = 2 * RUNWAY_SHOULDER_M
+            _draw_roads(landscape,
+                        [(_pixel_width(_way_width_m(feat, cat) + shoulder,
+                                       meters_per_tile), ground_rings(feat))
+                         for feat in buckets.get(cat, []) if not _is_polygon(feat)],
+                        C.PALE_CONCRETE, crisp=(road_layout == 5))
         if cat in ROAD_WIDTHS_M:
-            strokes = [(_pixel_width(_way_width_m(feat, cat), meters_per_tile), ground_rings(feat))
+            strokes = [(road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
                        for feat in buckets.get(cat, []) if not _is_polygon(feat)]
             _draw_roads(landscape, strokes, fill, crisp=(road_layout == 5))
         for feat in buckets.get(cat, []):
@@ -741,15 +794,24 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _paint_parks(vegetation, landscape, buckets.get("park", []), proj,
                  density=tree_density)
     _paint_gardens(vegetation, landscape, building_feats, proj, density=tree_density)
+    # An aerodrome is mown from the fence in: between the runways there is
+    # grass and nothing else, because anything taller is something an
+    # aircraft can hit. The guesses below scatter trees and scrub over open
+    # grass, and an airfield is the largest sheet of open grass a town has -
+    # so without this the strip came out lined with trees on both sides.
+    # The mapper's own woods still stand: those are read from the map, not
+    # guessed, and a wooded corner inside the fence is a real one.
+    airside = _airside_mask(buckets, proj)
     # Where WorldCover has a class, it says what grows; elsewhere, a guess.
     _paint_wild_growth(vegetation, landscape, proj,
                        density=tree_density * fp.wild_growth,
-                       exclude=_either(owned, homes))
+                       exclude=_either(_either(owned, homes), airside))
     # Made-up woods only stand in for land cover data: with WorldCover the
     # woods are the real ones, and a random one would only add woods where
     # the data says there are none. They still grow where it has no data.
     _paint_groves(vegetation, landscape, proj, density=tree_density * forest_density * fp.groves,
-                  exclude=_either(None if owned is None else landcover_grid > 0, homes))
+                  exclude=_either(_either(None if owned is None else landcover_grid > 0,
+                                          homes), airside))
     # Last of the planting: some of the trees now down become the big ones,
     # which need a square of their own and so can only be chosen once it is
     # settled what stands where.
@@ -763,10 +825,19 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     _clear_road_vegetation(vegetation, landscape)
     _paint_road_details(vegetation, landscape, buckets, proj,
                         smooth_edges=(road_layout != 5))
+    # The threshold bars go on last of all: they are pale concrete inside the
+    # strip, and the kerb pass above draws a kerb wherever concrete meets
+    # asphalt - run before it, every stripe would be kerbed like a pavement.
+    try:
+        from .rendering.airfield import paint_runway_markings
+        paint_runway_markings(landscape, buckets, proj)
+    except Exception as exc:        # noqa: BLE001 - never lose a map to it
+        _log.warning("runway markings skipped: %s: %s", type(exc).__name__, exc)
     hierarchy_image = _road_hierarchy_image(buckets, proj)
     # Where the buildings are, so a hydrant, a bin or a mailbox only stands
     # where it has something to serve.
-    _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask)
+    _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask,
+                            airstrip=_strips_mask(buckets, proj, None))
     t_details = time.perf_counter()
     if render_progress:
         render_progress(0.90, "Saving bitmaps")

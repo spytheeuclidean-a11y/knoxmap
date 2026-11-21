@@ -146,6 +146,8 @@ def refine_owned(landscape, grid, owned) -> None:
 LANDSCAPE_ORDER = [
     # Broad land use first, so anything more specific inside it - a pitch in a
     # schoolyard, a car park on an industrial estate - is painted over it.
+    # An airfield is mown grass with everything else laid on top of it.
+    "airfield",
     "residential",    # gardens and yards
     "commercial",     # pavement in front of shops
     "industrial",     # rough grass; the works' yards are paved later
@@ -179,6 +181,12 @@ LANDSCAPE_ORDER = [
     "road_minor",
     "road_medium",
     "road_major",     # widest, so it wins at junctions
+    # The airport, over the service roads that run round it: the apron is
+    # laid first, then the taxiways on it, then the runway over everything.
+    # A road crossing a live runway is a road that was painted too late.
+    "apron",
+    "taxiway",
+    "runway",
     # Building footprints are not painted at all. They used to be dirt, which
     # showed as a brown fringe wherever the placed building and the painted
     # footprint disagreed by a tile - and the building's own floor covers the
@@ -234,6 +242,37 @@ LANDSCAPE_FILL = {
     "playground": C.SAND,
     "track": C.CLAY,
     "pool": C.WATER,
+    # Taken from the game's own airfield, which is the thing a player will
+    # compare this to: the runway and the taxiways are grey asphalt like any
+    # road, with a pale shoulder either side of the runway and a dashed
+    # white line down it; the apron is the big pale slab. Drawn the other
+    # way round - a white runway on dark aprons - it reads as a car park
+    # with a path through it.
+    #
+    # The grass is the ordinary green, as it is in the game's own airfield.
+    # Nothing grows on it because the planting passes are handed the
+    # aerodrome's own outline and keep off it, not because the colour was
+    # chosen to dodge them - the pale grass they do dodge is a wheat field,
+    # and the strip came out standing in a crop
+    # (renderer._mown_mask, generator/rendering/vegetation.py).
+    "airfield": C.MEDIUM_GRASS,
+    "apron": C.PALE_CONCRETE,
+    "taxiway": C.MEDIUM_ASPHALT,
+    # The runway is the darkest surface the palette has, which is what makes
+    # it read as a runway rather than a very wide street: painted the same
+    # grey as a road, with the same markings, there was nothing left to tell
+    # them apart. Dark strip, pale shoulder either side, pale bars at each
+    # end - that silhouette is an airfield and nothing else. The taxiway
+    # keeps its lighter grey, so those two are told apart as well.
+    #
+    # DARK_ASPHALT, not DARKEST_ASPHALT. The names here do not run the way
+    # the tiles do - measured off blends_street_01, the mean brightness of
+    # what each one maps to through Rules.txt is: PALE_CONCRETE 127 ("Medium
+    # Asphalt", street), DARKEST_ASPHALT 122 ("Gravel Asphalt", street4),
+    # MEDIUM_ASPHALT 112 ("Smooth Asphalt", street3), DARK_ASPHALT 102
+    # ("Dark Asphalt (main roads)", street2). The darkest is DARK_ASPHALT,
+    # and the palest thing on the map is the one called concrete.
+    "runway": C.DARK_ASPHALT,
 }
 
 # Categories knoxbuild needs as areas, to tell what a building standing in
@@ -241,7 +280,8 @@ LANDSCAPE_FILL = {
 # not a house.
 AREA_CATEGORIES = {"residential", "commercial", "industrial", "military",
                    "schoolyard", "hospital_grounds", "worship_grounds",
-                   "cemetery", "parking", "sports", "park", "playground"}
+                   "cemetery", "parking", "sports", "park", "playground",
+                   "airfield", "apron"}
 # Drawn onto the vegetation bitmap rather than the ground.
 VEG_CATEGORIES = {"forest", "scrub", "tree_single", "hedge", "orchard",
                   "cemetery", "wetland"}
@@ -262,4 +302,4 @@ DENSE_COVERAGE = 0.40
 MAX_PAVED_BLOCK = 200 * 200
 # Mapped green space keeps its grass however built-up the area around it is.
 GREEN_CATEGORIES = {"park", "grass", "sports", "cemetery", "orchard", "farmland",
-                    "wetland", "hospital_grounds"}
+                    "wetland", "hospital_grounds", "airfield"}

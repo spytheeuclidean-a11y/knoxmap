@@ -445,6 +445,14 @@ def render_tbx(plan: Plan | Building, name: str,
     # Garages use the stock low shingled gable, independent of their wall style.
     garage_only = bool(building.rooms) and all(r.kind == "garage"
                                                for r in building.rooms)
+    # A hangar keeps the flat roof but not what usually stands on one. The
+    # game's own airfield roofs its hangar in shallow pale metal and its
+    # terminal flat; a house gable kit over a twenty-six tile span is
+    # thirteen tiles tall, which is a barn. Flat and bare is the nearer of
+    # the two, and the air handling units are what made it read as a
+    # distribution shed.
+    hangar = bool(building.rooms) and any(r.kind == "hangar"
+                                          for r in building.rooms)
     garage_kit = next(s["roof"] for s in C.HOUSE_STYLES if s["name"] == "brick") if garage_only else None
     if garage_kit:
         garage_kit = dict(garage_kit, caps=next(s["roof"]["caps"] for s in C.HOUSE_STYLES if s["name"] == "clapboard"))
@@ -511,7 +519,9 @@ def render_tbx(plan: Plan | Building, name: str,
 
     if peaked and not garage_only:
         rooftop = _chimneys(storeys[-1].grid, building.width, building.height, name)
-    elif peaked or garage_only:
+    elif peaked or garage_only or hangar:
+        # A hangar keeps its flat roof bare: the air handling units a flat
+        # roof usually gets are what made it read as a distribution shed.
         rooftop = []
     else:
         rooftop = _rooftop(storeys[-1].grid, building.width, building.height, name)
