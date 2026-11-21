@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import collections
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -28,7 +29,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from knoxbuild.buildtiles import parse_tbx  # noqa: E402
 from knoxbuild.rules import load_rules  # noqa: E402
 from tools.cell_check import read_cell  # noqa: E402
-from tools.map_source import ORIGIN_X, read_lots  # noqa: E402
+from tools.map_source import read_lots  # noqa: E402
+from tools.terrain_source import project_origin  # noqa: E402
 from tools.terrain_source import rules_path  # noqa: E402
 
 UTILITY = ("_fences_", "_lights_", "_struct", "_bridge", "_monument")
@@ -45,18 +47,19 @@ SOFT_PREFIXES = ("vegetation_foliage", "blends_")
 class Lots:
     """Squares of the compiled map, read a cell at a time."""
 
-    def __init__(self, lots_dir: str, keep: int = 12):
+    def __init__(self, lots_dir: str, keep: int = 12, origin: tuple[int, int] = (0, 0)):
         self.dir, self.keep, self.cache = lots_dir, keep, collections.OrderedDict()
+        self.origin = origin
 
     def at(self, x: int, y: int, z: int) -> list[str]:
-        X = x + ORIGIN_X
-        key = (X // 256, y // 256)
+        X, Y = x + self.origin[0], y + self.origin[1]
+        key = (X // 256, Y // 256)
         if key not in self.cache:
             if len(self.cache) >= self.keep:
                 self.cache.popitem(last=False)
             path = os.path.join(self.dir, f"{key[0]}_{key[1]}.lotheader")
             self.cache[key] = read_cell(self.dir, *key) if os.path.exists(path) else {}
-        return self.cache[key].get((X % 256, y % 256, z), [])
+        return self.cache[key].get((X % 256, Y % 256, z), [])
 
 
 WALL_ENUMS = {"West", "North", "NorthWest", "SouthEast", "WestDoor", "NorthDoor",
@@ -134,14 +137,24 @@ def blank_tiles(lots_dir: str) -> list[str]:
 
 def check(project: str, show: int = 8, only_level: int | None = None) -> dict:
     name = os.path.basename(os.path.normpath(project))
-    lots = Lots(os.path.join(project, "lots"))
+    lots = Lots(os.path.join(project, "lots"), origin=project_origin(project))
     blockers = ground_blockers()
-    found = {"walls": [], "door_wall": [], "door_blocked": []}
+    found = {"walls": [], "shared": [], "door_wall": [], "door_blocked": []}
     counts = collections.Counter()
     placed = [(t, tx, ty, lv) for t, tx, ty, lv, _w, _h in read_lots(project)
               if not any(k in t for k in UTILITY)]
     parsed = {t: parse_tbx(open(os.path.join(project, "buildings", f"{t}.tbx"), encoding="utf-8").read())
               for t, *_ in placed}
+    shared_walls: dict[str, set[str]] = {}
+
+    def walls_of(t: str) -> set[str]:
+        if t not in shared_walls:
+            shared_walls[t] = wall_tiles(parsed[t])
+        return shared_walls[t]
+
+    def part_of(t: str) -> str:
+        return re.sub(r"(_\d\d)?(_bsmt)?$", "", t)
+
     # Which lot has a room on a square: two parts of one building meet with no wall between.
     owner: dict[tuple[int, int, int], str] = {}
     for t, tx, ty, lv in placed:
@@ -184,6 +197,17 @@ def check(project: str, show: int = 8, only_level: int | None = None) -> dict:
                         far = owner.get((tx + other[0], ty + other[1], lv + z))
                         mine = owner.get((tx + x, ty + y, lv + z))
                         if (far and far != t) or (mine and mine != t):
+                            # A wall between two buildings: either may have drawn it,
+                            # so any wall tile counts. Parts of one building (the same
+                            # name up to its _NN part) have none between them.
+                            them = far if far and far != t else mine
+                            if part_of(them) == part_of(t):
+                                continue
+                            counts["shared_edges"] += 1
+                            tiles = lots.at(tx + x, ty + y, lv + z)
+                            if not any(is_wall(tl, own | walls_of(them)) for tl in tiles):
+                                counts["shared_walls_missing"] += 1
+                                found["shared"].append((t, them, lv + z, tx + x, ty + y, edge))
                             continue
                         counts["edges"] += 1
                         tiles = lots.at(tx + x, ty + y, lv + z)
@@ -235,18 +259,20 @@ def main(argv: list[str]) -> int:
     print(f"  wall edges with no wall tile : {c['walls_missing']} "
           f"({c['walls_missing_roof']} where a roof tile stands instead, {c['walls_missing_other']} other; "
           f"{c['walls_by_stairs']} more beside stairs are not counted)")
+    print(f"  walls between two buildings  : {c['shared_walls_missing']} missing of {c['shared_edges']}")
     print(f"  doors with no wall under them: {c['doors_without_wall']}")
     print(f"  doors with a blocked side    : {c['doors_blocked']}")
     print(f"  tiles the game cannot draw   : {c['blank_tiles']} {f['blank'][:6]}")
     print(f"  doors with a bush at them    : {c['doors_with_bushes']} (walked through; not counted above)")
     for key, title in (("walls", "missing wall (file, level, x, y, edge)"),
+                       ("shared", "missing wall between buildings (file, neighbour, level, x, y, edge)"),
                        ("door_wall", "door without wall"), ("door_blocked", "blocked door (side square, blocker)")):
         by_file = collections.Counter(x[0] for x in f[key])
         if by_file:
             print(f"  {title}; worst buildings: {by_file.most_common(5)}")
         for x in f[key][:show]:
             print("     ", x)
-    return 1 if (c["walls_missing"] or c["doors_without_wall"] or c["doors_blocked"]
+    return 1 if (c["walls_missing"] or c["shared_walls_missing"] or c["doors_without_wall"] or c["doors_blocked"]
                 or c["blank_tiles"]) else 0
 
 

@@ -160,6 +160,9 @@ def build_chunked(
     total_split = 0
     total_skipped_large = 0
     gunshops: set[str] = set()
+    # (x0, y0, mask) in map tiles of every building a finished part kept: the
+    # parts after it build around them (build's _taken).
+    taken: list = []
 
     src_bmp = os.path.join(out_dir, f"{map_name}.bmp")
     src_veg = os.path.join(out_dir, f"{map_name}_veg.bmp")
@@ -214,6 +217,9 @@ def build_chunked(
                 q_dir, seed=seed + qi, min_size=min_size, max_size=max_size,
                 settings=settings, should_stop=should_stop, progress=q_say,
                 _proj_override=sub_proj, _skip_chunked=True, _stitch_out=stitch,
+                _taken=[(x0 - hx0, y0 - hy0, m) for x0, y0, m in taken
+                        if x0 < hx0 + hw and y0 < hy0 + hh
+                        and x0 + m.shape[1] > hx0 and y0 + m.shape[0] > hy0],
             )
             if rc != 0:
                 return rc
@@ -238,22 +244,21 @@ def build_chunked(
                         shutil.move(os.path.join(q_bdir, fname),
                                     os.path.join(bdir, prefix + fname))
 
-            # Keep each basement with its parent building even when a site-wide
-            # installation basement extends past the quadrant's origin boundary.
-            kept_parents: set[str] = set()
+            # A part builds only the buildings centred in it, so those - with
+            # their basements, and the porch lights and escalators packed for
+            # them - are its own wherever their corner falls. Kept by corner like
+            # the rest, a house centred past the west or north seam was built and
+            # listed but never placed, and a site-wide basement lost its parent.
+            # Fences, props and the like are laid over the halo too, so only the
+            # part whose ground their corner is on keeps them.
+            own = {row["file"] for row in stitch.get("rows", ())}
+            packs = (f"{q_name}_lights_", f"{q_name}_escalators_")
             q_placements = stitch.get("placements", ())
             for p in q_placements:
                 bname = os.path.basename(p.tbx_path)
-                if bname.endswith("_bsmt.tbx"):
-                    continue
-                if ix0 <= p.tile_x < ix0 + qw and iy0 <= p.tile_y < iy0 + qh:
-                    kept_parents.add(bname[:-4])
-            for p in q_placements:
-                bname = os.path.basename(p.tbx_path)
-                is_bsmt = bname.endswith("_bsmt.tbx")
-                keep = (bname[:-len("_bsmt.tbx")] in kept_parents) if is_bsmt else (
-                    ix0 <= p.tile_x < ix0 + qw and iy0 <= p.tile_y < iy0 + qh
-                )
+                keep = (bname in own or bname.replace("_bsmt.tbx", ".tbx") in own
+                        or bname.startswith(packs)
+                        or (ix0 <= p.tile_x < ix0 + qw and iy0 <= p.tile_y < iy0 + qh))
                 if keep:
                     rel_dir = os.path.dirname(p.tbx_path)
                     new_name = prefix + bname
@@ -289,6 +294,7 @@ def build_chunked(
                 })
             for x0, y0, mask, storeys, kind in stitch.get("peopled", ()):
                 all_peopled.append((x0 + hx0, y0 + hy0, mask, storeys, kind))
+                taken.append((x0 + hx0, y0 + hy0, mask))
             for ring, kind, name in stitch.get("outlines", ()):
                 all_outlines.append(([(px + hx0, py + hy0) for px, py in ring], kind, name))
             for gf in stitch.get("gunshops", ()):
