@@ -48,63 +48,99 @@ jobs:
           python -m unittest tests.test_runtime_bootstrap tests.test_extract
           python -c "from app import app; assert app.test_client().get('/').status_code == 200"
 
-  generator:
-    name: Generator self-test
+  lint:
+    name: Lint and manifest
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: pip
-
-      # Everything but pywebview: the desktop window is not needed to
-      # generate maps, and it pulls in GUI toolkits a server does not have.
-      - name: Install dependencies
-        run: |
-          grep -v -i pywebview requirements.txt > requirements-ci.txt
-          pip install -r requirements-ci.txt
-          pip install ortools     # optional: the room solver's tests run with it
-
       - name: Python parses
         run: python -m compileall -q app.py knoxmap.py knoxmap_setup.py knoxpaths.py generator knoxbuild tools web worlded
-
-      # Mistakes, not style: an undefined name, a comparison that is always
-      # true, a statement that does nothing. pyproject.toml lists the rules
-      # selected and the next one to add.
       - name: Lint
         run: |
           pip install -r requirements-dev.txt
           ruff check .
-
-      # A line of the window is a translation key, so a message with no line in
-      # lang/english.txt can never be translated. The script only adds whole
-      # messages and never removes one; see pyproject.toml for the rule set.
       - name: Language template has every message
         run: python tools/make_lang_template.py --check
-
       - name: JavaScript parses
         run: |
           for f in static/js/*.js; do
             node -e "new Function(require('fs').readFileSync('$f', 'utf8'))" && echo "ok $f"
           done
-
-      # An update deletes by .knoxmap_files.json: a module missing from it never
-      # reaches anybody, and a line left behind makes every update try to delete
-      # a file that is not there. Both are silent until a player reports one.
       - name: The shipped file list is the release
         run: python tools/check_manifest.py
 
+  unit-tests:
+    name: Unit tests (parallel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          grep -v -i pywebview requirements.txt > requirements-ci.txt
+          pip install -r requirements-ci.txt
+          pip install ortools
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/knoxroute/target
+          key: ${{ runner.os }}-knoxroute-${{ hashFiles('rust/knoxroute/Cargo.lock', 'rust/knoxroute/src/**') }}
+          restore-keys: |
+            ${{ runner.os }}-knoxroute-
       - name: Native terrain search for Python parity checks
         run: cargo build --release --locked --manifest-path rust/knoxroute/Cargo.toml
-
       - name: Overpass rotation, cooldown and tile cache (offline)
-        run: python -m unittest discover tests
+        run: python tools/run_tests.py
 
+  selftest:
+    name: Selftest pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          grep -v -i pywebview requirements.txt > requirements-ci.txt
+          pip install -r requirements-ci.txt
       - name: Whole pipeline on a made-up town (offline)
         run: python tools/selftest.py
 
+  audit-layouts:
+    name: Floor plans audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          grep -v -i pywebview requirements.txt > requirements-ci.txt
+          pip install -r requirements-ci.txt
+          pip install ortools
       - name: Floor plans (sealed rooms, stairs, roofs, lifts)
         run: python tools/audit_layouts.py 200
+
+  generator:
+    name: Generator self-test
+    needs: [lint, unit-tests, selftest, audit-layouts]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All generator checks passed"

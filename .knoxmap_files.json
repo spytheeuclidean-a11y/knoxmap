@@ -303,6 +303,7 @@
     "tools/regression_maps.py",
     "tools/render_ground.py",
     "tools/render_lots.py",
+    "tools/run_tests.py",
     "tools/selftest.py",
     "tools/selftest_suite/__init__.py",
     "tools/selftest_suite/buildings.py",
