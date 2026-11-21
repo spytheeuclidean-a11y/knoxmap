@@ -10,6 +10,7 @@ over open ground. Exits non-zero if anything fails, so it can gate a change.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import math
 import os
 import random
@@ -85,13 +86,36 @@ def irregular_mask(w, h, rng):
     return mask
 
 
+def _audit_one(spec):
+    i, kind, w, h, mask, levels = spec
+    b = build_building(w, h, levels=levels, seed=i, kind=kind, mask=mask,
+                       commercial=kind not in (None, "apartment"))
+    found = audit(b, kind)
+    stat_delta = Counter()
+    # A basement under it, where its kind has one (the cellar of every
+    # house here, not a share of them).
+    area = sum(1 for row in b.storeys[0].grid for v in row if v)
+    t = basements.tier(kind or "house", area, 0)
+    if t is not None and t != "installation":
+        ground = np.array([[bool(v) for v in row] for row in b.storeys[0].grid])
+        bspec = basements.BasementSpec(t, kind or "house", basements.levels_for(t, area, 0, 8),
+                                       0, 0, basements._inside(ground))
+        below = basements.plan_basement(b, bspec, i, Settings())
+        if below is not None:
+            lost, rooms = basement_unreached(below)
+            stat_delta["stat:basement rooms unreached"] += lost
+            stat_delta["stat:basement rooms"] += rooms
+            stat_delta["stat:basements"] += 1
+    for k in [k for k in found if k.startswith("stat:")]:
+        stat_delta[k] += found.pop(k)
+    win_density = len(b.storeys[0].windows) / max(1, area ** 0.5)
+    return kind or "house", found, stat_delta, win_density
+
+
 def main(argv):
     count = int(argv[1]) if len(argv) > 1 else 400
     rng = random.Random(4242)
-    totals = Counter()
-    failed = Counter()
-    stats = Counter()
-    windows = []
+    specs = []
     for i in range(count):
         kind = KINDS[i % len(KINDS)]
         w, h = rng.randint(9, 40), rng.randint(9, 40)
@@ -104,33 +128,22 @@ def main(argv):
             if fp is not None:
                 w, h, mask = fp.width, fp.height, fp.mask_list()
         levels = rng.choice((1, 2, 3, 4, 5, 6, 8, 12))
-        b = build_building(w, h, levels=levels, seed=i, kind=kind, mask=mask,
-                           commercial=kind not in (None, "apartment"))
-        found = audit(b, kind)
-        # A basement under it, where its kind has one (the cellar of every
-        # house here, not a share of them).
-        area = sum(1 for row in b.storeys[0].grid for v in row if v)
-        t = basements.tier(kind or "house", area, 0)
-        if t is not None and t != "installation":
-            ground = np.array([[bool(v) for v in row] for row in b.storeys[0].grid])
-            spec = basements.BasementSpec(t, kind or "house", basements.levels_for(t, area, 0, 8),
-                                          0, 0, basements._inside(ground))
-            below = basements.plan_basement(b, spec, i, Settings())
-            if below is not None:
-                lost, rooms = basement_unreached(below)
-                stats["stat:basement rooms unreached"] += lost
-                stats["stat:basement rooms"] += rooms
-                stats["stat:basements"] += 1
-        label = kind or "house"
-        totals[label] += 1
-        for k in [k for k in found if k.startswith("stat:")]:
-            stats[k] += found.pop(k)
-        if found:
-            failed[label] += 1
-            for k, v in found.items():
-                failed["  " + k] += v
-        perim = sum(1 for row in b.storeys[0].grid for v in row if v)
-        windows.append(len(b.storeys[0].windows) / max(1, perim ** 0.5))
+        specs.append((i, kind, w, h, mask, levels))
+
+    totals = Counter()
+    failed = Counter()
+    stats = Counter()
+    windows = []
+    workers = max(1, os.cpu_count() or 4)
+    with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
+        for label, found, stat_delta, win_density in pool.map(_audit_one, specs, chunksize=8):
+            totals[label] += 1
+            stats.update(stat_delta)
+            if found:
+                failed[label] += 1
+                for k, v in found.items():
+                    failed["  " + k] += v
+            windows.append(win_density)
 
     print(f"buildings audited: {count}")
     for label in sorted(totals):
