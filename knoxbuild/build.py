@@ -1168,7 +1168,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           max_size: int | None = None, settings: Settings | None = None,
           should_stop=None, progress=None,
           _proj_override=None, _skip_chunked: bool = False,
-          _stitch_out: dict | None = None) -> int:
+          _stitch_out: dict | None = None,
+          _taken: list[tuple[int, int, np.ndarray]] | None = None) -> int:
     """Generate every building for a rendered map.
 
     The explicit seed/min_size/max_size arguments are kept so the command line
@@ -1347,6 +1348,17 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # (footprint._clear_box). Lots may not overlap: WorldEd writes each of them
     # into the same cell layers, so where two cover a square only one survives.
     lots = np.zeros((proj.height, proj.width), dtype=bool)
+    # A quadrant sub-build starts with the buildings earlier parts kept, as
+    # (x0, y0, mask) in its own tiles. Built on empty ground, a house on the
+    # seam and its neighbour from the next part took the same tiles, and the
+    # compile let the later lot's rooms replace the earlier one's walls.
+    for tx0, ty0, mask in _taken or ():
+        th, tw = mask.shape
+        cx0, cy0 = max(0, tx0), max(0, ty0)
+        cx1, cy1 = min(proj.width, tx0 + tw), min(proj.height, ty0 + th)
+        if cx1 > cx0 and cy1 > cy0:
+            occupied[cy0:cy1, cx0:cx1] |= mask[cy0 - ty0:cy1 - ty0, cx0 - tx0:cx1 - tx0]
+            lots[cy0:cy1, cx0:cx1] = True
     # Knox County roads: every building upright, and stood clear of the roads.
     road_weight = _road_weight(out_dir, map_name, proj, road_hierarchy, areas)
 

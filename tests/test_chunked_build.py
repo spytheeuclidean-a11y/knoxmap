@@ -12,6 +12,7 @@ from PIL import Image
 
 from generator.osm import OSMFeature
 from generator import renderer
+from generator.rendering.projection import Projector
 from knoxbuild import bitmaps, chunked_build, placement
 from knoxbuild.build import build
 from knoxbuild.settings import Settings
@@ -95,6 +96,62 @@ class QuadrantBuildTests(unittest.TestCase):
             # Every stitched .tbx file exists in buildings/
             for r in rows:
                 self.assertTrue(os.path.isfile(os.path.join(tmp, "buildings", r["file"])))
+
+    def _seam_town(self, tmp, spans):
+        """A 4x4-cell map built in four parts, with a 16-tile-deep house over
+        each (x0, x1) given relative to the seam between parts 0 and 1.
+        Returns the placements CSV rows and the .pzw text."""
+        south, west = 40.0, 20.0
+        dlat = 1050 / 111320.0
+        dlon = 1050 / (111320.0 * np.cos(np.radians(south)))
+        feats = [OSMFeature(1, "way", {"highway": "residential"},
+                            [(south + 0.5 * dlat, west + 0.05 * dlon),
+                             (south + 0.5 * dlat, west + 0.95 * dlon)])]
+        proj = Projector.build(south, west, south + dlat, west + dlon, 1.0)
+        seam = chunked_build._quadrant_boxes(4, 4, proj.width, proj.height)[2][1][1]
+        road_y = proj.to_px(south + 0.5 * dlat, west)[1]
+        for idx, (x0, x1) in enumerate(spans, 2):
+            x0, x1, y0, y1 = seam + x0, seam + x1, road_y - 30, road_y - 14
+            ring = [proj.to_latlon(x, y) for x, y in
+                    [(x0, y0), (x1, y0), (x1, y1), (x0, y1), (x0, y0)]]
+            feats.append(OSMFeature(idx, "way", {"building": "house"}, ring))
+        renderer.render(feats, south, west, south + dlat, west + dlon,
+                        meters_per_tile=1.0, output_dir=tmp, map_name="qmap")
+        placement.save(tmp, (0, 0), standalone_flag=True)
+        with mock.patch.object(chunked_build, "BUILD_CHUNK_MIN_CELLS", 4):
+            rc = build(tmp, settings=Settings.from_dict({"preset": "town", "seed": 42}))
+        self.assertEqual(rc, 0)
+        with open(os.path.join(tmp, "qmap_placements.csv"), newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        with open(os.path.join(tmp, "qmap.pzw"), encoding="utf-8") as f:
+            return rows, f.read()
+
+    def test_houses_either_side_of_a_seam_do_not_share_tiles(self):
+        # Each part used to be built with its own empty `occupied`, so a house
+        # whose lot ran over the seam and the neighbour's house just past it
+        # both claimed the same tiles. The compile then let the later lot's
+        # rooms replace the earlier one's wall squares: a building with a wall
+        # missing where it touched its neighbour. Each house is centred on its
+        # own side of the seam, so each part builds one of them.
+        with tempfile.TemporaryDirectory() as tmp:
+            rows, _pzw = self._seam_town(tmp, [(-14, 6), (0, 20)])
+            self.assertEqual(len(rows), 2)
+            a, b = ((int(r["tile_x"]), int(r["tile_y"]), int(r["width"]), int(r["height"]))
+                    for r in rows)
+            overlap_x = min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0])
+            overlap_y = min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1])
+            self.assertFalse(overlap_x > 0 and overlap_y > 0, f"lots overlap: {a} {b}")
+
+    def test_house_centred_past_a_seam_with_its_corner_before_it_is_kept(self):
+        # Part 1 builds this house (its centre is past the seam), but its lot's
+        # corner is in part 1's halo, west of the seam. Placements were kept by
+        # their corner, so the house was built, listed in the CSV - and never
+        # put on the map.
+        with tempfile.TemporaryDirectory() as tmp:
+            rows, pzw = self._seam_town(tmp, [(-8, 14)])
+            self.assertEqual(len(rows), 1)
+            self.assertIn(rows[0]["file"], pzw)
+            self.assertTrue(os.path.isfile(os.path.join(tmp, "buildings", rows[0]["file"])))
 
     def test_stitched_placements_preserve_levels_and_negative_base_level(self):
         from knoxbuild.world import Placement, render_pzw
