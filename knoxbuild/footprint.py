@@ -492,6 +492,80 @@ def _prepare_mask(
             point_origin, point_rotation), "ok"
 
 
+# What is left of a footprint after the roads, the neighbours and the lots have
+# each taken their share. A building cut in half by a road or a party wall has
+# no outside to put a wall round: the walls follow the mask, and a mask in
+# scraps, or a sliver, is a wall of corners and holes. One that keeps less than
+# this share of what it was drawn as is refused ("cut") rather than built.
+KEEP_SHARE_MIN = 0.55
+# ...and one whose remaining shape fills less than this share of its convex hull
+# (a crescent, a comb, a dumbbell) is refused the same way.
+SOLIDITY_MIN = 0.65
+SPUR_PASSES = 2
+
+
+def _largest_piece(mask: np.ndarray) -> np.ndarray:
+    """The biggest 4-connected piece of `mask`."""
+    h, w = mask.shape
+    seen = np.zeros((h, w), dtype=bool)
+    best: list[tuple[int, int]] = []
+    for sy, sx in zip(*np.nonzero(mask)):
+        if seen[sy, sx]:
+            continue
+        seen[sy, sx] = True
+        piece, todo = [], [(int(sy), int(sx))]
+        while todo:
+            y, x = todo.pop()
+            piece.append((y, x))
+            for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    todo.append((ny, nx))
+        if len(piece) > len(best):
+            best = piece
+    out = np.zeros_like(mask)
+    if best:
+        ys, xs = zip(*best)
+        out[list(ys), list(xs)] = True
+    return out
+
+
+def _solidity(mask: np.ndarray) -> float:
+    """Tiles of `mask` over the area of its convex hull, 1.0 for a rectangle."""
+    from shapely.geometry import MultiPoint
+    ys, xs = np.nonzero(mask)
+    corners = [(float(x + dx), float(y + dy)) for x, y in zip(xs, ys) for dx in (0, 1) for dy in (0, 1)]
+    hull = MultiPoint(corners).convex_hull.area
+    return float(mask.sum()) / hull if hull else 1.0
+
+
+def _settle(mask: np.ndarray, x0: int, y0: int,
+            intended: int) -> tuple[np.ndarray | None, int, int, str]:
+    """A footprint as it will be built, or why not: its spurs trimmed, only its
+    biggest piece kept, and refused ("cut") if what is left is a scrap of what
+    it was drawn as or a shape no building has. `intended` is its tiles before
+    anything cut into it."""
+    if mask.all():
+        return mask, x0, y0, "ok"
+    floor = max(MIN_TILES, intended * KEEP_SHARE_MIN)
+    if mask.sum() < floor:
+        return None, x0, y0, "cut"
+    m = mask.copy()
+    for _ in range(SPUR_PASSES):
+        padded = np.pad(m, 1)
+        near = (padded[:-2, 1:-1].astype(np.uint8) + padded[2:, 1:-1]
+                + padded[1:-1, :-2] + padded[1:-1, 2:])
+        spurs = m & (near <= 1)
+        if not spurs.any():
+            break
+        m &= ~spurs
+    m = _largest_piece(m)
+    if m.sum() < floor or _solidity(m) < SOLIDITY_MIN:
+        return None, x0, y0, "cut"
+    m, x0, y0 = _hug(m, x0, y0)
+    return m, x0, y0, "ok"
+
+
 def place(px: list[tuple[float, float]], occupied: np.ndarray,
           min_side: float = 0, max_side: float = 1e9,
           snap_degrees: float = SNAP_DEGREES,
@@ -522,6 +596,7 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
      point_origin, point_rotation) = prep
     if full_rect:
         mask = np.ones((h, w), dtype=bool)
+    intended = int(mask.sum())
 
     before_nudge = (x0, y0)
     if avoid is not None:
@@ -563,9 +638,15 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
             if mask.sum() < MIN_TILES or min(mask.shape) < max(3, min_side):
                 return None, "taken"
 
+    # The tiles are taken before the shape is judged, as the compiled placer
+    # takes them (FootprintSession.place), so both leave the same ground to
+    # the buildings after.
     occupied[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] |= mask
     if lots is not None:
         lots[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] = True
+    mask, fx0, fy0, why = _settle(mask, fx0, fy0, intended)
+    if mask is None:
+        return None, why
     return Footprint(fx0, fy0, mask, angle, short_side, long_side,
                      point_origin, point_rotation, point_offset), "ok"
 
@@ -786,8 +867,13 @@ class FootprintSession:
                          snap_degrees=snap_degrees, avoid=self._avoid,
                          lots=self._lots, alignment=alignment)
 
+        # The compiled placer has already taken these tiles for good, so they
+        # stay taken here too, whatever is made of the footprint.
         self._occupied[fy0:fy0 + fh, fx0:fx0 + fw] |= out_mask
         if self._lots is not None:
             self._lots[fy0:fy0 + fh, fx0:fx0 + fw] = True
+        out_mask, fx0, fy0, why = _settle(out_mask, fx0, fy0, w * h if full_rect else int(mask.sum()))
+        if out_mask is None:
+            return None, why
         return Footprint(fx0, fy0, out_mask, angle, short_side, long_side,
                          point_origin, point_rotation, (ox, oy)), "ok"

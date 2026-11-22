@@ -111,7 +111,8 @@ def dress_works(rows: list[dict], door_lists: dict, cv, drives: list | None, rng
         wall = [(x, y) for x, y in yard if ring(x, y) == 1]
         cx, cy = x0 + bw / 2, y0 + bh / 2
         wall.sort(key=lambda p: math.atan2(p[1] - cy, p[0] - cx))
-        _dumpster(wall, x0, y0, bw, bh, doors, can, stand, rng)
+        _dumpster(wall, x0, y0, bw, bh, doors, can, stand, rng,
+                  lambda x, y: 0 <= x < w and 0 <= y < cv.h and bool(cv.occupied_at[y * w + x]))
         i = rng.randrange(CLUTTER_EVERY)
         while i < len(wall):
             colour, (lo, hi) = rng.choice(CLUTTER)
@@ -211,23 +212,37 @@ def _drive(yard: set, cv, door: tuple[int, int]) -> list:
     return out
 
 
-def _dumpster(wall, x0, y0, bw, bh, doors, can, stand, rng) -> bool:
-    """One dumpster against the wall, as near a door as it can stand without
-    being in the way of one."""
+def _dumpster(wall, x0, y0, bw, bh, doors, can, stand, rng, occ=None) -> bool:
+    """One dumpster against the south or east wall, as near a door as it can
+    stand without being in the way of one.
+
+    It is two tiles long and stands as tall as a window sill, so it has to be
+    wholly against this building's own wall - not on a corner, where it hangs
+    past the wall into the next building's - and clear of any other building
+    at either end or in the two tiles before it. `occ(x, y)` says whether a
+    building stands on a tile; without it only the yard's own limits apply.
+    """
     near = [(x0 + ox, y0 + oy) for ox, oy, _ix, _iy in doors] or [(x0, y0)]
+    occ = occ or (lambda _x, _y: False)
     spots = []
     on_wall = set(wall)
     for x, y in wall:
-        if (x + 1, y) in on_wall and (y == y0 - 1 or y == y0 + bh):
-            spots.append(((x, y), (x + 1, y), "S"))
-        if (x, y + 1) in on_wall and (x == x0 - 1 or x == x0 + bw):
-            spots.append(((x, y), (x, y + 1), "E"))
+        # Only the south and east walls, and both tiles inside the wall's length.
+        if y == y0 + bh and x0 <= x and x + 1 <= x0 + bw - 1 and (x + 1, y) in on_wall:
+            spots.append(((x, y), (x + 1, y), "S", (1, 0), (0, 1)))
+        if x == x0 + bw and y0 <= y and y + 1 <= y0 + bh - 1 and (x, y + 1) in on_wall:
+            spots.append(((x, y), (x, y + 1), "E", (0, 1), (1, 0)))
     spots.sort(key=lambda s: min(abs(s[0][0] - a) + abs(s[0][1] - b) for a, b in near))
     colours = rng.choice(DUMPSTERS)
-    for a, b, facing in spots:
-        if can(*a) and can(*b):
-            first, second = colours[facing]
-            stand(*a, first)
-            stand(*b, second)
-            return True
+    for a, b, facing, along, out in spots:
+        if not (can(*a) and can(*b)):
+            continue
+        probes = [(a[0] - along[0], a[1] - along[1]), (b[0] + along[0], b[1] + along[1])]
+        probes += [(t[0] + out[0] * k, t[1] + out[1] * k) for t in (a, b) for k in (1, 2)]
+        if any(occ(*p) for p in probes):
+            continue
+        first, second = colours[facing]
+        stand(*a, first)
+        stand(*b, second)
+        return True
     return False

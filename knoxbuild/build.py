@@ -1295,7 +1295,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     placements: list[Placement] = []
     rows = []
     skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0, "road": 0,
-               "not a building": 0}
+               "cut": 0, "not a building": 0}
     # And which footprint each of those was. The counts say how many were left
     # out; somebody looking at the hole where their house should be needs to
     # know which building it was and why, and the counts cannot tell them.
@@ -2249,6 +2249,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"  outside the map     : {skipped['outside']}")
     print(f"  swallowed by others : {skipped['taken']}")
     print(f"  on the road         : {skipped['road']} (more than {round(100 * footprint.ROAD_SHARE_MAX)}% road)")
+    print(f"  cut to scraps       : {skipped['cut']} (roads or neighbours left under {round(100 * footprint.KEEP_SHARE_MIN)}%)")
     print(f"  not buildings       : {skipped['not a building']} (roofs, ruins, tanks)")
     import collections as _c
     kinds = _c.Counter(r["kind"] for r in rows)
