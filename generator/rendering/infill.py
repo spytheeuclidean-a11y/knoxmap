@@ -35,7 +35,7 @@ from .buildings import ADDRESS_AVOIDS_ROADS
 from .geometry import _feature_coords_px, _is_polygon
 from .landcover import WATERWAY_WIDTH_M
 from .projection import Projector
-from .widths import _sidewalk_width_m, _way_width_m
+from .widths import _sidewalk_width_m, _way_width_m, road_width_tiles
 
 # Streets that get frontage looked at. Service lanes and drives do not: a
 # building beside one is a shed or a back door, not a street front.
@@ -305,6 +305,47 @@ def _neighbour_gap(left, right) -> float:
     return min(max(statistics.median(gaps), SIDE_GAP_M), 14.0)
 
 
+SNAP_DEGREES = 8.0         # a lot this near the tile axes is turned square to them
+MIN_SIDE_TILES = 4         # the build refuses a building with less than this
+                           # on its short side: a 3x4 shed has nowhere for a door
+MIN_AREA_TILES = 16        # and one of fewer tiles (footprint.MIN_TILES)
+
+
+def _squared(corners, k):
+    """A lot laid out along a street, as a rectangle on the tile axes.
+
+    Roads are on the game's lattice, so a street runs at a multiple of 45
+    degrees, and a lot at 45 degrees is drawn as a staircase: its walls are
+    steps and its exterior is all corners. A lot within SNAP_DEGREES of an axis
+    is turned square to it about its middle. A lot further off is replaced by
+    the biggest rectangle on the axes that fits inside it, which gives up some
+    of its ground to keep a straight wall. None when what is left is smaller
+    than a building the build would accept (MIN_SIDE_TILES, MIN_AREA_TILES).
+    """
+    import math
+
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = corners
+    cx, cy = (x0 + x2) / 2, (y0 + y2) / 2
+    w = math.hypot(x1 - x0, y1 - y0)
+    d = math.hypot(x3 - x0, y3 - y0)
+    heading = math.atan2(y1 - y0, x1 - x0)
+    angle = heading % (math.pi / 2)
+    dev = min(angle, math.pi / 2 - angle)
+    # half the lot's extent along the x axis, and along y: its width lies along
+    # whichever it is nearer
+    near_x = abs(math.cos(heading)) >= abs(math.sin(heading))
+    p, q = (w / 2, d / 2) if near_x else (d / 2, w / 2)
+    if math.degrees(dev) <= SNAP_DEGREES:
+        a, b = p, q
+    else:
+        c, sn = math.cos(dev), math.sin(dev)
+        t = min(p / (p * c + q * sn), q / (p * sn + q * c))
+        a, b = p * t, q * t
+    if min(a, b) * 2 < MIN_SIDE_TILES * k or 4 * a * b < MIN_AREA_TILES * k * k:
+        return None
+    return [(cx - a, cy - b), (cx + a, cy - b), (cx + a, cy + b), (cx - a, cy + b)]
+
+
 def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
                   lo=None, hi=None, extend_ends=True):
     """Footprints (as lists of four metre corners) for the free frontage
@@ -459,7 +500,10 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
         for f in buckets.get(cat, []):
             if _is_polygon(f):
                 continue
-            half = _way_width_m(f, cat) / 2 + _sidewalk_width_m(f, cat)
+            # As wide as the road is drawn, which is never under the game's own
+            # minimum (road_width_tiles), not as wide as the street really is:
+            # a lot that cleared the real road stood on the tiles of the drawn one.
+            half = road_width_tiles(f, cat, k, extra_m=_sidewalk_width_m(f, cat)) * k / 2
             for ring in _feature_coords_px(f, proj):
                 if len(ring) < 2:
                     continue
@@ -552,6 +596,9 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                     continue
                 lots, kind, levels = got
                 for corners in lots:
+                    corners = _squared(corners, k)
+                    if corners is None:
+                        continue
                     poly = Polygon(corners)
                     if not poly.is_valid or poly.is_empty:
                         continue
