@@ -2439,6 +2439,34 @@ document.getElementById('deleteMapSideBtn')?.addEventListener('click', () => {
   if (name) deleteMap(name);
 });
 
+// What the street infill made and why it left the rest of the gaps empty. The
+// reasons come from the generator (generator/rendering/infill.py), already in
+// words, as "gap: ..." for a stretch of street and "lot: ..." for one building;
+// a new reason needs nothing here. Folded away, because most maps never need it.
+const INFILL_KEPT = {
+  'lot: made': 'made',
+  'lot: trimmed to fit': 'of them trimmed to fit a corner or a neighbour',
+  'lot: outline copied from a neighbour': 'of them shaped like the houses beside them',
+};
+function infillReportHtml(report) {
+  const rows = Object.entries(report || {});
+  if (!rows.length) return '';
+  const count = key => (report[key] || 0);
+  const list = prefix => rows
+    .filter(([k]) => k.startsWith(prefix) && !(k in INFILL_KEPT))
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, n]) => `<li>${n} ${escapeHtml(k.slice(prefix.length))}</li>`).join('');
+  const gaps = list('gap: '), lots = list('lot: ');
+  const kept = Object.keys(INFILL_KEPT).filter(k => count(k))
+    .map(k => `<li>${count(k)} ${INFILL_KEPT[k]}</li>`).join('');
+  return `<details class="infill-report left-out">
+      <summary>Street infill: ${count('lot: made')} made, what was left</summary>
+      ${kept ? `<ul>${kept}</ul>` : ''}
+      ${gaps ? `<div class="left-out-head">Stretches of street left empty</div><ul>${gaps}</ul>` : ''}
+      ${lots ? `<div class="left-out-head">Lots given up</div><ul>${lots}</ul>` : ''}
+    </details>`;
+}
+
 function renderResults(data) {
   const section = document.getElementById('results');
   section.hidden = false;
@@ -2455,6 +2483,7 @@ function renderResults(data) {
       ${data.fromStreetInfill ? fx.tile(data.fromStreetInfill, '', 'street infill') : ''}
     </div>`;
   fx.countUp(info);
+  info.insertAdjacentHTML('beforeend', infillReportHtml(data.streetInfillReport));
 
   // One click gets the lot; the individual files stay available but folded away.
   const all = document.getElementById('downloadAll');
