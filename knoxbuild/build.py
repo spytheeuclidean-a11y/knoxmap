@@ -73,6 +73,17 @@ SHED_VALUES = {
 # stay houses. Real square metres, so a map drawn at 4 m a tile does not turn
 # its houses into sheds.
 SHED_MAX_M2 = 30
+# A footprint with both sides this many tiles or fewer gets one room from the
+# layout, however it is tagged: a house of it would be a living room and
+# nothing else, no bedroom, bathroom or kitchen. Checked against the layout in
+# tests/test_small_houses_are_sheds.py. Tiles, not metres: it is the room
+# generator's limit, and it is in tiles.
+SHED_HOUSE_SIDE_TILES = 6
+
+
+def too_small_for_rooms(width: int, height: int) -> bool:
+    """Whether a footprint this many tiles across is one room, not a house."""
+    return max(width, height) <= SHED_HOUSE_SIDE_TILES
 HOUSE_TAGS = ("house", "detached", "bungalow", "semidetached_house", "cabin")
 # An untagged building among tagged blocks of flats is taken for one when it
 # is at least this big, in square metres; smaller ones are the shops and
@@ -1618,6 +1629,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               special = "shop"           # flats over it, below, if it is tall
           if special is None and (btag in SHED_VALUES or (
                   btag in ("", "yes") and real_m2 <= SHED_MAX_M2)):
+              special = "shed"
+              sheds += 1
+          elif special in (None, "house") and too_small_for_rooms(w, h):
+              # Tagged a house, or drawn as one by the infill, but with no room for
+              # one: an outbuilding in the yard, not a one-room home.
               special = "shed"
               sheds += 1
           nearby = (context.neighbour_levels(cx, cy)
