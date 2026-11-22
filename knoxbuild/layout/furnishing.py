@@ -2124,6 +2124,14 @@ def _furnish(plan: Plan, rng: random.Random,
                           keeps_open=keeps_open)
         _pair_up(plan, idx, occupied, no_go, keeps_open)
         _stand_on_something(plan, idx, r, pal)
+        if (r.kind == "storage" and plan.kind in ("house", None)
+                and not any(_blocks(role) for role, *_ in plan.furniture[start:])):
+            # A box room with a door at each end is a way through, and the
+            # walkway and its sleeve took all of it. Shelves down the sides
+            # that leave the way through are better than a bare floor.
+            _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
+                             stair_tiles, door_edges, stairs, rng,
+                             pieces=STORE_PIECES, most=STORE_MAX_PIECES)
         plan.sleeve |= sleeve
         if not r.is_core:
             interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
@@ -2768,12 +2776,18 @@ HALL_PIECES = ("bookshelf", "dresser", "coat_rack", "shelf", "dresser_alt", "pla
                "chair", "shelf_1")
 HALL_PIECE_EVERY = 5     # tiles of hall floor per piece, at most 8 in a hall
 HALL_MAX_PIECES = 8
+# What a house's box room gets when it is a way through and nothing else fits.
+STORE_PIECES = ("shelf", "shelf_1", "shelf_2", "dresser")
+STORE_MAX_PIECES = 2
 
 
 def _furnish_hallway(plan: Plan, idx: int, room_cells: set, slots: list,
                      on_facade, door_tiles: set, stair_tiles: set,
-                     door_edges: set, stairs, rng: random.Random) -> int:
+                     door_edges: set, stairs, rng: random.Random,
+                     pieces: tuple | None = None, most: int | None = None) -> int:
     """Furniture down both sides of a hall, leaving a way through.
+    `pieces` and `most` stand in for HALL_PIECES and HALL_MAX_PIECES, for a
+    box room that is walked through the same way.
 
     Every door of the hall and the foot and head of the stairs must still be
     reachable from one another over bare floor, and the tile in front of
@@ -2803,8 +2817,8 @@ def _furnish_hallway(plan: Plan, idx: int, room_cells: set, slots: list,
                     todo.append((nx, ny))
         return all(w in seen for w in ways)
 
-    roles = [r for r in HALL_PIECES if r in C.FURNITURE]
-    want = min(HALL_MAX_PIECES, max(2, len(room_cells) // HALL_PIECE_EVERY))
+    roles = [r for r in (pieces or HALL_PIECES) if r in C.FURNITURE]
+    want = most or min(HALL_MAX_PIECES, max(2, len(room_cells) // HALL_PIECE_EVERY))
     # Inside walls, not the facade, where the windows go; alternating sides.
     inside = [sl for sl in slots if not on_facade(sl)]
     rng.shuffle(inside)
