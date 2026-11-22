@@ -384,6 +384,14 @@ def _squared(corners, k):
     return [(cx - a, cy - b), (cx + a, cy - b), (cx + a, cy + b), (cx - a, cy + b)]
 
 
+def _note(report, reason):
+    """Count `reason` in `report` (a Counter, or None for no report) and return
+    [] so a drop point can say why and give up in one line."""
+    if report is not None:
+        report[reason] += 1
+    return []
+
+
 TRIM_STEPS = (0.15, 0.3, 0.45)   # of a side, taken off a lot that would not clear
 
 
@@ -438,21 +446,21 @@ def _shaped(box, t, n, template, k):
 
 
 def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
-                  lo=None, hi=None, extend_ends=True):
+                  lo=None, hi=None, extend_ends=True, report=None):
     """Footprints (as lists of four metre corners) for the free frontage
     between stations i0 and i1, built like the buildings beside it.
 
     `joined` says the row beside it stands wall to wall; `lo` and `hi` are
     the side walls of the buildings at either end, along the street, where
-    there are any."""
+    there are any. `report`, a Counter, is told why a gap or a lot was not filled."""
     near = left + right
     # One side only is a row carried on, and a row is two buildings at least;
     # a lone house in the country does not found a street.
     if not near or (not (left and right) and (not extend_ends or len(near) < 2)):
-        return []
+        return _note(report, "gap: only one building beside it, so not a row")
     kinds = {n["kind"] for n in near}
     if not kinds <= FILL_KINDS:
-        return []
+        return _note(report, "gap: beside a church, school, garage or the like")
     width = statistics.median(n["width"] for n in near)
     depth = statistics.median(n["depth"] for n in near)
     setback = statistics.median(n["setback"] for n in near)
@@ -466,10 +474,10 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     limit = min(MAX_GAP_BOTH_M, max(40.0, 10 * width)) if both else \
         min(MAX_GAP_ONE_M, max(20.0, 2.5 * width))
     if length < MIN_LOT_M:
-        return []
+        return _note(report, "gap: too short for a building")
     if length > limit:
         if not extend_ends:
-            return []
+            return _note(report, "gap: too long to fill (row ends are not extended)")
         # Too long to fill whole: carry the row on from each neighbour as far
         # as a row is carried (half the limit from each end when both stand),
         # and leave the middle as it is.
@@ -480,11 +488,11 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
             if part is None or reach < 1:
                 continue
             got = _lots_for_gap(scan, part[0], part[1], part[2], part[3],
-                                hard_free, joined, part[4], part[5], extend_ends)
+                                hard_free, joined, part[4], part[5], extend_ends, report)
             if got:
                 done.append(got)
         if not done:
-            return []
+            return _note(report, "gap: too long to fill, and nothing fits at its ends")
         return ([lot for g in done for lot in g[0]], done[0][1], done[0][2])
 
     # The pavement edge of the gap; ends against a neighbour keep a garden's
@@ -504,13 +512,13 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     end = edge1 - inset_r
     span = end - start
     if span < MIN_LOT_M:
-        return []
+        return _note(report, "gap: no room between the buildings beside it")
 
     target = min(max(width, 6.0), MAX_LOT_M)
     # Room for a building about as wide as its neighbours or it is a yard, not
     # a gap: the garden between two houses is not a house that was not drawn.
     if span < 0.7 * target:
-        return []
+        return _note(report, "gap: a yard between two houses, not a missing house")
     n = max(1, int(round((span + gap) / (target + gap))))
     n = min(n, MAX_PER_GAP)
     while n > 1 and (span - (n - 1) * gap) / n < MIN_LOT_M:
@@ -519,7 +527,7 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
         n += 1
     bw = (span - (n - 1) * gap) / n
     if bw < MIN_LOT_M:
-        return []
+        return _note(report, "gap: lots would be too narrow")
 
     out = []
     for k in range(n):
@@ -542,6 +550,7 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
                     room - lot_setback - REAR_CLEAR_M)
             lot_shift = (bw - lot_w) * rng.uniform(-0.4, 0.4)
         if d < MIN_DEPTH_M:
+            _note(report, "lot: too shallow, a road, water or building close behind")
             continue
         mid = min(max(int(((a + b) / 2) // STEP_M), i0), i1)
         tx, ty = scan["tx"][mid], scan["ty"][mid]
@@ -634,8 +643,13 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
 
 def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list,
                      proj: Projector, clip=None,
-                     extend_ends: bool = True) -> list[OSMFeature]:
-    """New buildings for the gaps along streets. See the module docstring."""
+                     extend_ends: bool = True,
+                     report: Counter | None = None) -> list[OSMFeature]:
+    """New buildings for the gaps along streets. See the module docstring.
+
+    `report` is filled with why gaps and lots were left empty ("gap: ...",
+    "lot: ...") and how many were made, trimmed and shaped, so a hole that is
+    still there can be explained."""
     from shapely.geometry import Polygon
 
     from .projection import _inside
@@ -686,51 +700,61 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                 run = (i, j)
                 i = j + 1
                 if not (left or right):
+                    _note(report, "gap: no building on either side")
                     continue
                 got = _lots_for_gap(scan, run[0], run[1], left, right, free,
-                                    joined_l or joined_r, lo, hi, extend_ends)
+                                    joined_l or joined_r, lo, hi, extend_ends, report)
                 if not got:
                     continue
                 lots, kind, levels = got
                 def clear(cand):
-                    """The polygon of `cand` if it stands on free ground."""
+                    """(the polygon of `cand`, None) if it stands on free ground,
+                    else (None, why not)."""
                     poly = Polygon(cand)
                     if not poly.is_valid or poly.is_empty:
-                        return None
+                        return None, "lot: not a valid shape"
                     x0, y0, x1, y1 = poly.bounds
                     if x0 < 0 or y0 < 0 or x1 > width_m or y1 > height_m:
-                        return None
+                        return None, "lot: off the edge of the map"
                     core = poly.buffer(-0.4)
                     if core.is_empty:
-                        return None
+                        return None, "lot: not a valid shape"
                     if b_tree.query(core, predicate="intersects").size:
-                        return None
+                        return None, "lot: would stand on a building"
                     if hard_tree is not None and hard_tree.query(core, predicate="intersects").size:
-                        return None
+                        return None, "lot: would stand on a road, water, a park or a wood"
                     if any(core.intersects(p) for p in grid.near(poly)):
-                        return None
-                    return poly
+                        return None, "lot: would stand on another new building"
+                    return poly, None
 
                 for lot in lots:
                     box = _squared(lot, k)
                     if box is None:
+                        _note(report, "lot: too small to build once squared to the tile grid")
                         continue
                     # As drawn if it clears; else the biggest of its trims that
                     # does, which carries the row up to a corner, a neighbour
                     # or the side street.
                     poly = corners = None
-                    for cand in [box] + _trimmed(box, k):
-                        poly = clear(cand)
+                    first_why = None
+                    for n_cand, cand in enumerate([box] + _trimmed(box, k)):
+                        poly, why = clear(cand)
+                        if n_cand == 0:
+                            first_why = why
                         if poly is not None:
                             corners = cand
+                            if n_cand:
+                                _note(report, "lot: trimmed to fit")
                             break
                     if corners is None:
+                        _note(report, first_why)
                         continue
                     if lot.template and lot.t:
                         copy = _shaped(corners, lot.t, lot.n, lot.template, k)
                         # only ever less ground than the box it was cut from
                         if copy is not None and Polygon(copy).within(poly.buffer(1e-6)):
                             corners, poly = copy, Polygon(copy)
+                            _note(report, "lot: outline copied from a neighbour")
                     tags = {"building": kind}
                     if levels:
                         tags["building:levels"] = levels
@@ -739,11 +763,27 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                         geometry=[proj.to_latlon(x / k, y / k)
                                   for x, y in corners + [corners[0]]])
                     if clip is not None and not _inside(feat, proj, clip):
+                        _note(report, "lot: outside the area being made")
                         continue
                     grid.add(poly)
                     made.append(feat)
+                    _note(report, "lot: made")
                     ident -= 1
     return made
+
+
+def _report_lines(report: Counter) -> list[str]:
+    """A report as lines for a log: the makings first, then the reasons, most
+    common first."""
+    if not report:
+        return []
+    made = [(r, n) for r, n in report.items() if r in KEPT]
+    left = sorted(((r, n) for r, n in report.items() if r not in KEPT), key=lambda rn: -rn[1])
+    return [f"  {n:>6}  {r}" for r, n in made + left]
+
+
+# What a report counts that did not leave something out.
+KEPT = {"lot: made", "lot: trimmed to fit", "lot: outline copied from a neighbour"}
 
 
 # Buildings that came from a footprint file (Microsoft, Overture) are drawn by a
