@@ -8,7 +8,8 @@ import random
 
 from typing import TYPE_CHECKING
 from .core import COMMERCIAL, COMMERCIAL_FILL, MAX_DEPTH, MIN_ROOM, Plan, RETAIL_ROOMS, Room, SPECIAL_MIXES, STAIR_RUN, _inside, _mapped_rooms, _split
-from .openings import _back_door, _doors, _exterior_door, _more_ways_in, _outside_runs, _room_at, _widen_vehicle_entry
+from .openings import (_attach_garage, _back_door, _doors, _exterior_door, _more_ways_in, _outside_runs,
+                       _room_at, _widen_vehicle_entry)
 from .malls import _atrium_railings, _clear_concourse, _mall_doors, _mall_plan_fits, _mall_rooms, _merge_concourse, _merge_halls, _open_shopfronts, _place_kiosks, _renumber
 from .dwellings import FLAT_FRONTAGE, HOTEL_FRONTAGE, _apartment_rooms, _assign_flat_kinds, _flats_keep_bathrooms, _paint, _stagger_flats, _unit_touches_corridor
 from . import houses as _houses
@@ -682,6 +683,13 @@ def build_plan(width: int, height: int, commercial: bool = False,
             _t_hangar_bay_doors(plan, street)
         else:
             _widen_vehicle_entry(plan, street)
+    elif ground and kind in (None, "house"):
+        flight = set()
+        if stairs is not None:
+            sx, sy, sd = stairs
+            sdx, sdy = (0, 1) if sd == "N" else (1, 0)
+            flight = {(sx + sdx * i, sy + sdy * i) for i in range(STAIR_RUN)}
+        _attach_garage(plan, seed, street, flight)
     _furnish(plan, rng, stairs, street, is_ground=ground)
     if mix_kind == "mall":
         _clear_concourse(plan)
