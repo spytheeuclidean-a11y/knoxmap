@@ -241,12 +241,20 @@ def render_chunked(
     sheds_infilled = 0
     if not terrain_only:
         from .rendering.buildings import _houses_from_addresses
-        from .rendering.infill import _back_sheds, _infill_frontage
+        from .rendering.infill import _back_sheds, _drop_on_roads, _infill_frontage
 
         buckets_g, b_feats_g, *_ = R._collect_global_features(
             feats, full_proj, clip, include_proposed_roads
         )
         veg_g = buckets_g.get("vegetation", [])
+        # Footprint-file buildings that stand across a road, now that the roads
+        # are where the game will have them (infill._drop_on_roads).
+        b_feats_g, dropped = _drop_on_roads(buckets_g, b_feats_g, full_proj)
+        if dropped:
+            keep = {id(f) for f in b_feats_g}
+            buckets_g["building"] = [f for f in buckets_g.get("building", []) if id(f) in keep]
+            feats[:] = [f for f in feats if f.osm_id is None or not isinstance(f.osm_id, int)
+                        or not (-2 * 10**9 < f.osm_id < 0) or id(f) in keep]
         addressed = _houses_from_addresses(feats, b_feats_g, full_proj)
         if addressed:
             houses_from_addresses = len(addressed)

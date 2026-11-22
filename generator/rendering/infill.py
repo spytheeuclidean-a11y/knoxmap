@@ -582,6 +582,59 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
     return made
 
 
+# Buildings that came from a footprint file (Microsoft, Overture) are drawn by a
+# machine that knows nothing of the roads, and the roads have since been moved
+# onto the game's 45-degree lattice, so some stand right across one. The build
+# moves a footprint off the road where it can (footprint._clear_of) and refuses
+# one that is still more than ROAD_SHARE_MAX road; here the ones that cannot be
+# moved out are dropped up front, while the roads are still lines with a width.
+GAP_FILL_IDS = (-2 * 10**9, 0)     # Overture's and Microsoft's, not the infill's
+ROAD_DROP_SHARE = 0.5              # of its own area on a carriageway
+
+
+def _drop_on_roads(buckets: dict, building_feats: list, proj: Projector
+                   ) -> tuple[list, int]:
+    """`building_feats` without the footprint-file buildings that are mostly on
+    a carriageway, and how many were dropped."""
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+    from shapely.strtree import STRtree
+
+    k = proj.meters_per_tile
+    lo, hi = GAP_FILL_IDS
+    candidates = [f for f in building_feats
+                  if isinstance(f.osm_id, int) and lo < f.osm_id < hi]
+    if not candidates:
+        return building_feats, 0
+    roads = []
+    for cat in ADDRESS_AVOIDS_ROADS:
+        for f in buckets.get(cat, []):
+            if _is_polygon(f):
+                continue
+            half = _way_width_m(f, cat) / 2
+            for ring in _feature_coords_px(f, proj):
+                if len(ring) >= 2:
+                    line = LineString([(x * k, y * k) for x, y in ring])
+                    if line.length >= 0.5:
+                        roads.append(line.buffer(half, cap_style="flat"))
+    if not roads:
+        return building_feats, 0
+    tree = STRtree(roads)
+    gone: set[int] = set()
+    for f in candidates:
+        for poly in _polys(f, proj, k):
+            hits = tree.query(poly, predicate="intersects")
+            if not hits.size:
+                continue
+            on_road = poly.intersection(unary_union([roads[i] for i in hits])).area
+            if on_road > ROAD_DROP_SHARE * poly.area:
+                gone.add(id(f))
+                break
+    if not gone:
+        return building_feats, 0
+    return [f for f in building_feats if id(f) not in gone], len(gone)
+
+
 # Sheds and garages behind the houses along a street: what a yard has in it.
 SHED_HOUSE_KINDS = {"house", "detached", "semidetached_house", "residential", "yes"}
 SHED_HOUSE_M2 = (70.0, 300.0)   # smaller is a shed already, bigger is not a house

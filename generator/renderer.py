@@ -41,7 +41,7 @@ from .rendering.buildings import (ADDRESS_APART_M, ADDRESS_AVOIDS_ROADS,
                                   BUILDING_TAGS, MAX_ADDRESS_HOUSES,
                                   _buildings_geojson, _houses_from_addresses,
                                   _off_the_road)  # noqa: F401
-from .rendering.infill import _back_sheds, _infill_frontage
+from .rendering.infill import _back_sheds, _drop_on_roads, _infill_frontage
 from .rendering.furniture import (CRACK_SHARE, DRAIN_EVERY,
                                   EDGE_LINE_MIN_WIDTH, GRIME_SHARE,
                                   HYDRANT_EVERY, LAMP_EVERY, LITTER_SHARE,
@@ -566,6 +566,13 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         building_feats = []
         buckets["building"] = []
     elif not _skip_infill:
+        # Footprint-file buildings that stand across a road, now that the roads
+        # are where the game will have them.
+        kept, dropped = _drop_on_roads(buckets, building_feats, proj)
+        if dropped:
+            keep = {id(f) for f in kept}
+            building_feats = kept
+            buckets["building"] = [f for f in buckets.get("building", []) if id(f) in keep]
         addressed = _houses_from_addresses(features, building_feats, proj)
         if addressed:
             building_feats = building_feats + addressed
