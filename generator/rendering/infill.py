@@ -343,7 +343,8 @@ class _Lot(list):
     t = n = template = None
 
 
-SNAP_DEGREES = 8.0         # a lot this near the tile axes is turned square to them
+MANSION_LOT_M2 = 400       # square metres of lot from which a neighbour's wings are copied
+SNAP_DEGREES = 8.0        # a lot this near the tile axes is turned square to them
 MIN_SIDE_TILES = 4         # the build refuses a building with less than this
                            # on its short side: a 3x4 shed has nowhere for a door
 MIN_AREA_TILES = 16        # and one of fewer tiles (footprint.MIN_TILES)
@@ -567,9 +568,10 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
                     (cx + tx * hw + nx * hd, cy + ty * hw + ny * hd),
                     (cx - tx * hw + nx * hd, cy - ty * hw + ny * hd)])
         lot.t, lot.n = (float(tx), float(ty)), (float(nx), float(ny))
-        # A row of L-shaped houses is filled with L-shaped houses, not boxes; a
-        # street wall is filled wall to wall whatever its neighbours' wings.
-        if not wall:
+        # Houses are boxes, mostly: a gap in a row of Ls gets a box. Only a lot
+        # big enough for a mansion copies its neighbour's wings; a street wall
+        # is filled wall to wall whatever its neighbours' wings.
+        if not wall and lot_w * d >= MANSION_LOT_M2:
             lot.template = next((n_["shape"] for n_ in near if n_.get("shape")), None)
         out.append(lot)
     return out, _modal_kind(near), _levels(near)

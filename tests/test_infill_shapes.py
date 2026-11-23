@@ -64,7 +64,7 @@ class CarriedToTheEnd(unittest.TestCase):
 
 
 class RowOfEls(unittest.TestCase):
-    def test_a_hole_in_a_row_of_l_shaped_houses_gets_l_shaped_houses(self):
+    def test_a_hole_in_a_row_of_l_shaped_houses_gets_plain_boxes(self):
         def el(i):
             x = 40 + i * 20
             pts = [(x, 130), (x + 15, 130), (x + 15, 137), (x + 9, 137), (x + 9, 142), (x, 142), (x, 130)]
@@ -72,8 +72,8 @@ class RowOfEls(unittest.TestCase):
         houses = [el(i) for i in range(12) if i not in (4, 5, 6)]
         made = [p for p in polys(fill(houses)) if 110 < p.bounds[0] < 190]
         self.assertGreaterEqual(len(made), 2)
-        notched = [p for p in made if p.area < 0.93 * (p.bounds[2] - p.bounds[0]) * (p.bounds[3] - p.bounds[1])]
-        self.assertTrue(notched, [round(p.area / ((p.bounds[2] - p.bounds[0]) * (p.bounds[3] - p.bounds[1])), 2) for p in made])
+        for p in made:
+            self.assertGreaterEqual(p.area, 0.99 * (p.bounds[2] - p.bounds[0]) * (p.bounds[3] - p.bounds[1]))
 
 
 if __name__ == "__main__":
