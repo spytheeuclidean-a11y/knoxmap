@@ -79,7 +79,7 @@ SHED_MAX_M2 = 30
 # tests/test_small_houses_are_sheds.py. Tiles, not metres: it is the room
 # generator's limit, and it is in tiles.
 # Above this, in real square metres, a house keeps the wings it was drawn with.
-MANSION_M2 = 450
+MANSION_M2 = 700
 SHED_HOUSE_SIDE_TILES = 6
 
 
@@ -1569,6 +1569,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           # A police station, a school: grown to the game's size later whatever
           # is left of the outline, so a scrap of it is not a reason to lose it.
           named = classify_building(feat.get("properties") or {}) not in (None, "house")
+          house_box_tiles = None if named else MANSION_M2 / metres_per_tile ** 2
           if retry:
               # A building past max_size is not thrown away any more: the
               # factory and the hangar are the landmarks a place is known by,
@@ -1581,13 +1582,15 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
                                             snap_degrees=settings.square_buildings,
                                             alignment=settings.building_alignment,
-                                            settle=not named)
+                                            settle=not named,
+                                            house_box_tiles=house_box_tiles)
               oversize = fp is not None
           else:
               fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
                                             snap_degrees=settings.square_buildings,
                                             alignment=settings.building_alignment,
-                                            settle=not named)
+                                            settle=not named,
+                                            house_box_tiles=house_box_tiles)
               if fp is None and reason == "large":
                   if -_neg_area <= MAX_OVERSIZE_TILES:
                       deferred_large.append((_neg_area, i, px))
@@ -1599,7 +1602,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               skipped[reason] += 1
               note_left_out(feat, reason)
               continue
-          if not named and fp.tiles * metres_per_tile ** 2 < MANSION_M2:
+          if (not named and settings.building_alignment != "real"
+                  and fp.tiles * metres_per_tile ** 2 < MANSION_M2):
               # Houses are boxes: take the notches out of a traced L, U or T.
               fill_notches(fp, occupied, road_weight, lots)
           x0, y0, w, h = fp.x0, fp.y0, fp.width, fp.height

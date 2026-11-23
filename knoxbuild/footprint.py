@@ -22,6 +22,9 @@ from shapely.geometry import Polygon
 SNAP_DEGREES = 8.0
 # A footprint filling this share of its rotated rectangle is a rectangle.
 RECTANGULAR_ENOUGH = 0.86
+# A house is boxed (Smart) when its outline fills this much of its smallest
+# enclosing rectangle: less is a deliberate wing or a courtyard, not a notch.
+HOUSE_BOX_FILL = 0.6
 MIN_TILES = 16
 RECTILINEAR_SIMPLIFY_TOLERANCE = 1.0
 
@@ -425,6 +428,7 @@ def _prepare_mask(
     max_side: float,
     snap_degrees: float,
     alignment: str,
+    house_box_tiles: float | None = None,
 ):
     """Validate and rasterise a polygon into an initial grid mask.
 
@@ -453,7 +457,13 @@ def _prepare_mask(
     point_rotation = 0.0
     if alignment not in BUILDING_ALIGNMENT_OPTIONS:
         alignment = "smart"
-    box_alignment = alignment == "rectangle" or (
+    # Smart makes a house a box at any angle, as a street of real houses is:
+    # a diagonal house is turned to the grid rather than drawn as a staircase.
+    # A mansion, or any other building, keeps what it was drawn as.
+    house_box = (alignment == "smart" and house_box_tiles is not None
+                 and poly.area <= house_box_tiles
+                 and rect.area > 0 and poly.area / rect.area >= HOUSE_BOX_FILL)
+    box_alignment = alignment == "rectangle" or house_box or (
         alignment == "smart" and angle <= snap_degrees
         and (rectangular or snap_degrees >= 30))
     rectilinear_alignment = (alignment == "rectilinear"
@@ -572,7 +582,8 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
           avoid: np.ndarray | None = None,
           lots: np.ndarray | None = None,
           alignment: str = "smart",
-          settle: bool = True
+          settle: bool = True,
+          house_box_tiles: float | None = None
           ) -> tuple[Footprint | None, str]:
     """Rasterise a projected footprint, claiming its tiles in `occupied`.
 
@@ -590,7 +601,8 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
     claimed there in turn.
     """
     map_h, map_w = occupied.shape
-    prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+    prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment,
+                                 house_box_tiles)
     if prep is None:
         return None, reason
     (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
@@ -870,13 +882,16 @@ class FootprintSession:
               min_side: float = 0, max_side: float = 1e9,
               snap_degrees: float = SNAP_DEGREES,
               alignment: str = "smart",
-              settle: bool = True) -> tuple[Footprint | None, str]:
+              settle: bool = True,
+              house_box_tiles: float | None = None) -> tuple[Footprint | None, str]:
         if not self.native or self._proc is None:
             return place(px, self._occupied, min_side=min_side, max_side=max_side,
                          snap_degrees=snap_degrees, avoid=self._avoid,
-                         lots=self._lots, alignment=alignment, settle=settle)
+                         lots=self._lots, alignment=alignment, settle=settle,
+                         house_box_tiles=house_box_tiles)
 
-        prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+        prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment,
+                                 house_box_tiles)
         if prep is None:
             return None, reason
         (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
@@ -905,7 +920,8 @@ class FootprintSession:
             self.close()
             return place(px, self._occupied, min_side=min_side, max_side=max_side,
                          snap_degrees=snap_degrees, avoid=self._avoid,
-                         lots=self._lots, alignment=alignment, settle=settle)
+                         lots=self._lots, alignment=alignment, settle=settle,
+                         house_box_tiles=house_box_tiles)
 
         # The compiled placer has already taken these tiles for good, so they
         # stay taken here too, whatever is made of the footprint.
