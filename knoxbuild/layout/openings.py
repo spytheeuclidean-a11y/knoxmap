@@ -1,6 +1,7 @@
 """Doors, ways in, and the wall runs a door can sit in."""
 from __future__ import annotations
 
+from ..entrances import entrance_facade
 from ..sizing import SIZES
 from ..uses import FRONT_ROOMS
 import random
@@ -144,8 +145,100 @@ def _door_cost(a: str, b: str) -> float:
     return cost
 
 
+FLAT_ENTRY_KINDS = ("hall", "kitchen", "openplan")
+FLAT_END_ROOMS = {"bathroom", "bedroom", "kidsbedroom"}
+
+
+class ApartmentAccessError(ValueError):
+    """This cut of an apartment or landing cannot be connected."""
+
+
+def _flat_doors(plan: Plan, edges: dict, rng: random.Random,
+                direct_entry: int | None = None) -> None:
+    """One entrance per home, with private rooms at the ends of the tree."""
+    rooms = {i: room for i, room in enumerate(plan.rooms, 1) if not room.is_shaft}
+    units = {room.unit for room in rooms.values()} - {0}
+    links = {i: {} for i in rooms}
+    for (a, b), wall in edges.items():
+        if (not wall or rooms[a].access_role or rooms[b].access_role
+                or (rooms[a].unit and rooms[b].unit and rooms[a].unit != rooms[b].unit)):
+            continue
+        straight = [e for e in wall if _room_at(plan, e[0], e[1]) ==
+                    (_room_at(plan, e[0] - 1, e[1]) if e[2] == "N"
+                     else _room_at(plan, e[0], e[1] - 1))]
+        wall = straight or wall
+        links[a][b] = links[b][a] = wall
+        if rooms[a].unit == rooms[b].unit == 0:
+            plan.doors.append(_door_spot(wall, 1, rng)[0])
+
+    for unit in sorted(units):
+        members = {i for i, room in rooms.items() if room.unit == unit}
+        fronts = [(i, n, wall) for i in sorted(members) for n, wall in links[i].items()
+                  if rooms[n].unit == 0]
+        if not fronts and any(room.unit == 0 for room in rooms.values()):
+            raise ApartmentAccessError(f"Apartment {unit} has no entrance wall off the landing")
+
+        def preference(i):
+            kind = rooms[i].kind
+            return (FLAT_ENTRY_KINDS.index(kind) if kind in FLAT_ENTRY_KINDS else 3,
+                    -sum(n in members for n in links[i]), -rooms[i].area, i)
+
+        if fronts:
+            entry, _, wall = min(fronts, key=lambda front: (preference(front[0]), -len(front[2])))
+            plan.doors.append(_door_spot(wall, 1, rng)[0])
+        else:
+            entry = direct_entry if direct_entry in members else min(members, key=preference)
+
+        first = rooms[entry]
+        old_kind = first.kind
+        first.apartment_entry = True
+        if not first.surveyed:
+            if len(members) <= 2 and all(rooms[i].kind not in ("bedroom", "kidsbedroom")
+                                         for i in members - {entry}):
+                first.kind = "openplan"
+            elif first.kind not in FLAT_ENTRY_KINDS:
+                first.kind = ("openplan" if len(members) <= 2 else
+                              "hall" if first.area >= SIZES["hall"].lo else "kitchen")
+
+        reached = {entry}
+        depth = {entry: 0}
+        parents = set()
+        displaced = [old_kind] if old_kind in FLAT_END_ROOMS and old_kind != first.kind else []
+        while remaining := members - reached:
+            choices = [(a, b, wall) for a in sorted(reached) for b, wall in links[a].items()
+                       if b in remaining]
+            if not choices:
+                raise ApartmentAccessError(f"Apartment {unit} has rooms cut off from its entrance")
+            a, b, wall = min(choices, key=lambda edge: (
+                rooms[edge[0]].kind in FLAT_END_ROOMS,
+                _door_cost(rooms[edge[0]].kind, rooms[edge[1]].kind) + 2 * depth[edge[0]],
+                -len(edge[2]), edge[0], edge[1]))
+            if rooms[a].kind in FLAT_END_ROOMS and not rooms[a].surveyed:
+                # An irregular cut made this room the only way through.
+                # Reassign it and put its original use on a suitable leaf.
+                displaced.append(rooms[a].kind)
+                rooms[a].kind = "hall"
+            plan.doors.append(_door_spot(wall, 1, rng)[0])
+            parents.add(a)
+            reached.add(b)
+            depth[b] = depth[a] + 1
+        leaves = {i for i in members - parents - {entry} if not rooms[i].surveyed}
+        if len(members) > 1 and not any(rooms[i].kind == "bathroom" for i in members):
+            displaced.insert(0, "bathroom")
+        for kind in dict.fromkeys(displaced):
+            if any(rooms[i].kind == kind for i in members) or not leaves:
+                continue
+            leaf = min(leaves, key=lambda i: (rooms[i].kind in FLAT_END_ROOMS,
+                                             abs(rooms[i].area - SIZES[kind].target), i))
+            if rooms[leaf].kind == "bathroom":
+                continue
+            rooms[leaf].kind = kind
+            leaves.remove(leaf)
+
+
 def _doors(plan: Plan, rng: random.Random,
-           stairs: tuple[int, int, str] | None = None) -> None:
+           stairs: tuple[int, int, str] | None = None, *, private_flats: bool = False,
+           direct_entry: int | None = None) -> None:
     """Connect every room, with as few doors as a real plan would have.
 
     The old rule put a door on every boundary between two rooms. A floor where
@@ -160,7 +253,7 @@ def _doors(plan: Plan, rng: random.Random,
     those rules relaxed, one at a time, cheapest first.
     """
     n = len(plan.rooms)
-    if n <= 1:
+    if n <= 1 and not private_flats:
         return
     rooms = plan.rooms
     sealed = {i for i, r in enumerate(rooms, 1) if r.is_shaft}
@@ -180,10 +273,14 @@ def _doors(plan: Plan, rng: random.Random,
             if (e[0], e[1]) not in stair_steps
             and ((e[0] - 1, e[1]) if e[2] == "W" else (e[0], e[1] - 1)) not in stair_steps
         ]
-        return safe or wall
+        return safe if private_flats else safe or wall
 
     edges = {k: clear_of_stairs(v) for k, v in _boundary_edges(plan).items()
              if k[0] not in sealed and k[1] not in sealed}
+
+    if private_flats:
+        _flat_doors(plan, edges, rng, direct_entry)
+        return
 
     def start_room() -> int:
         # A mall grows from its concourse, not from a service corridor.
@@ -356,14 +453,14 @@ def _swap_through_bathrooms(plan: Plan) -> int:
     swapped = 0
     link = links()
     for i, room in enumerate(plan.rooms, 1):
-        if room.kind not in SWAPS_WITH_BATHROOM or room.is_shaft or room.is_core:
+        if room.kind not in SWAPS_WITH_BATHROOM or room.is_shaft or room.is_core or room.surveyed:
             continue
         through = link.get(i, set())
         if len(through) != 1:
             continue
         b = next(iter(through))
         bath = plan.rooms[b - 1]
-        if bath.kind != "bathroom" or bath.unit != room.unit or len(link.get(b, ())) < 2:
+        if bath.surveyed or bath.kind != "bathroom" or bath.unit != room.unit or len(link.get(b, ())) < 2:
             continue
         kind = room.kind
         if kind not in SIZES or area.get(i, 0) > HOUSE_OVERSIZE * SIZES["bathroom"].hi:
@@ -477,7 +574,8 @@ ENTRY_KINDS = ["hall", "lobby", "livingroom", "restaurant", "church",
 def _exterior_door(plan: Plan, rng: random.Random,
                    avoid: tuple[int, int] | None = None,
                    street: str | None = None,
-                   entrances: list[tuple[float, float, dict]] | None = None) -> None:
+                   entrances: list[tuple[float, float, dict]] | None = None,
+                   approach_edges: tuple | None = None) -> None:
     """One way in, into the room a visitor would expect to arrive in.
 
     `avoid` is the foot of the staircase, so the front door does not open
@@ -486,14 +584,33 @@ def _exterior_door(plan: Plan, rng: random.Random,
     if entrances:
         placed = []
         ordered = sorted(entrances, key=_entrance_priority)
+        if plan.private_flats:
+            from .furnishing import _facade_runs
+
+            runs = _facade_runs(plan.grid)
         for x, y, tags in ordered:
-            edge = _entrance_wall(plan, x, y, tags)
-            if edge is None or edge in placed:
+            if plan.private_flats:
+                bound = entrance_facade(runs, x, y, tags)
+                edge = next((e for e in bound.edges if e not in plan.party
+                             and e not in plan.blocked_entrances
+                             and _has_door_depth(plan, bound.side, e)), None) if bound else None
+            else:
+                edge = _entrance_wall(plan, x, y, tags)
+            if edge is None or edge in placed or edge in plan.blocked_entrances:
                 continue
             plan.doors.append(edge)
             placed.append(edge)
         if placed:
             return
+    if approach_edges is not None:
+        has_core = any(room.is_core for room in plan.rooms)
+        legal = {edge for idx, room in enumerate(plan.rooms, 1)
+                 if not room.is_shaft and (room.is_core or not has_core)
+                 for side, wall in _outside_runs(plan, idx) for edge in wall
+                 if edge not in plan.blocked_entrances and _has_door_depth(plan, side, edge)}
+        if (entry := next((edge for edge in approach_edges if edge in legal), None)) is not None:
+            plan.doors.append(entry)
+        return
     order = {k: i for i, k in enumerate(ENTRY_KINDS)}
     if plan.kind in ("shop", "restaurant"):
         # Customers come in through the shop, not the staff stairs.
@@ -525,9 +642,15 @@ def _exterior_door(plan: Plan, rng: random.Random,
     # anybody would walk in through and a wall on the street beats the room
     # that would have been first; between two such rooms it is the room's own
     # order, then the stairs, then the longer wall, as it always was.
+    def available_runs(idx):
+        for side, wall in _outside_runs(plan, idx):
+            clear = [edge for edge in wall if edge not in plan.blocked_entrances]
+            if clear:
+                yield side, clear
+
     facing = [(idx, run) for idx in candidates
               if plan.rooms[idx - 1].kind in order
-              for run in _outside_runs(plan, idx)
+              for run in available_runs(idx)
               if run[0] == (street or "S") and len(run[1]) >= 3
               and any(_has_door_depth(plan, run[0], e) for e in run[1])]
     if not facing:
@@ -537,7 +660,7 @@ def _exterior_door(plan: Plan, rng: random.Random,
         # back.
         facing = [(idx, run) for idx in candidates
                   if plan.rooms[idx - 1].kind not in ("bathroom", "closet")
-                  for run in _outside_runs(plan, idx)
+                  for run in available_runs(idx)
                   if run[0] == (street or "S") and len(run[1]) >= 3
                   and any(_has_door_depth(plan, run[0], e) for e in run[1])]
     if facing:
@@ -551,7 +674,7 @@ def _exterior_door(plan: Plan, rng: random.Random,
 
     all_runs = [(idx, side, wall)
                 for idx in candidates
-                for side, wall in _outside_runs(plan, idx)]
+                for side, wall in available_runs(idx)]
     if all_runs:
         deep_runs = [(idx, side, wall) for idx, side, wall in all_runs
                      if any(_has_door_depth(plan, side, e) for e in wall)]
@@ -708,6 +831,7 @@ def _more_ways_in(plan: Plan, front: tuple[int, int, str]) -> None:
             continue
         private = room.kind in PRIVATE_ROOMS
         for side, wall in _outside_runs(plan, idx):
+            wall = [e for e in wall if e not in plan.blocked_entrances]
             if len(wall) >= 3 and any(_has_door_depth(plan, side, e) for e in wall):
                 walls.append((len(wall) - (1000 if private else 0), side, wall))
     perimeter = sum(len(wall) for _rank, _side, wall in walls)

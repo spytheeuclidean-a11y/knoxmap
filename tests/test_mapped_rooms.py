@@ -16,7 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from generator import renderer  # noqa: E402
 from generator.osm import OSMFeature  # noqa: E402
-from knoxbuild.layout import build_plan  # noqa: E402
+from knoxbuild.entrances import ground_entrance  # noqa: E402
+from knoxbuild.layout import build_building, build_plan  # noqa: E402
 
 # A school: a building wide enough to hold the rooms drawn inside it.
 SCHOOL = OSMFeature(1, "way", {"building": "school", "name": "Test School"},
@@ -54,6 +55,18 @@ class Attach(unittest.TestCase):
     def test_buildings_without_rooms_have_no_property(self):
         g = renderer._buildings_geojson([SCHOOL], [])
         self.assertNotIn("rooms", g["features"][0]["properties"])
+
+    def test_apartment_lobby_import_retains_the_floor_and_building_facts(self):
+        apartment = OSMFeature(4, "way", {"building": "apartments", "start_date": "2018",
+                                         "building:flats": "36"}, SCHOOL.geometry)
+        ground = OSMFeature(5, "way", {"indoor": "room", "room": "lobby", "level": "0"},
+                            CLASSROOM.geometry)
+        upper = OSMFeature(6, "way", {"indoor": "room", "room": "lobby", "level": "1"},
+                           CLASSROOM.geometry)
+        props = renderer._buildings_geojson([apartment], [ground, upper])["features"][0]["properties"]
+        self.assertEqual(props["start_date"], "2018")
+        self.assertEqual(props["building:flats"], "36")
+        self.assertEqual([r["level"] for r in props["rooms"] if ground_entrance(r)], ["0"])
 
 
 # Two rooms as the mapper drew them, in storey tiles: a 8x6 classroom and a
@@ -114,6 +127,19 @@ class Cut(unittest.TestCase):
                           for r in with_mapped.rooms],
                          [(r.x0, r.y0, r.x1, r.y1, r.kind)
                           for r in without.rooms])
+
+    def test_a_school_keeps_mapped_rooms_on_their_upper_floor(self):
+        school = build_building(40, 24, 3, kind="school", seed=5, mapped={1: MAPPED})
+        self.assertEqual(len(school.stairs), 2)
+        for level, plan in enumerate(school.storeys):
+            with self.subTest(level=level):
+                fixed = [r.kind for r in plan.rooms if r.fixed]
+                self.assertCountEqual(fixed, ["classroom", "bathroom"] if level == 1 else [])
+        upper = school.storeys[1]
+        for x, y, kind in ((5, 4, "classroom"), (15, 5, "bathroom")):
+            r = upper.rooms[upper.grid[y][x] - 1]
+            self.assertEqual(r.kind, kind)
+            self.assertTrue(r.fixed)
 
     def test_a_building_without_mapped_rooms_is_cut_as_ever(self):
         plan = build_plan(40, 24, kind="civic", seed=5)

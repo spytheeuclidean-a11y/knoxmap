@@ -638,11 +638,34 @@ def render_tbx(plan: Plan | Building, name: str,
         room_wall[kind] = (palette[i % len(palette)] if want >= len(kinds_here)
                            else pick_rng.choice(palette))
 
+    flat_floors, flat_walls = {}, {}
+    apartment_floors = KIND_FLOOR_CHOICES.get("apartment", {})
+    for storey in storeys:
+        if storey.flat_furnishing_seed is None:
+            continue
+        for room in storey.rooms:
+            if not room.unit:
+                continue
+            seed = f"{storey.flat_furnishing_seed}:{room.unit}"
+            # Two rooms of the same kind share a finish within a flat.
+            flat_walls[id(room)] = random.Random(f"{seed}:walls").choice(palette)
+            options = floor_options(room.kind, apartment_floors)
+            if options:
+                floor_rng = random.Random(f"{seed}:{room.kind}:floor")
+                if building.profile:
+                    chosen = floor_rng.choices(options, weights=[
+                        building.profile.floor_weight(option) for option in options], k=1)[0]
+                else:
+                    chosen = floor_rng.choice(options)
+                flat_floors[id(room)] = _add(entries, C.floor_entry(chosen))
+
     # Every tile entry has to be in the table before the table is written:
     # one added later indexes past the end of it.
     rails = any(st.railing for st in storeys)
     rail_idx = _add(entries, C.RAILING) if rails else 0
     rail_ext_idx = _add(entries, C.RAILING_EXT) if rails else 0
+    balcony_floor = (_add(entries, C.floor_entry("concrete"))
+                     if any(r.is_balcony for r in building.rooms) else 0)
     stalls = any(st.stalls for st in storeys)
     stall_wall = _add(entries, {"category": "interior_walls", "tiles": {
         "West": "fixtures_bathroom_01_040", "North": "fixtures_bathroom_01_044",
@@ -719,7 +742,7 @@ def render_tbx(plan: Plan | Building, name: str,
             ("Name", game_name),
             ("InternalName", game_name),
             ("Color", C.ROOM_COLORS[room.kind]),
-            ("InteriorWall", room_wall.get(room.kind, interior_idx)),
+            ("InteriorWall", flat_walls.get(id(room), room_wall.get(room.kind, interior_idx))),
             # Skirting and picture rail. Set on every room it came to 2.43
             # pieces per 10 m2 against Knox County's 0.25 - a band of
             # detailing round every wall of every room, which at a distance
@@ -731,16 +754,17 @@ def render_tbx(plan: Plan | Building, name: str,
             # A room with a floor of its own first, then the style's, then
             # the room kind's own default.
             ("Floor",
-             (storey_floor.get(level_of.get(id(room)), 0)
+             (balcony_floor if room.is_balcony else 0)
+             or (storey_floor.get(level_of.get(id(room)), 0)
               if room.kind == "concourse" else 0)
-             or room_floor.get(room.kind) or floor_override or floor_idx),
+             or flat_floors.get(id(room)) or room_floor.get(room.kind) or floor_override or floor_idx),
             ("GrimeFloor", 0),
             ("GrimeWall", 0),
             # A concourse has no ceiling: it is open to the storey above, and
             # BuildingEd draws a room's ceiling on the floor above it - which
             # laid a lid straight across the hole and hid the ground floor
             # the hole is cut to show.
-            ("Ceiling", 0 if room.kind == "concourse" else C.CEILING),
+            ("Ceiling", 0 if room.kind == "concourse" or room.is_balcony else C.CEILING),
         ]
         out.append(f" <room{_attrs(room_attrs)}/>")
 
@@ -856,8 +880,7 @@ def render_tbx(plan: Plan | Building, name: str,
         # opening in the floor above by itself. Only N and W are valid
         # directions - Stairs::bounds returns an empty rect for anything else,
         # and an empty rect is treated as an invalid object.
-        if level < len(building.stairs):
-            sx, sy, sdir = building.stairs[level]
+        for sx, sy, sdir in building.stairs_at(level):
             dx, dy = (0, 1) if sdir == "N" else (1, 0)
             is_basement = bool(storey.kind and storey.kind.startswith("basement_"))
             if not roof or is_basement:
@@ -903,8 +926,8 @@ def render_tbx(plan: Plan | Building, name: str,
         # the floor the hole exists to show.
         open_above = (storeys[level + 1].void
                       if level + 1 < len(storeys) else set())
-        exposed = [[v if above is None or not (above[y][x] or (x, y) in open_above)
-                    else 0
+        exposed = [[v if v and not storey.rooms[v - 1].is_balcony
+                    and (above is None or not (above[y][x] or (x, y) in open_above)) else 0
                     for x, v in enumerate(row)] for y, row in enumerate(storey.grid)]
         if roof and any(any(row) for row in exposed):
             rects = roof_rects(exposed)

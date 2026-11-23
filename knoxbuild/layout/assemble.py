@@ -2,21 +2,28 @@
 from __future__ import annotations
 
 from .. import catalog as C
+from ..entrances import closed_edges, closed_entrance, entrance_facade, ground_entrance
+from ..profile import apartment_access_rules
 from ..settings import Settings
 from ..uses import FRONT_ROOMS
 import random
+from dataclasses import replace
 
 from typing import TYPE_CHECKING
-from .core import COMMERCIAL, COMMERCIAL_FILL, MAX_DEPTH, MIN_ROOM, Plan, RETAIL_ROOMS, Room, SPECIAL_MIXES, STAIR_RUN, _inside, _mapped_rooms, _split
-from .openings import _back_door, _doors, _exterior_door, _more_ways_in, _outside_runs, _room_at, _widen_vehicle_entry
+from .access import door_sides, shared_paths, stair_tiles
+from .core import COMMERCIAL, COMMERCIAL_FILL, MAX_DEPTH, MIN_ROOM, Plan, RETAIL_ROOMS, Room, SPECIAL_MIXES, STAIR_RUN, _inside, _mapped_rooms, _split, mapped_room_tiles
+from .flat_planning import MIN_STUDIO_AREA, VariantCache, replan_flats
+from .openings import ApartmentAccessError, _back_door, _doors, _exterior_door, _more_ways_in, _outside_runs, _room_at, _widen_vehicle_entry
 from .malls import _atrium_railings, _clear_concourse, _mall_doors, _mall_plan_fits, _mall_rooms, _merge_concourse, _merge_halls, _open_shopfronts, _place_kiosks, _renumber
-from .dwellings import FLAT_FRONTAGE, HOTEL_FRONTAGE, _apartment_rooms, _assign_flat_kinds, _flats_keep_bathrooms, _paint, _stagger_flats, _unit_touches_corridor
+from .dwellings import FLAT_FRONTAGE, HOTEL_FRONTAGE, _apartment_rooms, _assign_flat_kinds, _flats_keep_bathrooms, _join_undersized_flats, _paint, _stagger_flats, _unit_touches_corridor, inlay_mapped_rooms
 from . import houses as _houses
 from .houses import _assign_house_kinds, _footprint
 from .shops import CORRIDOR_WORTH_IT, MERGE_CIRCULATION, NEEDS_CORRIDOR, _arrange_business_rooms, _assign_kinds, _assign_shop_floor, _circulation, _dining_sections, _fit_out_sections, _shop_rooms, _split_to_size
 from .furnishing import Building, CORE_WIDE, CORRIDOR_WIDTHS, ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, HOUSE_LIKE_KINDS, MALL_LIFT_FROM_LEVELS, NARROW_CORRIDOR_WIDTHS, SWITCH, _carve_shaft, _cells_for, _clear_for_stairs, _clear_the_way, _cut_off_by_the_shaft, _facing, _furnish, _is_wall_piece, _pick_core, _pick_corridor, _pick_shaft, _place_windows, _stairs_in_core, _wall_edge
+from .furnishing import _facade_runs
 
 if TYPE_CHECKING:
+    from ..apartment_sections import AccessLayout
     from .core import Plan
     from .furnishing import Building
     from ..tower import TowerCore
@@ -35,8 +42,11 @@ def build_building(width: int, height: int, levels: int = 1,
                    party: dict | None = None,
                    entrances: list[tuple[float, float, dict]] | None = None,
                    profile: object | None = None,
-                   mapped: list | None = None,
-                   garage_door: bool = False) -> Building:
+                   mapped: list | dict[int, list] | None = None,
+                   garage_door: bool = False,
+                   approach_edges: tuple | None = None,
+                   mapped_lobbies: tuple = (),
+                   section_flats: int | None = None) -> Building:
     """Lay out a building of `levels` storeys.
 
     `retail` puts shops on the ground floor of a block of flats, as on any
@@ -50,12 +60,32 @@ def build_building(width: int, height: int, levels: int = 1,
     """
     levels = max(1, levels)
     rng = random.Random(seed ^ 0x5745)
+    settings = settings or Settings()
+    private_flats = kind == "apartment" and settings.apartment_layout != "classic" and not hotel
+    mapped_floors = mapped if isinstance(mapped, dict) else {0: mapped or ()}
+    surveyed = {}
+    if kind == "apartment" and not hotel:
+        surveyed = {z: [(mapped_room_tiles(ring, width, height), room_kind) for ring, room_kind in rooms]
+                    for z, rooms in mapped_floors.items() if rooms and 0 <= z < levels}
+    reserved = frozenset(tile for rooms in surveyed.values() for tiles, _ in rooms for tile in tiles)
+    clear_mask = [[(mask is None or mask[y][x]) and (x, y) not in reserved
+                   for x in range(width)] for y in range(height)] if reserved else mask
+    access_rules = apartment_access_rules(profile)
+    balcony_mode = settings.apartment_stair_balcony
+    year = getattr(profile, "source_year", None)
+    if balcony_mode in (0, "off"):
+        access_rules = replace(access_rules, stair_via_balcony=False)
+    elif balcony_mode in (1, "on") or (
+            balcony_mode in (2, "auto") and settings.apartment_layout == "auto"
+            and year is not None and year >= access_rules.lobby_recent_from_year):
+        access_rules = replace(access_rules, stair_via_balcony=True)
 
     # A block of flats gets a corridor whether or not it is tall enough to
     # need stairs, because the flats have to open onto something. Everything
     # else only needs a shaft, and only once there is a floor above.
     core = None
     corridor = False
+    access = None
     # An office tower has its own core, the same on every storey (tower.py);
     # a footprint with no room for one is laid out as any other building.
     from .. import tower as tower_mod
@@ -65,8 +95,27 @@ def build_building(width: int, height: int, levels: int = 1,
                                     random.Random(seed ^ 0x70E2))
     if tcore is not None:
         core = tcore.stair
-    elif kind == "apartment":
-        core = _pick_corridor(width, height, mask, rng)
+    elif (kind == "apartment"
+          and not (levels == 1 and private_flats and min(width, height) < CORE_WIDE + 2 * MIN_ROOM)):
+        if private_flats:
+            from ..apartment_sections import access_layout
+
+            for avoid in (reserved, frozenset()) if reserved else (reserved,):
+                access = access_layout(width, height, mask, levels, settings.apartment_layout,
+                                       street, entrances or (), party or {}, rules=access_rules,
+                                       approach_edges=approach_edges, reserved=avoid)
+                if access is not None:
+                    break
+            if access is None and entrances:
+                access = access_layout(width, height, mask, levels, settings.apartment_layout,
+                                       street, entrances, party or {}, rules=access_rules,
+                                       inferred=True, approach_edges=approach_edges, reserved=reserved)
+            if access is not None:
+                core = access.landing
+        if core is None:
+            core = _pick_corridor(width, height, clear_mask, rng)
+            if core is None and reserved:
+                core = _pick_corridor(width, height, mask, rng)
         corridor = core is not None
     elif kind in NEEDS_CORRIDOR and (
             width * height >= (4 if kind == "school" else CORRIDOR_WORTH_IT)
@@ -95,25 +144,52 @@ def build_building(width: int, height: int, levels: int = 1,
         levels = 1          # nowhere to put a staircase, so one floor it is
 
     stairs = _stairs_in_core(core, hug_wall=hug_wall) if core is not None and levels > 1 else None
+    lift = access.lift if access is not None else None
     shaft = shaft_door = None
     if tcore is not None:
         shaft, shaft_door = tcore.lifts[0]
-    elif core is not None and min(width, height) >= ELEVATOR_MIN_SIDE and levels >= (
+    elif lift is not None:
+        stairs = lift.flight
+        shaft, shaft_door = lift.shaft
+    elif not private_flats and core is not None and min(width, height) >= ELEVATOR_MIN_SIDE and levels >= (
             MALL_LIFT_FROM_LEVELS if kind == "mall" and _mall_plan_fits(width, height, mask)
             else ELEVATOR_FROM_LEVELS):
         found = _pick_shaft(core, width, height, mask, stairs)
         if found:
             shaft, shaft_door = found
+    lobby = None
+    if access is not None:
+        from ..apartment_sections import ground_lobby
+
+        lobby = ground_lobby(access, width, height, mask, levels, profile, mapped_lobbies,
+                             stairs, shaft, party or (), access_rules, section_flats,
+                             reserved={tile for tiles, _ in surveyed.get(0, ()) for tile in tiles})
     # A tower's toilet and riser are part of its core too: the step must not
     # cut through them on the upper floors.
     lifts = ([r for r, _ in tcore.lifts] + [r for r, _ in tcore.service]
              if tcore is not None else [shaft])
-    upper_mask, setback_at = _setback(width, height, mask, levels, core, lifts,
-                                      corridor)
+    # Sections that share walls up to the roof stay joined. The generic
+    # setback on each slice would cut an open gap through the same block.
+    setback_levels = (0 if access is not None
+                      and max((party or {}).values(), default=0) >= levels else levels)
+    spine = access.spine if access is not None else None
+    oriented = access.oriented if access is not None else None
+    if oriented is not None or (lift is not None and lift.balcony):
+        # A rectangular setback cannot clip a diagonal hall or expose a new
+        # balcony edge without the railing being planned for it.
+        setback_levels = 0
+    upper_mask, setback_at = _setback(width, height, mask, setback_levels, spine or core,
+                                      lifts + [core] if spine else lifts, corridor)
+    if setback_at:
+        protected = set(lift.lobby) if lift is not None else set()
+        protected.update((x, y) for z, rooms in surveyed.items() if z >= setback_at
+                         for tiles, _ in rooms for x, y in tiles)
+        if any(not upper_mask[y][x] for x, y in protected):
+            upper_mask, setback_at = None, 0
     # Shops under flats where the town is dense, and wherever the map puts a
     # shop, a restaurant or a bank in a building that is more than one.
-    shops = tcore is None and kind in ("apartment", "civic") and core is not None and (
-        (retail and kind == "apartment" and levels >= 3) or (bool(uses) and levels >= 2))
+    shops = (tcore is None and core is not None and not surveyed.get(0) and kind in ("apartment", "civic")
+             and ((retail and kind == "apartment" and levels >= 3) or (bool(uses) and levels >= 2)))
     # A block of flats repeats its floor plan. Looking up at one from the
     # street the windows line up all the way, because every floor above the
     # ground is the same floor - and ours did not, because each storey was
@@ -129,9 +205,14 @@ def build_building(width: int, height: int, levels: int = 1,
         above = bool(setback_at) and lvl >= setback_at
         return seed + 977 * (1 + int(above))
 
-    def _storey(lvl: int):
+    flat_variants = {} if private_flats else None
+    # Keep a typical storey aligned with the others. Ground-floor businesses
+    # can subsequently take space from this residential capacity.
+    flat_count = max(1, round(section_flats / levels)) if private_flats and section_flats else None
+
+    def _storey(lvl: int, attempt: int = 0):
         return build_plan(width, height, commercial=commercial or (shops and lvl == 0),
-                          seed=_plan_seed(lvl),
+                          seed=_plan_seed(lvl) + 4357 * attempt,
                           kind="retail" if shops and lvl == 0 else kind,
                           mask=upper_mask if setback_at and lvl >= setback_at else mask,
                           ground=(lvl == 0), settings=settings,
@@ -142,16 +223,36 @@ def build_building(width: int, height: int, levels: int = 1,
                           tower=tcore,
                           plant=tcore is not None and lvl == tower_mod.plant_level(levels),
                           entrances=entrances if lvl == 0 else None,
-                          profile=profile, mapped=mapped,
+                          profile=profile, mapped=mapped_floors.get(lvl),
+                          surveyed_rooms=surveyed.get(lvl),
                           garage_door=garage_door and lvl == 0,
+                          apartment_access=access,
+                          lobby=lobby if lvl == 0 else None,
+                          approach_edges=approach_edges,
+                          flat_variants=flat_variants,
+                          flat_count=flat_count,
+                          flat_balconies=bool(getattr(profile, "apartment_balconies", None) is True
+                                             or (levels >= 3 and
+                                                 getattr(profile, "apartment_balconies", None) is None)),
                           party={e for e, up in (party or {}).items() if lvl < up})
 
     # The ground floor first: a mansion's floors above it are opened over its
     # hall, and that has to be known before they are laid out.
-    storeys = [_storey(lvl) for lvl in range(levels)]
+    storeys = []
+    for lvl in range(levels):
+        for attempt in range(3):
+            try:
+                storeys.append(_storey(lvl, attempt))
+                break
+            except ApartmentAccessError:
+                if attempt == 2:
+                    raise
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
                         grand=bool(storeys) and storeys[0].grand,
-                        tower=tcore is not None)
+                        tower=tcore is not None,
+                        unplaced_lift_cores=int(private_flats and not shaft and
+                                                levels >= access_rules.lift_from_levels and
+                                                min(width, height) >= ELEVATOR_MIN_SIDE))
     if stairs is not None:
         from .furnishing import (
             _doors_off_stairs,
@@ -160,19 +261,21 @@ def build_building(width: int, height: int, levels: int = 1,
         )
         allow_narrow = tcore is not None
         candidates = [stairs]
-        if hug_wall and core is not None:
+        if hug_wall and core is not None and spine is None and oriented is None and lift is None:
             for alt in (_stairs_in_core(core, hug_wall=True, far_wall=True),
                         _stairs_in_core(core, hug_wall=False)):
                 if alt not in candidates:
                     candidates.append(alt)
         saved_doors = [list(s.doors) for s in storeys]
+        saved_limits = [dict(s.entrance_limits) for s in storeys]
         chosen = None
         for cand in candidates:
             if not _valid_stairs_on_building(building, cand,
                                              allow_narrow_core=allow_narrow):
                 continue
-            for s, orig in zip(storeys, saved_doors):
+            for s, orig, limits in zip(storeys, saved_doors, saved_limits):
                 s.doors = list(orig)
+                s.entrance_limits = dict(limits)
             building.stairs = [cand] * (levels - 1)
             _doors_off_stairs(building)
             if not _has_door_on_stairs(building):
@@ -182,8 +285,9 @@ def build_building(width: int, height: int, levels: int = 1,
                 chosen = cand
         if chosen is not None:
             stairs = chosen
-            for s, orig in zip(storeys, saved_doors):
+            for s, orig, limits in zip(storeys, saved_doors, saved_limits):
                 s.doors = list(orig)
+                s.entrance_limits = dict(limits)
             building.stairs = [stairs] * (levels - 1)
             _doors_off_stairs(building)
             for lvl in range(levels - 1):
@@ -192,19 +296,32 @@ def build_building(width: int, height: int, levels: int = 1,
         else:
             # No valid staircase (e.g. top landing onto roof or 1-tile hall):
             # drop to a single storey rather than leaving stairs to nowhere.
-            for s, orig in zip(storeys, saved_doors):
+            for s, orig, limits in zip(storeys, saved_doors, saved_limits):
                 s.doors = list(orig)
+                s.entrance_limits = dict(limits)
             stairs = None
             building.stairs = []
             building.storeys = storeys[:1]
     # Windows last and for the whole building at once, so they stack in
     # columns instead of each floor scattering its own.
+    if stairs is not None:
+        for storey in building.storeys:
+            if storey.private_flats:
+                storey.stair_steps = set(stair_tiles(stairs)[2:-1])
     _place_windows(building, kind, shop_ground=shops)
     if kind == "mall":
         _place_escalators(building)
     # Last of all, because it is the furnished building that has to be
     # walkable, not the plan.
     _clear_the_way(building)
+    if private_flats:
+        from .furnishing import _blocks
+        for level, storey in enumerate(building.storeys):
+            storey.public_path = shared_paths(
+                storey, building.stairs[level - 1:level] if level else (),
+                building.stairs[level:level + 1], ground=level == 0)
+            storey.furniture = [f for f in storey.furniture if not (
+                _blocks(f[0]) and storey.public_path.intersection(_cells_for(*f)))]
     from .. import interiors
     interiors.one_wood(building, random.Random(f"{seed}:wood"))
     return building
@@ -480,16 +597,22 @@ def build_plan(width: int, height: int, commercial: bool = False,
                entrances: list[tuple[float, float, dict]] | None = None,
                profile: object | None = None,
                mapped: list | None = None,
+               surveyed_rooms: list | None = None,
                tower: "TowerCore | None" = None,
                plant: bool = False,
-               garage_door: bool = False) -> Plan:
+               garage_door: bool = False,
+               apartment_access: AccessLayout | None = None,
+               approach_edges: tuple | None = None,
+               flat_variants: VariantCache | None = None,
+               lobby: set[tuple[int, int]] | None = None,
+               flat_count: int | None = None, flat_balconies: bool = False) -> Plan:
     """Lay out and furnish one storey of the given tile size.
 
     `uses` are what OpenStreetMap says a commercial ground floor holds
     (build_building); `hotel` turns flats into hotel rooms.
     `mapped` are the rooms the mapper drew inside the building, as (ring,
     kind) in storey tiles: on the ground floor they are cut as they were
-    drawn (_mapped_rooms), the floors above laid out as ever.
+    drawn (_mapped_rooms) on its recorded floor.
 
     `ground` gates the exterior door: a door in an upper-floor wall opens onto
     a five-metre drop, and the game will happily let a zombie walk through it.
@@ -503,6 +626,13 @@ def build_plan(width: int, height: int, commercial: bool = False,
     plan = Plan(width=width, height=height, mask=mask, core=core,
                 corridor=corridor, kind=kind, party=set(party or ()),
                 profile=profile)
+    private_flats = kind == "apartment" and settings.apartment_layout != "classic" and not hotel
+    plan.private_flats = private_flats
+    shared_tiles = None
+    shells = None
+    spine = apartment_access.spine if apartment_access is not None and private_flats else None
+    oriented = apartment_access.oriented if apartment_access is not None and private_flats else None
+    lift = apartment_access.lift if apartment_access is not None and private_flats else None
     # A large house, by the ground floor it covers. Counting the whole
     # house's floor against HOUSE_BIG_FLOOR made a 12x11 house with an
     # upstairs a mansion - two storeys of 132 cleared 260 - so half a town got
@@ -534,7 +664,36 @@ def build_plan(width: int, height: int, commercial: bool = False,
     if tower is not None:
         arms = _tower_rooms(plan, tower, ground, plant, street)
     elif kind == "apartment":
-        _apartment_rooms(plan, rng, target, HOTEL_FRONTAGE if hotel else FLAT_FRONTAGE)
+        if private_flats and (spine is not None or oriented is not None or shaft is not None or lobby):
+            from ..apartment_sections import tiles_in
+
+            reserved = set(tiles_in(shaft)) if shaft is not None else set()
+            if spine is not None or oriented is not None or lobby:
+                shared_tiles = set(tiles_in(apartment_access.landing))
+                if spine is not None:
+                    shared_tiles.update(tiles_in(spine))
+                if oriented is not None:
+                    shared_tiles.update(oriented.tiles)
+                if lift is not None:
+                    shared_tiles.update(lift.lobby)
+                    shared_tiles.update(lift.balcony)
+                if ground:
+                    shared_tiles.update(apartment_access.ground_passages)
+                    shared_tiles.update(lobby or ())
+                shared_tiles -= reserved
+                reserved |= shared_tiles
+            plan.mask = [[(mask is None or mask[y][x]) and (x, y) not in reserved
+                          for x in range(width)] for y in range(height)]
+        if oriented is not None:
+            from .dwellings import FLAT_TARGET_AREA
+            from .oriented import apartment_shells
+
+            shells = apartment_shells(plan, oriented, FLAT_TARGET_AREA)
+        else:
+            _apartment_rooms(plan, rng, target, HOTEL_FRONTAGE if hotel else FLAT_FRONTAGE,
+                             section=apartment_access is not None, entry_first=private_flats,
+                             entrance=apartment_access.entries[0] if apartment_access else None,
+                             spine=spine, flat_count=flat_count)
     elif shop_floor and kind in ("shop", "restaurant"):
         sections = _shop_rooms(plan, rng, street,
                                gas=any(front == "gasstore" for front, _b in (uses or ())))
@@ -554,10 +713,9 @@ def build_plan(width: int, height: int, commercial: bool = False,
                            or (mix_kind and mix_kind in SPECIAL_MIXES))
         small_room = house_floor or shop_floor or bool(mix_kind in SPECIAL_MIXES and
                                          "bathroom" in SPECIAL_MIXES[mix_kind][0])
-        if mapped and ground:
+        if mapped and (ground or level > 0):
             # The rooms OpenStreetMap has for this building, on the floor the
-            # mapper drew them for; the rest of that floor and every floor
-            # above is cut as it always was.
+            # mapper drew them for. Only the remaining floor space is split.
             small = [small_room]
             _mapped_rooms(plan, rng, mapped, target, mask, small)
         else:
@@ -569,7 +727,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
             else:
                 _split(0, 0, width - 1, height - 1, rng, MAX_DEPTH, plan.rooms,
                        target_area=target, mask=mask, small=[small_room])
-    _paint(plan)
+    merged_units = _paint(plan, shared_tiles, shells)
+    plan.mask = mask
 
     # Kinds are chosen after painting, from the plan as it really is: what a
     # room is depends on what it borders, and that is only known once the
@@ -577,13 +736,17 @@ def build_plan(width: int, height: int, commercial: bool = False,
     if tower is not None:
         pass                # _tower_rooms cut them with their kinds
     elif kind == "apartment":
-        _unit_touches_corridor(plan)
+        merged_units.update(_unit_touches_corridor(plan))
+        if oriented is not None:
+            merged_units.update(_join_undersized_flats(plan))
         # Trade a room between neighbours before the kinds are handed out, so
         # a flat that has gained or lost one is furnished for the size it
         # ended up, not the size it was cut.
-        _stagger_flats(plan, rng)
-        _unit_touches_corridor(plan)
-        _assign_flat_kinds(plan, hotel=hotel, reception=hotel and ground, rng=rng)
+        if not private_flats:
+            _stagger_flats(plan, rng)
+            _unit_touches_corridor(plan)
+        _assign_flat_kinds(plan, hotel=hotel, reception=hotel and ground, rng=rng,
+                           entry_first=private_flats)
     elif shop_floor:
         # _paint above can drop, split or renumber rooms, so the old numbers
         # are stale. Rebuild them from the rooms that survived: the sales
@@ -639,6 +802,10 @@ def build_plan(width: int, height: int, commercial: bool = False,
             room.kind = "hall"
     if shaft is not None:
         _carve_shaft(plan, shaft, shaft_door)
+    if lift is not None:
+        from ..apartment_sections import tiles_in
+
+        lift.place(plan, set(tiles_in(spine)) if spine is not None else oriented.tiles, ground=ground)
     for extra, extra_door in extra_shafts or ():
         _carve_shaft(plan, extra, extra_door)
     # A tower's hall arms go on after the shafts: one tile thick, the
@@ -657,16 +824,62 @@ def build_plan(width: int, height: int, commercial: bool = False,
     _split_to_size(plan, rng)
     _cut_off_by_the_shaft(plan)
     if kind == "apartment" and not hotel and tower is None:
+        if surveyed_rooms is None and mapped:
+            surveyed_rooms = [(mapped_room_tiles(ring, width, height), room_kind)
+                              for ring, room_kind in mapped]
+        if surveyed_rooms:
+            merged_units.update(inlay_mapped_rooms(plan, surveyed_rooms))
+            merged_units.update(_unit_touches_corridor(plan))
         _flats_keep_bathrooms(plan)
 
-    _doors(plan, rng, stairs=stairs)
+    direct_entry = None
+    portals = ()
+    exterior_runs = ()
+    if private_flats:
+        merged_units.update(_unit_touches_corridor(plan))
+        if not surveyed_rooms:
+            merged_units.update(_join_undersized_flats(plan, MIN_STUDIO_AREA))
+        if ground and entrances:
+            exterior_runs = _facade_runs(mask if mask is not None else [[True] * width] * height)
+            plan.blocked_entrances = closed_edges(exterior_runs, entrances)
+            portals = [p for p in entrances if p[2].get("entrance") in ("yes", "main", "staircase")
+                       and not closed_entrance(p[2]) and ground_entrance(p[2])]
+        if ground and plan.rooms and not any(r.is_core for r in plan.rooms):
+            _exterior_door(plan, rng, street=street, entrances=portals, approach_edges=approach_edges)
+            if plan.doors:
+                del plan.doors[1:]
+                a, b = (_room_at(plan, *p) for p in door_sides(plan.doors[0]))
+                direct_entry = a or b
+    _doors(plan, rng, stairs=stairs, private_flats=private_flats, direct_entry=direct_entry)
+    if private_flats:
+        replan_flats(plan, merged_units, flat_variants, oriented.axis if oriented else None,
+                     balcony_rng=random.Random(f"{seed}:balconies")
+                     if not ground and flat_balconies else None)
     if mix_kind == "mall":
         _mall_doors(plan, rng, ground)
     if ground and tower is not None:
         _tower_entrance(plan, rng, street, entrances)
     elif ground:
-        _exterior_door(plan, rng, avoid=_stair_foot(stairs), street=street,
-                       entrances=entrances)
+        if apartment_access is not None and private_flats:
+            plan.doors.extend(apartment_access.entries)
+        elif direct_entry is None:
+            previous = len(plan.doors)
+            _exterior_door(plan, rng, avoid=_stair_foot(stairs), street=street,
+                           entrances=portals if private_flats else entrances, approach_edges=approach_edges)
+            if private_flats and approach_edges is not None and len(plan.doors) == previous:
+                raise ApartmentAccessError("No reachable exterior approach fits the residential entrance")
+        for x, y, tags in portals:
+            if bound := entrance_facade(exterior_runs, x, y, tags):
+                for edge in bound.edges:
+                    if edge in plan.doors:
+                        plan.entrance_limits.setdefault(edge, bound.edges)
+                        break
+        if approach_edges is not None:
+            for edge in plan.doors:
+                if edge in approach_edges and edge not in plan.entrance_limits:
+                    axis = int(edge[2] == "N")
+                    plan.entrance_limits[edge] = tuple(e for e in approach_edges
+                                                       if e[2] == edge[2] and e[axis] == edge[axis])
         if kind in (None, "house"):
             _back_door(plan, street)
         if kind == "retail":
@@ -682,7 +895,15 @@ def build_plan(width: int, height: int, commercial: bool = False,
             _t_hangar_bay_doors(plan, street)
         else:
             _widen_vehicle_entry(plan, street)
-    _furnish(plan, rng, stairs, street, is_ground=ground)
+    if private_flats:
+        if ground and apartment_access:
+            plan.clear_access.update(apartment_access.ground_passages)
+        plan.public_path = shared_paths(plan, [stairs] if stairs and level else (),
+                                        [stairs] if stairs and level + 1 < levels else (),
+                                        ground=ground)
+    flat_seed = (f"{seed}:{level}:flats"
+                 if settings.apartment_furnishing and kind == "apartment" and not hotel else None)
+    _furnish(plan, rng, stairs, street, is_ground=ground, flat_seed=flat_seed)
     if mix_kind == "mall":
         _clear_concourse(plan)
         _place_kiosks(plan, rng, ground)

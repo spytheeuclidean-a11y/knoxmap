@@ -181,11 +181,16 @@ class QueryFilters(unittest.TestCase):
     def test_fetches_entrance_nodes(self):
         self.assertIn('node["entrance"]', osm.OVERPASS_FILTERS)
         self.assertIn('node["entrance"]', osm._build_query(*BOX))
+
+    def test_fetches_shops_mapped_as_points_or_areas(self):
+        self.assertIn('nwr["shop"]', osm.OVERPASS_FILTERS)
+        self.assertIn('nwr["shop"]', osm._build_query(*BOX))
         # 14: gate nodes, so a fence has a way through it.
         # 15: address interpolation lines, so their ends are not houses.
         # 16: entrance nodes, for the door a building is entered by.
         # 17: silos and grain elevators, and transmission towers.
-        self.assertEqual(osm.FILTERS_VERSION, 17)
+        # 18: shops mapped as areas, for ground-floor planning.
+        self.assertEqual(osm.FILTERS_VERSION, 18)
 
     def test_fetches_the_gates_on_a_fence(self):
         # A fence is drawn as one line with the gate as a node on it, so

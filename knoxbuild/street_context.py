@@ -10,7 +10,7 @@ from shapely.geometry import Polygon
 import knoxfiles
 
 from .bitmaps import read_gray, read_rgb, same_colour
-from .uses import USE_KEYS
+from .uses import USE_KEYS, use_of
 
 # their own. Rooms a mapper drew inside a building (indoor=room) arrive with
 # their tags, and where the tag names something Knox County knows, the room is
@@ -229,17 +229,37 @@ def _points_of_use(out_dir: str, info: dict, map_name: str, proj) -> dict:
         from generator.octilinear import replay
         from generator.renderer import _is_polygon, classify
         replay(feats, proj, classify, _is_polygon, info, out_dir, map_name)
+    from generator.rendering.geometry import _is_polygon
     for feat in feats:
-        if feat.kind != "node" or not (
-            any(k in feat.tags for k in USE_KEYS) or "entrance" in feat.tags):
+        has_use = any(k in feat.tags for k in USE_KEYS)
+        if not feat.geometry or (not has_use and "entrance" not in feat.tags):
             continue
-        lat, lon = feat.geometry[0]
-        x, y = proj.to_px(lat, lon)
-        grid.setdefault((int(x) // 16, int(y) // 16), []).append((x, y, feat.tags))
+        tags = feat.tags
+        if feat.kind == "node":
+            lat, lon = feat.geometry[0]
+            x, y = proj.to_px(lat, lon)
+        elif has_use and not tags.get("building") and use_of(tags) and _is_polygon(feat):
+            rings = feat.geometry if feat.kind == "relation" else [feat.geometry]
+            polys = [Polygon([proj.to_px(lat, lon) for lat, lon in ring])
+                     for ring in rings if len(ring) >= 3]
+            if not polys:
+                continue
+            poly = max(polys, key=lambda p: p.area)
+            x, y = poly.representative_point().coords[0]
+            tags = {**tags, "_knox_area_poi": True}
+        else:
+            continue
+        grid.setdefault((int(x) // 16, int(y) // 16), []).append((x, y, tags))
     return grid
 
 
-def _points_inside(grid: dict, px: list, taken: set) -> list[dict]:
+def _point_of_use_key(x, y, tags):
+    return (x, y, tags.get("_knox_area_poi"), str(tags.get("level", "")),
+            str(tags.get("name", "")), str(tags.get("ref", "")),
+            tuple((k, str(tags[k])) for k in USE_KEYS if k in tags))
+
+
+def _points_inside(grid: dict, px: list, taken: set, *, with_positions: bool = False) -> list:
     """The tags of the points inside a footprint (or just outside its wall,
     where a mapper put the shop's entrance), each point used once."""
     if not grid:
@@ -254,12 +274,14 @@ def _points_inside(grid: dict, px: list, taken: set) -> list[dict]:
     for gx in range(int(minx) // 16, int(maxx) // 16 + 1):
         for gy in range(int(miny) // 16, int(maxy) // 16 + 1):
             for x, y, tags in grid.get((gx, gy), ()):
-                key = (x, y)
+                if tags.get("_knox_area_poi") and not with_positions:
+                    continue
+                key = _point_of_use_key(x, y, tags)
                 if (any(k in tags for k in USE_KEYS) and key not in taken
                         and zone.contains(Point(x, y))):
                     taken.add(key)
                     out.append((x, y, tags))
-    return [tags for _x, _y, tags in out]
+    return out if with_positions else [tags for _x, _y, tags in out]
 
 
 def _entrances_inside(grid: dict, px: list) -> list[tuple[float, float, dict]]:
@@ -276,7 +298,8 @@ def _entrances_inside(grid: dict, px: list) -> list[tuple[float, float, dict]]:
     for gx in range(int(minx) // 16, int(maxx) // 16 + 1):
         for gy in range(int(miny) // 16, int(maxy) // 16 + 1):
             for x, y, tags in grid.get((gx, gy), ()):
-                if "entrance" in tags and zone.contains(Point(x, y)):
+                if ("entrance" in tags and not tags.get("_knox_area_poi")
+                        and zone.contains(Point(x, y))):
                     out.append((x, y, tags))
     return out
 
@@ -306,7 +329,7 @@ def _entrances_by_unit(entrances: list[tuple[float, float, dict]], units
     return assigned
 
 
-def _rooms_by_unit(entries, fp, units, proj) -> list:
+def _rooms_by_unit(entries, fp, units, proj, *, round_points=True) -> list:
     """The building's mapped rooms (renderer._buildings_geojson), moved with
     the placed footprint and shared out between the units it was cut into.
 
@@ -326,7 +349,7 @@ def _rooms_by_unit(entries, fp, units, proj) -> list:
         pts = [proj.to_px(lat, lon) for lon, lat in ring]
         if turned:
             pts = [fp.transform_point(x, y) for x, y in pts]
-        room = str(entry.get("room") or "").strip().lower()
+        room = str(entry.get("room") or entry.get("indoor") or "").strip().lower()
         amenity = str(entry.get("amenity") or "").strip().lower()
         kind = MAPPED_ROOM_KINDS.get(room) or MAPPED_ROOM_KINDS.get(amenity)
         cx = sum(p[0] for p in pts) / len(pts)
@@ -334,11 +357,32 @@ def _rooms_by_unit(entries, fp, units, proj) -> list:
         for n, unit in enumerate(units):
             if unit.x0 <= cx < unit.x0 + unit.width \
                     and unit.y0 <= cy < unit.y0 + unit.height:
-                local = [(int(round(x - unit.x0)), int(round(y - unit.y0)))
-                         for x, y in pts]
+                local = [(x - unit.x0, y - unit.y0) for x, y in pts]
+                if round_points:
+                    local = [(round(x), round(y)) for x, y in local]
                 out[n].append((local, kind))
                 break
     return out
+
+
+def _indoor_storeys(tags: dict, storeys: int) -> tuple[int, ...]:
+    if tags.get("location") == "underground":
+        return ()
+    raw = tags.get("level")
+    if raw in (None, ""):
+        raw = tags.get("min_level")
+    if raw in (None, ""):
+        return (0,)
+    names = {s.strip().casefold() for s in str(raw).split(";")}
+    return tuple(z for z in range(storeys) if str(z) in names or (z == 0 and "ground" in names))
+
+
+def mapped_rooms_by_floor(entries, storeys):
+    floors = {}
+    for room in entries:
+        for level in _indoor_storeys(room, storeys):
+            floors.setdefault(level, []).append(room)
+    return floors
 
 
 def _party_walls(owner: np.ndarray, me: int, x0: int, y0: int, mask: np.ndarray,

@@ -34,3 +34,6 @@ requirements-dev.txt export-ignore
 package.json export-ignore
 package-lock.json export-ignore
 eslint.config.js export-ignore
+
+# Pull request comparison figures are review material.
+docs/images/mapped-building-layouts export-ignore
