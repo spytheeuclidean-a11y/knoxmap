@@ -653,6 +653,43 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
                      point_origin, point_rotation, point_offset), "ok"
 
 
+FILL_MAX_GROWTH = 2.0     # a box bigger than this times the footprint is not filled
+
+
+def fill_notches(fp: Footprint, occupied: np.ndarray, avoid: np.ndarray | None,
+                 lots: np.ndarray | None = None) -> None:
+    """Fill the wings and notches of a footprint in place, as far as the ground
+    is free: the tiles inside its smallest enclosing rectangle that no other building and no
+    road has. Real houses are boxes; the L, U and T outlines traced from
+    aerial imagery come out of the layout as a run of narrow one-room arms."""
+    m = fp.mask
+    if m.all():
+        return
+    from shapely.geometry import MultiPoint, Point
+    ys, xs = np.nonzero(m)
+    hull = MultiPoint([(float(x + dx), float(y + dy)) for x, y in zip(xs, ys)
+                       for dx in (0, 1) for dy in (0, 1)]).minimum_rotated_rectangle
+    if hull.area > FILL_MAX_GROWTH * m.sum():
+        return
+    h, w = m.shape
+    grow = np.zeros_like(m)
+    for y, x in zip(*np.nonzero(~m)):
+        if hull.contains(Point(x + 0.5, y + 0.5)):
+            grow[y, x] = True
+    if not grow.any():
+        return
+    sl = (slice(fp.y0, fp.y0 + h), slice(fp.x0, fp.x0 + w))
+    grow &= ~occupied[sl]
+    if avoid is not None:
+        grow &= ~(avoid[sl] >= ROAD_WEIGHT)
+    if not grow.any():
+        return
+    fp.mask = m | grow
+    occupied[sl] |= grow
+    if lots is not None:
+        lots[sl] |= grow
+
+
 _FP_MAGIC = b"KFP1"
 _FP_FLAG_AVOID = 1 << 0
 _FP_FLAG_LOTS = 1 << 1

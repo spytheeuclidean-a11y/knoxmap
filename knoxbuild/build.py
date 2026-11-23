@@ -34,7 +34,7 @@ import knoxstop
 from .areas import AreaIndex
 from .fences import build_fences
 from . import footprint
-from .footprint import FootprintSession
+from .footprint import FootprintSession, fill_notches
 from .layout import build_building, thin_building
 from .uses import is_hotel, uses_of
 from .context import Context, style_fits
@@ -78,6 +78,8 @@ SHED_MAX_M2 = 30
 # nothing else, no bedroom, bathroom or kitchen. Checked against the layout in
 # tests/test_small_houses_are_sheds.py. Tiles, not metres: it is the room
 # generator's limit, and it is in tiles.
+# Above this, in real square metres, a house keeps the wings it was drawn with.
+MANSION_M2 = 450
 SHED_HOUSE_SIDE_TILES = 6
 
 
@@ -1596,6 +1598,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               skipped[reason] += 1
               note_left_out(feat, reason)
               continue
+          if not named and fp.tiles * metres_per_tile ** 2 < MANSION_M2:
+              # Houses are boxes: take the notches out of a traced L, U or T.
+              fill_notches(fp, occupied, road_weight, lots)
           x0, y0, w, h = fp.x0, fp.y0, fp.width, fp.height
           if fp.angle <= 8.0:
               squared += 1
