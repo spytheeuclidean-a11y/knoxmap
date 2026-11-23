@@ -612,6 +612,80 @@ def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:
     # Keep the original entry first for driveway placement; export sorts panels spatially.
     plan.garage_door_tiles = tuple(ordered)
 
+# A house with room for one gets an attached garage this often: an integral
+# garage on the street front, its three-tile door on the street, the way a
+# suburb is built. Not every house: most have a drive and no garage, or a
+# detached one, and a map where every house had a garage door on the street
+# would look stamped.
+GARAGE_SHARE = 0.3
+GARAGE_MIN_FOOTPRINT = 80        # tiles of ground floor
+GARAGE_MIN_ROOMS = 4
+GARAGE_AREA = (12, 40)           # tiles; 24 is a one-car bay and some shelf
+GARAGE_NEVER = {"hall", "kitchen", "livingroom", "openplan", "bathroom", "dining",
+                "closet", "garage"}
+
+
+def _rooms_joined_without(plan: Plan, gone: int) -> bool:
+    """Whether every other room still joins up, through doors, with `gone` shut."""
+    n = len(plan.rooms)
+    links: dict[int, set[int]] = {i: set() for i in range(1, n + 1)}
+    for x, y, d in plan.doors:
+        a, b = ((_room_at(plan, x, y - 1), _room_at(plan, x, y)) if d == "N"
+                else (_room_at(plan, x - 1, y), _room_at(plan, x, y)))
+        if a and b and gone not in (a, b):
+            links[a].add(b)
+            links[b].add(a)
+    rest = [i for i in links if i != gone]
+    if not rest:
+        return True
+    seen, todo = {rest[0]}, [rest[0]]
+    while todo:
+        for nxt in links[todo.pop()]:
+            if nxt not in seen:
+                seen.add(nxt)
+                todo.append(nxt)
+    return len(seen) == len(rest)
+
+
+def _attach_garage(plan: Plan, seed, street: str | None, stair_tiles: set) -> bool:
+    """Turn one room on a house's street front into a garage with a street door.
+
+    A room qualifies when it is not a room a home is lived in, is the size of a
+    bay, has three tiles or more of street wall with no door in it, holds no
+    stairs, and the rest of the house still joins up without it as a way
+    through. The room that is nearest a corner and 24 tiles wins: a garage
+    stands at the end of a house, not in the middle of its front. Returns
+    whether one was made."""
+    if (not street or len(plan.rooms) < GARAGE_MIN_ROOMS
+            or plan.width * plan.height < GARAGE_MIN_FOOTPRINT
+            or random.Random(f"{seed}:garage").random() >= GARAGE_SHARE):
+        return False
+    best = None
+    for idx, room in enumerate(plan.rooms, 1):
+        if room.is_core or room.is_shaft or room.kind in GARAGE_NEVER:
+            continue
+        cells = [(x, y) for y in range(plan.height) for x in range(plan.width)
+                 if plan.grid[y][x] == idx]
+        if not GARAGE_AREA[0] <= len(cells) <= GARAGE_AREA[1] or stair_tiles & set(cells):
+            continue
+        walls = [w for side, w in _outside_runs(plan, idx)
+                 if side == street and len(w) >= 3 and not any(e in plan.doors for e in w)]
+        if not walls or not _rooms_joined_without(plan, idx):
+            continue
+        xs = [x for x, _ in cells]
+        ys = [y for _, y in cells]
+        at_end = (min(xs) == 0 or max(xs) == plan.width - 1
+                  or min(ys) == 0 or max(ys) == plan.height - 1)
+        score = (at_end, -abs(len(cells) - 24), idx)
+        if best is None or score > best[0]:
+            best = (score, idx)
+    if best is None:
+        return False
+    plan.rooms[best[1] - 1].kind = "garage"
+    _widen_vehicle_entry(plan, street)
+    return bool(getattr(plan, "garage_door_tiles", ()))
+
+
 def _entrance_priority(entrance: tuple[float, float, dict]) -> tuple:
     """Main and accessible entrances take precedence when choosing the front."""
     tags = entrance[2]
