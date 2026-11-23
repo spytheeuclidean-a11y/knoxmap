@@ -34,3 +34,13 @@ class FillNotches(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutlineOfAFootprint(unittest.TestCase):
+    def test_it_is_the_placed_shape_not_a_box(self):
+        from knoxbuild.footprint import footprint_outline
+        from shapely.geometry import Polygon
+        fp = fp_of(["######", "######", "##....", "##...."])
+        poly = Polygon(footprint_outline(fp))
+        self.assertEqual(poly.area, 16)
+        self.assertEqual(poly.bounds, (2.0, 2.0, 8.0, 6.0))

@@ -668,6 +668,20 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
 FILL_MAX_GROWTH = 2.0     # a box bigger than this times the footprint is not filled
 
 
+def footprint_outline(fp: Footprint) -> list[tuple[float, float]]:
+    """The outer edge of what the building occupies, in tile coordinates: the
+    footprint as it was placed, not the polygon it was traced from, which can
+    run across a road or stand turned off the grid."""
+    from shapely.geometry import box
+    from shapely.ops import unary_union
+    cells = [box(fp.x0 + x, fp.y0 + y, fp.x0 + x + 1, fp.y0 + y + 1)
+             for y, x in zip(*np.nonzero(fp.mask))]
+    union = unary_union(cells)
+    parts = list(union.geoms) if hasattr(union, "geoms") else [union]
+    best = max(parts, key=lambda g: g.area)
+    return list(best.simplify(0).exterior.coords)[:-1]
+
+
 def fill_notches(fp: Footprint, occupied: np.ndarray, avoid: np.ndarray | None,
                  lots: np.ndarray | None = None) -> None:
     """Fill the wings and notches of a footprint in place, as far as the ground
