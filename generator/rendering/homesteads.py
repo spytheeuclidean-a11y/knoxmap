@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 
 import numpy as np
+import shapely
 from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
@@ -96,7 +97,7 @@ def _wobbly(poly, radius: float, seed: int, extra: float = 0.0):
     """`poly` grown by about `radius`, more on some sides than others: each
     point of the plain buffer is pushed out or in along its way from the
     walls by a few smooth waves round the building."""
-    from shapely.geometry import Point, Polygon
+    from shapely.geometry import Polygon
 
     rng = np.random.default_rng(seed)
     waves = [(k, rng.uniform(0.3, 1.0), rng.uniform(0, 2 * math.pi)) for k in (2, 3, 5)]
@@ -104,17 +105,19 @@ def _wobbly(poly, radius: float, seed: int, extra: float = 0.0):
     plain = poly.buffer(radius, quad_segs=8)
     if plain.geom_type != "Polygon":
         plain = max(plain.geoms, key=lambda g: g.area)
-    ring = plain.exterior.segmentize(2.0)
-    cx, cy = poly.centroid.x, poly.centroid.y
+    ring = list(plain.exterior.segmentize(2.0).coords)
+    boundary = poly.exterior
+    offsets = shapely.line_locate_point(boundary, shapely.points(ring))
+    nearest = shapely.get_coordinates(shapely.line_interpolate_point(boundary, offsets))
+    cx, cy = poly.centroid.coords[0]
     out = []
-    for x, y in ring.coords:
+    for (x, y), (qx, qy) in zip(ring, nearest.tolist()):
         theta = math.atan2(y - cy, x - cx)
         wave = sum(a * math.sin(k * theta + p) for k, a, p in waves) / norm
         reach = radius * (1.0 + WOBBLE * wave) + extra
-        q = poly.exterior.interpolate(poly.exterior.project(Point(x, y)))
-        dx, dy = x - q.x, y - q.y
+        dx, dy = x - qx, y - qy
         d = math.hypot(dx, dy) or 1.0
-        out.append((q.x + dx / d * reach, q.y + dy / d * reach))
+        out.append((qx + dx / d * reach, qy + dy / d * reach))
     shape = Polygon(out)
     return shape if shape.is_valid else shape.buffer(0)
 
@@ -209,17 +212,17 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         x1, y1 = min(w, int(maxx + reach_max) + 1), min(h, int(maxy + reach_max) + 1)
         if x1 <= x0 or y1 <= y0:
             continue
+        win = vegp[y0:y1, x0:x1]
+        woods = _is_woods(win)
+        if not woods.any():
+            continue
         seed = int((int(poly.centroid.x) * 73856093) ^ (int(poly.centroid.y) * 19349663)
                    ^ HOME_SEED) & 0xFFFFFFFF
         roll = float(_hash01(np.array([seed]), HOME_SEED)[0])
         radius = (clear_min_m + roll * (clear_max_m - clear_min_m)) / mpt
         clearing = _wobbly(poly, radius, seed)
-        fringe = _wobbly(poly, radius, seed, extra=EDGE_M / mpt)
         bw, bh = x1 - x0, y1 - y0
         inside = _rasterise(clearing, x0, y0, bw, bh)
-        edge = _rasterise(fringe, x0, y0, bw, bh) & ~inside
-        win = vegp[y0:y1, x0:x1]
-        woods = _is_woods(win)
         own = _rasterise(poly, x0, y0, bw, bh)
         ground = inside & ~own
         if not ground.any() or woods[ground].mean() < IN_WOODS:
@@ -232,6 +235,8 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         dark = inside & ~own & np.all(lw == C.DARK_GRASS, axis=2)
         lw[dark] = C.MEDIUM_GRASS
         # The fringe: some trees a grade thinner, so the wood fades out.
+        fringe = _wobbly(poly, radius, seed, extra=EDGE_M / mpt)
+        edge = _rasterise(fringe, x0, y0, bw, bh) & ~inside
         ids = (np.arange(y0, y1, dtype=np.int64)[:, None] * w
                + np.arange(x0, x1, dtype=np.int64)[None, :])
         thin = edge & woods & (_hash01(ids, HOME_SEED + 1) < EDGE_THIN)
