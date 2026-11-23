@@ -561,6 +561,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                                if id(f) not in lifted.not_buildings]
 
     # Streets where every home is an address point and not a drawn building.
+    addressed: list[OSMFeature] = []
     infilled: list[OSMFeature] = []
     infill_report: Counter = Counter()
     sheds: list[OSMFeature] = []
