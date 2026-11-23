@@ -1354,7 +1354,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # (x0, y0, mask, storeys, kind) for the population estimate.
     peopled: list[tuple[int, int, np.ndarray, int, str]] = []
     hifld_by_fname: dict = {}
-    # Real outlines of the buildings placed, for the in-game paper map.
+    # Outlines of the buildings as placed, for the in-game paper map.
     outlines: list[tuple[list[tuple[float, float]], str, str]] = []
     occupied = np.zeros((proj.height, proj.width), dtype=bool)
     # ...and the ground covered by a lot rectangle rather than by a building's
@@ -2047,7 +2047,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         peopled.append((x0, y0, fp.mask, storeys,
                         hospitals.occupancy_kind(special or "house",
                                                  hifld_by_fname.get(fname))))
-        outlines.append((px, special or "house", real_name))
+        outlines.append((footprint.footprint_outline(fp), special or "house", real_name))
         rows.append({
             "file": fname, "name": label,
             "tile_x": x0, "tile_y": y0, "width": w, "height": h,
