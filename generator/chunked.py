@@ -9,6 +9,7 @@ one chunk regardless of total map size.
 """
 from __future__ import annotations
 
+from collections import Counter
 import copy
 import json
 import logging
@@ -238,15 +239,24 @@ def render_chunked(
     clip = shape_px(shape, full_proj)
     houses_from_addresses = 0
     houses_infilled = 0
+    infill_report: Counter = Counter()
     sheds_infilled = 0
     if not terrain_only:
         from .rendering.buildings import _houses_from_addresses
-        from .rendering.infill import _back_sheds, _infill_frontage
+        from .rendering.infill import _back_sheds, _drop_on_roads, _infill_frontage, _report_lines
 
         buckets_g, b_feats_g, *_ = R._collect_global_features(
             feats, full_proj, clip, include_proposed_roads
         )
         veg_g = buckets_g.get("vegetation", [])
+        # Footprint-file buildings that stand across a road, now that the roads
+        # are where the game will have them (infill._drop_on_roads).
+        b_feats_g, dropped = _drop_on_roads(buckets_g, b_feats_g, full_proj)
+        if dropped:
+            keep = {id(f) for f in b_feats_g}
+            buckets_g["building"] = [f for f in buckets_g.get("building", []) if id(f) in keep]
+            feats[:] = [f for f in feats if f.osm_id is None or not isinstance(f.osm_id, int)
+                        or not (-2 * 10**9 < f.osm_id < 0) or id(f) in keep]
         addressed = _houses_from_addresses(feats, b_feats_g, full_proj)
         if addressed:
             houses_from_addresses = len(addressed)
@@ -258,8 +268,11 @@ def render_chunked(
                 render_progress(0.45, "Placing infill buildings")
             infilled = _infill_frontage(
                 buckets_g, veg_g, b_feats_g,
-                full_proj, clip, extend_ends=(int(fill_frontage) != 2),
+                full_proj, clip, extend_ends=(int(fill_frontage) != 2), report=infill_report,
             )
+            if infill_report:
+                print("street infill (what was made, and why gaps stayed empty):")
+                print(chr(10).join(_report_lines(infill_report)))
             if infilled:
                 houses_infilled = len(infilled)
                 feats.extend(infilled)
@@ -550,6 +563,7 @@ def render_chunked(
         "feature_count": sum(len(v) for v in buckets.values()),
         "houses_from_addresses": houses_from_addresses,
         "houses_infilled": houses_infilled,
+        "street_infill_report": dict(infill_report),
         "sheds_infilled": sheds_infilled,
         "chunked": True,
         "chunk_count": total_chunks,

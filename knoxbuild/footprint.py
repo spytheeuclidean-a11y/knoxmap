@@ -22,6 +22,9 @@ from shapely.geometry import Polygon
 SNAP_DEGREES = 8.0
 # A footprint filling this share of its rotated rectangle is a rectangle.
 RECTANGULAR_ENOUGH = 0.86
+# A house is boxed (Smart) when its outline fills this much of its smallest
+# enclosing rectangle: less is a deliberate wing or a courtyard, not a notch.
+HOUSE_BOX_FILL = 0.6
 MIN_TILES = 16
 RECTILINEAR_SIMPLIFY_TOLERANCE = 1.0
 
@@ -425,6 +428,7 @@ def _prepare_mask(
     max_side: float,
     snap_degrees: float,
     alignment: str,
+    house_box_tiles: float | None = None,
 ):
     """Validate and rasterise a polygon into an initial grid mask.
 
@@ -453,7 +457,13 @@ def _prepare_mask(
     point_rotation = 0.0
     if alignment not in BUILDING_ALIGNMENT_OPTIONS:
         alignment = "smart"
-    box_alignment = alignment == "rectangle" or (
+    # Smart makes a house a box at any angle, as a street of real houses is:
+    # a diagonal house is turned to the grid rather than drawn as a staircase.
+    # A mansion, or any other building, keeps what it was drawn as.
+    house_box = (alignment == "smart" and house_box_tiles is not None
+                 and poly.area <= house_box_tiles
+                 and rect.area > 0 and poly.area / rect.area >= HOUSE_BOX_FILL)
+    box_alignment = alignment == "rectangle" or house_box or (
         alignment == "smart" and angle <= snap_degrees
         and (rectangular or snap_degrees >= 30))
     rectilinear_alignment = (alignment == "rectilinear"
@@ -492,12 +502,88 @@ def _prepare_mask(
             point_origin, point_rotation), "ok"
 
 
+# What is left of a footprint after the roads, the neighbours and the lots have
+# each taken their share. A building cut in half by a road or a party wall has
+# no outside to put a wall round: the walls follow the mask, and a mask in
+# scraps, or a sliver, is a wall of corners and holes. One that keeps less than
+# this share of what it was drawn as is refused ("cut") rather than built.
+KEEP_SHARE_MIN = 0.55
+# ...and one whose remaining shape fills less than this share of its convex hull
+# (a crescent, a comb, a dumbbell) is refused the same way.
+SOLIDITY_MIN = 0.65
+SPUR_PASSES = 2
+
+
+def _largest_piece(mask: np.ndarray) -> np.ndarray:
+    """The biggest 4-connected piece of `mask`."""
+    h, w = mask.shape
+    seen = np.zeros((h, w), dtype=bool)
+    best: list[tuple[int, int]] = []
+    for sy, sx in zip(*np.nonzero(mask)):
+        if seen[sy, sx]:
+            continue
+        seen[sy, sx] = True
+        piece, todo = [], [(int(sy), int(sx))]
+        while todo:
+            y, x = todo.pop()
+            piece.append((y, x))
+            for ny, nx in ((y + 1, x), (y - 1, x), (y, x + 1), (y, x - 1)):
+                if 0 <= ny < h and 0 <= nx < w and mask[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    todo.append((ny, nx))
+        if len(piece) > len(best):
+            best = piece
+    out = np.zeros_like(mask)
+    if best:
+        ys, xs = zip(*best)
+        out[list(ys), list(xs)] = True
+    return out
+
+
+def _solidity(mask: np.ndarray) -> float:
+    """Tiles of `mask` over the area of its convex hull, 1.0 for a rectangle."""
+    from shapely.geometry import MultiPoint
+    ys, xs = np.nonzero(mask)
+    corners = [(float(x + dx), float(y + dy)) for x, y in zip(xs, ys) for dx in (0, 1) for dy in (0, 1)]
+    hull = MultiPoint(corners).convex_hull.area
+    return float(mask.sum()) / hull if hull else 1.0
+
+
+def _settle(mask: np.ndarray, x0: int, y0: int,
+            intended: int) -> tuple[np.ndarray | None, int, int, str]:
+    """A footprint as it will be built, or why not: its spurs trimmed, only its
+    biggest piece kept, and refused ("cut") if what is left is a scrap of what
+    it was drawn as or a shape no building has. `intended` is its tiles before
+    anything cut into it."""
+    if mask.all():
+        return mask, x0, y0, "ok"
+    floor = max(MIN_TILES, intended * KEEP_SHARE_MIN)
+    if mask.sum() < floor:
+        return None, x0, y0, "cut"
+    m = mask.copy()
+    for _ in range(SPUR_PASSES):
+        padded = np.pad(m, 1)
+        near = (padded[:-2, 1:-1].astype(np.uint8) + padded[2:, 1:-1]
+                + padded[1:-1, :-2] + padded[1:-1, 2:])
+        spurs = m & (near <= 1)
+        if not spurs.any():
+            break
+        m &= ~spurs
+    m = _largest_piece(m)
+    if m.sum() < floor or _solidity(m) < SOLIDITY_MIN:
+        return None, x0, y0, "cut"
+    m, x0, y0 = _hug(m, x0, y0)
+    return m, x0, y0, "ok"
+
+
 def place(px: list[tuple[float, float]], occupied: np.ndarray,
           min_side: float = 0, max_side: float = 1e9,
           snap_degrees: float = SNAP_DEGREES,
           avoid: np.ndarray | None = None,
           lots: np.ndarray | None = None,
-          alignment: str = "smart"
+          alignment: str = "smart",
+          settle: bool = True,
+          house_box_tiles: float | None = None
           ) -> tuple[Footprint | None, str]:
     """Rasterise a projected footprint, claiming its tiles in `occupied`.
 
@@ -515,13 +601,15 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
     claimed there in turn.
     """
     map_h, map_w = occupied.shape
-    prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+    prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment,
+                                 house_box_tiles)
     if prep is None:
         return None, reason
     (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
      point_origin, point_rotation) = prep
     if full_rect:
         mask = np.ones((h, w), dtype=bool)
+    intended = int(mask.sum())
 
     before_nudge = (x0, y0)
     if avoid is not None:
@@ -563,11 +651,55 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
             if mask.sum() < MIN_TILES or min(mask.shape) < max(3, min_side):
                 return None, "taken"
 
+    # The tiles are taken before the shape is judged, as the compiled placer
+    # takes them (FootprintSession.place), so both leave the same ground to
+    # the buildings after.
     occupied[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] |= mask
     if lots is not None:
         lots[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] = True
+    if settle:
+        mask, fx0, fy0, why = _settle(mask, fx0, fy0, intended)
+    if mask is None:
+        return None, why
     return Footprint(fx0, fy0, mask, angle, short_side, long_side,
                      point_origin, point_rotation, point_offset), "ok"
+
+
+FILL_MAX_GROWTH = 2.0     # a box bigger than this times the footprint is not filled
+
+
+def fill_notches(fp: Footprint, occupied: np.ndarray, avoid: np.ndarray | None,
+                 lots: np.ndarray | None = None) -> None:
+    """Fill the wings and notches of a footprint in place, as far as the ground
+    is free: the tiles inside its smallest enclosing rectangle that no other building and no
+    road has. Real houses are boxes; the L, U and T outlines traced from
+    aerial imagery come out of the layout as a run of narrow one-room arms."""
+    m = fp.mask
+    if m.all():
+        return
+    from shapely.geometry import MultiPoint, Point
+    ys, xs = np.nonzero(m)
+    hull = MultiPoint([(float(x + dx), float(y + dy)) for x, y in zip(xs, ys)
+                       for dx in (0, 1) for dy in (0, 1)]).minimum_rotated_rectangle
+    if hull.area > FILL_MAX_GROWTH * m.sum():
+        return
+    h, w = m.shape
+    grow = np.zeros_like(m)
+    for y, x in zip(*np.nonzero(~m)):
+        if hull.contains(Point(x + 0.5, y + 0.5)):
+            grow[y, x] = True
+    if not grow.any():
+        return
+    sl = (slice(fp.y0, fp.y0 + h), slice(fp.x0, fp.x0 + w))
+    grow &= ~occupied[sl]
+    if avoid is not None:
+        grow &= ~(avoid[sl] >= ROAD_WEIGHT)
+    if not grow.any():
+        return
+    fp.mask = m | grow
+    occupied[sl] |= grow
+    if lots is not None:
+        lots[sl] |= grow
 
 
 _FP_MAGIC = b"KFP1"
@@ -749,13 +881,17 @@ class FootprintSession:
     def place(self, px: list[tuple[float, float]],
               min_side: float = 0, max_side: float = 1e9,
               snap_degrees: float = SNAP_DEGREES,
-              alignment: str = "smart") -> tuple[Footprint | None, str]:
+              alignment: str = "smart",
+              settle: bool = True,
+              house_box_tiles: float | None = None) -> tuple[Footprint | None, str]:
         if not self.native or self._proc is None:
             return place(px, self._occupied, min_side=min_side, max_side=max_side,
                          snap_degrees=snap_degrees, avoid=self._avoid,
-                         lots=self._lots, alignment=alignment)
+                         lots=self._lots, alignment=alignment, settle=settle,
+                         house_box_tiles=house_box_tiles)
 
-        prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
+        prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment,
+                                 house_box_tiles)
         if prep is None:
             return None, reason
         (x0, y0, w, h, full_rect, mask, angle, short_side, long_side,
@@ -784,10 +920,17 @@ class FootprintSession:
             self.close()
             return place(px, self._occupied, min_side=min_side, max_side=max_side,
                          snap_degrees=snap_degrees, avoid=self._avoid,
-                         lots=self._lots, alignment=alignment)
+                         lots=self._lots, alignment=alignment, settle=settle,
+                         house_box_tiles=house_box_tiles)
 
+        # The compiled placer has already taken these tiles for good, so they
+        # stay taken here too, whatever is made of the footprint.
         self._occupied[fy0:fy0 + fh, fx0:fx0 + fw] |= out_mask
         if self._lots is not None:
             self._lots[fy0:fy0 + fh, fx0:fx0 + fw] = True
+        if settle:
+            out_mask, fx0, fy0, why = _settle(out_mask, fx0, fy0, w * h if full_rect else int(mask.sum()))
+        if out_mask is None:
+            return None, why
         return Footprint(fx0, fy0, out_mask, angle, short_side, long_side,
                          point_origin, point_rotation, (ox, oy)), "ok"

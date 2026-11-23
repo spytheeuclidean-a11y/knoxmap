@@ -12,6 +12,7 @@ meters-per-tile scale stays consistent.
 """
 from __future__ import annotations
 
+from collections import Counter
 import logging
 import os
 import shutil
@@ -41,7 +42,7 @@ from .rendering.buildings import (ADDRESS_APART_M, ADDRESS_AVOIDS_ROADS,
                                   BUILDING_TAGS, MAX_ADDRESS_HOUSES,
                                   _buildings_geojson, _houses_from_addresses,
                                   _off_the_road)  # noqa: F401
-from .rendering.infill import _back_sheds, _infill_frontage
+from .rendering.infill import _back_sheds, _drop_on_roads, _infill_frontage, _report_lines
 from .rendering.furniture import (CRACK_SHARE, DRAIN_EVERY,
                                   EDGE_LINE_MIN_WIDTH, GRIME_SHARE,
                                   HYDRANT_EVERY, LAMP_EVERY, LITTER_SHARE,
@@ -561,11 +562,19 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
 
     # Streets where every home is an address point and not a drawn building.
     infilled: list[OSMFeature] = []
+    infill_report: Counter = Counter()
     sheds: list[OSMFeature] = []
     if terrain_only:
         building_feats = []
         buckets["building"] = []
     elif not _skip_infill:
+        # Footprint-file buildings that stand across a road, now that the roads
+        # are where the game will have them.
+        kept, dropped = _drop_on_roads(buckets, building_feats, proj)
+        if dropped:
+            keep = {id(f) for f in kept}
+            building_feats = kept
+            buckets["building"] = [f for f in buckets.get("building", []) if id(f) in keep]
         addressed = _houses_from_addresses(features, building_feats, proj)
         if addressed:
             building_feats = building_feats + addressed
@@ -577,7 +586,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         if fill_frontage:
             infilled = _infill_frontage(
                 buckets, vegetation_feats, building_feats,
-                proj, clip, extend_ends=(int(fill_frontage) != 2))
+                proj, clip, extend_ends=(int(fill_frontage) != 2), report=infill_report)
+            if infill_report:
+                print("street infill (what was made, and why gaps stayed empty):")
+                print(chr(10).join(_report_lines(infill_report)))
             if infilled:
                 building_feats = building_feats + infilled
                 buckets["building"] = buckets.get("building", []) + infilled
@@ -984,6 +996,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             "houses_from_addresses": len(addressed),
             # And how many were put into gaps along a street.
             "houses_infilled": len(infilled),
+            # Why gaps and lots were left empty, and what was made, trimmed and shaped.
+            "street_infill_report": dict(infill_report),
             "sheds_infilled": len(sheds),
             "guide_reference": "Thuztor Mapping Guide v0.2",
         }, indent=2)

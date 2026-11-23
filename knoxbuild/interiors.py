@@ -167,6 +167,13 @@ MAX_STANDS = 6
 # A bank of coolers takes this share of its wall; display cases, this many rows.
 BANK_SHARE = 0.6
 MAX_CASE_ROWS = 2
+# Coolers in one shop, in tiles: a tile for every this many of the room's, and
+# no more than a few for every this many of the whole building's, so a corner
+# shop is not mostly fridge and a small unit in a big building is not either.
+COOLER_PER_ROOM_TILES = 30
+COOLER_PER_BUILDING_TILES = 200
+COOLER_BASE = 4
+MIN_COOLERS = 2
 
 
 def is_cooler(role: str) -> bool:
@@ -361,8 +368,8 @@ def _store_setup(plan, idx: int, room, door_tiles: set, keep_clear: set,
 def _furnish_jewelrystore(plan, idx: int, room, rng: random.Random,
                           door_tiles: set, keep_clear: set,
                           street: str | None) -> bool:
-    """Boutique jewelry showroom: perimeter display cases, central glass island,
-    appraisal/checkout counter, mirrors, plants, and consultation seating."""
+    """Boutique jewelry showroom: rows of glass cases across the floor, a back
+    line of cases, appraisal/checkout counter, mirrors, plants and seating."""
     L = _layout()
     setup = _store_setup(plan, idx, room, door_tiles, keep_clear, street)
     if setup is None:
@@ -409,40 +416,32 @@ def _furnish_jewelrystore(plan, idx: int, room, rng: random.Random,
             continue
         if a % 4 == 0 and put("armchair", bx, by, back_orient):
             continue
-        put("shop_display", bx, by, back_orient)
+        if a % 4 != 3:      # runs of three, so the back wall is not one long case
+            put("shop_display", bx, by, back_orient)
         ax, ay = frame.xy(a, frame.depth - 2)
         if (ax, ay) in cells:
             placed.add((ax, ay))
 
-    # 3. Side walls: perimeter glass cases + mirrors/paintings on N/W walls.
+    # 3. Side walls stay bare but for mirrors and paintings on the N/W ones: a
+    # shop with its cases down every wall is a corridor, not a showroom.
     for side, along in ((left, 0), (right, frame.length - 1)):
-        orient = L._facing("shop_display", side)
-        for d in range(2, frame.depth - 1):
-            sx, sy = frame.xy(along, d)
-            if put("shop_display", sx, sy, orient):
-                fx, fy = frame.xy(along + (1 if side == left else -1), d)
-                if (fx, fy) in cells:
-                    placed.add((fx, fy))
         if side in ("N", "W"):
             for d in range(2, frame.depth - 1, 3):
                 _hang(plan, idx, "mirror" if d % 2 == 0 else "painting",
                       *frame.xy(along, d), side)
 
-    # 4. Central boutique showcase island (no grocery aisles).
-    if frame.length >= 7 and frame.depth >= 7:
-        mid_a0 = max(2, frame.length // 2 - 2)
-        mid_a1 = min(frame.length - 3, frame.length // 2 + 1)
-        mid_d = frame.depth // 2
-        island_orient = L._facing("shop_display", front)
-        for a in range(mid_a0, mid_a1 + 1):
-            ix, iy = frame.xy(a, mid_d)
-            if put("shop_display", ix, iy, island_orient):
-                if a == mid_a0:
-                    plan.furniture.append(("register", ix, iy, L._facing("register", front)))
-        # Consultation chairs facing the showcase island.
-        for a in (mid_a0, mid_a1):
-            cx, cy = frame.xy(a, mid_d - 1)
-            put("chair", cx, cy, L._facing("chair", back_to))
+    # 4. Rows of glass cases across the floor, in short runs of four with a
+    # two-tile cross-aisle between runs and two tiles of aisle between rows.
+    # Rows stop a tile short of the side walls, so there is a walkway down both.
+    # shortcut: a room too shallow for a row (depth < 8) just has none.
+    row_orient = L._facing("shop_display", front)
+    for d in range(4, frame.depth - 3, 3):
+        for a in range(2, frame.length - 2):
+            if (a - 2) % 6 >= 4:
+                continue
+            ix, iy = frame.xy(a, d)
+            if put("shop_display", ix, iy, row_orient) and d == 4 and a == 2:
+                plan.furniture.append(("register", ix, iy, L._facing("register", front)))
 
     # 5. Front window accents: indoor plants.
     for a in (1, frame.length - 2):
@@ -707,16 +706,23 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
             if done:
                 break
 
+    building_tiles = sum(1 for row in plan.grid for v in row if v)
+    coolers_left = max(MIN_COOLERS, min(len(cells) // COOLER_PER_ROOM_TILES,
+                                        COOLER_BASE + building_tiles // COOLER_PER_BUILDING_TILES))
+
     # Along the walls. Each wall is walked tile by tile, fitting one piece after
     # another so they stand in a line.
     def fill_wall(side: str, roles: list[str]):
+        nonlocal coolers_left
         if not roles:
             return
         # Coolers are not shelves: one kind, side by side along the wall, as in
         # a real shop, then the rest of the wall is shelving.
         coolers = [r for r in roles if is_cooler(r)]
         roles = [r for r in roles if not is_cooler(r)]
-        bank_role = rng.choice(coolers) if coolers else None
+        bank_role = rng.choice(coolers) if coolers and coolers_left > 0 else None
+        # Where the bank stops the wall goes on as shelving, not bare.
+        roles = roles or [r for r in spec["wall"] if not is_cooler(r)] or ["shop_shelf"]
         line = sorted((c for c in cells if L._room_at(plan, c[0] + STEP[side][0], c[1] + STEP[side][1]) != idx),
                       key=lambda c: (c[0], c[1]))
         on_wall = set(line)
@@ -734,7 +740,7 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
                 return False
             placed.update(front)
             return True
-        bank_left = (len(line) if not roles else round(len(line) * BANK_SHARE)) if bank_role else 0
+        bank_left = min(round(len(line) * BANK_SHARE), coolers_left) if bank_role else 0
         k = 0
         i = 0
         while i < len(line):
@@ -767,7 +773,9 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
             if all(c in on_wall for c in L._cells_for(role, x, y, orient)) and \
                     put_on_wall(role, x, y, orient):
                 if role == bank_role and bank_left > 0:
-                    bank_left -= len(C.FURNITURE[role][orient])
+                    size = len(C.FURNITURE[role][orient])
+                    bank_left -= size
+                    coolers_left -= size
                 else:
                     k += 1
                 i += len(C.FURNITURE[role][orient])
@@ -778,7 +786,8 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
     # or it is one kind of shelf from the door to the back.
     narrow = frame.length < 2 + ROW_EVERY + 2
     sides = [s for s in STEP if s not in (front, back_to)]
-    for side in STEP:
+    # The back wall first: it is where the coolers go, and they are limited.
+    for side in sorted(STEP, key=lambda s: s != back_to):
         if side == front:
             continue
         if side == back_to:
@@ -2685,7 +2694,8 @@ def dress_room(plan, idx: int, room, rng: random.Random, door_edges: set,
         # fridge, a wardrobe - or of a toilet, sat on from there.
         taken |= {(cx + STEP[OPPOSITE[o]][0], cy + STEP[OPPOSITE[o]][1])
                   for role, x, y, o in plan.furniture
-                  if L._room_at(plan, x, y) == idx and (L._needs_front(role) or role == "toilet")
+                  if L._room_at(plan, x, y) == idx and (L._needs_front(role) or role == "toilet"
+                                                          or role.startswith("shop_shelf"))
                   for cx, cy in L._cells_for(role, x, y, o)}
         spots = [(x, y, side) for x, y, side in on_walls()
                  if side in C.FURNITURE[item] and (x, y) not in taken

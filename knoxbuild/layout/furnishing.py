@@ -1667,6 +1667,9 @@ def _furnish(plan: Plan, rng: random.Random,
                         plan.furniture.append((role, x, y, "N"))
                         laid += 1
                         break
+            if plan.kind in ("house", None) and not dedicated_stair_core:
+                _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
+                                 stair_tiles, door_edges, stairs, rng)
             if plan.kind not in HOUSE_LIKE_KINDS:
                 # Keep stair ends, lift doors and narrow hallway necks unobstructed.
                 core_no_go = set(keep_clear) | {
@@ -2121,6 +2124,14 @@ def _furnish(plan: Plan, rng: random.Random,
                           keeps_open=keeps_open)
         _pair_up(plan, idx, occupied, no_go, keeps_open)
         _stand_on_something(plan, idx, r, pal)
+        if (r.kind == "storage" and plan.kind in ("house", None)
+                and not any(_blocks(role) for role, *_ in plan.furniture[start:])):
+            # A box room with a door at each end is a way through, and the
+            # walkway and its sleeve took all of it. Shelves down the sides
+            # that leave the way through are better than a bare floor.
+            _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
+                             stair_tiles, door_edges, stairs, rng,
+                             pieces=STORE_PIECES, most=STORE_MAX_PIECES)
         plan.sleeve |= sleeve
         if not r.is_core:
             interiors.dress_room(plan, idx, r, random.Random(f"{home_seed}:{idx}:dress"),
@@ -2757,6 +2768,88 @@ def _clear_for_stairs(plan: Plan, x: int, y: int, d: str) -> None:
         if _is_wall_piece(f[0])
         or not (set(_cells_for(f[0], f[1], f[2], f[3])) & blocked)
     ]
+
+
+# What stands along a house's hall, in the order it is tried. A hall in a
+# house was bare floor from the stairs to the back door; this is a hallway.
+HALL_PIECES = ("bookshelf", "dresser", "coat_rack", "shelf", "dresser_alt", "plant",
+               "chair", "shelf_1")
+HALL_PIECE_EVERY = 5     # tiles of hall floor per piece, at most 8 in a hall
+HALL_MAX_PIECES = 8
+# What a house's box room gets when it is a way through and nothing else fits.
+STORE_PIECES = ("shelf", "shelf_1", "shelf_2", "dresser")
+STORE_MAX_PIECES = 2
+
+
+def _furnish_hallway(plan: Plan, idx: int, room_cells: set, slots: list,
+                     on_facade, door_tiles: set, stair_tiles: set,
+                     door_edges: set, stairs, rng: random.Random,
+                     pieces: tuple | None = None, most: int | None = None) -> int:
+    """Furniture down both sides of a hall, leaving a way through.
+    `pieces` and `most` stand in for HALL_PIECES and HALL_MAX_PIECES, for a
+    box room that is walked through the same way.
+
+    Every door of the hall and the foot and head of the stairs must still be
+    reachable from one another over bare floor, and the tile in front of
+    each piece stays free, so a hall three tiles wide keeps its middle.
+    Returns the pieces stood.
+    """
+    keep = set(door_tiles) | set(stair_tiles)
+    if stairs is not None:
+        sx, sy, sd = stairs
+        sdx, sdy = (0, 1) if sd == "N" else (1, 0)
+        keep |= {(sx - sdx, sy - sdy), (sx + sdx * STAIR_RUN, sy + sdy * STAIR_RUN)}
+    keep |= {c for c in room_cells if _narrow(plan.grid, c[0], c[1])}
+    ways = [t for t in keep if t in room_cells and t not in stair_tiles]
+    blocked = {c for role, x, y, o in plan.furniture
+               if _blocks(role) and _room_at(plan, x, y) == idx
+               for c in _cells_for(role, x, y, o)}
+
+    def joined(down: set) -> bool:
+        if not ways:
+            return True
+        seen, todo = {ways[0]}, [ways[0]]
+        while todo:
+            cx, cy = todo.pop()
+            for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                if (nx, ny) in room_cells and (nx, ny) not in down and (nx, ny) not in seen:
+                    seen.add((nx, ny))
+                    todo.append((nx, ny))
+        return all(w in seen for w in ways)
+
+    roles = [r for r in (pieces or HALL_PIECES) if r in C.FURNITURE]
+    want = most or min(HALL_MAX_PIECES, max(2, len(room_cells) // HALL_PIECE_EVERY))
+    # Inside walls, not the facade, where the windows go; alternating sides.
+    inside = [sl for sl in slots if not on_facade(sl)]
+    rng.shuffle(inside)
+    placed = 0
+    for x, y, facing in inside:
+        if placed >= want or not roles:
+            break
+        role = roles[placed % len(roles)]
+        if role in NORTH_WEST_ONLY and facing in ("S", "E"):
+            continue
+        orient = _facing(role, facing)
+        ax, ay = _wall_anchor(role, x, y, orient, facing)
+        cells = _cells_for(role, ax, ay, orient)
+        if any(c not in room_cells or c in keep or c in blocked for c in cells):
+            continue
+        if any(_wall_edge(cx, cy, facing) in door_edges for cx, cy in cells):
+            continue
+        dx, dy = {"N": (0, 1), "S": (0, -1), "W": (1, 0), "E": (-1, 0)}[facing]
+        front = {(cx + dx, cy + dy) for cx, cy in cells}
+        # A piece's neighbours along the wall stay clear too: a row of
+        # cupboards is a wall, a piece and a gap is a hallway.
+        along = {(cx + ddx, cy + ddy) for cx, cy in cells
+                 for ddx, ddy in ((1, 0), (-1, 0), (0, 1), (0, -1))} - set(cells) - front
+        if any(c not in room_cells or c in blocked for c in front) or along & blocked:
+            continue
+        if not joined(blocked | set(cells)):
+            continue
+        plan.furniture.append((role, ax, ay, orient))
+        blocked |= set(cells)
+        placed += 1
+    return placed
 
 
 def _blocks(role: str) -> bool:

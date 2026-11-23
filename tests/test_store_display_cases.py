@@ -54,6 +54,36 @@ class StoreDisplayCases(unittest.TestCase):
         picks = [interiors.store_kind(rng) for _ in range(300)]
         self.assertGreaterEqual(picks.count("gunstore"), 8)
 
+    def test_coolers_are_limited_by_room_and_building_size(self):
+        for kind in ("conveniencestore", "grocery", "liquorstore", "gasstore"):
+            for seed in (1, 2, 3):
+                for w, h in ((36, 22), (20, 14), (12, 9)):
+                    plan, idx, furniture = sales_floor(kind, seed, w, h)
+                    tiles = sum(len(catalog.FURNITURE[r][o]) for r, _x, _y, o in furniture
+                                if interiors.is_cooler(r))
+                    room = sum(row.count(idx) for row in plan.grid)
+                    building = sum(1 for row in plan.grid for v in row if v)
+                    budget = max(interiors.MIN_COOLERS,
+                                 min(room // interiors.COOLER_PER_ROOM_TILES,
+                                     interiors.COOLER_BASE + building // interiors.COOLER_PER_BUILDING_TILES))
+                    # A piece two tiles long may run one past the budget.
+                    self.assertLessEqual(tiles, budget + 1, (kind, seed, w, h))
+                    self.assertLess(tiles, room * 0.15, (kind, seed, w, h))
+
+    def test_jewelry_cases_stand_in_rows_not_down_the_walls(self):
+        for seed in (1, 2, 3):
+            plan, idx, furniture = sales_floor("jewelrystore", seed)
+            h, w = len(plan.grid), len(plan.grid[0])
+
+            def off_the_wall(x, y):
+                return all(0 <= y + j < h and 0 <= x + i < w and plan.grid[y + j][x + i] == idx
+                           for i in (-2, -1, 0, 1, 2) for j in (-2, -1, 0, 1, 2))
+
+            cases = [(x, y) for role, x, y, _o in furniture if role == "shop_display"]
+            self.assertGreater(sum(off_the_wall(*c) for c in cases), len(cases) * 2 // 3, seed)
+            rows = {y for x, y in cases if off_the_wall(x, y)}
+            self.assertGreaterEqual(len(rows), 2, seed)
+
     def test_jewelry_and_electronics_store_interiors(self):
         _, _, jewelry_furn = sales_floor("jewelrystore", 3)
         j_roles = {role for role, *_ in jewelry_furn}

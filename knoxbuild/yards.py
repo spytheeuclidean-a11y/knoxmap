@@ -518,7 +518,8 @@ def _dress_non_home_surroundings(
                 )
         if service_ring and bw >= 6 and bh >= 6:
             if kind in _DUMPSTER_KINDS and nrng.random() < 0.85:
-                _dumpster(service_ring, bx0, by0, bw, bh, doors, can_veg, place_veg, nrng)
+                _dumpster(service_ring, bx0, by0, bw, bh, doors, can_veg, place_veg, nrng,
+                          lambda x, y: 0 <= x < w and 0 <= y < h and bool(occupied[y, x]))
             clutter_chance = 0.75 if kind in _SERVICE_CLUTTER_KINDS else 0.45
             if nrng.random() < clutter_chance:
                 far_wall = sorted(
