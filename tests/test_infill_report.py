@@ -2,7 +2,7 @@ import unittest
 from collections import Counter
 
 from generator.rendering.infill import _infill_frontage, _report_lines
-from tests.test_infill import PROJ, box, row, street, way
+from tests.test_infill import PROJ, box, row, street
 
 
 def run(buildings, roads=None, **kw):

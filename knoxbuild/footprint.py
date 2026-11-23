@@ -571,7 +571,8 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
           snap_degrees: float = SNAP_DEGREES,
           avoid: np.ndarray | None = None,
           lots: np.ndarray | None = None,
-          alignment: str = "smart"
+          alignment: str = "smart",
+          settle: bool = True
           ) -> tuple[Footprint | None, str]:
     """Rasterise a projected footprint, claiming its tiles in `occupied`.
 
@@ -644,7 +645,8 @@ def place(px: list[tuple[float, float]], occupied: np.ndarray,
     occupied[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] |= mask
     if lots is not None:
         lots[fy0:fy0 + mask.shape[0], fx0:fx0 + mask.shape[1]] = True
-    mask, fx0, fy0, why = _settle(mask, fx0, fy0, intended)
+    if settle:
+        mask, fx0, fy0, why = _settle(mask, fx0, fy0, intended)
     if mask is None:
         return None, why
     return Footprint(fx0, fy0, mask, angle, short_side, long_side,
@@ -830,11 +832,12 @@ class FootprintSession:
     def place(self, px: list[tuple[float, float]],
               min_side: float = 0, max_side: float = 1e9,
               snap_degrees: float = SNAP_DEGREES,
-              alignment: str = "smart") -> tuple[Footprint | None, str]:
+              alignment: str = "smart",
+              settle: bool = True) -> tuple[Footprint | None, str]:
         if not self.native or self._proc is None:
             return place(px, self._occupied, min_side=min_side, max_side=max_side,
                          snap_degrees=snap_degrees, avoid=self._avoid,
-                         lots=self._lots, alignment=alignment)
+                         lots=self._lots, alignment=alignment, settle=settle)
 
         prep, reason = _prepare_mask(px, min_side, max_side, snap_degrees, alignment)
         if prep is None:
@@ -865,14 +868,15 @@ class FootprintSession:
             self.close()
             return place(px, self._occupied, min_side=min_side, max_side=max_side,
                          snap_degrees=snap_degrees, avoid=self._avoid,
-                         lots=self._lots, alignment=alignment)
+                         lots=self._lots, alignment=alignment, settle=settle)
 
         # The compiled placer has already taken these tiles for good, so they
         # stay taken here too, whatever is made of the footprint.
         self._occupied[fy0:fy0 + fh, fx0:fx0 + fw] |= out_mask
         if self._lots is not None:
             self._lots[fy0:fy0 + fh, fx0:fx0 + fw] = True
-        out_mask, fx0, fy0, why = _settle(out_mask, fx0, fy0, w * h if full_rect else int(mask.sum()))
+        if settle:
+            out_mask, fx0, fy0, why = _settle(out_mask, fx0, fy0, w * h if full_rect else int(mask.sum()))
         if out_mask is None:
             return None, why
         return Footprint(fx0, fy0, out_mask, angle, short_side, long_side,

@@ -3,7 +3,7 @@ import unittest
 from shapely.geometry import Polygon
 
 from generator.rendering.infill import _outline, _shaped, _trimmed
-from tests.test_infill import Y, box, fill, polys, row, street, way
+from tests.test_infill import fill, polys, row, street, way
 
 FRAME = (0.0, 0.0, 1.0, 0.0, 0.0, 1.0)      # the street along x, out from it along y
 

@@ -1563,6 +1563,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                   0.04 * min(1.0, placed_so_far / len(order)))
           feat = geo["features"][i]
           oversize = False
+          # A police station, a school: grown to the game's size later whatever
+          # is left of the outline, so a scrap of it is not a reason to lose it.
+          named = classify_building(feat.get("properties") or {}) not in (None, "house")
           if retry:
               # A building past max_size is not thrown away any more: the
               # factory and the hangar are the landmarks a place is known by,
@@ -1574,12 +1577,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               # being several blocks wall to wall.
               fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
                                             snap_degrees=settings.square_buildings,
-                                            alignment=settings.building_alignment)
+                                            alignment=settings.building_alignment,
+                                            settle=not named)
               oversize = fp is not None
           else:
               fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
                                             snap_degrees=settings.square_buildings,
-                                            alignment=settings.building_alignment)
+                                            alignment=settings.building_alignment,
+                                            settle=not named)
               if fp is None and reason == "large":
                   if -_neg_area <= MAX_OVERSIZE_TILES:
                       deferred_large.append((_neg_area, i, px))
