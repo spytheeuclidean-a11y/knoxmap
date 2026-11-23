@@ -833,6 +833,7 @@ from .zones_detect import (  # noqa: F401
 
 
 from .street_context import (  # noqa: F401
+    free_way_side,
     MAPPED_ROOM_KINDS,
     RETAIL_DENSITY,
     SHORE_LOOK_TILES,
@@ -1788,7 +1789,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                       used_presets[pick["name"]] += 1
               jobs.append((uw, uh, levels, commercial, seed + i * 31 + n, special, umask,
                            here, style, label, os.path.join(bdir, fname),
-                           street_side(ux0, uy0, uw, uh),
+                           # A garage's door faces the way a car can get to it, round
+                           # the house in front if it stands at the back of a lot.
+                           ((free_way_side(ux0, uy0, uw, uh, occupied, road_weight)
+                             if btag in ("garage", "garages") or special == "garage"
+                             else None) or street_side(ux0, uy0, uw, uh)),
                            # Shops under flats where the town is built up.
                            context.density(cx, cy) >= RETAIL_DENSITY,
                            # What the ground floor really is, and a hotel's rooms.
