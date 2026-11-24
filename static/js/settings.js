@@ -46,7 +46,7 @@ const SETTING_LABELS = {
   apartment_furnishing:['Furnishing variety', 'Varies furniture, placement and finishes between flats and floors.'],
   apartment_stair_balcony: ['Stairs via an open gallery', 'Auto uses a shared open balcony in newer buildings when the footprint fits it. On prefers it wherever it fits.'],
   apartment_ground_floor: ['Ground floor of flats', 'Auto preserves a commercial ground floor when the standard layout calls for one. Mixed use plans homes and street-level businesses together.'],
-  vanilla_tiles:       ['Vanilla tiles only', 'On builds with the game’s own art only, leaving Erika’s Tiles out even when it is installed. A map built with the mod needs the mod to look right, so this is the one to turn on before handing a map to somebody who has not subscribed.'],
+  vanilla_tiles:       ['Vanilla tiles only', 'On builds with the game’s own art only, leaving mod tile packs (Erika’s Tiles, Melos Tiles) out even when installed. A map built with those mods needs them to look right, so turn this on before handing a map to somebody who has not subscribed.'],
   height_mix:          ['Height mix', 'How tall the buildings OpenStreetMap says nothing about come out. As the place is lets the kind of building and the size of its footprint decide, which is the closest to the real thing. The rest shape that guess for the skyline you want. A building whose floors OSM does record keeps them whatever this says.'],
   max_levels:          ['Tallest building', 'Storeys, up to 31 - Build 42’s height limit, less the roof. OSM heights are capped to this. Tall cities take longer to compile.'],
   room_size:           ['Room size', 'Target room area in tiles before it gets split.'],

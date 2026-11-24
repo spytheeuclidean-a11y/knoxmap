@@ -680,7 +680,8 @@ def _has_airport(project_dir: str) -> bool:
 def write_server_setup(mod_root: str, mod_id: str, name: str,
                        map_folder: str, needs_erika: bool = False,
                        standalone: bool = False,
-                       needs_airport: bool = False) -> str:
+                       needs_airport: bool = False,
+                       needs_melos: bool = False) -> str:
     """The files and lines a dedicated server needs, ready to copy.
 
     A map mod is enough for a player on their own; a server needs three more
@@ -747,24 +748,31 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
         "   map folder name is case sensitive and a wrong capital is simply",
         "   a map that is not there.",
         "",] + ([
-        f"   This map is built with Erika's Tiles, so the server needs that",
-        f"   mod as well and so does every player:",
+        "   This map uses custom tile packs, so the server and every player",
+        "   need those mods as well:",
         "",
-        f"      Mods={knoxpaths_module().ERIKAS_TILES_MOD_ID};{mod_id}",
-        f"      WorkshopItems={knoxpaths_module().ERIKAS_TILES_WORKSHOP_ID}",
+        "      Mods=" + ";".join(
+            ([knoxpaths_module().ERIKAS_TILES_MOD_ID] if needs_erika else [])
+            + ([knoxpaths_module().MELOS_TILES_MOD_ID] if needs_melos else [])
+            + [mod_id]),
+        "      WorkshopItems=" + ";".join(
+            ([knoxpaths_module().ERIKAS_TILES_WORKSHOP_ID] if needs_erika else [])
+            + ([knoxpaths_module().MELOS_TILES_WORKSHOP_ID] if needs_melos else [])),
         "",
-        "   Without it the map loads with its tiles missing - walls and shop",
+        "   Without them the map loads with its tiles missing - walls and shop",
         "   fronts you can see straight through.",
-        "",] if needs_erika else []) + ([
+        "",] if (needs_erika or needs_melos) else []) + ([
         "   This map has an airport, so the server and every player need the",
         "   Wingsmith aircraft mods as well:",
         "",
         "      Mods=" + ";".join(
             ([knoxpaths_module().ERIKAS_TILES_MOD_ID] if needs_erika else [])
+            + ([knoxpaths_module().MELOS_TILES_MOD_ID] if needs_melos else [])
             + [m for m, _w in knoxpaths_module().AIRPORT_REQUIRED_MODS]
             + [mod_id]),
         "      WorkshopItems=" + ";".join(
             ([knoxpaths_module().ERIKAS_TILES_WORKSHOP_ID] if needs_erika else [])
+            + ([knoxpaths_module().MELOS_TILES_WORKSHOP_ID] if needs_melos else [])
             + [w for _m, w in knoxpaths_module().AIRPORT_REQUIRED_MODS]),
         "",] if needs_airport else []) + [
         f"3. Copy server/{regions} into Zomboid/Server/ and rename it to",
@@ -793,7 +801,7 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
         "  Mods=, or the server was not restarted.",
         "One player falls through the world and the rest are fine: that player",
         "  has not got the mod, or has an older build of it than the server.",
-        "Walls and shop fronts you can see through: Erika's Tiles is missing.",
+        "Walls and shop fronts you can see through: a required tile pack (Erika's Tiles or Melos Tiles) is missing.",
         "Odd failures on a world that has been played: the map was added or",
         "  changed after the world was made. Start a new one.",
         "",
@@ -1039,11 +1047,15 @@ def package(project_dir: str, name: str, mod_id: str,
     # it and with nothing in front of it.
     uses_erika = any(f.endswith(".lotheader") and b"_erika_" in _Path(f).read_bytes()
                      for f in cells)
+    uses_melos = any(f.endswith(".lotheader") and b"melos_tiles_" in _Path(f).read_bytes()
+                     for f in cells)
     needs_airport = n_stands > 0 or _has_airport(project_dir)
     kp = knoxpaths_module()
     requires = []
     if uses_erika:
         requires.append(kp.ERIKAS_TILES_MOD_ID)
+    if uses_melos:
+        requires.append(kp.MELOS_TILES_MOD_ID)
     if needs_airport:
         requires.extend(req_id for req_id, _wid in kp.AIRPORT_REQUIRED_MODS)
     if requires:
@@ -1062,7 +1074,8 @@ def package(project_dir: str, name: str, mod_id: str,
     regions = write_server_setup(mod_root, mod_id, name,
                                  folder_name(name, mod_id),
                                  needs_erika=uses_erika, standalone=is_standalone,
-                                 needs_airport=needs_airport)
+                                 needs_airport=needs_airport,
+                                 needs_melos=uses_melos)
     n_pois = write_spawn_selector(project_dir, mod_root, mod_id, name)
     reset_loot = write_reset_loot(mod_root)
     gun_cache = write_gun_cache(project_dir, mod_root, mod_id)

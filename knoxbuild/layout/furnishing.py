@@ -125,7 +125,7 @@ CORE_WALL_ART_CIVIC: tuple = ()
 CORE_FACADE_SHARE = 4
 # One piece of art per this many wall slots. Hanging one on every slot filled
 # a corridor edge to edge and made pictures the commonest thing in a house.
-CORE_ART_EVERY = 3
+CORE_ART_EVERY = 6
 # Pictures and mirrors a room may hold, however long its wishlist, and how
 # often a room gets one at all. They repeat where other things do not and
 # they are on nearly every room's list, so almost every room had one or two
@@ -136,7 +136,7 @@ WALL_ART_CAP = 1
 # house hangs one. Pictures take wall squares, not floor, so this costs a room
 # nothing but the wall.
 MANSION_ART_CAP = 3
-WALL_ART_CHANCE = 0.55
+WALL_ART_CHANCE = 0.28
 # Workplaces hang nothing. Knox County's school rooms carry 0.19 pieces of
 # wall decoration per 10 m2 and ours sat at 0.21, but with Erika's Tiles
 # installed the substitution below turns every picture and mirror into one
@@ -834,7 +834,8 @@ NORTH_WEST_ONLY = (
     - _EITHER_WAY
     | {"painting", "mirror", "shelf"}
     | set(getattr(C, "ERIKA_WALL_ART", ()))
-    | set(getattr(C, "ERIKA_SHOP_ADS", ())))
+    | set(getattr(C, "ERIKA_SHOP_ADS", ()))
+    | set(getattr(C, "MELOS_WALL_ART", ())))
 # With Erika's Tiles: shops hang its drinks and magazine posters instead of
 # paintings, and these rooms get a drinks machine.
 SHOP_DECOR_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe", "bar",
@@ -844,15 +845,18 @@ VENDING_ROOMS = {"cafe", "lobby", "gym", "classroom", "clinic", "breakroom"}
 ERIKA_SHELF_SHARE = 0.5
 
 _ERIKA: list[bool] = []
+_MELOS: list[bool] = []
 # Set from the map's settings before anything is laid out. None means nobody
 # has said, and the answer is whatever is installed.
 _ERIKA_ALLOWED: list[bool] = []
+_MELOS_ALLOWED: list[bool] = []
 
 
 def use_mod_tiles(allowed: bool) -> None:
-    """Say whether this map may use Erika's Tiles, whatever is installed.
+    """Say whether this map may use mod tile packs (Erika's Tiles, Melos Tiles),
+    whatever is installed.
 
-    A map built with the mod's tiles needs the mod to look right, and a player
+    A map built with a mod's tiles needs the mod to look right, and a player
     who would rather keep to the game's own art - or hand the map to somebody
     who has not subscribed - has no way back once it is built. The settings
     carry the answer (vanilla_tiles), and the build sets it here before the
@@ -860,6 +864,8 @@ def use_mod_tiles(allowed: bool) -> None:
     """
     _ERIKA_ALLOWED[:] = [bool(allowed)]
     _ERIKA.clear()
+    _MELOS_ALLOWED[:] = [bool(allowed)]
+    _MELOS.clear()
 
 
 def _erika_ready() -> bool:
@@ -875,6 +881,21 @@ def _erika_ready() -> bool:
         except Exception:      # noqa: BLE001 - no tools, no mod tiles
             _ERIKA.append(False)
     return _ERIKA[0]
+
+
+def _melos_ready() -> bool:
+    """Whether buildings may use Melos Tiles; asked once per process."""
+    if _MELOS_ALLOWED and not _MELOS_ALLOWED[0]:
+        return False
+    if not _MELOS:
+        import os
+        try:
+            import knoxpaths
+            _MELOS.append(os.environ.get("KNOXMAP_NO_MOD_TILES") != "1"
+                          and knoxpaths.melos_tiles_ready())
+        except Exception:      # noqa: BLE001 - no tools, no mod tiles
+            _MELOS.append(False)
+    return _MELOS[0]
 
 
 def _is_wall_piece(role: str) -> bool:
@@ -1936,22 +1957,30 @@ def _furnish(plan: Plan, storey_rng: random.Random,
         # game's own tiles, so a mansion hangs a different print in each room.
         if plan.grand and r.kind in MANSION_EXTRA:
             base = base + MANSION_EXTRA[r.kind]
-        if _erika_ready():
-            # With Erika's Tiles installed, pictures and plants come from its
-            # far larger range, so no two living rooms hang the same print.
+        erika = _erika_ready()
+        melos = _melos_ready()
+        if erika or melos:
+            # With Erika's Tiles and/or Melos Tiles installed, pictures, plants,
+            # and shelves come from their far larger range, so no two living rooms
+            # hang the same print.
             shop = r.kind in SHOP_DECOR_ROOMS
-            base = [rng.choice(C.ERIKA_SHOP_ADS) if role == "painting" and shop and C.ERIKA_SHOP_ADS
-                    else rng.choice(C.ERIKA_WALL_ART)
-                    if role in ("painting", "mirror") and C.ERIKA_WALL_ART
+            wall_art = (list(C.ERIKA_WALL_ART) if erika else []) + (list(C.MELOS_WALL_ART) if melos else [])
+            plants = (list(C.ERIKA_PLANTS) if erika else []) + (list(C.MELOS_PLANTS) if melos else [])
+            shelves = (list(C.ERIKA_SHELVES) if erika else []) + (list(C.MELOS_SHELVES) if melos else [])
+            shop_ads = list(C.ERIKA_SHOP_ADS) if erika else []
+            vending = list(C.ERIKA_VENDING) if erika else []
+            base = [rng.choice(shop_ads) if role == "painting" and shop and shop_ads
+                    else rng.choice(wall_art)
+                    if role in ("painting", "mirror") and wall_art
                     and plan.kind not in ART_FREE_KINDS
                     and not (role == "mirror" and (salon or r.kind == "bathroom"))
-                    else rng.choice(C.ERIKA_PLANTS)
-                    if role == "plant" and C.ERIKA_PLANTS and plan.kind in HOME_KINDS
-                    else rng.choice(C.ERIKA_SHELVES)
-                    if role == "bookshelf" and C.ERIKA_SHELVES and rng.random() < ERIKA_SHELF_SHARE
+                    else rng.choice(plants)
+                    if role == "plant" and plants and plan.kind in HOME_KINDS
+                    else rng.choice(shelves)
+                    if role == "bookshelf" and shelves and rng.random() < ERIKA_SHELF_SHARE
                     else role for role in base]
-            if r.kind in VENDING_ROOMS and C.ERIKA_VENDING:
-                base = base + [rng.choice(C.ERIKA_VENDING)]
+            if r.kind in VENDING_ROOMS and vending:
+                base = base + [rng.choice(vending)]
         # Scale the wishlist with floor area, or a 12x9 living room ends up
         # with four items rattling around in it.
         # Knox County's rooms hold 8-13 pieces per 10 m2 of floor (counting
@@ -1991,9 +2020,9 @@ def _furnish(plan: Plan, storey_rng: random.Random,
         art_chance = WALL_ART_CHANCE
         art_cap = WALL_ART_CAP
         if plan.profile:
-            art_chance = max(0.2, min(0.85,
-                                     art_chance + (plan.profile.wealth - 0.5) * 0.25
-                                     - plan.profile.wear * 0.12))
+            art_chance = max(0.1, min(0.45,
+                                     art_chance + (plan.profile.wealth - 0.5) * 0.15
+                                     - plan.profile.wear * 0.08))
             if plan.profile.wealth >= 0.78 and plan.profile.wear < 0.3:
                 art_cap = 2
         if plan.grand:
@@ -2010,7 +2039,7 @@ def _furnish(plan: Plan, storey_rng: random.Random,
             # Pictures and mirrors are the one thing that repeats freely, so
             # scaling the list with floor area turned a big room into a
             # gallery. Everything else keeps its share.
-            if role in ("painting", "mirror") or role.startswith(("erika_art", "erika_ad")):
+            if role in ("painting", "mirror") or role.startswith(("erika_art", "erika_ad", "melos_art")):
                 if art >= art_cap:
                     continue
                 art += 1
@@ -3670,7 +3699,7 @@ def _off_the_tall_furniture(storey: Plan) -> int:
     gone = {i for i, (role, fx, fy, fd) in enumerate(storey.furniture)
             if role != SWITCH and _is_wall_piece(role) and (fx, fy) in tall
             and (role in ("painting", "mirror", "mirror_small", "corkboard", "clock")
-                 or role.startswith(("poster_", "erika_art", "erika_ad")))}
+                 or role.startswith(("poster_", "erika_art", "erika_ad", "melos_art")))}
     if gone:
         storey.furniture = [f for i, f in enumerate(storey.furniture)
                             if i not in gone]

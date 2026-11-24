@@ -16,7 +16,7 @@ import zlib
 from xml.sax.saxutils import quoteattr
 
 from . import catalog as C
-from .layout import ROOM_STYLE, STAIR_RUN, Building, Plan, _erika_ready, roof_rects
+from .layout import ROOM_STYLE, STAIR_RUN, Building, Plan, _erika_ready, _melos_ready, roof_rects
 
 
 def _stable_seed(*parts) -> int:
@@ -476,11 +476,16 @@ def render_tbx(plan: Plan | Building, name: str,
     glazed: set[tuple[int, int, str]] = set()
     user_tiles: dict[int, dict[tuple[int, int], str]] = {}
     store_ext = store_int = store_door = 0
-    erika_front = bool(front_idx and C.ERIKA_STOREFRONTS and storeys[0].shop_front
-                       and _erika_ready())
+    erika = _erika_ready()
+    melos = _melos_ready()
+    storefronts = (
+        (list(C.ERIKA_STOREFRONTS) if erika else [])
+        + (list(getattr(C, "MELOS_STOREFRONTS", ())) if melos else [])
+    )
+    erika_front = bool(front_idx and storefronts and storeys[0].shop_front)
     if erika_front:
         rng = random.Random(name)
-        ext, inte, door = rng.choice(C.ERIKA_STOREFRONTS)
+        ext, inte, door = rng.choice(storefronts)
         store_ext, store_int, store_door = _add(entries, ext), _add(entries, inte), _add(entries, door)
         # A one-tile run is a step in a slanted wall, not a shop window.
         runs = [r for r in _storefront_runs(storeys[0], storeys[0].doors) if r[3] >= 2]
@@ -496,7 +501,11 @@ def render_tbx(plan: Plan | Building, name: str,
                 or (r[0] == "W" and (r[1] >= len(grid[0]) or not grid[r[2]][r[1]]))]
         if seen:
             d, fixed, start, length = max(seen, key=lambda r: r[3])
-            fits = [s for s in C.ERIKA_SIGNS.get(d, ()) if len(s) <= length]
+            signs = (
+                (list(C.ERIKA_SIGNS.get(d, ())) if erika else [])
+                + (list(getattr(C, "MELOS_SIGNS", {}).get(d, ())) if melos else [])
+            )
+            fits = [s for s in signs if len(s) <= length]
             if fits:
                 sign = rng.choice(fits)
                 first = start + (length - len(sign)) // 2

@@ -928,6 +928,8 @@ def workshop_mod_installed(workshop_id: str, folder: str) -> bool:
 
 ERIKAS_TILES_WORKSHOP_ID = "3346506593"
 ERIKAS_TILES_MOD_ID = "Erikas_Tiles"
+MELOS_TILES_WORKSHOP_ID = "2879745353"
+MELOS_TILES_MOD_ID = "melos_tiles_for_miles_pack"
 WINGSMITH_WORKSHOP_ID = "3822736282"
 WINGSMITH_MOD_ID = "Wingsmith"
 LV200_AIRLINER_WORKSHOP_ID = "3824463369"
@@ -956,6 +958,30 @@ def erikas_tiles_ready() -> bool:
     tools = mapping_tools_dir()
     return bool(erikas_tiles_media() and tools and
                 _exists(tools / "Tiles" / "2x" / "walls_decoration_paintings_erika_01.png"))
+
+
+def melos_tiles_media() -> Path | None:
+    """The media folder of Melos Tiles for Miles, if the mod is on this PC."""
+    for lib in _steam_libraries():
+        base = lib / "steamapps" / "workshop" / "content" / "108600" / MELOS_TILES_WORKSHOP_ID
+        if not _is_dir(base):
+            continue
+        for media in base.glob("mods/*/common/media"):
+            if _exists(media / "texturepacks" / "melos_tiles_for_miles1.pack"):
+                return media
+    return None
+
+
+def melos_tiles_ready() -> bool:
+    """Melos Tiles is installed and its sheets are in the map tools, so
+    buildings may use them (Setup extracts them)."""
+    tools = mapping_tools_dir()
+    return bool(
+        melos_tiles_media()
+        and tools
+        and _exists(tools / "Tiles" / "2x" / "melos_tiles_wall_deco_01.png")
+        and _exists(tools / "Tiles" / "2x" / "melos_tiles_walls_commercial_01.png")
+    )
 
 
 def elevators_mod_installed() -> bool:

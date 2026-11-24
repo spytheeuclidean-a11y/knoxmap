@@ -719,9 +719,45 @@ def style_named(name: str, kind: str | None) -> dict | None:
     return None
 
 
+def _melos_house_styles() -> list[dict]:
+    """House styles built from Melos exterior and interior wall sheets."""
+    from . import catalog as C
+
+    ext_groups = getattr(C, "MELOS_EXTERIOR_WALLS", {}) or {}
+    int_walls = getattr(C, "MELOS_INTERIOR_WALLS", []) or []
+    by_name = {s["name"]: s for s in C.HOUSE_STYLES}
+    donor_map = {
+        "siding": by_name.get("clapboard", C.HOUSE_STYLES[0]),
+        "brick": by_name.get("brick", C.HOUSE_STYLES[0]),
+        "wood": by_name.get("timber", C.HOUSE_STYLES[0]),
+        "plaster": by_name.get("stucco", C.HOUSE_STYLES[0]),
+    }
+    out: list[dict] = []
+    for grp, donor in donor_map.items():
+        for i, item in enumerate(ext_groups.get(grp, ())):
+            style = dict(donor)
+            style["name"] = item["name"]
+            style["exterior"] = item["entry"]
+            if int_walls:
+                style["interior"] = int_walls[(len(out) + i) % len(int_walls)]["entry"]
+            out.append(style)
+    return out
+
+
+_MELOS_SPECIAL_GROUPS = {
+    "industrial": ("industrial", "plaster", "brick"),
+    "hangar": ("industrial", "plaster"),
+    "terminal": ("plaster", "industrial"),
+    "church": ("church", "brick", "plaster"),
+    "barn": ("wood",),
+}
+
+
 def wall_variants(kind: str) -> list[dict]:
     """Every style a building of this kind may be built in."""
     from . import catalog as C
+    from . import regional
+    from .layout import _melos_ready
 
     houses = {s["name"]: s for s in C.HOUSE_STYLES}
     if kind in STATION_KINDS:
@@ -768,6 +804,18 @@ def wall_variants(kind: str) -> list[dict]:
                 other["name"] = f"{variant['name']}~{name}"
                 grown.append(other)
         out = grown
+    if _melos_ready():
+        ext_groups = getattr(C, "MELOS_EXTERIOR_WALLS", {}) or {}
+        int_walls = getattr(C, "MELOS_INTERIOR_WALLS", []) or []
+        groups = _MELOS_SPECIAL_GROUPS.get(kind, ("brick", "siding", "plaster"))
+        melos_ext = [item for g in groups for item in ext_groups.get(g, ())]
+        for i, item in enumerate(melos_ext):
+            variant = dict(base)
+            variant["exterior"] = item["entry"]
+            if int_walls:
+                variant["interior"] = int_walls[i % len(int_walls)]["entry"]
+            variant["name"] = f"{kind}_{item['name']}"
+            out.append(variant)
     return out
 
 
@@ -803,8 +851,12 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
         pool = regional.cn_house_styles()
         styles = [s for s in pool if style_fits(s["name"], density)] or pool
     else:
-        styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
-            or C.HOUSE_STYLES
+        from .layout import _melos_ready
+        pool = list(C.HOUSE_STYLES)
+        if _melos_ready():
+            pool.extend(_melos_house_styles())
+        styles = [s for s in pool if style_fits(s["name"], density)] \
+            or pool
     size = settings.neighbourhood_tiles
     block = (tile_x // size, tile_y // size)
     # Deterministic per block, so re-running gives the same town.
@@ -1018,7 +1070,7 @@ def _code_fingerprint() -> str:
     out differently."""
     import hashlib
 
-    from .layout import _erika_ready
+    from .layout import _erika_ready, _melos_ready
 
     h = hashlib.sha1()
     here = os.path.dirname(os.path.abspath(__file__))
@@ -1035,6 +1087,7 @@ def _code_fingerprint() -> str:
             with open(os.path.join(layout_dir, name), "rb") as f:
                 h.update(f.read())
     h.update(b"erika" if _erika_ready() else b"vanilla")
+    h.update(b"melos" if _melos_ready() else b"no_melos")
     from . import room_solver
     h.update(os.environ.get(room_solver.ENV, "").encode())     # it overrides the setting
     return h.hexdigest()

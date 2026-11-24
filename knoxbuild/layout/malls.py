@@ -508,7 +508,7 @@ def _mall_rooms(plan: Plan, rng: random.Random, target: int,
 # What may stand on the concourse: what its own wishlist puts there, plus the
 # light switches and lamps every room gets. With Erika's Tiles the plants come
 # through as erika_plant_*, so these are matched as prefixes.
-CONCOURSE_KEEP = {"plant", "erika_plant", "shop_bin", "vending",
+CONCOURSE_KEEP = {"plant", "erika_plant", "melos_plant", "shop_bin", "vending",
                   "erika_vending", "switch", "lamp", "light", "shop_counter"}
 
 # Kiosks down the middle of a wide concourse: a stall of one or two counters

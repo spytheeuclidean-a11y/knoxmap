@@ -80,7 +80,7 @@ class MansionHouses(unittest.TestCase):
 
         def art(plan):
             return [(role, x, y, o) for role, x, y, o in plan.furniture
-                    if role.startswith("erika_art") or role in ("painting", "mirror")]
+                    if role.startswith(("erika_art", "melos_art")) or role in ("painting", "mirror")]
 
         hung = rooms = 0
         for size, seed in (((16, 17), 1), ((18, 16), 7), ((20, 18), 3)):
@@ -107,7 +107,7 @@ class MansionHouses(unittest.TestCase):
         for seed in range(6):
             plan = L.build_plan(16, 17, seed=seed, kind='house', level=0, levels=1)
             for role, x, y, orient in plan.furniture:
-                if not (role.startswith("erika_art") or role in ("painting", "mirror")):
+                if not (role.startswith(("erika_art", "melos_art")) or role in ("painting", "mirror")):
                     continue
                 self.assertIn(orient, ("N", "W"), "a picture hangs on a wall, not a ceiling")
                 seen[orient] += 1

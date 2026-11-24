@@ -482,12 +482,12 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
     ground.furniture = [f for f in ground.furniture if _is_wall_piece(f[0])
                         or not (set(_cells_for(f[0], f[1], f[2], f[3])) & clear)]
     ground.holes |= set(_top(sx, sy, d)[1:])
-    if ground.private_flats:
-        # The basement adds a new destination after the furnished ground
-        # floor was checked. Clear its route through the shop or landing.
-        from .layout.furnishing import _clear_blocked_routes, _ways_in
+    # The basement adds a new stairwell/door after the ground floor was
+    # furnished, so clear any furniture now blocking routes between rooms,
+    # hallways, doors, or the basement access itself.
+    from .layout.furnishing import _clear_blocked_routes, _ways_in
 
-        _clear_blocked_routes(ground, _ways_in(parent, 0, ground))
+    _clear_blocked_routes(ground, _ways_in(parent, 0, ground))
     # _wall_off carves a new hall room (and may move a wall switch into it),
     # so ensure every ground-floor room still has a light switch.
     from .layout.assemble import _relight, _wall_edge
