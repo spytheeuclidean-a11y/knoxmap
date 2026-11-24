@@ -1,4 +1,4 @@
-"""A reproducible aesthetic profile inferred for each generated building."""
+"""Appearance and layout defaults inferred for each generated building."""
 from __future__ import annotations
 
 import random
@@ -13,14 +13,21 @@ def _clamp(value: float) -> float:
     return max(0.0, min(1.0, value))
 
 
-def _year(tags: dict) -> int | None:
+def construction_year(tags: dict, *, before: int = 2099) -> int | None:
     for key in ("start_date", "year_built", "building:start_date",
                 "construction_date", "start_construction_date"):
         match = _YEAR.search(str(tags.get(key) or ""))
         if match:
             year = int(match.group())
-            if 1750 <= year <= GAME_YEAR:
+            if 1750 <= year <= before:
                 return year
+    return None
+
+
+def _year(tags: dict) -> int | None:
+    year = construction_year(tags, before=GAME_YEAR)
+    if year is not None:
+        return year
     architecture = " ".join(str(tags.get(key) or "") for key in
                              ("building:architecture", "architectural_style")).lower()
     if any(word in architecture for word in
@@ -34,6 +41,21 @@ def _year(tags: dict) -> int | None:
 
 
 @dataclass(frozen=True)
+class ApartmentAccessRules:
+    """Defaults for generated access, overridable independently per building."""
+
+    compact_landing_max_levels: int = 5
+    lift_from_levels: int = 6
+    lobby_min_section_tiles: int = 224
+    lobby_recent_from_year: int = 1990
+    lobby_busy_from_flats: int = 24
+    stair_via_balcony: bool = False
+
+
+DEFAULT_APARTMENT_ACCESS = ApartmentAccessRules()
+
+
+@dataclass(frozen=True)
 class BuildingProfile:
     year_built: int
     age: int
@@ -43,6 +65,9 @@ class BuildingProfile:
     wear: float
     seed: int
     dated: bool = False
+    apartment_access: ApartmentAccessRules = DEFAULT_APARTMENT_ACCESS
+    source_year: int | None = None
+    apartment_balconies: bool | None = None
 
     @classmethod
     def infer(cls, tags: dict, kind: str | None, density: float,
@@ -113,7 +138,10 @@ class BuildingProfile:
                  for key in ("abandoned", "disused", "vacant")):
             condition = max(condition, 0.78 if tags.get("abandoned") else 0.65)
 
-        return cls(year, age, era, wealth, setting, _clamp(condition), int(seed), dated)
+        balcony = str(tags.get("building:balconies", tags.get("balcony", ""))).lower()
+        return cls(year, age, era, wealth, setting, _clamp(condition), int(seed), dated,
+                   source_year=construction_year(tags),
+                   apartment_balconies={"yes": True, "no": False}.get(balcony))
 
     def style_weight(self, name: str) -> float:
         style = name.lower()
@@ -175,3 +203,7 @@ class BuildingProfile:
         """A modest 0..1 estimate used to vary room dressing, not spawn loot."""
         return _clamp(self.wear * 0.65 + (1.0 - self.wealth) * 0.2
                       + (0.08 if self.setting == "urban" else 0.0))
+
+
+def apartment_access_rules(profile: object | None) -> ApartmentAccessRules:
+    return getattr(profile, "apartment_access", DEFAULT_APARTMENT_ACCESS)

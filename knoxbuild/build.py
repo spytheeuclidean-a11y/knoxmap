@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import collections
 import csv
+from dataclasses import replace
 import json
 import math
 import random
@@ -38,10 +39,11 @@ from .footprint import FootprintSession, fill_notches
 from .layout import build_building, thin_building
 from .uses import is_hotel, uses_of
 from .context import Context, style_fits
+from .entrances import ground_entrance
 from .population import build_spawn_map, official_population, save_footprints
 from . import hospitals
 from .profile import BuildingProfile
-from .settings import PRESETS, Settings
+from .settings import APARTMENT_GROUND_FLOOR_OPTIONS, PRESETS, Settings
 from .tbx import render_tbx
 from .world import Placement, render_pzw
 from . import worldmap
@@ -844,12 +846,14 @@ from .street_context import (  # noqa: F401
     _entrances_inside,
     _load_road_hierarchy,
     _party_walls,
+    _point_of_use_key,
     _points_inside,
     _points_of_use,
     _ring_points,
     _road_weight,
     _rooms_by_unit,
     _street_finder,
+    mapped_rooms_by_floor,
 )
 
 
@@ -901,9 +905,8 @@ def _audit_report(results) -> dict:
 
 def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
     """Lay out one building and write its .tbx. Returns (storeys, rooms,
-    furniture, error, escalators, basement, problems): a building that cannot be
-    laid out is left out with the reason, instead of stopping the other two
-    thousand.
+    furniture, error, escalators, basement, problems, entrances): a building
+    that cannot be laid out is left out with the reason.
     `basement` is what basements.plan_basement made of the job's last element
     (a BasementSpec), written beside the building as <name>_bsmt.tbx, or None.
     `problems` is what knoxbuild/audit.py found wrong with it (_layout_problems):
@@ -914,6 +917,7 @@ def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
         uses, hotel, entrances, profile, mapped, garage_door, preset_file,
         party, *rest) = job
     basement = rest[0] if rest else None
+    site = rest[1] if len(rest) > 1 else None
     job = job[:JOB_FIELDS]          # what the room solver reads, without the basement
     if preset_file:
         # A building somebody built by hand, used as it was built. Nothing is
@@ -938,7 +942,10 @@ def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
         # it is on and the house fits; anything else is laid out as always
         from . import room_solver
         plan = None
-        if room_solver.wanted(settings):
+        if site is not None:
+            from .layout.mixed_ground import build_site
+            plan = build_site(site, w, h, levels, settings, profile, party, seed, street)
+        elif room_solver.wanted(settings):
             try:
                 plan = room_solver.plan_for_job(job)
             except Exception:  # noqa: BLE001 - that house keeps Build's own layout
@@ -963,13 +970,18 @@ def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
         # After thinning and the basement, so the rooms checked are the rooms
         # that will be in the file.
         problems = _layout_problems(plan, kind, below)
+        if site is not None and plan.unplaced_businesses and problems is not None:
+            problems["ground-floor venues without a suitable frontage"] = len(plan.unplaced_businesses)
         text = render_tbx(plan, label, style)
         below_text = (basements.render_basement(below, f"{label} basement", style)
                       if below is not None else None)
     except Exception:  # noqa: BLE001
         import traceback
+        from .layout.mixed_ground import entrance_report
+
         return (0, 0, 0, f"{os.path.basename(path)} ({kind or 'house'}, {w}x{h}, "
-                         f"{levels} storeys): {traceback.format_exc()}", [], None, None)
+                         f"{levels} storeys): {traceback.format_exc()}", [], None, None,
+                entrance_report(site) if site is not None else ())
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
     info = None
@@ -983,7 +995,7 @@ def _make_one(job: tuple, room_limit: int | None = None) -> tuple:
                 "rooms": len(below.building.rooms)}
     return (len(plan.storeys), len(plan.rooms),
             sum(len(s.furniture) for s in plan.storeys), None,
-            list(plan.escalators), info, problems)
+            list(plan.escalators), info, problems, plan.entrance_report if site is not None else ())
 
 
 # Below this many buildings, starting worker processes costs more than it saves.
@@ -1381,6 +1393,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # not be the town hall giving way to the shed behind it.
     order = []
     jobs: list[tuple] = []       # what each building needs to lay itself out
+    apartment_sites = {}
+    basement_roll_spans = {}
     street_side = _street_finder(out_dir, map_name, road_hierarchy)
     stations: list[tuple] = []   # petrol stations, for their pumps
     gunshops: set[str] = set()   # and the buildings OSM says sell weapons
@@ -1637,7 +1651,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           special = classify_building(tags)
           # What is really in it: its own tags and the shops, restaurants and
           # offices mapped as points inside it.
-          inside = [tags] + _points_inside(points, px, points_taken)
+          points_in_building = _points_inside(points, px, points_taken, with_positions=True)
+          inside = [tags] + [t for _x, _y, t in points_in_building if not t.get("_knox_area_poi")]
           uses = uses_of(inside)
           special = _business_kind(special, uses)
           special = mall_by_name(special, tags, uses, real_m2)
@@ -1746,26 +1761,62 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
           name = tags.get("name") or ""
           real_name = name if is_notable(tags, special) else ""
-          # A row of shops or a terrace of houses is one polygon here; built as
-          # one building it is the "uber building" players reported. Each unit
-          # becomes its own building, standing wall to wall with the next.
-          units = row_units(fp, special, btag, len(uses), metres_per_tile,
-                            max_side=max_size if oversize else None,
-                            split=not settings.max_buildings)
-          if oversize:
-              split_large += 1
-          unit_mapped = _rooms_by_unit(mapped, fp, units, proj)
-          placed_entrances = [(x, y, tags) for x, y, tags in entrance_points]
+          placed_entrances = entrance_points
           if fp.point_rotation or fp.point_offset != (0.0, 0.0):
               placed_entrances = [(*fp.transform_point(x, y), tags)
                                   for x, y, tags in entrance_points]
+          has_zone_presets = zoning.any_presets()
+          ground_override = tags.get("knoxmap:ground_floor")
+          if ground_override not in APARTMENT_GROUND_FLOOR_OPTIONS:
+              ground_override = None
+          ground_mode = ground_override or here.apartment_ground_floor
+          ground_rooms = [room for room in mapped if ground_entrance(room)]
+          indoor_by_floor = mapped_rooms_by_floor(mapped, levels)
+          planned_flats = ((here.apartment_layout != "classic" or ground_mode != "auto"
+                            or ground_override is not None)
+                           and special == "apartment"
+                           and not (hotel or oversize)
+                           and not (preset_library and (
+                               special in preset_kinds
+                               or (has_zone_presets and zoning.presets_at(cx, cy)))))
+          if planned_flats:
+              from .layout.mixed_ground import site_from_osm
+              layout_mode = "auto" if here.apartment_layout == "classic" else here.apartment_layout
+              apartment_sites[len(jobs)] = site_from_osm(
+                  fp, tags, points_in_building, placed_entrances, indoor_by_floor, levels,
+                  layout_mode, ground_mode, proj, street_side, profile,
+                  commercial_area=areas.category_at(cx, cy) == "commercial",
+                  dense_retail=levels >= 3 and local_density >= RETAIL_DENSITY,
+                  stock_venues=levels >= 2 and bool(uses))
+              # The joined plan replaces these stock row placements. Keep
+              # their slots in the basement draw so later lots keep theirs.
+              stock_units = row_units(fp, special, btag, len(uses), metres_per_tile,
+                                      split=not settings.max_buildings)
+              if len(stock_units) > 1:
+                  basement_roll_spans[len(jobs)] = len(stock_units)
+              units = [fp]
+          else:
+              # Terraces and rows of shops share one mapped footprint. The
+              # units stand wall to wall, with their own ways in from the street.
+              units = row_units(fp, special, btag, len(uses), metres_per_tile,
+                                max_side=max_size if oversize else None,
+                                split=not settings.max_buildings)
+          if oversize:
+              split_large += 1
+          if special == "apartment" or any(level > 0 for level in indoor_by_floor):
+              unit_rooms = {z: _rooms_by_unit(entries, fp, units, proj,
+                                              round_points=special != "apartment")
+                            for z, entries in indoor_by_floor.items() if entries and not planned_flats}
+              unit_mapped = [{z: per_unit[n] for z, per_unit in unit_rooms.items() if per_unit[n]}
+                             for n in range(len(units))]
+          else:
+              unit_mapped = _rooms_by_unit(ground_rooms, fp, units, proj)
           entrances_by_unit = _entrances_by_unit(placed_entrances, units)
           if len(units) > 1:
               rows_split += 1
               units_made += len(units)
           # A real hospital's size shapes the people its spawn map holds.
           hifld = hospitals.profile(tags)
-          has_zone_presets = zoning.any_presets()
           for n, unit in enumerate(units):
               ux0, uy0 = unit.x0, unit.y0
               uw, uh = unit.width, unit.height
@@ -1780,6 +1831,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                   hifld_by_fname[fname] = hifld
               label = (f"{name} {n + 1}" if name and len(units) > 1 else
                        name or f"{map_name} building {i}")
+              if planned_flats and len(units) > 1 and not name:
+                  label += f" ({n + 1})"
               if ("gunstore", "storage") in unit_uses:
                   gunshops.add(fname)
               # A hand-built building for this plot: one its zone names, or one
@@ -1811,7 +1864,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                              if btag in ("garage", "garages") or special == "garage"
                              else None) or street_side(ux0, uy0, uw, uh)),
                            # Shops under flats where the town is built up.
-                           context.density(cx, cy) >= RETAIL_DENSITY,
+                           not planned_flats and local_density >= RETAIL_DENSITY,
                            # What the ground floor really is, and a hotel's rooms.
                            unit_uses, hotel, entrances_by_unit[n], profile,
                            unit_mapped[n],
@@ -1819,8 +1872,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                            or special in ("garage", "fire", "fire_police",
                                           "industrial", "barn", "hangar"),
                            preset_file))
-              outline = px if len(units) == 1 else [
-                  (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
+              if planned_flats:
+                  outline = px if n == 0 else None
+              else:
+                  outline = px if len(units) == 1 else [
+                      (ux0, uy0), (ux0 + uw, uy0), (ux0 + uw, uy0 + uh), (ux0, uy0 + uh)]
               decided.append((fname, label, ux0, uy0, uw, uh, unit, outline, special,
                               measured, commercial, style, umask,
                               real_name if n == 0 else ""))
@@ -1844,6 +1900,23 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     for j, d in enumerate(decided):
         jobs[j] = jobs[j] + (_party_walls(owner, j, d[2], d[3], d[6].mask, storeys),)
 
+    mapped_fences = None
+    if apartment_sites:
+        from .fences import mapped_fence_lines
+        from .pedestrian_access import pedestrian_context
+
+        say("Checking pedestrian approaches to apartment entrances", 0.04)
+        mapped_fences = mapped_fence_lines(out_dir, map_name, proj,
+                                         [(decided[j][6], decided[j][7]) for j in apartment_sites])
+        context_access = pedestrian_context(out_dir, map_name, proj, occupied, road_hierarchy,
+                                            road_weight, areas, mapped_fences)
+        if context_access is not None:
+            for j, site in apartment_sites.items():
+                knoxstop.check(should_stop, "the buildings")
+                approaches = context_access.approaches(decided[j][6])
+                if approaches is not None:
+                    apartment_sites[j] = replace(site, approaches=approaches)
+
     # Basements, in build order from their own random stream, so a town keeps
     # the same ones (knoxbuild/basements.py). A building somebody made by
     # hand gets none: its ground floor is not ours to cut stairs into.
@@ -1854,11 +1927,12 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     specs = [None] * len(jobs) if default_backend() != "rust" else basements.reserve(
         [{"kind": "preset" if job[19] else (d[8] or "house"),
           "x0": d[2], "y0": d[3], "w": d[4], "h": d[5],
-          "mask": d[6].mask}
-         for job, d in zip(jobs, decided)],
+          "mask": d[6].mask, "roll_span": basement_roll_spans.get(i, 1)}
+         for i, (job, d) in enumerate(zip(jobs, decided))],
         settings, region, areas, random.Random(f"{settings.seed}:basements"),
         (proj.width, proj.height), metres_per_tile * metres_per_tile)
-    jobs = [job + (spec,) for job, spec in zip(jobs, specs)]
+    jobs = [job + (spec,) + ((apartment_sites[j],) if j in apartment_sites else ())
+            for j, (job, spec) in enumerate(zip(jobs, specs))]
 
     # Every decision above is made in order, from one random stream, so the
     # town comes out the same each time. What is left - laying out rooms and
@@ -1881,8 +1955,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             # A cache written before the audit carries no problems for this
             # building: it reads as unchecked rather than as clean.
             cached = old["result"][5] if len(old["result"]) > 5 else None
+            mapped_doors = old["result"][6] if len(old["result"]) > 6 else ()
             results[j] = (storeys, rooms, furniture, None,
-                          [tuple(e) for e in escalators], below, cached)
+                          [tuple(e) for e in escalators], below, cached, mapped_doors)
         else:
             todo.append(j)
     reused = len(jobs) - len(todo)
@@ -1896,7 +1971,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     def entry(j: int, r_: tuple) -> dict:
         return {"key": keys[j],
-                "result": [r_[0], r_[1], r_[2], r_[4], r_[5], r_[6]]}
+                "result": [r_[0], r_[1], r_[2], r_[4], r_[5], r_[6], *r_[7:]]}
 
     # From here the files are written, so the cache keeps only what is true of
     # them: the buildings reused, then each one as it is made.
@@ -2025,8 +2100,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     basement_counts = {"house": 0, "large": 0, "installation": 0}
     for (fname, label, x0, y0, w, h, fp, px, special, measured, commercial,
-         style, mask, real_name), (storeys, rooms, furniture, error,
-                                   escalators, below, _problems) in zip(decided, results):
+         style, mask, real_name), result in zip(decided, results):
+        storeys, rooms, furniture, error, escalators, below, _problems = result[:7]
         if error:
             failed_buildings.append(error)
             continue
@@ -2047,7 +2122,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         peopled.append((x0, y0, fp.mask, storeys,
                         hospitals.occupancy_kind(special or "house",
                                                  hifld_by_fname.get(fname))))
-        outlines.append((footprint.footprint_outline(fp), special or "house", real_name))
+        if px is not None:
+            outlines.append((footprint.footprint_outline(fp), special or "house", real_name))
         rows.append({
             "file": fname, "name": label,
             "tile_x": x0, "tile_y": y0, "width": w, "height": h,
@@ -2073,13 +2149,23 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # than only printed because the window reads it back, and a reopened map
     # shows it too.
     audit_report = _audit_report(results)
+    door_report = [
+        {"building": d[0], "tile_x": d[2], "tile_y": d[3], **item}
+        for d, result in zip(decided, results) if len(result) > 7
+        for item in result[7]
+    ]
+    mapped_door_report = [item for item in door_report if item.get("source") != "inferred"]
+    inferred_door_report = [item for item in door_report if item.get("source") == "inferred"]
+    if mapped_door_report:
+        audit_report["mapped_entrances"] = mapped_door_report
+    if inferred_door_report:
+        audit_report["inferred_entrances"] = inferred_door_report
     knoxfiles.write(os.path.join(out_dir, f"{map_name}_layout.json"), audit_report,
                     indent=2)
 
     # Remember what was made, and clear out what was left from before and not
     # written this time.
-    entries = {d[0]: {"key": keys[j],
-                      "result": [r_[0], r_[1], r_[2], r_[4], r_[5], r_[6]]}
+    entries = {d[0]: entry(j, r_)
                for j, (d, r_) in enumerate(zip(decided, results)) if not r_[3]}
     _write_cache(out_dir, code, entries)
     below_files = {r_[5]["file"] for r_ in results if not r_[3] and r_[5]}
@@ -2126,7 +2212,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # a point with no building of their own.
     from .pumps import place_pumps
     loose_fuel = [(x, y) for group in points.values() for x, y, t in group
-                  if t.get("amenity") == "fuel" and (x, y) not in points_taken]
+                  if t.get("amenity") == "fuel" and not t.get("_knox_area_poi")
+                  and _point_of_use_key(x, y, t) not in points_taken]
     forecourts: list = []
     pump_placements, n_pumps = place_pumps(out_dir, map_name, bdir, occupied,
                                            stations, loose_fuel, forecourts, canopies,
@@ -2218,7 +2305,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
 
     with ThreadPoolExecutor(max_workers=5) as pool:
         job_fences = pool.submit(build_fences, out_dir, map_name, proj, occupied,
-                                 areas, bdir, extra=yard_fences, keep_clear=fence_clear)
+                                 areas, bdir, extra=yard_fences, keep_clear=fence_clear,
+                                 mapped_lines=mapped_fences)
         job_spawn = pool.submit(make_spawn_map) if _stitch_out is None else None
         job_paper = pool.submit(worldmap.write, out_dir, map_name, proj, info,
                                 outlines) if _stitch_out is None else None
@@ -2245,6 +2333,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             "zones": zones,
             "rows": rows,
             "left_out": left_out,
+            "layout_audit": audit_report,
             "peopled": peopled,
             "outlines": outlines,
             "gunshops": gunshops,
@@ -2342,6 +2431,15 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         else:
             print(f"  layout audit        : {audit_report['buildings']:,} buildings "
                   f"checked, nothing wrong")
+    if mapped_door_report:
+        counts = _c.Counter(item["status"] for item in mapped_door_report)
+        print("  mapped entrances    : " + ", ".join(f"{n} {status}" for status, n in sorted(counts.items())))
+        reasons = _c.Counter(item["reason"] for item in mapped_door_report
+                             if item["status"] == "unplaced")
+        if reasons:
+            print("                        " + ", ".join(f"{reason} x{n}" for reason, n in reasons.items()))
+    if inferred_door_report:
+        print(f"  inferred entrances  : {len(inferred_door_report):,} with a reachable approach")
     # The game saves every room's and building's state through one 10 MB
     # buffer (tools/make_map_mod.py, META_BUDGET); said here as well as at
     # install, before an hour of compiling a map whose saves will fail.

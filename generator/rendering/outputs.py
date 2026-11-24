@@ -92,8 +92,8 @@ def _openings_geojson(gates: list[OSMFeature], buckets: dict) -> dict:
         lat, lon = f.geometry[0]
         features.append({
             "type": "Feature",
-            "properties": {"opening": "gate",
-                           "barrier": f.tags.get("barrier") or "gate"},
+            "properties": {"opening": "gate", "barrier": f.tags.get("barrier") or "gate",
+                           **{key: f.tags[key] for key in ("access", "foot", "locked") if key in f.tags}},
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
         })
     for cat in sorted(OPENING_PATHS):
@@ -102,7 +102,8 @@ def _openings_geojson(gates: list[OSMFeature], buckets: dict) -> dict:
                 continue
             features.append({
                 "type": "Feature",
-                "properties": {"opening": "path", "category": cat},
+                "properties": {"opening": "path", "category": cat,
+                               **{key: f.tags[key] for key in ("access", "foot") if key in f.tags}},
                 "geometry": {"type": "LineString",
                              "coordinates": [[lon, lat] for lat, lon in f.geometry]},
             })

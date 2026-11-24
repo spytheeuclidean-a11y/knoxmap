@@ -437,8 +437,6 @@ OVERPASS_FILTERS: Sequence[str] = (
     # Real interiors. Where a mapper drew the rooms inside a building, the
     # generated floor plan follows those walls instead of guessing (renderer
     # attaches them to the building, knoxbuild/layout cuts along them).
-    # Rooms are only drawn in public and commercial buildings - schools,
-    # hospitals, offices - so the payload is small next to the buildings.
     'way["indoor"~"^(room|corridor)$"]',
     # What the ground between buildings is used for. Without these a factory
     # yard, a schoolyard and a back garden all came out as the same wild grass,
@@ -463,7 +461,7 @@ OVERPASS_FILTERS: Sequence[str] = (
     # What the ground floors are: the pizza place, the bank, the pharmacy.
     # Mapped as points inside the building far more often than as the
     # building's own tags (knoxbuild/uses.py).
-    'node["shop"]',
+    'nwr["shop"]',
     'node["amenity"~"^(restaurant|fast_food|food_court|cafe|ice_cream|bar|pub|nightclub|'
     'biergarten|bank|bureau_de_change|post_office|pharmacy|dentist|doctors|clinic|'
     'veterinary|library|cinema|theatre|arts_centre|police|childcare|kindergarten|fuel|car_repair)$"]',
@@ -498,7 +496,7 @@ OVERPASS_FILTERS: Sequence[str] = (
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 17
+FILTERS_VERSION = 18
 
 
 @dataclass

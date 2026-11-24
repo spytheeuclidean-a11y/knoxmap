@@ -42,6 +42,10 @@ const SETTING_LABELS = {
   max_buildings:       ['Most buildings', 'The most buildings the whole map may hold. 0 is no ceiling. Set it and the landmarks are kept - the police station, the school, the shops - while the houses are spaced out over the whole map until the count fits, so a big map is one worth driving across rather than one paved with houses. Fewer buildings is also the surest way to make a map quicker to build and lighter to play. It is a ceiling, not a quota: the finished map can come out a little under it, because some footprints are skipped for other reasons as well - too small to furnish, off the edge, under a road. Click a building under Change what is here to see which.'],
   apartment_footprint: ['Flats above', 'An untagged footprint this big reads as flats.'],
   apartment_chance:    ['Flats chance', 'How often such a footprint really becomes flats.'],
+  apartment_layout:    ['Apartment layout', 'Auto chooses the stairwell layout from the footprint and mapped entrances. Ground-floor overrides can also use the new planner in Classic mode.'],
+  apartment_furnishing:['Furnishing variety', 'Varies furniture, placement and finishes between flats and floors.'],
+  apartment_stair_balcony: ['Stairs via an open gallery', 'Auto uses a shared open balcony in newer buildings when the footprint fits it. On prefers it wherever it fits.'],
+  apartment_ground_floor: ['Ground floor of flats', 'Auto preserves a commercial ground floor when the standard layout calls for one. Mixed use plans homes and street-level businesses together.'],
   vanilla_tiles:       ['Vanilla tiles only', 'On builds with the game’s own art only, leaving Erika’s Tiles out even when it is installed. A map built with the mod needs the mod to look right, so this is the one to turn on before handing a map to somebody who has not subscribed.'],
   height_mix:          ['Height mix', 'How tall the buildings OpenStreetMap says nothing about come out. As the place is lets the kind of building and the size of its footprint decide, which is the closest to the real thing. The rest shape that guess for the skyline you want. A building whose floors OSM does record keeps them whatever this says.'],
   max_levels:          ['Tallest building', 'Storeys, up to 31 - Build 42’s height limit, less the roof. OSM heights are capped to this. Tall cities take longer to compile.'],
@@ -108,7 +112,7 @@ const SETTING_GROUPS = {
     advanced: [
       ['Which footprints', ['min_size', 'max_size', 'fill_frontage', 'building_alignment',
                             'building_mix', 'spread_buildings']],
-      ['Flats', ['apartment_footprint', 'apartment_chance']],
+      ['Flats', ['apartment_layout', 'apartment_stair_balcony', 'apartment_furnishing', 'apartment_ground_floor', 'apartment_footprint', 'apartment_chance']],
       ['Look', ['neighbourhood_tiles', 'style_oddity']],
       ['Rooms', ['room_solver', 'room_size']],
       ['Basements', ['basement_share', 'max_basement_depth']],
@@ -209,7 +213,7 @@ function settingElement(key, label, hint, values, compact = false) {
          max="${hi}" step="1" value="${values[key]}"><button type="button"
          class="dice" title="Random seed">random</button></div>`
     : isChoice
-    ? `<select data-key="${key}">${choices.map(([value, name]) =>
+    ? `<select data-key="${key}" aria-label="${label}">${choices.map(([value, name]) =>
         `<option value="${value}"${value === values[key] ? ' selected' : ''}>${name}</option>`).join('')}</select>`
     : isSwitch
     ? ''

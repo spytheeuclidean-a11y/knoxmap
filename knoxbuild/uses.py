@@ -14,6 +14,11 @@ Distributions.lua were preferred.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+import math
+
+from .entrances import closed_entrance
+
 # Restaurants and takeaways by cuisine=*: the kitchen the game has for it.
 KITCHEN_BY_CUISINE = {
     "pizza": "pizzakitchen", "italian": "restaurantkitchen",
@@ -157,6 +162,106 @@ def uses_of(tag_sets: list[dict], limit: int = 8) -> list[tuple[str, str]]:
         if use and use not in out:
             out.append(use)
     return out[:limit]
+
+
+@dataclass(frozen=True)
+class GroundBusiness:
+    front: str
+    back: str
+    position: tuple[float, float] | None
+    name: str = ""
+    entrance: tuple[float, float] | None = None
+
+
+def _at_ground(tags: dict) -> bool:
+    if tags.get("location") == "underground":
+        return False
+    raw = tags.get("level")
+    if raw is None or raw == "":
+        raw = tags.get("min_level", "")
+    level = str(raw if raw is not None else "").casefold().replace(" ", "")
+    return not level or bool({"0", "ground"} & set(level.split(";")))
+
+
+def ground_businesses(tags: dict, points, entrances=(), *, mode="auto",
+                      commercial_area=False) -> tuple[GroundBusiness, ...]:
+    """Use confirmed ground-floor venues before inferring the floor of other POIs."""
+    if mode == "residential":
+        return ()
+
+    def has_level(item):
+        return any(item.get(key) not in (None, "") for key in ("level", "min_level"))
+
+    building_uses = {s.strip().casefold() for s in str(tags.get("building:use") or "").split(";")}
+    building_business = use_of(tags)
+    at_ground = _at_ground(tags)
+    commercial_building = at_ground and (building_business or building_uses & {"commercial", "retail"})
+    infer_floor = mode == "mixed" or commercial_area or commercial_building
+    result = []
+    sources = []
+    unconfirmed = set()
+    identities = ("wikidata", "ref", "contact:website", "website")
+    candidates = []
+    portals = [(x, y, item) for x, y, item in entrances
+               if _at_ground(item) and not closed_entrance(item)
+               and not item.get("addr:flats")
+               and item.get("entrance") not in ("staircase", "service", "emergency_exit")]
+    for x, y, item in sorted(points, key=lambda p: (not has_level(p[2]), bool(p[2].get("_knox_area_poi")))):
+        use = use_of(item)
+        if not use:
+            continue
+        name = str(item.get("name") or "")
+        normalized = name.strip().casefold()
+        pos = (x, y)
+        area = bool(item.get("_knox_area_poi"))
+        refs = {(key, str(item[key])) for key in identities[:2] if item.get(key)}
+        ground = _at_ground(item)
+        if any(use == use2 and math.dist(pos, pos2) <= 5
+               and (ground == ground2 or not has_level(item))
+               and (not normalized or not name2 or normalized == name2) and (
+                bool(refs & refs2)
+                or (area != area2 and normalized and normalized == name2))
+               for use2, pos2, name2, refs2, area2, ground2 in sources):
+            continue
+        sources.append((use, pos, normalized, refs, area, ground))
+        if not ground:
+            continue
+        for ex, ey, info in portals:
+            portal_name = str(info.get("name") or "").strip().casefold()
+            distance = math.dist(pos, (ex, ey))
+            if portal_name and normalized:
+                if portal_name != normalized:
+                    continue
+                rank = 0
+            elif any(item.get(k) and item.get(k) == info.get(k) for k in identities):
+                rank = 1
+            elif not portal_name and info.get("entrance") == "shop" and distance <= 3:
+                rank = 2
+            else:
+                continue
+            candidates.append((rank, distance, len(result), ex, ey))
+        result.append(GroundBusiness(*use, pos, name))
+        if not has_level(item):
+            unconfirmed.add(len(result) - 1)
+
+    assigned = set()
+    for _rank, _distance, i, x, y in sorted(candidates, key=lambda c: (c[2] in unconfirmed, *c)):
+        if result[i].entrance is None and (x, y) not in assigned:
+            result[i] = replace(result[i], entrance=(x, y))
+            assigned.add((x, y))
+
+    result = [business for i, business in enumerate(result)
+              if i not in unconfirmed or business.entrance is not None or infer_floor]
+    if building_business and at_ground and not any((b.front, b.back) == building_business for b in result):
+        result.append(GroundBusiness(*building_business, None, str(tags.get("name") or "")))
+    for x, y, item in portals:
+        if item.get("entrance") == "shop" and (x, y) not in assigned:
+            result.append(GroundBusiness(*(use_of(item) or ("generalstore", "storage")),
+                                         (x, y), str(item.get("name") or ""), (x, y)))
+            assigned.add((x, y))
+    if not result and (mode == "mixed" or (at_ground and "retail" in building_uses)):
+        result.append(GroundBusiness("generalstore", "storage", None))
+    return tuple(result)
 
 
 def is_hotel(tag_sets: list[dict]) -> bool:

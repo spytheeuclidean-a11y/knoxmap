@@ -12,6 +12,7 @@ import json
 import math
 import os
 import shutil
+from collections import Counter
 
 from PIL import Image
 
@@ -143,8 +144,11 @@ def build_chunked(
     nx, ny, boxes = _quadrant_boxes(info["cells_x"], info["cells_y"], proj.width, proj.height)
     total_parts = len(boxes)
     buckets: list[list[dict]] = [[] for _ in range(total_parts)]
-    for feat in geo.get("features", []):
+    features = geo.get("features", [])
+    for feat in features:
         buckets[_feature_owner(feat, proj, boxes, nx, ny)].append(feat)
+    apartment_plans = (settings.apartment_layout != "classic" or settings.apartment_ground_floor != "auto"
+                       or any((f.get("properties") or {}).get("knoxmap:ground_floor") for f in features))
 
     quad_root = os.path.join(out_dir, ".quadrants")
     if os.path.isdir(quad_root):
@@ -155,6 +159,7 @@ def build_chunked(
     all_zones: list = []
     all_rows: list[dict] = []
     all_left_out: list[dict] = []
+    audits: list[dict] = []
     all_peopled: list = []
     all_outlines: list = []
     total_split = 0
@@ -167,8 +172,13 @@ def build_chunked(
     src_bmp = os.path.join(out_dir, f"{map_name}.bmp")
     src_veg = os.path.join(out_dir, f"{map_name}_veg.bmp")
     src_hier = os.path.join(out_dir, f"{map_name}_road_hierarchy.bmp")
-    src_areas = os.path.join(out_dir, f"{map_name}_areas.geojson")
-    src_points = os.path.join(out_dir, f"{map_name}_points.json")
+    sidecars = ["_areas.geojson", "_points.json"]
+    if apartment_plans:
+        # Plans need the same pedestrian network and OSM entrances/shops in
+        # each part, with the sub-projector translating them into its window.
+        sidecars.extend(("_fences.geojson", "_fence_openings.geojson"))
+        osm_cache = os.path.abspath(os.path.join(out_dir, info.get("osm_cache") or f"{map_name}_osm.json.gz"))
+        osm_bbox = info.get("osm_bbox") or [info["bbox"][k] for k in ("south", "west", "north", "east")]
 
     try:
         for qi, qx0, qy0, qw, qh, hx0, hy0, hw, hh in boxes:
@@ -189,23 +199,29 @@ def build_chunked(
                 "cells_y": max(1, hh // CELL_SIZE),
                 "bbox": {"south": s, "west": w, "north": n, "east": e},
             }
+            if apartment_plans:
+                q_info.update(osm_cache=osm_cache, osm_bbox=osm_bbox)
             knoxfiles.write(os.path.join(q_dir, f"{q_name}_info.json"), q_info, indent=2)
             knoxfiles.write(os.path.join(q_dir, f"{q_name}_buildings.geojson"),
                             {"type": "FeatureCollection", "features": buckets[qi]})
 
-            for src_path, dst_name, bits in (
+            rasters = [
                 (src_bmp, f"{q_name}.bmp", 24),
                 (src_veg, f"{q_name}_veg.bmp", 24),
                 (src_hier, f"{q_name}_road_hierarchy.bmp", 8),
-            ):
+            ]
+            if apartment_plans:
+                rasters.append((os.path.join(out_dir, f"{map_name}_ground_base.bmp"),
+                                f"{q_name}_ground_base.bmp", 24))
+            for src_path, dst_name, bits in rasters:
                 if os.path.isfile(src_path):
                     win = bitmaps.read_window(src_path, hx0, hy0, hw, hh, bits=bits)
                     Image.fromarray(win).save(os.path.join(q_dir, dst_name), format="BMP")
 
-            if os.path.isfile(src_areas):
-                shutil.copy2(src_areas, os.path.join(q_dir, f"{q_name}_areas.geojson"))
-            if os.path.isfile(src_points):
-                shutil.copy2(src_points, os.path.join(q_dir, f"{q_name}_points.json"))
+            for suffix in sidecars:
+                src_path = os.path.join(out_dir, f"{map_name}{suffix}")
+                if os.path.isfile(src_path):
+                    shutil.copy2(src_path, os.path.join(q_dir, f"{q_name}{suffix}"))
 
             stitch: dict = {}
 
@@ -223,6 +239,13 @@ def build_chunked(
             )
             if rc != 0:
                 return rc
+            if apartment_plans and (audit := stitch.get("layout_audit")):
+                for key in ("mapped_entrances", "inferred_entrances"):
+                    if key in audit:
+                        audit[key] = [{**entry, "building": f"q{qi}_" + entry["building"],
+                                       "tile_x": entry["tile_x"] + hx0, "tile_y": entry["tile_y"] + hy0}
+                                      for entry in audit[key]]
+                audits.append(audit)
 
             # Stitch bitmaps (non-halo interior only) back into the global BMPs.
             ix0, iy0 = qx0 - hx0, qy0 - hy0
@@ -322,6 +345,17 @@ def build_chunked(
         knoxfiles.write(os.path.join(out_dir, f"{map_name}_population.json"),
                         pop, indent=2, ensure_ascii=False)
         worldmap.write(out_dir, map_name, proj, info, all_outlines)
+        if apartment_plans:
+            problems = Counter()
+            for audit in audits:
+                problems.update(audit["problems"])
+            layout_report = {"buildings": sum(audit["buildings"] for audit in audits),
+                             "flagged": sum(audit["flagged"] for audit in audits),
+                             "problems": dict(problems.most_common())}
+            for key in ("mapped_entrances", "inferred_entrances"):
+                if doors := [entry for audit in audits for entry in audit.get(key, ())]:
+                    layout_report[key] = doors
+            knoxfiles.write(os.path.join(out_dir, f"{map_name}_layout.json"), layout_report, indent=2)
 
         pzw_path = os.path.join(out_dir, f"{map_name}.pzw")
         with open(pzw_path, "w", encoding="utf-8") as f:

@@ -155,7 +155,11 @@ def reserve(rows: list[dict], settings, region: str | None, areas, rng: random.R
     # Bases first, biggest building first, so the bunker under a site goes to
     # its barracks and not to a guard hut too small to take the stairs; the
     # rest in build order. The house share is rolled in build order regardless.
-    rolls = [rng.random() for _ in rows]
+    rolls = []
+    for row in rows:
+        rolls.append(rng.random())
+        for _ in range(1, row.get("roll_span", 1)):
+            rng.random()
 
     def first(i):
         r = rows[i]
@@ -429,7 +433,11 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
                 bx = x - spec.dx
                 if 0 <= bx < w:
                     under[y, x] = spec.mask[by, bx]
-    avoid = {c for s in parent.stairs for c in _run(*s)}
+    avoid = {c for s in parent.stairs_at(0) for c in _run(*s)}
+    if ground.private_flats:
+        avoid |= ground.public_path
+        avoid |= {(x, y) for y, row in enumerate(ground.grid) for x, rid in enumerate(row)
+                  if rid and (ground.rooms[rid - 1].unit or ground.rooms[rid - 1].access_role)}
     kinds = STAIR_ROOMS if spec.tier == "house" else None
     # Homes and works go down behind a door at the top of the stairs; other
     # buildings' stairs come up in a stair hall of their own.
@@ -474,6 +482,12 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
     ground.furniture = [f for f in ground.furniture if _is_wall_piece(f[0])
                         or not (set(_cells_for(f[0], f[1], f[2], f[3])) & clear)]
     ground.holes |= set(_top(sx, sy, d)[1:])
+    if ground.private_flats:
+        # The basement adds a new destination after the furnished ground
+        # floor was checked. Clear its route through the shop or landing.
+        from .layout.furnishing import _clear_blocked_routes, _ways_in
+
+        _clear_blocked_routes(ground, _ways_in(parent, 0, ground))
     # _wall_off carves a new hall room (and may move a wall switch into it),
     # so ensure every ground-floor room still has a light switch.
     from .layout.assemble import _relight, _wall_edge
@@ -492,7 +506,8 @@ def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]
     a, b = squares[0]
     was = ground.rooms[ground.grid[b][a] - 1]
     xs, ys = [p[0] for p in squares], [p[1] for p in squares]
-    ground.rooms.append(Room(min(xs), min(ys), max(xs), max(ys), kind="hall", unit=was.unit))
+    ground.rooms.append(Room(min(xs), min(ys), max(xs), max(ys), kind="hall",
+                             unit=was.unit, business=was.business))
     for x, y in squares:
         ground.grid[y][x] = len(ground.rooms)
     ground.doors.append(door)

@@ -94,6 +94,18 @@ class Reserving(unittest.TestCase):
         self.assertEqual(int(spec.mask.sum()), 4 * 3)
         self.assertFalse(spec.mask[0].any() or spec.mask[:, 0].any())
 
+    def test_combining_a_row_keeps_the_next_houses_basement_draw(self):
+        first = row("apartment", 10, 10, 12, 8)
+        second = row("apartment", 23, 10, 12, 8)
+        house = row("house", 36, 10, 8, 8)
+        settings = Settings(basement_share=0.5)
+        separate = reserve([first, second, house], settings, None, None,
+                           random.Random(0), (100, 100))
+        combined = reserve([{**first, "roll_span": 2}, house], settings, None, None,
+                           random.Random(0), (100, 100))
+        self.assertIsNotNone(separate[-1])
+        self.assertIsNotNone(combined[-1])
+
     def test_basements_never_join_buildings_that_stand_apart(self):
         a, b = row("house", 10, 10, 6, 6), row("house", 17, 10, 6, 6)   # a tile apart
         specs = reserve([a, b], Settings(basement_share=1.0), None, None, random.Random(1),
