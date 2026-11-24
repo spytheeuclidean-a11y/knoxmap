@@ -835,18 +835,21 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     t_veg = time.perf_counter()
     if render_progress:
         render_progress(0.78, "Drawing details")
-    _clear_road_vegetation(vegetation, landscape)
-    _paint_road_details(vegetation, landscape, buckets, proj,
-                        smooth_edges=(road_layout != 5))
-    # The threshold bars go on last of all: they are pale concrete inside the
-    # strip, and the kerb pass above draws a kerb wherever concrete meets
-    # asphalt - run before it, every stripe would be kerbed like a pavement.
-    try:
-        from .rendering.airfield import paint_runway_markings
-        paint_runway_markings(landscape, buckets, proj)
-    except Exception as exc:        # noqa: BLE001 - never lose a map to it
-        _log.warning("runway markings skipped: %s: %s", type(exc).__name__, exc)
-    hierarchy_image = _road_hierarchy_image(buckets, proj)
+    # The hierarchy uses the road geometry, while details paint the existing
+    # bitmaps. Street furniture needs both results.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        hierarchy = pool.submit(_road_hierarchy_image, buckets, proj)
+        _clear_road_vegetation(vegetation, landscape)
+        _paint_road_details(vegetation, landscape, buckets, proj,
+                            smooth_edges=(road_layout != 5))
+        # The threshold bars go on last of all: they are pale concrete inside
+        # the strip, and the kerb pass draws a kerb where concrete meets asphalt.
+        try:
+            from .rendering.airfield import paint_runway_markings
+            paint_runway_markings(landscape, buckets, proj)
+        except Exception as exc:        # noqa: BLE001 - never lose a map to it
+            _log.warning("runway markings skipped: %s: %s", type(exc).__name__, exc)
+        hierarchy_image = hierarchy.result()
     # Where the buildings are, so a hydrant, a bin or a mailbox only stands
     # where it has something to serve.
     _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask,
