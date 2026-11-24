@@ -389,7 +389,8 @@ ROOM_STYLE = {
                 ["counter", "shelf", "sink", "bed", "chair"]),
     "warehouse": (C.FLOOR_LINO, "Warehouse",
                   ["crate", "crate", "shelf", "shelf", "crate"]),
-    "garage": (C.FLOOR_LINO, "Garage", ["crate", "shelf", "counter"]),
+    "garage": (C.FLOOR_LINO, "Garage",
+               ["metal_rack", "filing_cabinet", "crate", "metal_rack", "filing_cabinet"]),
     # A hangar floor. The game is told "Warehouse", so its loot is a
     # warehouse's; the separate key is what lets the rest of the build know
     # the building is a hangar and roof it like one (knoxbuild/tbx.py) -

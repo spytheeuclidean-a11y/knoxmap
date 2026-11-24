@@ -457,7 +457,13 @@ def render_tbx(plan: Plan | Building, name: str,
     if garage_kit:
         # The gable ends are the garage's own wall, not white clapboard: the caps
         # of the style its walls are made of, when it has the low-pitch tiles.
-        own_caps = ((style or {}).get("roof") or {}).get("caps") or {}
+        # A house style built of the same wall wins: the industrial kit's own
+        # gable tiles are cream whatever the walls are (cream gables on brick).
+        wall = entries[exterior_idx - 1]["tiles"].get("West")
+        own_caps = next((s["roof"]["caps"] for s in C.HOUSE_STYLES
+                         if wall and s["exterior"]["tiles"].get("West") == wall
+                         and "CapPeak30S1" in ((s.get("roof") or {}).get("caps") or {}).get("tiles", {})),
+                        None) or ((style or {}).get("roof") or {}).get("caps") or {}
         if "CapPeak30S1" not in (own_caps.get("tiles") or {}):
             own_caps = next(s["roof"]["caps"] for s in C.HOUSE_STYLES if s["name"] == "clapboard")
         garage_kit = dict(garage_kit, caps=own_caps)

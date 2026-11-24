@@ -50,6 +50,14 @@ def build_building(width: int, height: int, levels: int = 1,
     staircase has to line up, and it does because the shaft is reserved first.
     """
     levels = max(1, levels)
+    if kind == "garage" and mask is None and min(width, height) >= 4 and min(width, height) % 2 == 0:
+        # The garage's low 30-degree roof needs an odd width across its slopes;
+        # even, it stops a tile short and a flat strip takes the last row. One
+        # tile off the narrow side, the far one, keeps the street door where it is.
+        if width <= height:
+            width -= 1
+        else:
+            height -= 1
     rng = random.Random(seed ^ 0x5745)
 
     # A block of flats gets a corridor whether or not it is tall enough to

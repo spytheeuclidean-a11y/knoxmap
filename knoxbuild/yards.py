@@ -479,6 +479,9 @@ def _dress_non_home_surroundings(
                                 and (ax, ay) not in window_tiles
                                 and (bx_, by_) not in window_tiles
                                 and is_paved(ax, ay) and is_paved(bx_, by_)):
+                            # Half 0 is the low-coordinate end; px/py can be negative.
+                            if (bx_, by_) < (ax, ay):
+                                (ax, ay), (bx_, by_) = (bx_, by_), (ax, ay)
                             veg[ay, ax] = bench[0]
                             veg[by_, bx_] = bench[1]
                             break
