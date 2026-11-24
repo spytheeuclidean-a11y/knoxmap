@@ -122,10 +122,10 @@ PERSONAS: dict[str, dict] = {
     },
     "hoarder": {
         "weight": lambda w: _w(w, kind=ANY, worn=1.0, base=0.45),
-        "rooms": {r: {"add": [("box", 0.8), ("box_battered", 0.7), ("crate", 0.5)]}
+        "rooms": {r: {"add": [("box", 0.8), ("box_battered", 0.7), ("shelf_2", 0.4)]}
                   for r in ("livingroom", "bedroom", "kitchen", "hall", "dining", "laundry")},
-        "spare": {"add": [("box", 1.0), ("box", 0.8), ("box_battered", 0.8), ("crate", 0.8),
-                          ("metal_rack", 0.7)]},
+        "spare": {"add": [("box", 1.0), ("box", 0.8), ("box_battered", 0.8), ("shelf", 0.8),
+                          ("shelf_1", 0.7)]},
     },
     "minimalist": {
         "weight": lambda w: _w(w, kind=NOT_RETIRED, plan=FLAT, rich=0.4, base=0.55),
@@ -168,15 +168,15 @@ PERSONAS: dict[str, dict] = {
     "retired_handyman": {
         "weight": lambda w: _w(w, kind={"retired": 1.0, "adults": 0.5}, plan=HOUSE,
                                setting={"rural": 1.4}, base=0.7),
-        "spare": {"add": [("metal_rack", 0.9), ("crate", 0.8), ("counter", 0.5),
-                          ("shelf_2", 0.7), ("radio", 0.5)]},
-        "rooms": {"laundry": {"add": [("crate", 0.5)]}},
+        "spare": {"add": [("shelf", 0.9), ("shelf_2", 0.8), ("counter", 0.5),
+                          ("box", 0.6), ("radio", 0.5)]},
+        "rooms": {"laundry": {"add": [("box", 0.5)]}},
     },
     "prepper": {
         "weight": lambda w: _w(w, kind=NOT_RETIRED, plan=HOUSE, setting={"rural": 1.8, "urban": 0.3},
                                base=0.4),
-        "spare": {"add": [("gun_locker", 0.6), ("metal_rack", 0.9), ("crate", 0.9), ("crate", 0.8),
-                          ("radio", 0.7), ("box", 0.7)]},
+        "spare": {"add": [("gun_locker", 0.6), ("shelf", 0.9), ("shelf_1", 0.8), ("box", 0.9),
+                          ("box_battered", 0.7), ("radio", 0.7)]},
         "rooms": {"kitchen": {"add": [("shelf", 0.9), ("shelf_1", 0.7)]},
                   "hall": {"add": [("coat_rack", 0.6)]}},
     },

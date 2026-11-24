@@ -508,18 +508,21 @@ def check_giant_outline(check, work: str) -> None:
     def corners(s, w, n, e):
         return [(s, w), (s, e), (n, e), (n, w), (s, w)]
 
-    giant = corners(SOUTH + 0.0004, WEST + 0.0004, SOUTH + 0.0044, WEST + 0.0064)    # ~440 x 480 m
-    house = corners(SOUTH + 0.0022, WEST + 0.0030, SOUTH + 0.00245, WEST + 0.00335)  # ~28 x 21 m
+    # Past max_size is what matters, not how far past: with max_size lowered to 40 a
+    # block of ~90 x 95 m is as much a giant as 440 x 480 m was at the default, and
+    # lays out its units' interiors in seconds, not the better part of ten minutes.
+    giant = corners(SOUTH + 0.0004, WEST + 0.0004, SOUTH + 0.0012, WEST + 0.0015)    # ~90 x 95 m
+    house = corners(SOUTH + 0.000675, WEST + 0.00078, SOUTH + 0.000925, WEST + 0.00113)  # ~28 x 30 m
     feats = [OSMFeature(next(_ids), "way", {"building": "yes"}, giant),
              OSMFeature(next(_ids), "way", {"building": "house"}, house)]
     out = os.path.join(work, "giant")
     renderer.render(feats, SOUTH, WEST, NORTH, EAST, meters_per_tile=1.0,
                     output_dir=out, map_name="giant")
     with contextlib.redirect_stdout(io.StringIO()):
-        build(out, settings=Settings(seed=1, true_map=1))
+        build(out, settings=Settings(seed=1, true_map=1, max_size=40))
     rows = list(csv.DictReader(open(os.path.join(out, "giant_placements.csv"), encoding="utf-8")))
     proj = renderer.Projector.build(SOUTH, WEST, NORTH, EAST, 1.0)
-    hx, hy = proj.to_px(SOUTH + 0.002325, WEST + 0.003175)
+    hx, hy = proj.to_px(SOUTH + 0.0008, WEST + 0.000955)
 
     def holds(r):
         x, y, w, h = (int(r[k]) for k in ("tile_x", "tile_y", "width", "height"))

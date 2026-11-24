@@ -19,6 +19,14 @@ class Personas(unittest.TestCase):
                 for role in list(part.get("swap", {}).values()):
                     self.assertIn(role, C.FURNITURE, (name, role))
 
+    def test_no_persona_puts_warehouse_racking_in_a_home(self):
+        industrial = {"metal_rack", "crate", "shop_shelf", "shop_aisle"}
+        for name, spec in P.PERSONAS.items():
+            parts = list(spec.get("rooms", {}).values()) + [spec.get("spare", {})]
+            for part in parts:
+                asked = {r for r, _c in part.get("add", ())} | set(part.get("swap", {}).values())
+                self.assertFalse(asked & industrial, (name, asked & industrial))
+
     def test_a_pick_is_the_same_each_time_and_varies_between_homes(self):
         again = [P.pick(random.Random(i), WHO) for i in range(50)]
         self.assertEqual(again, [P.pick(random.Random(i), WHO) for i in range(50)])
