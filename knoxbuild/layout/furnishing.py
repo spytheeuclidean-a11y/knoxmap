@@ -1668,8 +1668,15 @@ def _furnish(plan: Plan, rng: random.Random,
                         laid += 1
                         break
             if plan.kind in ("house", None) and not dedicated_stair_core:
+                home = households.get(r.unit)
+                if home is None:
+                    seed = plan.profile.seed if plan.profile else home_seed
+                    home = households[r.unit] = interiors.household(
+                        random.Random(f"{seed}:{r.unit}:household"), plan)
                 _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
-                                 stair_tiles, door_edges, stairs, rng)
+                                 stair_tiles, door_edges, stairs, rng,
+                                 pieces=interiors.hall_pieces(HALL_PIECES, home, random.Random(
+                                     f"{home_seed}:{idx}:hall")))
             if plan.kind not in HOUSE_LIKE_KINDS:
                 # Keep stair ends, lift doors and narrow hallway necks unobstructed.
                 core_no_go = set(keep_clear) | {
@@ -2806,16 +2813,20 @@ def _furnish_hallway(plan: Plan, idx: int, room_cells: set, slots: list,
                for c in _cells_for(role, x, y, o)}
 
     def joined(down: set) -> bool:
-        if not ways:
+        # Every door and stair, and every bare tile between them: a pocket of
+        # floor walled in by two pieces is a hole in the hall.
+        floor = room_cells - down - stair_tiles
+        start = ways[0] if ways else next(iter(floor), None)
+        if start is None:
             return True
-        seen, todo = {ways[0]}, [ways[0]]
+        seen, todo = {start}, [start]
         while todo:
             cx, cy = todo.pop()
             for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
                 if (nx, ny) in room_cells and (nx, ny) not in down and (nx, ny) not in seen:
                     seen.add((nx, ny))
                     todo.append((nx, ny))
-        return all(w in seen for w in ways)
+        return all(w in seen for w in ways) and floor <= seen
 
     roles = [r for r in (pieces or HALL_PIECES) if r in C.FURNITURE]
     want = most or min(HALL_MAX_PIECES, max(2, len(room_cells) // HALL_PIECE_EVERY))
