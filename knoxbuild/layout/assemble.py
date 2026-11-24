@@ -932,6 +932,43 @@ def _largest_rectangle(todo: list[list[bool]]) -> tuple[int, int, int, int] | No
     return best
 
 
+ROOF_SLIVER_ACROSS = 3      # a roof piece narrower than this is a strip, not a wing
+
+
+def _roof_strips(inside: list[list[bool]], by_columns: bool) -> list[tuple[int, int, int, int]]:
+    """The footprint cut into rectangles along its columns (or its rows): each
+    run of cells in a column joins the run just like it in the column before."""
+    h = len(inside)
+    w = len(inside[0]) if h else 0
+    n_lines, length = (w, h) if by_columns else (h, w)
+
+    def cell(line: int, k: int) -> bool:
+        return inside[k][line] if by_columns else inside[line][k]
+
+    done: list[tuple[int, int, int, int]] = []
+    open_runs: dict[tuple[int, int], int] = {}      # (start, length) -> first line
+    for line in range(n_lines + 1):
+        runs = set()
+        k = 0
+        while line < n_lines and k < length:
+            if cell(line, k):
+                start = k
+                while k < length and cell(line, k):
+                    k += 1
+                runs.add((start, k - start))
+            else:
+                k += 1
+        for run in list(open_runs):
+            if run not in runs:
+                first = open_runs.pop(run)
+                start, size = run
+                done.append((first, start, line - first, size) if by_columns
+                            else (start, first, size, line - first))
+        for run in runs:
+            open_runs.setdefault(run, line)
+    return done
+
+
 def roof_rects(grid: list[list[int]]) -> list[tuple[int, int, int, int, dict]]:
     """Flat roofs covering exactly a storey's footprint.
 
@@ -950,7 +987,7 @@ def roof_rects(grid: list[list[int]]) -> list[tuple[int, int, int, int, dict]]:
     w = len(grid[0]) if h else 0
     inside = [[bool(grid[y][x]) for x in range(w)] for y in range(h)]
     todo = [row[:] for row in inside]
-    rects = []
+    greedy = []
     while True:
         found = _largest_rectangle(todo)
         if found is None:
@@ -959,7 +996,22 @@ def roof_rects(grid: list[list[int]]) -> list[tuple[int, int, int, int, dict]]:
         for y in range(y0, y0 + rh):
             for x in range(x0, x0 + rw):
                 todo[y][x] = False
+        greedy.append(found)
 
+    # A one- or two-tile sliver left beside the biggest roof is a flat strip
+    # hanging off a pitched roof, brown where the two meet. The same footprint
+    # cut along its columns or its rows often has none: an L is two blocks, not
+    # a block and a sliver. Taken only when it has fewer slivers.
+    def slivers(parts) -> int:
+        return sum(1 for _x, _y, rw, rh in parts if min(rw, rh) < ROOF_SLIVER_ACROSS)
+
+    best = greedy
+    for parts in (_roof_strips(inside, True), _roof_strips(inside, False)):
+        if (slivers(parts), len(parts)) < (slivers(best), len(best)):
+            best = parts
+
+    rects = []
+    for x0, y0, rw, rh in best:
         def open_side(cells) -> bool:
             return all(0 <= cx < w and 0 <= cy < h and inside[cy][cx]
                        for cx, cy in cells)

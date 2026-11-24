@@ -498,13 +498,19 @@ def _generate(data):
     _set_progress(map_name, stage="done")
     mapstate.stamp(str(map_dir), "generate", took=total_time)
     from_addresses = 0
+    street_infill = 0
+    street_infill_report: dict = {}
     try:
         with open(map_dir / f"{map_name}_info.json", encoding="utf-8") as f:
             applied = json.load(f)
         from_addresses = applied.get("houses_from_addresses", 0)
         applied["sketch_hash"] = _sketch_signature(drawn)
         applied["drawn_only"] = drawn_only
-        applied["houses_infilled"] = int(gaps.get("added", 0))
+        # houses_infilled is the street infill's own count, written by the
+        # renderer; the gap fill's is kept beside it, not over it.
+        applied["houses_from_gap_fill"] = int(gaps.get("added", 0))
+        street_infill = int(applied.get("houses_infilled", 0))
+        street_infill_report = dict(applied.get("street_infill_report") or {})
         knoxfiles.write(str(map_dir / f"{map_name}_info.json"), applied)
     except (OSError, ValueError):
         pass
@@ -537,7 +543,10 @@ def _generate(data):
         # footprints or Overture, whichever answered - and when it added
         # nothing, why not, in a sentence the window can show as it stands.
         "fromGapFill": gaps.get("added", 0),
-        "fromStreetInfill": int(gaps.get("added", 0)),
+        "fromStreetInfill": street_infill,
+        # Why street infill left gaps empty, and what it made (the infill's own
+        # reasons: generator/rendering/infill.py), for the panel under the tiles.
+        "streetInfillReport": street_infill_report,
         "gapFillWhy": gaps.get("error") or gaps.get("why") or "",
         # What the optional data layers did (knoxdata/): which applied, the
         # suggested preset from real land cover, and the region/climate read.

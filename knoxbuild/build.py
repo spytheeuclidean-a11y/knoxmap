@@ -34,7 +34,7 @@ import knoxstop
 from .areas import AreaIndex
 from .fences import build_fences
 from . import footprint
-from .footprint import FootprintSession
+from .footprint import FootprintSession, fill_notches
 from .layout import build_building, thin_building
 from .uses import is_hotel, uses_of
 from .context import Context, style_fits
@@ -73,6 +73,19 @@ SHED_VALUES = {
 # stay houses. Real square metres, so a map drawn at 4 m a tile does not turn
 # its houses into sheds.
 SHED_MAX_M2 = 30
+# A footprint with both sides this many tiles or fewer gets one room from the
+# layout, however it is tagged: a house of it would be a living room and
+# nothing else, no bedroom, bathroom or kitchen. Checked against the layout in
+# tests/test_small_houses_are_sheds.py. Tiles, not metres: it is the room
+# generator's limit, and it is in tiles.
+# Above this, in real square metres, a house keeps the wings it was drawn with.
+MANSION_M2 = 700
+SHED_HOUSE_SIDE_TILES = 6
+
+
+def too_small_for_rooms(width: int, height: int) -> bool:
+    """Whether a footprint this many tiles across is one room, not a house."""
+    return max(width, height) <= SHED_HOUSE_SIDE_TILES
 HOUSE_TAGS = ("house", "detached", "bungalow", "semidetached_house", "cabin")
 # An untagged building among tagged blocks of flats is taken for one when it
 # is at least this big, in square metres; smaller ones are the shops and
@@ -820,6 +833,7 @@ from .zones_detect import (  # noqa: F401
 
 
 from .street_context import (  # noqa: F401
+    free_way_side,
     MAPPED_ROOM_KINDS,
     RETAIL_DENSITY,
     SHORE_LOOK_TILES,
@@ -1296,7 +1310,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     placements: list[Placement] = []
     rows = []
     skipped = {"small": 0, "large": 0, "outside": 0, "taken": 0, "road": 0,
-               "not a building": 0}
+               "cut": 0, "not a building": 0}
     # And which footprint each of those was. The counts say how many were left
     # out; somebody looking at the hole where their house should be needs to
     # know which building it was and why, and the counts cannot tell them.
@@ -1340,7 +1354,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # (x0, y0, mask, storeys, kind) for the population estimate.
     peopled: list[tuple[int, int, np.ndarray, int, str]] = []
     hifld_by_fname: dict = {}
-    # Real outlines of the buildings placed, for the in-game paper map.
+    # Outlines of the buildings as placed, for the in-game paper map.
     outlines: list[tuple[list[tuple[float, float]], str, str]] = []
     occupied = np.zeros((proj.height, proj.width), dtype=bool)
     # ...and the ground covered by a lot rectangle rather than by a building's
@@ -1564,6 +1578,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                   0.04 * min(1.0, placed_so_far / len(order)))
           feat = geo["features"][i]
           oversize = False
+          # A police station, a school: grown to the game's size later whatever
+          # is left of the outline, so a scrap of it is not a reason to lose it.
+          named = classify_building(feat.get("properties") or {}) not in (None, "house")
+          house_box_tiles = None if named else MANSION_M2 / metres_per_tile ** 2
           if retry:
               # A building past max_size is not thrown away any more: the
               # factory and the hangar are the landmarks a place is known by,
@@ -1575,12 +1593,16 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               # being several blocks wall to wall.
               fp, reason = fp_session.place(px, min_side=min_size, max_side=1e9,
                                             snap_degrees=settings.square_buildings,
-                                            alignment=settings.building_alignment)
+                                            alignment=settings.building_alignment,
+                                            settle=not named,
+                                            house_box_tiles=house_box_tiles)
               oversize = fp is not None
           else:
               fp, reason = fp_session.place(px, min_side=min_size, max_side=max_size,
                                             snap_degrees=settings.square_buildings,
-                                            alignment=settings.building_alignment)
+                                            alignment=settings.building_alignment,
+                                            settle=not named,
+                                            house_box_tiles=house_box_tiles)
               if fp is None and reason == "large":
                   if -_neg_area <= MAX_OVERSIZE_TILES:
                       deferred_large.append((_neg_area, i, px))
@@ -1592,6 +1614,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               skipped[reason] += 1
               note_left_out(feat, reason)
               continue
+          if (not named and settings.building_alignment != "real"
+                  and fp.tiles * metres_per_tile ** 2 < MANSION_M2):
+              # Houses are boxes: take the notches out of a traced L, U or T.
+              fill_notches(fp, occupied, road_weight, lots)
           x0, y0, w, h = fp.x0, fp.y0, fp.width, fp.height
           if fp.angle <= 8.0:
               squared += 1
@@ -1630,6 +1656,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               special = "shop"           # flats over it, below, if it is tall
           if special is None and (btag in SHED_VALUES or (
                   btag in ("", "yes") and real_m2 <= SHED_MAX_M2)):
+              special = "shed"
+              sheds += 1
+          elif special in (None, "house") and too_small_for_rooms(w, h):
+              # Tagged a house, or drawn as one by the infill, but with no room for
+              # one: an outbuilding in the yard, not a one-room home.
               special = "shed"
               sheds += 1
           nearby = (context.neighbour_levels(cx, cy)
@@ -1774,7 +1805,11 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
                       used_presets[pick["name"]] += 1
               jobs.append((uw, uh, levels, commercial, seed + i * 31 + n, special, umask,
                            here, style, label, os.path.join(bdir, fname),
-                           street_side(ux0, uy0, uw, uh),
+                           # A garage's door faces the way a car can get to it, round
+                           # the house in front if it stands at the back of a lot.
+                           ((free_way_side(ux0, uy0, uw, uh, occupied, road_weight)
+                             if btag in ("garage", "garages") or special == "garage"
+                             else None) or street_side(ux0, uy0, uw, uh)),
                            # Shops under flats where the town is built up.
                            context.density(cx, cy) >= RETAIL_DENSITY,
                            # What the ground floor really is, and a hotel's rooms.
@@ -2012,7 +2047,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         peopled.append((x0, y0, fp.mask, storeys,
                         hospitals.occupancy_kind(special or "house",
                                                  hifld_by_fname.get(fname))))
-        outlines.append((px, special or "house", real_name))
+        outlines.append((footprint.footprint_outline(fp), special or "house", real_name))
         rows.append({
             "file": fname, "name": label,
             "tile_x": x0, "tile_y": y0, "width": w, "height": h,
@@ -2261,6 +2296,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     print(f"  outside the map     : {skipped['outside']}")
     print(f"  swallowed by others : {skipped['taken']}")
     print(f"  on the road         : {skipped['road']} (more than {round(100 * footprint.ROAD_SHARE_MAX)}% road)")
+    print(f"  cut to scraps       : {skipped['cut']} (roads or neighbours left under {round(100 * footprint.KEEP_SHARE_MIN)}%)")
     print(f"  not buildings       : {skipped['not a building']} (roofs, ruins, tanks)")
     import collections as _c
     kinds = _c.Counter(r["kind"] for r in rows)

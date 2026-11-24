@@ -19,6 +19,8 @@ WHY = {
     "outside": "its footprint falls off the edge of the map",
     "taken": "the ground was already taken by a building placed before it",
     "road": "mostly road: more of its footprint is tarmac than ground",
+    "cut": "roads or the buildings beside it took so much of its footprint "
+           "that what was left was a scrap or a shape no building has",
     "not a building": "tagged as something that is not a building "
                       "(a roof, a ruin, a tank)",
     "over the limit": "the map was held to a set number of buildings, and "
@@ -36,6 +38,8 @@ FIX = {
              "mapped twice. The bigger one wins.",
     "road": "the road is drawn over the building in OpenStreetMap, or the "
             "road is laid wider than it really is at this scale.",
+    "cut": "move the road or the neighbouring footprint in OpenStreetMap, or "
+           "tidy the outline: a building cut in half has no outside to wall.",
     "not a building": "nothing to do: these are not buildings.",
     "over the limit": "raise 'Most buildings' in Fine tuning, or set it to 0 "
                       "for no ceiling at all. Landmarks are never the ones "
@@ -53,6 +57,7 @@ SHORT = {
     "outside": "off the edge of the map",
     "taken": "mapped twice over, one on top of the other",
     "road": "under a road",
+    "cut": "cut to scraps by a road or a neighbour",
     "not a building": "not buildings at all (roofs, ruins, tanks)",
     "over the limit": "over the limit you set",
     "thinned": "thinned out to leave room around the rest",
