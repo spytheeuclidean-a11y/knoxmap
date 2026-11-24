@@ -932,6 +932,46 @@ def _pave_building_apron(bx0: int, by0: int, bw: int, bh: int,
             paint(gx, gy, C.PALE_CONCRETE)
 
 
+# Trees stand this many tiles from a building's tiles, and the big ones, which
+# take a square of their own, further: a wall facing south or east is the edge
+# of the tile in front of it, and a tree there, or its crown beside it, comes
+# out of the wall. Painted before the buildings were placed, the trees knew
+# nothing of where the footprints came to.
+TREE_CLEAR_TILES = 2
+BIG_TREE_CLEAR_TILES = 5
+SMALL_TREE_COLOURS = (C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
+                      C.LOT_OF_GRASS_AND_TREES, C.BUSHES_TREES_DARK_GRASS, C.TREE_SMALL)
+BIG_TREE_COLOURS = (C.TREE_BIG, C.TREE_HUGE, C.TREE_GIANT)
+
+
+def _grown(mask: np.ndarray, r: int) -> np.ndarray:
+    """`mask` and every tile within `r` tiles of it, square-wise."""
+    out = mask.copy()
+    for _ in range(r):
+        out[:, 1:] |= out[:, :-1]
+        out[:, :-1] |= out[:, 1:]
+    for _ in range(r):
+        out[1:, :] |= out[:-1, :]
+        out[:-1, :] |= out[1:, :]
+    return out
+
+
+def _clear_trees_near_walls(veg: np.ndarray, occ: np.ndarray) -> int:
+    """Take the trees off the ground beside buildings. Returns tiles cleared."""
+    cleared = 0
+    for colours, r in ((SMALL_TREE_COLOURS, TREE_CLEAR_TILES),
+                       (BIG_TREE_COLOURS, BIG_TREE_CLEAR_TILES)):
+        trees = np.zeros(occ.shape, dtype=bool)
+        for colour in colours:
+            trees |= same_colour(veg, colour)
+        if not trees.any():
+            continue
+        near = trees & _grown(occ, r)
+        veg[near] = C.VEG_NOTHING
+        cleared += int(near.sum())
+    return cleared
+
+
 def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 drives: list | None = None,
                 lights: list | None = None,
@@ -975,6 +1015,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         occ = np.zeros((h, w), dtype=bool)
         ch, cw = min(h, occ_h), min(w, occ_w)
         occ[:ch, :cw] = occupied[:ch, :cw]
+
+    if veg is not None:
+        _clear_trees_near_walls(veg, occ)
 
     def match(colours):
         mask = np.zeros((h, w), dtype=bool)
