@@ -726,15 +726,17 @@ def _melos_house_styles() -> list[dict]:
     ext_groups = getattr(C, "MELOS_EXTERIOR_WALLS", {}) or {}
     int_walls = getattr(C, "MELOS_INTERIOR_WALLS", []) or []
     by_name = {s["name"]: s for s in C.HOUSE_STYLES}
+    clapboard = by_name.get("clapboard", C.HOUSE_STYLES[0])
     donor_map = {
-        "siding": by_name.get("clapboard", C.HOUSE_STYLES[0]),
+        "siding": clapboard,
         "brick": by_name.get("brick", C.HOUSE_STYLES[0]),
         "wood": by_name.get("timber", C.HOUSE_STYLES[0]),
         "plaster": by_name.get("stucco", C.HOUSE_STYLES[0]),
     }
     out: list[dict] = []
-    for grp, donor in donor_map.items():
+    for grp, default_donor in donor_map.items():
         for i, item in enumerate(ext_groups.get(grp, ())):
+            donor = by_name.get(item.get("donor", ""), default_donor)
             style = dict(donor)
             style["name"] = item["name"]
             style["exterior"] = item["entry"]
@@ -742,6 +744,31 @@ def _melos_house_styles() -> list[dict]:
                 style["interior"] = int_walls[(len(out) + i) % len(int_walls)]["entry"]
             out.append(style)
     return out
+
+
+def _erika_house_styles() -> list[dict]:
+    """House styles built from Erika's exterior walls, interior walls, and windows."""
+    from . import catalog as C
+
+    ext_walls = getattr(C, "ERIKA_EXTERIOR_WALLS", ()) or ()
+    int_walls = getattr(C, "ERIKA_INTERIOR_WALLS", ()) or ()
+    windows = getattr(C, "ERIKA_WINDOWS", ()) or ()
+    clapboard = next((s for s in C.HOUSE_STYLES if s["name"] == "clapboard"), C.HOUSE_STYLES[0])
+    out: list[dict] = []
+    for i, item in enumerate(ext_walls):
+        style = dict(clapboard)
+        style["name"] = item["name"]
+        style["exterior"] = item["entry"]
+        if int_walls:
+            style["interior"] = int_walls[i % len(int_walls)]["entry"]
+        if windows:
+            style["window"] = windows[i % len(windows)]
+        out.append(style)
+    return out
+
+
+MELOS_STYLE_PCT = 18
+ERIKA_STYLE_PCT = 15
 
 
 _MELOS_SPECIAL_GROUPS = {
@@ -757,7 +784,7 @@ def wall_variants(kind: str) -> list[dict]:
     """Every style a building of this kind may be built in."""
     from . import catalog as C
     from . import regional
-    from .layout import _melos_ready
+    from .layout import _erika_ready, _melos_ready
 
     houses = {s["name"]: s for s in C.HOUSE_STYLES}
     if kind in STATION_KINDS:
@@ -804,6 +831,19 @@ def wall_variants(kind: str) -> list[dict]:
                 other["name"] = f"{variant['name']}~{name}"
                 grown.append(other)
         out = grown
+    if _erika_ready():
+        erika_ext = getattr(C, "ERIKA_EXTERIOR_WALLS", ()) or ()
+        erika_int = getattr(C, "ERIKA_INTERIOR_WALLS", ()) or ()
+        erika_win = getattr(C, "ERIKA_WINDOWS", ()) or ()
+        for i, item in enumerate(erika_ext):
+            variant = dict(base)
+            variant["exterior"] = item["entry"]
+            if erika_int:
+                variant["interior"] = erika_int[i % len(erika_int)]["entry"]
+            if erika_win:
+                variant["window"] = erika_win[i % len(erika_win)]
+            variant["name"] = f"{kind}_{item['name']}"
+            out.append(variant)
     if _melos_ready():
         ext_groups = getattr(C, "MELOS_EXTERIOR_WALLS", {}) or {}
         int_walls = getattr(C, "MELOS_INTERIOR_WALLS", []) or []
@@ -834,10 +874,24 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
     """
     from . import catalog as C
     from . import regional
+    from .layout import _erika_ready, _melos_ready
+
+    mod_roll = ((tile_x * 2654435761 ^ tile_y * 2246822519) >> 8) % 100
+    use_melos = _melos_ready() and mod_roll < MELOS_STYLE_PCT
+    use_erika = _erika_ready() and MELOS_STYLE_PCT <= mod_roll < MELOS_STYLE_PCT + ERIKA_STYLE_PCT
 
     kind = BORROWED_STYLE.get(kind or "", kind)
     if kind and (kind in C.SPECIAL_STYLES or kind in STATION_KINDS):
-        variants = wall_variants(kind)
+        all_variants = wall_variants(kind)
+        if use_melos:
+            pool = [v for v in all_variants if "melos_tiles_walls_" in v.get("name", "")]
+        elif use_erika:
+            pool = [v for v in all_variants if "erika_" in v.get("name", "")]
+        else:
+            pool = [v for v in all_variants
+                    if "melos_tiles_walls_" not in v.get("name", "")
+                    and "erika_" not in v.get("name", "")]
+        variants = pool or all_variants
         if profile:
             picker = random.Random(profile.seed ^ 0xA37E)
             weights = [profile.style_weight(variant["name"]) for variant in variants]
@@ -850,13 +904,13 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
                                and profile.era == "prewar"):
         pool = regional.cn_house_styles()
         styles = [s for s in pool if style_fits(s["name"], density)] or pool
+    elif use_melos:
+        styles = _melos_house_styles() or C.HOUSE_STYLES
+    elif use_erika:
+        styles = _erika_house_styles() or C.HOUSE_STYLES
     else:
-        from .layout import _melos_ready
-        pool = list(C.HOUSE_STYLES)
-        if _melos_ready():
-            pool.extend(_melos_house_styles())
-        styles = [s for s in pool if style_fits(s["name"], density)] \
-            or pool
+        styles = [s for s in C.HOUSE_STYLES if style_fits(s["name"], density)] \
+            or C.HOUSE_STYLES
     size = settings.neighbourhood_tiles
     block = (tile_x // size, tile_y // size)
     # Deterministic per block, so re-running gives the same town.
@@ -2245,6 +2299,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     from .yards import paint_paths
     drives: list = []
     porch_lights: list = []
+    yard_structures: list = []
     from .yards import door_fronts
     fronts = door_fronts(out_dir, rows)
     fence_clear = fronts
@@ -2252,11 +2307,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         rail_y, rail_x = np.nonzero(road_weight == 8)
         fence_clear = fronts | set(zip(rail_x.tolist(), rail_y.tolist()))
     paths, yard_fences = paint_paths(out_dir, map_name, rows, occupied, drives,
-                                     porch_lights, fronts=fronts)
+                                     porch_lights, fronts=fronts,
+                                     structures=yard_structures)
     # The lights stand outside the houses, past the edge of their own .tbx.
-    from .structures import pack_loose
+    from .structures import pack_loose, pack_roofed_structures
     light_placements = pack_loose(bdir, map_name, "lights", porch_lights,
                                   on_top=True)
+    yard_structure_placements = pack_roofed_structures(
+        bdir, map_name, "yardstruct", yard_structures)
     escalator_placements = pack_loose(bdir, map_name, "escalators",
                                       escalator_squares, on_top=True)
 
@@ -2378,7 +2436,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         structure_placements, raised = job_structures.result()
     placements = (placements + fence_placements + structure_placements +
                   pump_placements + prop_placements + landmark_placements
-                  + vignette_placements + light_placements + escalator_placements)
+                  + vignette_placements + light_placements
+                  + yard_structure_placements + escalator_placements)
 
     if _stitch_out is not None:
         _stitch_out.update({

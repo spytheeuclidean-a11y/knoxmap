@@ -30,15 +30,42 @@ class MelosCatalogTests(unittest.TestCase):
         self.assertGreater(len(C.MELOS_INTERIOR_WALLS), 50)
 
     def test_melos_building_styles_in_pick_style_and_wall_variants(self):
-        with mock.patch("knoxbuild.layout._melos_ready", return_value=True):
+        with mock.patch("knoxbuild.layout._melos_ready", return_value=True), \
+                mock.patch("knoxbuild.layout._erika_ready", return_value=True):
             variants = build.wall_variants("shop")
             self.assertTrue(any("melos_tiles_walls_" in v["name"] for v in variants))
-            picked = {
-                build.pick_style(None, x * 17, x * 23, build.random.Random(x),
-                                 build.Settings()).get("name", "")
-                for x in range(40)
-            }
-            self.assertTrue(any(n.startswith("melos_tiles_walls_") for n in picked), picked)
+            self.assertTrue(any("erika_" in v["name"] for v in variants))
+            counts = {"melos": 0, "erika": 0, "vanilla": 0}
+            for x in range(200):
+                name = build.pick_style(
+                    None, x * 17 + 3, x * 29 + 5, build.random.Random(x), build.Settings()
+                ).get("name", "")
+                if name.startswith("melos_tiles_walls_"):
+                    counts["melos"] += 1
+                elif "erika_" in name:
+                    counts["erika"] += 1
+                else:
+                    counts["vanilla"] += 1
+            # ~18% Melos, ~15% Erika, ~67% Vanilla
+            self.assertTrue(20 <= counts["melos"] <= 55, counts)
+            self.assertTrue(15 <= counts["erika"] <= 48, counts)
+            self.assertGreater(counts["vanilla"], 110, counts)
+
+    def test_melos_houses_use_hipped_or_flat_roofs_without_gables(self):
+        with mock.patch("knoxbuild.layout._melos_ready", return_value=True):
+            melos_style = next(s for s in build._melos_house_styles()
+                               if "brick_02_blue" in s["name"])
+            small = layout.build_building(10, 7, levels=1, kind="house", seed=1, street="S")
+            xml_small = tbx.render_tbx(small, "melos-hip", melos_style)
+            self.assertIn('RoofType="Peak30Quad"', xml_small)
+            for gabled in ('PeakWE', 'PeakNS', 'Peak30WE', 'Peak30NS'):
+                self.assertNotIn(f'RoofType="{gabled}"', xml_small)
+
+            wide = layout.build_building(16, 14, levels=1, kind="house", seed=2, street="S")
+            xml_wide = tbx.render_tbx(wide, "melos-flat", melos_style)
+            self.assertIn('RoofType="FlatTop"', xml_wide)
+            for gabled in ('PeakWE', 'PeakNS', 'Peak30WE', 'Peak30NS'):
+                self.assertNotIn(f'RoofType="{gabled}"', xml_wide)
 
     def test_melos_plants_are_floor_standing(self):
         self.assertFalse(furnishing._needs_surface(C.MELOS_PLANTS[0]))

@@ -254,10 +254,105 @@ def build_melos_catalog(media: Path) -> dict:
         "MELOS_SHELVES": shelves,
         "MELOS_STOREFRONTS": storefronts,
         "MELOS_SIGNS": signs,
-        "MELOS_EXTERIOR_WALLS": dict(ext_walls),
+        "MELOS_EXTERIOR_WALLS": _attach_donors(dict(ext_walls), media),
         "MELOS_INTERIOR_WALLS": int_walls,
         "MELOS_SHEETS": sorted(used_sheets),
     }
+
+
+def _attach_donors(ext_walls: dict[str, list[dict]], media: Path) -> dict[str, list[dict]]:
+    """Match each Melos exterior wall to the closest-colored vanilla HOUSE_STYLE
+    gable-cap donor so roof gable ends match the wall colour."""
+    try:
+        import io
+        import numpy as np
+        from PIL import Image
+        import knoxbuild.catalog as C
+    except Exception:
+        return ext_walls
+
+    two_x = (knoxpaths.mapping_tools_dir() / "Tiles" / "2x") if knoxpaths.mapping_tools_dir() else None
+    if not two_x or not two_x.is_dir():
+        return ext_walls
+
+    def _tile_rgb(tile_name: str):
+        sheet, idx_s = tile_name.rsplit("_", 1)
+        p = two_x / f"{sheet}.png"
+        if not p.is_file():
+            return None
+        with Image.open(p) as img:
+            arr = np.asarray(img.convert("RGBA"))
+        cols = max(1, arr.shape[1] // 128)
+        r, c = divmod(int(idx_s), cols)
+        cell = arr[r * 256:(r + 1) * 256, c * 128:(c + 1) * 128]
+        mask = cell[:, :, 3] > 128
+        if not mask.any():
+            return None
+        return cell[mask][:, :3].mean(axis=0)
+
+    def _color_vec(rgb):
+        # Combine luminance + emphasized chroma so dark blue matches blue, not brown.
+        lum = float(rgb.mean())
+        chroma = rgb - lum
+        return np.array([lum * 0.6, chroma[0] * 1.8, chroma[1] * 1.8, chroma[2] * 1.8])
+
+    cap_vecs = {}
+    for s in C.HOUSE_STYLES:
+        if s["name"] in ("logs", "trailer"):
+            continue
+        cap = ((s.get("roof") or {}).get("caps") or {}).get("tiles", {}).get("CapRiseE1")
+        if cap:
+            rgb = _tile_rgb(cap)
+            if rgb is not None:
+                cap_vecs[s["name"]] = _color_vec(rgb)
+    if not cap_vecs:
+        return ext_walls
+
+    # Read Melos West-wall pixels from the .pack files (or Tiles/2x if already extracted).
+    needed = {
+        item["entry"]["tiles"]["West"]: item
+        for items in ext_walls.values()
+        for item in items
+    }
+    wall_rgbs: dict[str, object] = {}
+    for tname in needed:
+        rgb = _tile_rgb(tname)
+        if rgb is not None:
+            wall_rgbs[tname] = rgb
+    missing = {t for t in needed if t not in wall_rgbs}
+    if missing:
+        norm_map = {}
+        for t in missing:
+            sh, idx_s = t.rsplit("_", 1)
+            norm_map[f"{sh}_{int(idx_s)}"] = t
+        for pname in ("melos_tiles_for_miles1.pack", "melos_tiles_for_miles2.pack"):
+            pack = media / "texturepacks" / pname
+            if not pack.is_file():
+                continue
+            r = PackReader(str(pack))
+            try:
+                for _pn, entries, read_png in r.pages():
+                    hits = [e for e in entries if e[0] in norm_map]
+                    png = read_png()
+                    if not hits:
+                        continue
+                    with Image.open(io.BytesIO(png)) as page:
+                        parr = np.asarray(page.convert("RGBA"))
+                    for ename, x, y, w, h, *_ in hits:
+                        crop = parr[y:y + h, x:x + w]
+                        m = crop[:, :, 3] > 128
+                        if m.any():
+                            wall_rgbs[norm_map[ename]] = crop[m][:, :3].mean(axis=0)
+            finally:
+                r.f.close()
+
+    for tname, item in needed.items():
+        rgb = wall_rgbs.get(tname)
+        if rgb is None:
+            continue
+        v = _color_vec(rgb)
+        item["donor"] = min(cap_vecs, key=lambda k: float(np.linalg.norm(v - cap_vecs[k])))
+    return ext_walls
 
 
 def main() -> int:

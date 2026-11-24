@@ -802,6 +802,39 @@ MELOS_SIGNS = _MELOS.get("MELOS_SIGNS", {"N": [], "W": []})
 MELOS_EXTERIOR_WALLS = _MELOS.get("MELOS_EXTERIOR_WALLS", {})
 MELOS_INTERIOR_WALLS = _MELOS.get("MELOS_INTERIOR_WALLS", [])
 
+def _erika_wall_entry(sheet: str, base: int, category: str) -> dict:
+    tiles = {
+        "West": f"{sheet}_{base:03d}",
+        "North": f"{sheet}_{base + 1:03d}",
+        "NorthWest": f"{sheet}_{base + 2:03d}",
+        "SouthEast": f"{sheet}_{base + 3:03d}",
+        "WestWindow": f"{sheet}_{base + 8:03d}",
+        "NorthWindow": f"{sheet}_{base + 9:03d}",
+        "WestDoor": f"{sheet}_{base + 10:03d}",
+        "NorthDoor": f"{sheet}_{base + 11:03d}",
+    }
+    for k in range(1, 20):
+        tiles[f"WestWindow{k}"] = tiles["WestWindow"]
+        tiles[f"NorthWindow{k}"] = tiles["NorthWindow"]
+    return {"name": f"{sheet}_{base:03d}", "entry": {"category": category, "tiles": tiles}}
+
+
+ERIKA_EXTERIOR_WALLS = [
+    _erika_wall_entry("walls_exterior_house_erika_02", b, "exterior_walls")
+    for b in range(0, 144, 16)
+]
+ERIKA_INTERIOR_WALLS = [
+    _erika_wall_entry("walls_interior_house_erika_02", b, "interior_walls")
+    for b in range(0, 208, 16)
+]
+ERIKA_WINDOWS = [
+    {"category": "windows", "tiles": {
+        "West": f"fixtures_windows_erika_01_{b:03d}",
+        "North": f"fixtures_windows_erika_01_{b + 1:03d}",
+    }}
+    for b in (0, 8, 16, 24)
+]
+
 # The game's own shop signs: four tiles wide, hung on the wall above the glass
 # (BuildingFurniture.txt, "Signs - Advertising - Wall"). The strips read west
 # to east on a north wall and north to south on a west one, which is the order

@@ -84,7 +84,8 @@ MANY_WING_PEAK30_MAX = 7
 MANY_WING_MIN_PITCHED_AREA = 8
 
 
-def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False, gable_only: bool = False):
+def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False,
+                 gable_only: bool = False, hip_only: bool = False):
     """(RoofType, Depth, caps, (x, y, w, h)) for each roof over a footprint.
 
     Flat roofs are never capped: at depth three a cap is a storey-high wall of
@@ -105,6 +106,20 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
         if not peaked or across < NARROW_PEAK_MIN or tooth:
             out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+            continue
+        if hip_only:
+            odd = across if across % 2 else across - 1
+            if not roof30 or not single or odd < 3 or odd > 11:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+                continue
+            along_x = rw >= rh
+            box = ((rx, ry + (rh - odd), rw, odd) if along_x
+                   else (rx + (rw - odd), ry, odd, rh))
+            if along_x and rh != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
+            elif not along_x and rw != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
+            out.append(("Peak30Quad", "Zero", dict(_NO_CAPS), box))
             continue
         along_x = rw >= rh
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
@@ -951,9 +966,12 @@ def render_tbx(plan: Plan | Building, name: str,
                     for x, v in enumerate(row)] for y, row in enumerate(storey.grid)]
         if roof and any(any(row) for row in exposed):
             rects = roof_rects(exposed)
+            sname = str(style.get("name", "")) if style else ""
+            hip_only = bool(style and not garage_only
+                            and ("melos_tiles_walls_" in sname or "erika_" in sname))
             for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(
                     rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30,
-                    gable_only=garage_only):
+                    gable_only=garage_only, hip_only=hip_only):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),

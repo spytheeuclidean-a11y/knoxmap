@@ -87,11 +87,37 @@ def pack_loose(bdir: str, map_name: str, tag: str, tiles: list,
     return placements
 
 
-def render_tiles_tbx(width: int, height: int, tiles: list) -> str:
-    """A building with no rooms whose floors hold only user-drawn tiles."""
+def pack_roofed_structures(bdir: str, map_name: str, tag: str,
+                           items: list) -> list:
+    """Write individual roofed open structures (carports, covered porches) as
+    .tbx buildings placed on top of the terrain.
+
+    Each item is ``(gx0, gy0, width, height, tiles, roof_type, roof_depth)``
+    where ``tiles`` are ``(lx, ly, z, layer, tile_name)`` local to the box.
+    """
+    from .world import Placement
+
+    placements = []
+    for i, (gx0, gy0, gw, gh, tiles, roof_type, roof_depth) in enumerate(items):
+        fname = f"{map_name}_{tag}_{i}.tbx"
+        with open(os.path.join(bdir, fname), "w", encoding="utf-8") as f:
+            f.write(render_tiles_tbx(gw, gh, tiles, roof_type=roof_type,
+                                     roof_depth=roof_depth))
+        placements.append(Placement(f"buildings/{fname}", gx0, gy0, gw, gh,
+                                    on_top=True))
+    return placements
+
+
+def render_tiles_tbx(width: int, height: int, tiles: list,
+                     roof_type: str | None = None,
+                     roof_depth: str = "Zero") -> str:
+    """A building with no rooms whose floors hold only user-drawn tiles,
+    optionally topped with a roof object (e.g. Peak30Quad for carports/porches)."""
     names = sorted({t[4] for t in tiles})
     number = {n: i + 1 for i, n in enumerate(names)}
-    levels = max(t[2] for t in tiles) + 1
+    levels = max((t[2] for t in tiles), default=0) + 1
+    if roof_type:
+        levels = max(levels, 2)
     grids: dict[int, dict[str, dict]] = {}
     for x, y, z, layer, tile in tiles:
         grids.setdefault(z, {}).setdefault(layer, {})[(x, y)] = number[tile]
@@ -120,6 +146,14 @@ def render_tiles_tbx(width: int, height: int, tiles: list) -> str:
                              for y in range(height)) + "\n"
     for z in range(levels):
         out.append(" <floor>")
+        if z == 0 and roof_type:
+            out.append(
+                f'  <object type="roof" width="{width}" height="{height}" '
+                f'RoofType={quoteattr(roof_type)} Depth={quoteattr(roof_depth)} '
+                f'cappedW="false" cappedN="false" cappedE="false" cappedS="false" '
+                f'CapTiles="{C.ROOF_CAP}" SlopeTiles="{C.ROOF_SLOPE}" '
+                f'TopTiles="{C.ROOF_TOP}" x="0" y="0"/>'
+            )
         out.append("  <rooms>" + rooms + "</rooms>")
         for layer, cells in sorted(grids.get(z, {}).items()):
             # BuildingFloor's user tile grids are one wider and taller than the
