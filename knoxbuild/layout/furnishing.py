@@ -1921,13 +1921,15 @@ def _furnish(plan: Plan, storey_rng: random.Random,
             room.unit == r.unit and room.kind in ("bedroom", "kidsbedroom") for room in plan.rooms)
         shelving = [s for s in SHELVING.get(r.kind, DEFAULT_SHELVING)
                     if s in C.FURNITURE] or ["shelf"]
-        if plan.kind in HOME_KINDS:
+        # A house's garage keeps its steel racking and boxes, as in vanilla.
+        household = plan.kind in HOME_KINDS and r.kind != "garage"
+        if household:
             # No warehouse racking in somebody's house.
             keep = [s for s in shelving if s not in WAREHOUSE_ROLES]
             shelving = keep or ["shelf"]
         base = [rng.choice(shelving) if role == "shelf" else pal.get(role, role)
                 for role in base]
-        if plan.kind in HOME_KINDS:
+        if household:
             base = [HOME_STORE.get(role, role) for role in base]
         # A mansion dresses every room past its wishlist: the pictures, rugs and
         # bookcases a house with money has. Before the art is drawn from the
@@ -2397,7 +2399,9 @@ FLOOR_CHOICES = {
     # it that tiles into a grid across a floor.
     "hall":        ["wood_pale", "wood_mid", "office_grey", "civic_pale"],
     "closet":      ["wood_pale", "wood_pale", "wood_pale", "wood_dark"],
-    "office":      ["wood_mid", "carpet_red", "carpet_brown", "carpet_grey"],
+    "garage":      ["concrete"],
+    "mechanic":    ["concrete"],
+    "office":     ["wood_mid", "carpet_red", "carpet_brown", "carpet_grey"],
 }
 
 # Floors for the rooms of a particular kind of building, where they differ
@@ -3648,6 +3652,31 @@ def _off_the_windows(storey: Plan) -> int:
     return len(gone)
 
 
+def _off_the_tall_furniture(storey: Plan) -> int:
+    """Drop a picture or mirror hung behind a piece too tall to leave it in
+    view (a bookcase, a wardrobe, a fridge): it draws through the piece. A
+    low one (dresser, counter, table) leaves the wall above it clear."""
+    tall: set = set()
+    for role, fx, fy, fd in storey.furniture:
+        # Seats are in front of a picture or a salon mirror, not up against it.
+        if (_is_wall_piece(role) or _under_a_window(role)
+                or role.endswith(("chair", "counter", "table")) or "hair_dryer" in role
+                or role.startswith(("armchair", "bar_stool", "register"))):
+            continue
+        try:
+            tall.update(_cells_for(role, fx, fy, fd))
+        except KeyError:
+            tall.add((fx, fy))
+    gone = {i for i, (role, fx, fy, fd) in enumerate(storey.furniture)
+            if role != SWITCH and _is_wall_piece(role) and (fx, fy) in tall
+            and (role in ("painting", "mirror", "mirror_small", "corkboard", "clock")
+                 or role.startswith(("poster_", "erika_art", "erika_ad")))}
+    if gone:
+        storey.furniture = [f for i, f in enumerate(storey.furniture)
+                            if i not in gone]
+    return len(gone)
+
+
 def _add_stair_railings(building: "Building") -> None:
     """Place a railing along the open side of each upper-floor stair cutout."""
     for lvl, (sx, sy, sd) in enumerate(building.stairs):
@@ -3711,6 +3740,7 @@ def _clear_the_way(building: "Building") -> int:
     for level, storey in enumerate(building.storeys):
         _make_way_for_windows(storey, stairs)
         removed += _off_the_windows(storey)
+        removed += _off_the_tall_furniture(storey)
         removed += _clear_blocked_routes(storey, _ways_in(building, level, storey))
     # Last, after the windows have moved pieces off their squares: a piece stood
     # against another wall can land on a one-tile spot.
