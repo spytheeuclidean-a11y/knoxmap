@@ -201,8 +201,16 @@ def split_row(fp: "Footprint", unit_tiles: int,
     units = max(1, int(round(length / max(1, unit_tiles))))
     if units < 2:
         return [fp]
-    out: list[Footprint] = []
     edges = [round(length * k / units) for k in range(units + 1)]
+    return split_at(fp, edges, min_tiles)
+
+
+def split_at(fp: Footprint, edges: list[int], min_tiles: int = MIN_TILES, *,
+             along_x: bool | None = None) -> list[Footprint]:
+    """Slice a footprint at tile boundaries, along its long axis by default."""
+    if along_x is None:
+        along_x = fp.width >= fp.height
+    out: list[Footprint] = []
     for a, b in zip(edges, edges[1:]):
         if b - a < MIN_ROOM_SIDE:
             continue
@@ -220,7 +228,7 @@ def split_row(fp: "Footprint", unit_tiles: int,
         x0 = fp.x0 + (a if along_x else 0) + int(cols[0])
         y0 = fp.y0 + (0 if along_x else a) + int(rows[0])
         out.append(Footprint(x0, y0, part, fp.angle,
-                     fp.short_side, fp.long_side / units,
+                     fp.short_side, fp.long_side / (len(edges) - 1),
                      fp.point_origin, fp.point_rotation, fp.point_offset))
     return out or [fp]
 

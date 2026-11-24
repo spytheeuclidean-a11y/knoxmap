@@ -476,7 +476,8 @@ def api_settings():
         # integer can only reach 0, 1, 2 or 3. Say which is which.
         "types": {f.name: ("enum" if f.name in (
                               "building_alignment", "arch_style", "height_mix",
-                              "landcover", "elevation", "hospitals", "winter_look")
+                              "landcover", "elevation", "hospitals", "winter_look",
+                              "apartment_layout", "apartment_ground_floor")
                            else "text" if f.name in ("region_override", "building_mix")
                            else "int" if f.type in (int, "int") else "float")
                   for f in fields(Settings)},
@@ -485,6 +486,12 @@ def api_settings():
                 [value, value.capitalize()]
                 for value in BUILDING_ALIGNMENT_OPTIONS],
             "arch_style": [["auto", "Auto"], ["cn", "Chinese"], ["off", "Default"]],
+            "apartment_layout": [["classic", "Classic"], ["auto", "Auto"],
+                                 ["landing", "Landing"], ["corridor", "Corridor"]],
+            "apartment_stair_balcony": [[2, "Auto"], [0, "Off"], [1, "On"]],
+            "apartment_ground_floor": [["auto", "Auto"],
+                                       ["residential", "Residential"],
+                                       ["mixed", "Mixed use"]],
             "straight_roads": [[0, "As mapped"], [5, "Vanilla 45° grid"],
                                [4, "Knox County straight"],
                                [2, "Vanilla curves"], [3, "Vanilla curves, built-up streets square"]],

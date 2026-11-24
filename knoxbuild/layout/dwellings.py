@@ -1,6 +1,11 @@
 """Flats and the small rooms that make an apartment block.\n\nSplit from layout.py, which had grown to 8,333 lines; see the package\ndocstring for the shape of the whole thing.\n"""
 from __future__ import annotations
 
+from collections import Counter
+from dataclasses import replace
+from itertools import accumulate
+from math import ceil
+
 from ..sizing import SIZES
 from ..sizing import min_area
 from ..sizing import programme_for_flat
@@ -8,7 +13,7 @@ from ..sizing import split_by_targets
 import random
 
 from typing import TYPE_CHECKING
-from .core import MAX_DEPTH, MIN_ROOM, MIN_SPLIT, Plan, Room, _split
+from .core import MAX_DEPTH, MIN_ROOM, MIN_SPLIT, Plan, Room, _inside, _split
 from .malls import _refit, _renumber
 
 if TYPE_CHECKING:
@@ -145,17 +150,173 @@ def _slices(length: int, rng: random.Random,
     return out
 
 
-def _corridor_axis(plan: Plan) -> str | None:
+def _corridor_axis(plan: Plan, spine=None) -> str | None:
     """"y" or "x" for the direction a corridor runs, None without one."""
     if plan.core is None or not plan.corridor:
         return None
-    x0, y0, x1, y1 = plan.core
+    x0, y0, x1, y1 = spine or plan.core
     return "y" if (y1 - y0) >= (x1 - x0) else "x"
+
+
+def _corridor_slices(plan: Plan, axis: str, across: tuple[int, int],
+                     spine: tuple[int, int], rng: random.Random,
+                     flat_count: int | None = None) -> list[tuple[int, int]]:
+    """Balance flat areas while keeping usable proportions and hall access."""
+    a, b = across
+    first, last = spine
+    length = plan.height if axis == "y" else plan.width
+    areas = [(_inside(a, i, b, i, plan.mask) if axis == "y"
+              else _inside(i, a, i, b, plan.mask)) for i in range(length)]
+    sums = list(accumulate(areas, initial=0))
+    # The end flats can extend past the hall. Interior flats need enough width
+    # for their depth, even when the floor could fit more nominal-sized homes.
+    min_width = max(MIN_ROOM + 1, ceil(sums[-1] / (2 * length)))
+    first_cut = max(min_width, first + MIN_ROOM)
+    last_cut = min(length - min_width, last + 1 - MIN_ROOM)
+    capacity = 1 if first_cut > last_cut else 2 + (last_cut - first_cut) // min_width
+    preferred = flat_count if flat_count is not None else round(sums[-1] / FLAT_TARGET_AREA)
+    count = max(1, min(capacity, preferred))
+    cuts = [0]
+    for i in range(1, count):
+        low = max(first_cut, cuts[-1] + min_width)
+        high = last_cut - (count - i - 1) * min_width
+        target = sums[-1] * i / count + rng.choice((-1, 0, 1)) * (b - a + 1) / 2
+        cuts.append(min(range(low, high + 1), key=lambda cut: abs(sums[cut] - target)))
+    return [(start, end - 1) for start, end in zip(cuts, cuts[1:] + [length])]
+
+
+def _planned_flat(box, edge, mask, open_plan, approach=None, *, service=None, alternate_bath=False):
+    """A short service band at the entry, with living rooms on the facade."""
+    x0, y0, x1, y1 = box
+    if mask is not None:
+        cells = [(x, y) for y in range(y0, y1 + 1) for x in range(x0, x1 + 1) if mask[y][x]]
+        if not cells:
+            return None
+        xs, ys = zip(*cells)
+        x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
+    vertical = edge in ("N", "S")
+    depth, span = (y1 - y0 + 1, x1 - x0 + 1) if vertical else (x1 - x0 + 1, y1 - y0 + 1)
+    if depth < 5 or span < 4:
+        return None
+    if service is None:
+        service = 3 if depth >= 8 else 2
+    if depth - service < 3:
+        return None
+    bedrooms = 0 if span < 6 else 2 if span >= 11 and depth >= 8 else 1
+    sections = []
+
+    def add(kind, u0, u1, v0, v1):
+        if v1 > v0:
+            sections.append((kind, u0, u1, v0, v1))
+
+    # The foyer reaches the actual shared landing, even where the rest of
+    # this side of the apartment touches its neighbour instead.
+    width = min(4 if span >= 8 else 2, span - 2)
+    pivot = (approach - (x0 if vertical else y0)) if approach is not None else (span - 1) // 2
+    start = min(span - width, max(0, pivot - (width - 1) // 2))
+    if span <= 5:
+        start = 0 if pivot <= (span - 1) // 2 else span - width
+    if start == 1:
+        start = 0
+        width += 1
+    end = start + width
+    if span - end == 1:
+        end = span
+    sides = [(a, b) for a, b in ((0, start), (end, span)) if b - a >= 2]
+    if not sides:
+        return None
+    lo, hi = sorted(sides, key=lambda band: band[1] - band[0])[int(alternate_bath and len(sides) > 1)]
+    # Keep the remaining service rooms on the entry side of the bathroom.
+    # A cupboard behind the bath could otherwise need a door through a bedroom.
+    bath_left = hi == start
+    if hi - lo == 4:
+        if bath_left:
+            hi = start = start - 1
+        else:
+            lo = end = end + 1
+    bath_lo, bath_hi = (lo, min(lo + 3, hi)) if bath_left else (max(lo, hi - 3), hi)
+    add("hall", 0, service, start, end)
+    add("bathroom", 0, service, bath_lo, bath_hi)
+    rests = [(a, b) for left, right in ((0, start), (end, span))
+             for a, b in ((left, min(right, bath_lo)), (max(left, bath_hi), right))
+             if b > a]
+    kitchen = max(rests, key=lambda band: band[1] - band[0], default=None)
+    if not bedrooms or (open_plan and span < 9) or kitchen is None or kitchen[1] - kitchen[0] < 3:
+        kitchen = None
+    for a, b in rests:
+        add("kitchen" if (a, b) == kitchen else "storage", 0, service, a, b)
+    living = "livingroom" if kitchen is not None else "openplan"
+    if bedrooms == 2:
+        side = max(3, span // 4)
+        add("bedroom", service, depth, 0, side)
+        add(living, service, depth, side, span - side)
+        add("kidsbedroom", service, depth, span - side, span)
+    elif bedrooms == 1:
+        side = max(3, min(span - 3, span // 2))
+        living_right = start + end > 2 * side
+        add("bedroom" if living_right else living, service, depth, 0, side)
+        add(living if living_right else "bedroom", service, depth, side, span)
+    else:
+        add(living, service, depth, 0, span)
+
+    def tile(u, v):
+        if vertical:
+            return x0 + v, y0 + u if edge == "N" else y1 - u
+        return (x0 + u if edge == "W" else x1 - u), y0 + v
+
+    rooms = []
+    for kind, u0, u1, v0, v1 in sections:
+        ax, ay = tile(u0, v0)
+        bx, by = tile(u1 - 1, v1 - 1)
+        room = Room(min(ax, bx), min(ay, by), max(ax, bx), max(ay, by),
+                    kind=kind, fixed=True)
+        if mask is not None:
+            visible = _kept_piece(room, mask)
+            actual = _inside(room.x0, room.y0, room.x1, room.y1, mask)
+            if (len(visible) != actual or len(visible) < min(room.area, SIZES[kind].lo)
+                    or len({x for x, _ in visible}) < 2 or len({y for _, y in visible}) < 2):
+                return None
+        rooms.append(room)
+    return rooms
+
+
+def _landing_flats(plan, entrance):
+    """Two flats beside the flight and two beyond the rear landing."""
+    if entrance is None:
+        return []
+    x0, y0, x1, y1 = plan.core
+    x, y, d = entrance
+    if d == "W":
+        # Build the same division in exchanged axes for a west/east stair.
+        flipped = Plan(plan.height, plan.width, core=(y0, x0, y1, x1),
+                       mask=[list(row) for row in zip(*plan.mask)] if plan.mask is not None else None)
+        sides = {"E": "S", "W": "N", "S": "E", "N": "W"}
+        return [((b, a, e, c), sides[edge], at)
+                for (a, b, c, e), edge, at in _landing_flats(flipped, (y, x, "N"))]
+    if x1 - x0 != 1:
+        return []
+    south = y == y1 + 1
+    a, b = (y0, plan.height - 1) if south else (0, y1)
+    c, e = (0, y0 - 1) if south else (y1 + 1, plan.height - 1)
+    if min(b - a, e - c, x0 - 1, plan.width - x1 - 2) < 3:
+        return []
+    edge = "S" if south else "N"
+    front = y0 + 1 if south else y1 - 1
+    boxes = [((0, a, x0 - 1, b), "E", front),
+             ((x1 + 1, a, plan.width - 1, b), "W", front),
+             ((0, c, x0, e), edge, x0),
+             ((x1, c, plan.width - 1, e), edge, x1)]
+    if plan.mask is not None:
+        total = sum(map(sum, plan.mask))
+        covered = _inside(x0, y0, x1, y1, plan.mask)
+        if total != covered + sum(_inside(*box, plan.mask) for box, _, _ in boxes):
+            return []
+    return boxes
 
 
 def _flat_by_kind(box: tuple[int, int, int, int], rng: random.Random,
                   open_plan: bool, mask: list[list[bool]] | None,
-                  edge: str) -> list[Room] | None:
+                  edge: str, *, entry_first: bool = False, approach=None) -> list[Room] | None:
     """A flat's rooms cut to its programme's sizes, the living room on `edge`.
 
     Kinds are set and fixed here, so a bathroom is cut bathroom-sized rather
@@ -166,10 +327,14 @@ def _flat_by_kind(box: tuple[int, int, int, int], rng: random.Random,
     x0, y0, x1, y1 = box
     area = (sum(mask[y][x] for y in range(y0, y1 + 1) for x in range(x0, x1 + 1))
             if mask is not None else (x1 - x0 + 1) * (y1 - y0 + 1))
-    while kinds := programme_for_flat(area, rng, open_plan):
-        # The front door opens into the living room, so it goes first.
-        if kinds[0] == "hall":
-            kinds = kinds[1:2] + kinds[:1] + kinds[2:]
+    if entry_first:
+        for service, alternate in ((None, False), (None, True), (2, False), (3, False),
+                                   (2, True), (3, True)):
+            if rooms := _planned_flat(box, edge, mask, open_plan, approach,
+                                      service=service, alternate_bath=alternate):
+                return rooms
+
+    def cut(kinds):
         rooms = split_by_targets(box, kinds, rng, mask, edge)
         # Cut to the footprint, only one flat in seven on an irregular or
         # turned one found a cut at all. Failing that, the whole box is cut
@@ -182,14 +347,31 @@ def _flat_by_kind(box: tuple[int, int, int, int], rng: random.Random,
                     len(p) < SIZES[r.kind].lo or _too_small(p)
                     for r in rooms for p in [_kept_piece(r, mask)]):
                 rooms = None
-        if rooms:
-            return rooms
+        return rooms
+
+    while kinds := programme_for_flat(area, rng, open_plan):
+        if entry_first:
+            body = [kind for kind in kinds if kind != "hall"]
+            hall = ["hall", *body]
+            if area >= min_area(hall) and (rooms := cut(hall)):
+                return rooms
+            if "kitchen" in body:
+                body = ["kitchen", *[kind for kind in body if kind != "kitchen"]]
+            if body[0] in ("kitchen", "openplan") and (rooms := cut(body)):
+                return rooms
+        else:
+            if kinds[0] == "hall":
+                kinds = kinds[1:2] + kinds[:1] + kinds[2:]
+            if rooms := cut(kinds):
+                return rooms
         area = min_area(kinds) - 1
     return None
 
 
 def _apartment_rooms(plan: Plan, rng: random.Random, target: int,
-                     frontage: tuple[int, int] = FLAT_FRONTAGE) -> None:
+                     frontage: tuple[int, int] = FLAT_FRONTAGE, *,
+                     section: bool = False, entry_first: bool = False, entrance=None,
+                     spine=None, flat_count: int | None = None) -> None:
     """Lay a floor out as flats either side of a corridor.
 
     The order is what matters. Splitting the whole floor into rooms, grouping
@@ -203,7 +385,7 @@ def _apartment_rooms(plan: Plan, rng: random.Random, target: int,
     door onto the corridor and a window onto the street by construction, and
     only then is each flat divided into its own rooms.
     """
-    axis = _corridor_axis(plan)
+    axis = _corridor_axis(plan, spine)
     if axis is None:
         # No corridor fits (an irregular footprint, usually). One flat per
         # floor is a real kind of building, so lay it out as that.
@@ -213,17 +395,42 @@ def _apartment_rooms(plan: Plan, rng: random.Random, target: int,
             room.unit = 1
         return
 
-    cx0, cy0, cx1, cy1 = plan.core
+    if spine is None and entry_first and (boxes := _landing_flats(plan, entrance)):
+        for unit, (box, edge, approach) in enumerate(boxes, 1):
+            rooms = _flat_by_kind(box, rng, False, plan.mask, edge,
+                                  entry_first=True, approach=approach)
+            if not rooms:
+                break
+            for r in rooms:
+                r.unit = unit
+            plan.rooms.extend(rooms)
+        else:
+            return
+        plan.rooms.clear()
+
+    cx0, cy0, cx1, cy1 = spine or plan.core
     unit = 0
-    if axis == "y":
-        sides = [(0, cx0 - 1), (cx1 + 1, plan.width - 1)]
-        length = plan.height
+    a0, a1, first, last = (cx0, cx1, cy0, cy1) if axis == "y" else (cy0, cy1, cx0, cx1)
+    end = (plan.width if axis == "y" else plan.height) - 1
+    length = plan.height if axis == "y" else plan.width
+    if spine is not None:
+        # Split the floor between the corridor's lanes. Its own tiles were
+        # already reserved, so each wing includes only the private end space.
+        middle = (a0 + a1) // 2
+        sides = ((0, middle), (middle + 1, end))
     else:
-        sides = [(0, cy0 - 1), (cy1 + 1, plan.height - 1)]
-        length = plan.width
+        sides = ((0, a0 - 1), (a1 + 1, end))
+    wing_counts = (None, None)
+    if spine is not None and flat_count is not None:
+        areas = [(_inside(a, 0, b, length - 1, plan.mask) if axis == "y"
+                  else _inside(0, a, length - 1, b, plan.mask)) for a, b in sides]
+        total_area = sum(areas)
+        if total_area:
+            first_count = round(flat_count * areas[0] / total_area)
+            wing_counts = (first_count, flat_count - first_count)
     # The side of each flat's box that faces the corridor.
     edges = ("E", "W") if axis == "y" else ("S", "N")
-    for (a0, a1), edge in zip(sides, edges):
+    for (a0, a1), edge, wing_count in zip(sides, edges, wing_counts):
         if a1 - a0 + 1 < MIN_ROOM:
             continue
         # Each side sliced independently, so the flats do not line up across
@@ -231,17 +438,22 @@ def _apartment_rooms(plan: Plan, rng: random.Random, target: int,
         # A floorplate deeper than one flat gets two ranks back to back, the
         # way a real block does, rather than one flat running the whole depth.
         depth = a1 - a0 + 1
-        if frontage == FLAT_FRONTAGE and depth > FLAT_MAX_DEPTH + MIN_ROOM:
+        if not section and frontage == FLAT_FRONTAGE and depth > FLAT_MAX_DEPTH + MIN_ROOM:
             ranks = [(a0, a0 + depth // 2 - 1), (a0 + depth // 2, a1)]
         else:
             ranks = [(a0, a1)]
         for b0, b1 in ranks:
-            cut = (_flat_frontage(b1 - b0 + 1)
-                   if frontage == FLAT_FRONTAGE else frontage)
-            for s0, s1 in _slices(length, rng, *cut):
+            if spine is not None:
+                slices = _corridor_slices(plan, axis, (b0, b1), (first, last), rng, wing_count)
+            else:
+                cut = (_flat_frontage(b1 - b0 + 1) if frontage == FLAT_FRONTAGE else frontage)
+                slices = _slices(length, rng, *cut)
+            for s0, s1 in slices:
                 unit += 1
                 box = (b0, s0, b1, s1) if axis == "y" else (s0, b0, s1, b1)
-                area = (box[2] - box[0] + 1) * (box[3] - box[1] + 1)
+                area = (_inside(*box, plan.mask) if spine is not None
+                        else (b1 - b0 + 1) * (s1 - s0 + 1))
+                approach = ((max(s0, first) + min(s1, last)) // 2 if spine is not None else None)
                 flat: list[Room] = []
                 # A flat is cut towards FLAT_ROOMS rooms, not towards the
                 # building's own room size: at that size a 117 m2 flat came
@@ -257,7 +469,8 @@ def _apartment_rooms(plan: Plan, rng: random.Random, target: int,
                         if frontage == FLAT_FRONTAGE else target)
                 # A flat is cut by what it holds, sized by kind; a hotel, and
                 # a flat no programme fits, is cut as it always was.
-                by_kind = (_flat_by_kind(box, rng, open_plan, plan.mask, edge)
+                by_kind = (_flat_by_kind(box, rng, open_plan, plan.mask, edge,
+                                         entry_first=entry_first, approach=approach)
                            if frontage == FLAT_FRONTAGE else None)
                 if by_kind:
                     flat = by_kind
@@ -279,8 +492,9 @@ def _apartment_rooms(plan: Plan, rng: random.Random, target: int,
                     room.unit = unit
                 plan.rooms.extend(flat)
 
-    # Beyond the ends of a corridor that stops short of the building's ends,
-    # its own width of floor would otherwise belong to no room at all.
+    if spine is not None:
+        return
+    # In the older layout the rooms at each end fill the width of the core.
     if axis == "y":
         caps = [(cx0, 0, cx1, cy0 - 1), (cx0, cy1 + 1, cx1, plan.height - 1)]
     else:
@@ -395,7 +609,7 @@ def _neighbours(plan: Plan) -> dict[int, dict[int, int]]:
 
 def _assign_flat_kinds(plan: Plan, hotel: bool = False,
                        reception: bool = False,
-                       rng: random.Random | None = None) -> None:
+                       rng: random.Random | None = None, *, entry_first: bool = False) -> None:
     """Give every flat its own set of rooms, arranged around its front door.
 
     The room touching the corridor is where you walk in, so it becomes the
@@ -420,10 +634,13 @@ def _assign_flat_kinds(plan: Plan, hotel: bool = False,
         # door first - and the doubles, like any piece the cut never named,
         # are handed out as extras. A living room cut off from the corridor
         # throws the flat back to being named by size.
+        kinds_at_door = ("hall", "kitchen", "openplan") if entry_first else ("livingroom", "openplan")
         door = [i for i in entry if plan.rooms[i - 1].fixed
-                and plan.rooms[i - 1].kind in ("livingroom", "openplan")]
+                and plan.rooms[i - 1].kind in kinds_at_door]
         if door and not hotel:
-            keep = max(door, key=lambda i: plan.rooms[i - 1].area)
+            keep = min(door, key=lambda i: (kinds_at_door.index(plan.rooms[i - 1].kind),
+                                            -plan.rooms[i - 1].area) if entry_first
+                       else (0, -plan.rooms[i - 1].area))
             taken: set[str] = set()
             extra = 0
             for i in [keep] + [i for i in by_size if i != keep]:
@@ -483,9 +700,15 @@ def _flats_keep_bathrooms(plan: Plan) -> None:
         if room.unit and not room.is_shaft:
             units.setdefault(room.unit, []).append(room)
     for rooms in units.values():
-        if len(rooms) < 2 or any(r.kind == "bathroom" for r in rooms):
+        bathrooms = [r for r in rooms if r.kind == "bathroom"]
+        if plan.private_flats and len(bathrooms) > 1:
+            keep = min(bathrooms, key=lambda r: (not r.surveyed, abs(r.area - SIZES["bathroom"].target)))
+            for room in bathrooms:
+                if room is not keep and not room.surveyed:
+                    room.kind = "storage"
+        if len(rooms) < 2 or bathrooms:
             continue
-        spare = [r for r in rooms if r.kind not in ("livingroom", "openplan")]
+        spare = [r for r in rooms if not r.surveyed and r.kind not in ("livingroom", "openplan")]
         if spare:
             min(spare, key=lambda r: (r.kind == "kitchen", r.area)).kind = "bathroom"
 
@@ -526,17 +749,24 @@ def thin_plan(plan: Plan, limit: int) -> int:
     """
     if plan.drawn or limit < 1 or len(plan.rooms) <= limit:
         return 0
+    from .openings import FLAT_END_ROOMS
+
+    def protected(room):
+        return (room.is_core or room.is_shaft or room.is_balcony or room.apartment_entry or room.surveyed
+                or room.business is not None
+                or (plan.private_flats and room.kind in FLAT_END_ROOMS))
+
     merged = 0
     while len(plan.rooms) > limit:
         adj = _neighbours(plan)
         best = None
         for a, near in adj.items():
             ra = plan.rooms[a - 1]
-            if ra.is_core or ra.is_shaft:
+            if protected(ra):
                 continue
             for b, wall in near.items():
                 rb = plan.rooms[b - 1]
-                if rb.is_core or rb.is_shaft or rb.unit != ra.unit:
+                if protected(rb) or rb.unit != ra.unit:
                     continue
                 # the least ground given up, and on the least unlikely wall
                 key = (ra.w * ra.h + rb.w * rb.h, -wall)
@@ -582,9 +812,14 @@ def thin_building(building: "Building", limit: int) -> int:
     return merged
 
 
-def _paint(plan: Plan) -> None:
+def _paint(plan: Plan, shared_tiles: set[tuple[int, int]] | None = None,
+           shells: list[set[tuple[int, int]]] | None = None) -> set[int]:
     plan.grid = [[0] * plan.width for _ in range(plan.height)]
     for idx, r in enumerate(plan.rooms, start=1):
+        if shells is not None:
+            for x, y in shells[idx - 1]:
+                plan.grid[y][x] = idx
+            continue
         for y in range(r.y0, r.y1 + 1):
             for x in range(r.x0, r.x1 + 1):
                 if plan.mask is not None and not plan.mask[y][x]:
@@ -595,18 +830,27 @@ def _paint(plan: Plan) -> None:
     # every storey. Stairs used to be dropped wherever five tiles happened to be
     # inside the building, which on 80% of them meant a flight crossing a room
     # boundary and running into an interior wall.
-    if plan.core is not None:
+    if shared_tiles:
+        xs, ys = zip(*shared_tiles)
+        plan.rooms.append(Room(min(xs), min(ys), max(xs), max(ys), kind="hall", unit=0,
+                               is_core=True))
+        idx = len(plan.rooms)
+        for x, y in shared_tiles:
+            plan.grid[y][x] = idx
+    elif plan.core is not None:
         cx0, cy0, cx1, cy1 = plan.core
         plan.rooms.append(Room(cx0, cy0, cx1, cy1, kind="hall", unit=0,
                                is_core=True))
         idx = len(plan.rooms)
         for y in range(cy0, cy1 + 1):
             for x in range(cx0, cx1 + 1):
-                plan.grid[y][x] = idx
+                if not plan.private_flats or plan.mask is None or plan.mask[y][x]:
+                    plan.grid[y][x] = idx
 
     _renumber(plan)
-    _mend_fragments(plan)
+    merged = _mend_fragments(plan)
     _refit(plan)
+    return merged
 
 
 # A room piece smaller than this, or only this thick, is not a room. Along a
@@ -664,7 +908,7 @@ def _kept_piece(room: Room, mask: list[list[bool]]) -> set[tuple[int, int]]:
     return (_pieces(room, mask) or [set()])[0]
 
 
-def _mend_fragments(plan: Plan) -> None:
+def _mend_fragments(plan: Plan) -> set[int]:
     """Split rooms that were cut in two, and fold slivers into a neighbour.
 
     An irregular footprint or the stair shaft can cut one rectangle into pieces
@@ -673,6 +917,7 @@ def _mend_fragments(plan: Plan) -> None:
     no way in. Each piece becomes a room of its own, and pieces too small to
     be a room are given to whatever they border, preferring the same flat.
     """
+    merged = set()
     for idx in range(1, len(plan.rooms) + 1):
         cells = {(x, y) for y in range(plan.height) for x in range(plan.width)
                  if plan.grid[y][x] == idx}
@@ -694,7 +939,8 @@ def _mend_fragments(plan: Plan) -> None:
         pieces.sort(key=len, reverse=True)
         base = plan.rooms[idx - 1]
         for piece in pieces[1:]:
-            plan.rooms.append(Room(0, 0, 0, 0, kind=base.kind, unit=base.unit))
+            plan.rooms.append(replace(base) if base.surveyed else
+                              Room(0, 0, 0, 0, kind=base.kind, unit=base.unit))
             new = len(plan.rooms)
             for x, y in piece:
                 plan.grid[y][x] = new
@@ -703,10 +949,15 @@ def _mend_fragments(plan: Plan) -> None:
         return _too_small(cells, plan.drawn)
 
     for idx in range(1, len(plan.rooms) + 1):
-        if plan.rooms[idx - 1].is_core or plan.rooms[idx - 1].is_shaft:
+        room = plan.rooms[idx - 1]
+        if room.is_core or room.is_shaft or room.surveyed:
             continue
         cells = [(x, y) for y in range(plan.height) for x in range(plan.width)
                  if plan.grid[y][x] == idx]
+        if plan.private_flats and room.fixed and room.kind in ("hall", "bathroom", "kitchen", "storage"):
+            xs, ys = {x for x, _y in cells}, {y for _x, y in cells}
+            if min(len(xs), len(ys)) >= 2 and len(cells) == len(xs) * len(ys):
+                continue
         if not cells or not too_small(cells):
             continue
         unit = plan.rooms[idx - 1].unit
@@ -715,19 +966,85 @@ def _mend_fragments(plan: Plan) -> None:
             for nx, ny in ((x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)):
                 if 0 <= nx < plan.width and 0 <= ny < plan.height:
                     v = plan.grid[ny][nx]
-                    if v and v != idx and not plan.rooms[v - 1].is_shaft:
+                    if v and v != idx and not (plan.rooms[v - 1].is_shaft or plan.rooms[v - 1].surveyed):
                         options[v] = options.get(v, 0) + 1
         if not options:
             continue
         home = max(options, key=lambda v: (plan.rooms[v - 1].unit == unit,
+                                           plan.private_flats and unit and plan.rooms[v - 1].unit > 0,
                                            options[v]))
+        recipient = plan.rooms[home - 1].unit
+        if recipient and recipient != unit:
+            merged.add(recipient)
         for x, y in cells:
             plan.grid[y][x] = home
 
     _renumber(plan)
+    return merged
 
 
-def _unit_touches_corridor(plan: Plan) -> None:
+def inlay_mapped_rooms(plan: Plan, mapped) -> set[int]:
+    """Keep surveyed walls inside the dwelling footprint and refit the remainder."""
+    for tiles, kind in mapped:
+        cells = {}
+        free = set()
+        for x, y in sorted(tiles):
+            rid = plan.grid[y][x]
+            if rid:
+                room = plan.rooms[rid - 1]
+                if room.unit and not room.surveyed:
+                    cells[x, y] = room
+            elif plan.mask is None or plan.mask[y][x]:
+                free.add((x, y))
+        if not cells:
+            plan.unmapped_room_tiles += len(tiles)
+            continue
+        unit = Counter(r.unit for r in cells.values()).most_common(1)[0][0]
+        room_kind = kind or Counter(r.kind for r in cells.values()).most_common(1)[0][0]
+        plan.rooms.append(Room(0, 0, 0, 0, kind=room_kind, unit=unit, fixed=True, surveyed=True))
+        for x, y in cells.keys() | free:
+            plan.grid[y][x] = len(plan.rooms)
+        plan.unmapped_room_tiles += len(tiles) - len(cells) - len(free)
+    merged = _mend_fragments(plan)
+    _refit(plan)
+    return merged
+
+
+def _join_undersized_flats(plan: Plan, minimum: int | None = None) -> set[int]:
+    """Rejoin slivers left where the entrance passage cuts a dwelling."""
+    areas = Counter(plan.rooms[i - 1].unit for row in plan.grid for i in row
+                    if i and plan.rooms[i - 1].unit)
+    if minimum is None:
+        minimum = min_area(["openplan", "bathroom"])
+    if not areas or min(areas.values()) >= minimum:
+        return set()
+    members: dict[int, list[int]] = {}
+    for i, room in enumerate(plan.rooms, 1):
+        if room.unit:
+            members.setdefault(room.unit, []).append(i)
+    neighbours = _neighbours(plan)
+    merged = set()
+    for unit in sorted(areas, key=areas.get):
+        if not 0 < areas[unit] < minimum:
+            continue
+        border: Counter[int] = Counter()
+        for i in members[unit]:
+            for other, length in neighbours[i].items():
+                home = plan.rooms[other - 1].unit
+                if home and home != unit:
+                    border[home] += length
+        if border:
+            recipient = max(border, key=lambda home: (
+                border[home], -abs(FLAT_TARGET_AREA - areas[home] - areas[unit]), -home))
+            for i in members[unit]:
+                plan.rooms[i - 1].unit = recipient
+            members[recipient].extend(members.pop(unit))
+            areas[recipient] += areas.pop(unit)
+            merged.add(recipient)
+    return merged
+
+
+def _unit_touches_corridor(plan: Plan) -> set[int]:
     """Make every flat one connected piece with a wall on the corridor.
 
     A flat can be cut in two by a notch in the footprint, and a flat sliced
@@ -738,9 +1055,10 @@ def _unit_touches_corridor(plan: Plan) -> None:
     rest), and a piece that does not is joined to the neighbouring flat it
     shares most wall with.
     """
+    merged = set()
     corridor_units = {r.unit for r in plan.rooms if r.unit == 0}
     if not corridor_units:
-        return
+        return merged
     for _ in range(len(plan.rooms) + 1):
         adj = _neighbours(plan)
         by_unit: dict[int, list[int]] = {}
@@ -764,7 +1082,8 @@ def _unit_touches_corridor(plan: Plan) -> None:
             return out
 
         def reaches(piece: set[int]) -> bool:
-            return any(plan.rooms[n - 1].unit == 0 for i in piece for n in adj[i])
+            return any(not (room.unit or room.is_shaft or room.access_role)
+                       for i in piece for n in adj[i] if (room := plan.rooms[n - 1]))
 
         changed = False
         next_unit = max(by_unit, default=0) + 1
@@ -794,8 +1113,10 @@ def _unit_touches_corridor(plan: Plan) -> None:
                 into = max(border, key=lambda u: border[u])
                 for i in part:
                     plan.rooms[i - 1].unit = into
+                merged.add(into)
                 changed = True
             if changed:
                 break
         if not changed:
-            return
+            break
+    return merged

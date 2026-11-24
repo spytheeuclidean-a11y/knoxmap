@@ -1340,7 +1340,8 @@ def one_wood(building, rng: random.Random) -> None:
 
 
 def bed_against_wall(plan, idx: int, room, slots, occupied: set, door_tiles: set,
-                     bed: str, side_table: str | None, keeps_open=None) -> bool:
+                     bed: str, side_table: str | None, keeps_open=None,
+                     rng: random.Random | None = None) -> bool:
     """A bed with its head to a wall and a bedside table on each side, on the
     longest stretch of inside wall that takes it. A spot or a bedside table
     that keeps_open(tiles) refuses is skipped."""
@@ -1348,8 +1349,11 @@ def bed_against_wall(plan, idx: int, room, slots, occupied: set, door_tiles: set
     by_side: dict[str, list] = {}
     for x, y, facing in slots:
         by_side.setdefault(facing, []).append((x, y))
-    order = sorted(by_side, key=lambda s: (any(not L._room_at(plan, x + STEP[s][0], y + STEP[s][1])
-                                                for x, y in by_side[s]), -len(by_side[s])))
+    order = list(by_side)
+    if rng is not None:
+        rng.shuffle(order)
+    order.sort(key=lambda s: (any(not L._room_at(plan, x + STEP[s][0], y + STEP[s][1])
+                                  for x, y in by_side[s]), -len(by_side[s])))
     has_tables = side_table and side_table in C.FURNITURE
 
     def table_fits(fx, fy, t_or, taken):
@@ -1366,7 +1370,9 @@ def bed_against_wall(plan, idx: int, room, slots, occupied: set, door_tiles: set
         orient = L._facing(bed, side)
         if orient != side:
             continue
-        tiles = sorted(by_side[side])
+        # Try from either end of the wall in a flat, still preferring a spot
+        # with space for the bedside tables.
+        tiles = sorted(by_side[side], reverse=rng is not None and rng.random() < 0.5)
         for x, y in tiles[len(tiles) // 3:] + tiles[:len(tiles) // 3]:
             cells = L._cells_for(bed, 0, 0, orient)
             w = max(cx for cx, _ in cells)

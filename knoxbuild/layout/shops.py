@@ -344,21 +344,23 @@ ONE_OF_A_KIND = {"library", "gym", "kitchen", "diningroom", "lobby",
 # had bathrooms of up to 95 tiles: a row of toilets along one wall of an
 # empty tiled hall. A public toilet with its stalls fits in this.
 BATHROOM_MAX_AREA = 30
+FLAT_BATHROOM_MAX_AREA = 16
 
 
 def _trim_bathroom(plan: Plan, idx: int) -> None:
     """Cut an oversized bathroom down to BATHROOM_MAX_AREA, the rest storage."""
     r = plan.rooms[idx]
-    if r.kind != "bathroom" or r.is_core or r.is_shaft or r.area <= BATHROOM_MAX_AREA:
+    limit = FLAT_BATHROOM_MAX_AREA if plan.private_flats and r.unit else BATHROOM_MAX_AREA
+    if r.kind != "bathroom" or r.is_core or r.is_shaft or r.area <= limit:
         return
     if r.w >= r.h:
-        keep = max(MIN_ROOM, BATHROOM_MAX_AREA // r.h)
+        keep = max(MIN_ROOM, limit // r.h)
         if r.w - keep < MIN_ROOM:
             return
         new = Room(r.x0 + keep, r.y0, r.x1, r.y1, kind="storage", unit=r.unit)
         r.x1 = new.x0 - 1
     else:
-        keep = max(MIN_ROOM, BATHROOM_MAX_AREA // r.w)
+        keep = max(MIN_ROOM, limit // r.w)
         if r.h - keep < MIN_ROOM:
             return
         new = Room(r.x0, r.y0 + keep, r.x1, r.y1, kind="storage", unit=r.unit)

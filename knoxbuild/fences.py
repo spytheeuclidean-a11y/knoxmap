@@ -247,26 +247,81 @@ def _tarmac_mask(bmp_path: str, width: int, height: int):
 # tiles: the fence line and the node or path it meets rarely land on the same
 # tile once both are on the grid.
 OPENING_REACH = 1
+FENCE_JOIN_REACH = 4
+
+
+def mapped_fence_lines(out_dir, map_name, proj, fitted=()):
+    """Project mapped fences and keep their ends attached to fitted apartment walls."""
+    path = os.path.join(out_dir, f"{map_name}_fences.geojson")
+    feats = (knoxfiles.read(path, "the fences", default={}) or {}).get("features", [])
+    lines = [([proj.to_px(lat, lon) for lon, lat in feat["geometry"]["coordinates"]],
+              feat.get("properties") or {})
+             for feat in feats if feat.get("geometry", {}).get("type") == "LineString"
+             and len(feat["geometry"]["coordinates"]) >= 2]
+    if not lines or not fitted:
+        return lines
+
+    from shapely import STRtree
+    from shapely.geometry import Point, Polygon, box
+
+    originals = [Polygon(ring) for _fp, ring in fitted]
+    tree = STRtree(originals)
+
+    def attachment(point):
+        x, y = point
+        original = Point(point)
+        candidates = []
+        for i in tree.query(box(x - 0.5, y - 0.5, x + 0.5, y + 0.5)):
+            if originals[i].distance(original) > 0.5:
+                continue
+            fp, _ring = fitted[i]
+            for gy in range(max(fp.y0, math.ceil(y - FENCE_JOIN_REACH)),
+                            min(fp.y0 + fp.height, math.floor(y + FENCE_JOIN_REACH)) + 1):
+                for gx in range(max(fp.x0, math.ceil(x - FENCE_JOIN_REACH)),
+                                min(fp.x0 + fp.width, math.floor(x + FENCE_JOIN_REACH)) + 1):
+                    d = math.hypot(gx - x, gy - y)
+                    if d > FENCE_JOIN_REACH:
+                        continue
+                    if any(0 <= ix < fp.width and 0 <= iy < fp.height and fp.mask[iy, ix]
+                           for ix in (gx - fp.x0 - 1, gx - fp.x0)
+                           for iy in (gy - fp.y0 - 1, gy - fp.y0)):
+                        candidates.append((d, gx, gy))
+        if not candidates:
+            return []
+        _distance, gx, gy = min(candidates)
+        return [(gx, gy)] if (gx, gy) != (round(x), round(y)) else []
+
+    return [(attachment(points[0]) + points + attachment(points[-1]), tags)
+            for points, tags in lines]
+
+
+def _opening_tiles(x, y):
+    x, y = round(x), round(y)
+    return ((x + dx, y + dy) for dx in range(-OPENING_REACH, OPENING_REACH + 1)
+            for dy in range(-OPENING_REACH, OPENING_REACH + 1))
 
 
 def _openings(out_dir: str, map_name: str, proj):
-    """Where people get through a fence: gate nodes, and the paths that cross
-    one. Points in tiles, with the paths as lines to be crossed with each
-    fence where it is built."""
+    """Usable gates, crossing paths and closed gate positions in map tiles."""
     path = os.path.join(out_dir, f"{map_name}_fence_openings.geojson")
     feats = (knoxfiles.read(path, "the gates and paths through the fences",
                             default={}) or {}).get("features", [])
-    if not feats:
-        return [], []
-    gates, paths = [], []
+    gates, paths, closed = [], [], set()
     for feat in feats:
+        props = feat.get("properties") or {}
+        restricted = (props.get("foot", props.get("access")) in ("no", "private")
+                      or props.get("locked") == "yes")
         geom = feat.get("geometry") or {}
         coords = geom.get("coordinates") or []
         if geom.get("type") == "Point" and len(coords) == 2:
-            gates.append(proj.to_px(coords[1], coords[0]))
-        elif geom.get("type") == "LineString" and len(coords) >= 2:
+            p = proj.to_px(coords[1], coords[0])
+            if restricted:
+                closed.update(_opening_tiles(*p))
+            else:
+                gates.append(p)
+        elif geom.get("type") == "LineString" and len(coords) >= 2 and not restricted:
             paths.append([proj.to_px(lat, lon) for lon, lat in coords])
-    return gates, paths
+    return gates, paths, closed
 
 
 def _path_crossings(fence: list, paths) -> list:
@@ -316,7 +371,8 @@ def _way_through(openings: dict, gated: set, gates: dict,
 
 def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
                  bdir: str, extra: list | None = None,
-                 keep_clear: set | None = None) -> tuple[list, int]:
+                 keep_clear: set | None = None, *,
+                 mapped_lines=None) -> tuple[list, int]:
     """Write one fence .tbx per map cell that has fences. Returns placements.
 
     `keep_clear` is a set of (x, y) tiles - the ground in front of each door - that no fence
@@ -324,8 +380,7 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
     clear = keep_clear or ()
     from .world import Placement
 
-    path = os.path.join(out_dir, f"{map_name}_fences.geojson")
-    lines = (knoxfiles.read(path, "the fences", default={}) or {}).get("features", [])
+    lines = mapped_lines if mapped_lines is not None else mapped_fence_lines(out_dir, map_name, proj)
     sites = _fenced_sites(areas)
     if not lines and not extra and not sites:
         return [], 0
@@ -358,15 +413,9 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
     # editor - or one made up here, because where the two meet the real one
     # wins.
     todo: list[tuple[list, str, bool]] = []
-    for feat in lines:
-        coords = feat.get("geometry", {}).get("coordinates") or []
-        if len(coords) < 2:
-            continue
-        pts = [proj.to_px(lat, lon) for lon, lat in coords]
+    for pts, tags in lines:
         mid = pts[len(pts) // 2]
-        todo.append((pts, style_for(feat.get("properties") or {},
-                                    areas.category_at(*mid) if areas else None),
-                     True))
+        todo.append((pts, style_for(tags, areas.category_at(*mid) if areas else None), True))
     # Sites that are fenced in the world whether or not anyone drew the fence.
     # OpenStreetMap maps an army base as landuse=military far more often than
     # it maps the wire round it, so a base was open ground you could walk
@@ -394,7 +443,7 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
     # in, and a fence built from the line alone stood across it. Each opening
     # takes its tiles out of the fence; where the game has a gate for that
     # fence, one of those tiles becomes the gate rather than a hole.
-    gate_points, path_lines = _openings(out_dir, map_name, proj)
+    gate_points, path_lines, closed_gates = _openings(out_dir, map_name, proj)
     paths = None
     if path_lines:
         from shapely.geometry import LineString
@@ -406,10 +455,15 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
     def open_up(points, kind_gate: bool) -> None:
         for px, py in points:
             mark = len(openings) + 1 if kind_gate else 0
-            for dx in range(-OPENING_REACH, OPENING_REACH + 1):
-                for dy in range(-OPENING_REACH, OPENING_REACH + 1):
-                    key = (int(round(px)) + dx, int(round(py)) + dy)
+            for key in _opening_tiles(px, py):
+                if key not in closed_gates:
                     openings.setdefault(key, mark)
+
+    def leaves_gap(x, y, nx, ny, style):
+        if (x, y) in closed_gates:
+            return False
+        return ((x, y) in clear or (nx, ny) in clear or crossing(x, y, nx, ny)
+                or not _way_through(openings, gated, gates, (x, y), style))
 
     open_up(gate_points, True)
     gated: set[int] = set()
@@ -424,11 +478,7 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
                 # A fence never runs through a building: that edge is a wall.
                 if building_at(x, y1) or building_at(x, y1 - 1):
                     continue
-                if (x, y1) in clear or (x, y1 - 1) in clear:
-                    continue
-                if crossing(x, y1, x, y1 - 1):
-                    continue
-                if not _way_through(openings, gated, gates, (x, y1), style):
+                if leaves_gap(x, y1, x, y1 - 1, style):
                     continue
                 side = edges.setdefault((x, y1), {})
                 if real or "N" not in side:
@@ -437,11 +487,7 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
                 y = min(y1, y2)
                 if building_at(x1, y) or building_at(x1 - 1, y):
                     continue
-                if (x1, y) in clear or (x1 - 1, y) in clear:
-                    continue
-                if crossing(x1, y, x1 - 1, y):
-                    continue
-                if not _way_through(openings, gated, gates, (x1, y), style):
+                if leaves_gap(x1, y, x1 - 1, y, style):
                     continue
                 side = edges.setdefault((x1, y), {})
                 if real or "W" not in side:
