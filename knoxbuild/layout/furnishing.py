@@ -1762,7 +1762,7 @@ def _furnish(plan: Plan, storey_rng: random.Random,
                         break
             if plan.kind in ("house", None) and not dedicated_stair_core:
                 _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
-                                 stair_tiles, door_edges, stairs, rng)
+                                 stair_tiles, door_edges, stairs, storey_rng)
             if plan.kind not in HOUSE_LIKE_KINDS:
                 # Keep stair ends, lift doors and narrow hallway necks unobstructed.
                 core_no_go = set(keep_clear) | {
@@ -3658,7 +3658,10 @@ def _off_the_tall_furniture(storey: Plan) -> int:
     low one (dresser, counter, table) leaves the wall above it clear."""
     tall: set = set()
     for role, fx, fy, fd in storey.furniture:
-        if _is_wall_piece(role) or _under_a_window(role):
+        # Seats are in front of a picture or a salon mirror, not up against it.
+        if (_is_wall_piece(role) or _under_a_window(role)
+                or role.endswith(("chair", "counter", "table")) or "hair_dryer" in role
+                or role.startswith(("armchair", "bar_stool", "register"))):
             continue
         try:
             tall.update(_cells_for(role, fx, fy, fd))
