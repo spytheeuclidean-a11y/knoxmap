@@ -52,6 +52,7 @@ import sys
 
 
 import tempfile
+import time
 
 
 import xml.etree.ElementTree as ET
@@ -296,9 +297,14 @@ class Checks:
         # --fast: the checks that render and build a whole town again look at
         # this and leave early. The cheap checks always run.
         self.fast = False
+        self.last = time.perf_counter()
 
     def __call__(self, ok: bool, what: str) -> None:
-        print(("  ok    " if ok else "  FAIL  ") + what)
+        # SELFTEST_TIMES=1: tag each check with the seconds since the one before.
+        now = time.perf_counter()
+        slow = f"  [{now - self.last:.0f}s]" if _os.environ.get("SELFTEST_TIMES") and now - self.last >= 3 else ""
+        self.last = now
+        print(("  ok    " if ok else "  FAIL  ") + what + slow)
         if not ok:
             self.failed += 1
 
@@ -462,16 +468,24 @@ def main(argv: list[str]) -> int:
         check(colours.get(C.PALE_CONCRETE, 0) > 0, "streets have pavements")
         print("bridges and monuments")
         import json as _json
+
+        from generator import structures as _structures
         raised = _json.load(open(os.path.join(out, "selftest_structures.json"), encoding="utf-8"))
         tiles = raised["tiles"]
-        check(any(t[3] == "Floor" and t[4].startswith("ramps_01") and t[2] == 0 for t in tiles)
-              and any(t[3] == "Floor" and t[2] == 1 for t in tiles),
-              "the flyover climbs on ramps to a deck a storey up")
         proj = renderer.Projector.build(SOUTH, WEST, NORTH, EAST, 1.0, -angle)
-        ax, ay = proj.to_px(*_ll(510, 400))
-        under = {ground.getpixel((int(ax) + dx, int(ay) + dy)) for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
-        check(C.DARKEST_ASPHALT not in under,
-              "the avenue runs on under the flyover instead of meeting it")
+        if _structures.ENABLE_FLYOVERS:
+            check(any(t[3] == "Floor" and t[4].startswith("ramps_01") and t[2] == 0 for t in tiles)
+                  and any(t[3] == "Floor" and t[2] == 1 for t in tiles),
+                  "the flyover climbs on ramps to a deck a storey up")
+            ax, ay = proj.to_px(*_ll(510, 400))
+            under = {ground.getpixel((int(ax) + dx, int(ay) + dy)) for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+            check(C.DARKEST_ASPHALT not in under,
+                  "the avenue runs on under the flyover instead of meeting it")
+        else:
+            check(raised.get("bridges", 0) == 0
+                  and not any(t[3] == "Floor" and t[4].startswith("ramps_01")
+                              and t[4] != _structures.BLOCK and t[2] == 0 for t in tiles),
+                  "elevated flyover bridges are disabled")
         bx, by = proj.to_px(*_ll(556, 455))
         cx, _ = proj.to_px(*_ll(567, 455))
 

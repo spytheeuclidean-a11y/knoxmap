@@ -1762,7 +1762,7 @@ def _furnish(plan: Plan, storey_rng: random.Random,
                         break
             if plan.kind in ("house", None) and not dedicated_stair_core:
                 _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
-                                 stair_tiles, door_edges, stairs, rng)
+                                 stair_tiles, door_edges, stairs, storey_rng)
             if plan.kind not in HOUSE_LIKE_KINDS:
                 # Keep stair ends, lift doors and narrow hallway necks unobstructed.
                 core_no_go = set(keep_clear) | {
