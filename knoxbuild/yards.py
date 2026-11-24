@@ -462,8 +462,11 @@ def _dress_non_home_surroundings(
                 sx, sy = bx0 + ox, by0 + oy
                 if nrng.random() < 0.90:
                     sides = [(-2, 2), (2, -2)]
+                    # A wall facing south or east is an edge of the outside tile
+                    # itself, so a bin on that tile stands in the wall: one tile out.
+                    off = 1 if dx > 0 or dy > 0 else 0
                     for k in nrng.choice(sides) + (-3, 3):
-                        bx_, by_ = sx + px * k, sy + py * k
+                        bx_, by_ = sx + px * k + dx * off, sy + py * k + dy * off
                         if (bx_, by_) not in window_tiles and place_veg(bx_, by_, C.BIN):
                             bin_spots.append((bx_, by_))
                             break
