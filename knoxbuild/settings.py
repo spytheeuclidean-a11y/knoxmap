@@ -203,7 +203,7 @@ class Settings:
     # Build 42's lowest level is -32.
     max_basement_depth: int = 8
     # How each building outline is fitted to the tile grid: the dominant wall direction, keeping the shape.
-    building_alignment: str = "smart"
+    building_alignment: str = "rectilinear"
 
     # --- optional enrichment layers (knoxdata/) ---------------------------
     # ESA WorldCover land cover where OSM leaves ground untagged. OSM and
