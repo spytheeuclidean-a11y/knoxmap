@@ -196,6 +196,7 @@ class ChunkedRenderTests(unittest.TestCase):
             gj = json.loads(Path(res.buildings_geojson_path).read_text(encoding="utf-8"))
             ids = [f["properties"]["osm_id"] for f in gj["features"]]
             self.assertGreaterEqual(meta["houses_infilled"], 2)
+            self.assertEqual(meta["street_infill_report"].get("lot: made"), meta["houses_infilled"])
             self.assertTrue(any(i <= FIRST_ID for i in ids))
 
     def test_render_chunked_keeps_rails_continuous_across_chunks(self):

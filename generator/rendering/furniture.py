@@ -335,6 +335,10 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                 across = carriageway(gx, gy, sx, sy)
                 limit = next(v for width, v in SPEED_BY_WIDTH if across >= width)
                 speed = C.SPEED_SIGNS[(limit, facing)]
+            # Props share the same candidate within a kerb iteration. A
+            # successful placement ends the iteration, so occupancy cannot
+            # change between searches for that candidate.
+            spots = {}
             for what, every, colour, at, partner in (
                     ("speed", spacing.get("speed", SPEED_SIGN_EVERY), speed, (bx, by), None),
                     ("lamp", spacing.get("lamp", LAMP_EVERY), lamp, (bx, by), None),
@@ -350,22 +354,26 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     # gaps between them, as they do along a real street.
                     ("pole", UTILITY_POLE_EVERY.get(hierarchy, 55), pole, (bx, by), None),
                     ("drain", spacing.get("drain", DRAIN_EVERY), C.STORM_DRAIN, (gx, gy), None)):
-                if every >= (1 << 29):
+                if colour is None or every >= (1 << 29):
                     continue
                 px, py = at
                 if what in ("hydrant", "bin", "mailbox", "kiosk", "postbox"):
-                    spot = beside_the_pavement(gx, gy, sx, sy)
+                    if beside_the_pavement not in spots:
+                        spots[beside_the_pavement] = beside_the_pavement(gx, gy, sx, sy)
+                    spot = spots[beside_the_pavement]
                     if spot is None:
                         continue
                     px, py = spot
                     if near_buildings is not None and not near_buildings[py, px]:
                         continue
                 elif what in ("speed", "lamp", "pole"):
-                    spot = off_the_pavement(gx, gy, sx, sy)
+                    if off_the_pavement not in spots:
+                        spots[off_the_pavement] = off_the_pavement(gx, gy, sx, sy)
+                    spot = spots[off_the_pavement]
                     if spot is None:
                         continue
                     px, py = spot
-                if colour is None or not (0 <= px < w and 0 <= py < h):
+                if not (0 <= px < w and 0 <= py < h):
                     continue
                 # Speed signs keep a spacing per facing: the north-south roads,
                 # met first, took every cell and left east-west ones none.

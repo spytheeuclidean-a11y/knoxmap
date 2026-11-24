@@ -455,7 +455,12 @@ def render_tbx(plan: Plan | Building, name: str,
                                           for r in building.rooms)
     garage_kit = next(s["roof"] for s in C.HOUSE_STYLES if s["name"] == "brick") if garage_only else None
     if garage_kit:
-        garage_kit = dict(garage_kit, caps=next(s["roof"]["caps"] for s in C.HOUSE_STYLES if s["name"] == "clapboard"))
+        # The gable ends are the garage's own wall, not white clapboard: the caps
+        # of the style its walls are made of, when it has the low-pitch tiles.
+        own_caps = ((style or {}).get("roof") or {}).get("caps") or {}
+        if "CapPeak30S1" not in (own_caps.get("tiles") or {}):
+            own_caps = next(s["roof"]["caps"] for s in C.HOUSE_STYLES if s["name"] == "clapboard")
+        garage_kit = dict(garage_kit, caps=own_caps)
         slope_idx = _add(entries, garage_kit["slopes"])
         top_idx = _add(entries, garage_kit["tops"])
         peaked = roof30 = True

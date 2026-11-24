@@ -115,6 +115,39 @@ def _street_finder(out_dir: str, map_name: str,
     return side
 
 
+def free_way_side(x0: int, y0: int, w: int, h: int, occupied: np.ndarray,
+                  road: np.ndarray | None, limit: int = 40) -> str | None:
+    """The side ("N", "S", "W" or "E") of a footprint from which the shortest
+    walk over ground no building stands on reaches a road, or None if none does
+    within `limit` tiles. The straight look of `_street_finder` goes through
+    the house in front of a garage at the back of a lot; this goes round it."""
+    if road is None:
+        return None
+    from collections import deque
+    H, W = occupied.shape
+    seen: dict[tuple[int, int], str] = {}
+    queue: deque = deque()
+    for name, cells in (("N", [(x, y0 - 1) for x in range(x0, x0 + w)]),
+                        ("S", [(x, y0 + h) for x in range(x0, x0 + w)]),
+                        ("W", [(x0 - 1, y) for y in range(y0, y0 + h)]),
+                        ("E", [(x0 + w, y) for y in range(y0, y0 + h)])):
+        for x, y in cells:
+            if 0 <= x < W and 0 <= y < H and not occupied[y, x] and (x, y) not in seen:
+                seen[(x, y)] = name
+                queue.append((x, y, 1))
+    while queue:
+        x, y, d = queue.popleft()
+        if road[y, x] >= 2:
+            return seen[(x, y)]
+        if d >= limit:
+            continue
+        for nx, ny in ((x, y - 1), (x - 1, y), (x + 1, y), (x, y + 1)):
+            if 0 <= nx < W and 0 <= ny < H and (nx, ny) not in seen and not occupied[ny, nx]:
+                seen[(nx, ny)] = seen[(x, y)]
+                queue.append((nx, ny, d + 1))
+    return None
+
+
 def _load_road_hierarchy(out_dir: str, map_name: str, proj) -> np.ndarray | None:
 
     path = os.path.join(out_dir, f"{map_name}_road_hierarchy.bmp")

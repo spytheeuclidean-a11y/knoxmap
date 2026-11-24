@@ -31,6 +31,8 @@ def read_cell(lots: str, cx: int, cy: int) -> dict[tuple[int, int, int], list[st
         e = head.index(b"\n", o)
         names.append(head[o:e].decode())
         o = e + 1
+    # Levels are stored from min_z up: a cell with a basement keeps the ground at index 1.
+    min_z = struct.unpack_from("<i", head, o + 8)[0]
     d = open(f"{lots}/world_{cx}_{cy}.lotpack", "rb").read()
     offs = [struct.unpack_from("<Q", d, 12 + 8 * i)[0] for i in range(1024)] + [len(d)]
     out = {}
@@ -45,6 +47,7 @@ def read_cell(lots: str, cx: int, cy: int) -> dict[tuple[int, int, int], list[st
                 o += 4
             else:
                 z, r = divmod(k, 64)
+                z += min_z
                 a, b = divmod(r, 8)
                 out[(i // 32 * 8 + a, i % 32 * 8 + b, z)] = [names[t] for t in struct.unpack_from(f"<{m}I", ch, o)[1:]]
                 o += 4 * m

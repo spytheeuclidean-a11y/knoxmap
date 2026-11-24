@@ -35,7 +35,7 @@ from .buildings import ADDRESS_AVOIDS_ROADS
 from .geometry import _feature_coords_px, _is_polygon
 from .landcover import WATERWAY_WIDTH_M
 from .projection import Projector
-from .widths import _sidewalk_width_m, _way_width_m
+from .widths import _sidewalk_width_m, _way_width_m, road_width_tiles
 
 # Streets that get frontage looked at. Service lanes and drives do not: a
 # building beside one is a shed or a back door, not a street front.
@@ -249,6 +249,37 @@ def _neighbours(scan, states, i, step, info, limit=3):
              if info[b] and info[b]["area"] >= MIN_NEIGHBOUR_M2], joined)
 
 
+NOTCH_FILL = (0.55, 0.93)   # of its box: less is not a house, more is a rectangle
+NOTCH_AXIS_DEGREES = 8.0    # how true to the street its walls must run
+MAX_OUTLINE_CORNERS = 12
+
+
+def _outline(poly, frame):
+    """A neighbour's outline as corners in 0..1 along the street and out from
+    it, if it is a notched box - an L, a T, a house with a wing - with every
+    wall running along or across the street. None for a plain box or anything
+    else, so only a shape a row really has is copied."""
+    import math
+
+    ox, oy, tx, ty, nx, ny = frame
+    ring = list(poly.simplify(0.6).exterior.coords)[:-1]
+    pts = [((x - ox) * tx + (y - oy) * ty, (x - ox) * nx + (y - oy) * ny) for x, y in ring]
+    u0, u1 = min(p[0] for p in pts), max(p[0] for p in pts)
+    v0, v1 = min(p[1] for p in pts), max(p[1] for p in pts)
+    w, d = u1 - u0, v1 - v0
+    if w < MIN_LOT_M or d < MIN_DEPTH_M:
+        return None
+    if not NOTCH_FILL[0] <= poly.area / (w * d) <= NOTCH_FILL[1]:
+        return None
+    if not 6 <= len(pts) <= MAX_OUTLINE_CORNERS:
+        return None          # a box has four corners; a notched one at least six
+    for (ax, ay), (bx, by) in zip(pts, pts[1:] + pts[:1]):
+        angle = abs(math.degrees(math.atan2(by - ay, bx - ax))) % 90
+        if min(angle, 90 - angle) > NOTCH_AXIS_DEGREES:
+            return None
+    return [((u - u0) / w, (v - v0) / d) for u, v in pts]
+
+
 def _describe(scan, states, bi, poly, tags):
     """How one neighbouring building sits on the street: the metres of
     frontage it takes up, how deep it is, how far back it stands."""
@@ -267,6 +298,7 @@ def _describe(scan, states, bi, poly, tags):
     # a gap is measured from these instead.
     proj_s = [(x - ox) * tx + (y - oy) * ty for x, y in poly.exterior.coords]
     return {"width": width, "depth": max(proj_d) - min(proj_d),
+            "shape": _outline(poly, (ox, oy, tx, ty, nx, ny)),
             "setback": max(0.0, min(proj_d)), "area": poly.area,
             "s_lo": scan["s"][k] + min(proj_s), "s_hi": scan["s"][k] + max(proj_s),
             "kind": (tags.get("building") or "yes").lower(),
@@ -305,22 +337,131 @@ def _neighbour_gap(left, right) -> float:
     return min(max(statistics.median(gaps), SIDE_GAP_M), 14.0)
 
 
+class _Lot(list):
+    """A lot's four corners, as a plain list, with the street's tangent and
+    outward normal where it stands and the outline of the neighbour it copies."""
+    t = n = template = None
+
+
+MANSION_LOT_M2 = 400       # square metres of lot from which a neighbour's wings are copied
+SNAP_DEGREES = 8.0        # a lot this near the tile axes is turned square to them
+MIN_SIDE_TILES = 4         # the build refuses a building with less than this
+                           # on its short side: a 3x4 shed has nowhere for a door
+MIN_AREA_TILES = 16        # and one of fewer tiles (footprint.MIN_TILES)
+
+
+def _squared(corners, k):
+    """A lot laid out along a street, as a rectangle on the tile axes.
+
+    Roads are on the game's lattice, so a street runs at a multiple of 45
+    degrees, and a lot at 45 degrees is drawn as a staircase: its walls are
+    steps and its exterior is all corners. A lot within SNAP_DEGREES of an axis
+    is turned square to it about its middle. A lot further off is replaced by
+    the biggest rectangle on the axes that fits inside it, which gives up some
+    of its ground to keep a straight wall. None when what is left is smaller
+    than a building the build would accept (MIN_SIDE_TILES, MIN_AREA_TILES).
+    """
+    import math
+
+    (x0, y0), (x1, y1), (x2, y2), (x3, y3) = corners
+    cx, cy = (x0 + x2) / 2, (y0 + y2) / 2
+    w = math.hypot(x1 - x0, y1 - y0)
+    d = math.hypot(x3 - x0, y3 - y0)
+    heading = math.atan2(y1 - y0, x1 - x0)
+    angle = heading % (math.pi / 2)
+    dev = min(angle, math.pi / 2 - angle)
+    # half the lot's extent along the x axis, and along y: its width lies along
+    # whichever it is nearer
+    near_x = abs(math.cos(heading)) >= abs(math.sin(heading))
+    p, q = (w / 2, d / 2) if near_x else (d / 2, w / 2)
+    if math.degrees(dev) <= SNAP_DEGREES:
+        a, b = p, q
+    else:
+        c, sn = math.cos(dev), math.sin(dev)
+        t = min(p / (p * c + q * sn), q / (p * sn + q * c))
+        a, b = p * t, q * t
+    if min(a, b) * 2 < MIN_SIDE_TILES * k or 4 * a * b < MIN_AREA_TILES * k * k:
+        return None
+    return [(cx - a, cy - b), (cx + a, cy - b), (cx + a, cy + b), (cx - a, cy + b)]
+
+
+def _note(report, reason):
+    """Count `reason` in `report` (a Counter, or None for no report) and return
+    [] so a drop point can say why and give up in one line."""
+    if report is not None:
+        report[reason] += 1
+    return []
+
+
+TRIM_STEPS = (0.15, 0.3, 0.45)   # of a side, taken off a lot that would not clear
+
+
+def _trimmed(box, k):
+    """Smaller boxes inside `box`, biggest first, with one or two of its sides
+    pulled in: for a lot that runs into a corner, a neighbour or the side
+    street, so the row is carried up to it instead of stopping short."""
+    (x0, y0), (_, _), (x1, y1), (_, _) = box
+    w, h = x1 - x0, y1 - y0
+    out = []
+    steps = (0.0,) + TRIM_STEPS
+    for lo_x in steps:
+        for hi_x in steps:
+            for lo_y in steps:
+                for hi_y in steps:
+                    if (lo_x > 0) + (hi_x > 0) + (lo_y > 0) + (hi_y > 0) not in (1, 2):
+                        continue
+                    ax0, ax1 = x0 + w * lo_x, x1 - w * hi_x
+                    ay0, ay1 = y0 + h * lo_y, y1 - h * hi_y
+                    cw, ch = ax1 - ax0, ay1 - ay0
+                    if min(cw, ch) < MIN_SIDE_TILES * k or cw * ch < MIN_AREA_TILES * k * k:
+                        continue
+                    out.append((cw * ch, [(ax0, ay0), (ax1, ay0), (ax1, ay1), (ax0, ay1)]))
+    out.sort(key=lambda c: -c[0])
+    return [c for _, c in out]
+
+
+def _shaped(box, t, n, template, k):
+    """`box` (on the tile axes) with the neighbour's outline copied into it, the
+    template's along-the-street axis on the axis the street runs nearest to and
+    its out-from-the-street axis facing away from the road. None if the copy
+    is not a building the build would accept."""
+    from shapely.geometry import Polygon
+
+    (x0, y0), (_, _), (x1, y1), (_, _) = box
+    cx, cy, a, b = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2, (y1 - y0) / 2
+    if abs(n[0]) >= abs(n[1]):
+        v = (1 if n[0] >= 0 else -1, 0)
+        u = (0, 1 if t[1] >= 0 else -1)
+        hu, hv = b, a
+    else:
+        v = (0, 1 if n[1] >= 0 else -1)
+        u = (1 if t[0] >= 0 else -1, 0)
+        hu, hv = a, b
+    pts = [(cx + u[0] * (uu - 0.5) * 2 * hu + v[0] * (vv - 0.5) * 2 * hv,
+            cy + u[1] * (uu - 0.5) * 2 * hu + v[1] * (vv - 0.5) * 2 * hv)
+           for uu, vv in template]
+    poly = Polygon(pts)
+    if not poly.is_valid or poly.area < MIN_AREA_TILES * k * k:
+        return None
+    return pts
+
+
 def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
-                  lo=None, hi=None, extend_ends=True):
+                  lo=None, hi=None, extend_ends=True, report=None):
     """Footprints (as lists of four metre corners) for the free frontage
     between stations i0 and i1, built like the buildings beside it.
 
     `joined` says the row beside it stands wall to wall; `lo` and `hi` are
     the side walls of the buildings at either end, along the street, where
-    there are any."""
+    there are any. `report`, a Counter, is told why a gap or a lot was not filled."""
     near = left + right
     # One side only is a row carried on, and a row is two buildings at least;
     # a lone house in the country does not found a street.
     if not near or (not (left and right) and (not extend_ends or len(near) < 2)):
-        return []
+        return _note(report, "gap: only one building beside it, so not a row")
     kinds = {n["kind"] for n in near}
     if not kinds <= FILL_KINDS:
-        return []
+        return _note(report, "gap: beside a church, school, garage or the like")
     width = statistics.median(n["width"] for n in near)
     depth = statistics.median(n["depth"] for n in near)
     setback = statistics.median(n["setback"] for n in near)
@@ -334,10 +475,10 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     limit = min(MAX_GAP_BOTH_M, max(40.0, 10 * width)) if both else \
         min(MAX_GAP_ONE_M, max(20.0, 2.5 * width))
     if length < MIN_LOT_M:
-        return []
+        return _note(report, "gap: too short for a building")
     if length > limit:
         if not extend_ends:
-            return []
+            return _note(report, "gap: too long to fill (row ends are not extended)")
         # Too long to fill whole: carry the row on from each neighbour as far
         # as a row is carried (half the limit from each end when both stand),
         # and leave the middle as it is.
@@ -348,11 +489,11 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
             if part is None or reach < 1:
                 continue
             got = _lots_for_gap(scan, part[0], part[1], part[2], part[3],
-                                hard_free, joined, part[4], part[5], extend_ends)
+                                hard_free, joined, part[4], part[5], extend_ends, report)
             if got:
                 done.append(got)
         if not done:
-            return []
+            return _note(report, "gap: too long to fill, and nothing fits at its ends")
         return ([lot for g in done for lot in g[0]], done[0][1], done[0][2])
 
     # The pavement edge of the gap; ends against a neighbour keep a garden's
@@ -372,13 +513,13 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
     end = edge1 - inset_r
     span = end - start
     if span < MIN_LOT_M:
-        return []
+        return _note(report, "gap: no room between the buildings beside it")
 
     target = min(max(width, 6.0), MAX_LOT_M)
     # Room for a building about as wide as its neighbours or it is a yard, not
     # a gap: the garden between two houses is not a house that was not drawn.
     if span < 0.7 * target:
-        return []
+        return _note(report, "gap: a yard between two houses, not a missing house")
     n = max(1, int(round((span + gap) / (target + gap))))
     n = min(n, MAX_PER_GAP)
     while n > 1 and (span - (n - 1) * gap) / n < MIN_LOT_M:
@@ -387,7 +528,7 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
         n += 1
     bw = (span - (n - 1) * gap) / n
     if bw < MIN_LOT_M:
-        return []
+        return _note(report, "gap: lots would be too narrow")
 
     out = []
     for k in range(n):
@@ -410,6 +551,7 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
                     room - lot_setback - REAR_CLEAR_M)
             lot_shift = (bw - lot_w) * rng.uniform(-0.4, 0.4)
         if d < MIN_DEPTH_M:
+            _note(report, "lot: too shallow, a road, water or building close behind")
             continue
         mid = min(max(int(((a + b) / 2) // STEP_M), i0), i1)
         tx, ty = scan["tx"][mid], scan["ty"][mid]
@@ -421,10 +563,17 @@ def _lots_for_gap(scan, i0, i1, left, right, hard_free, joined=False,
         cx += nx * (max(lot_setback, 0.3) + d / 2)
         cy += ny * (max(lot_setback, 0.3) + d / 2)
         hw, hd = lot_w / 2, d / 2
-        out.append([(cx - tx * hw - nx * hd, cy - ty * hw - ny * hd),
+        lot = _Lot([(cx - tx * hw - nx * hd, cy - ty * hw - ny * hd),
                     (cx + tx * hw - nx * hd, cy + ty * hw - ny * hd),
                     (cx + tx * hw + nx * hd, cy + ty * hw + ny * hd),
                     (cx - tx * hw + nx * hd, cy - ty * hw + ny * hd)])
+        lot.t, lot.n = (float(tx), float(ty)), (float(nx), float(ny))
+        # Houses are boxes, mostly: a gap in a row of Ls gets a box. Only a lot
+        # big enough for a mansion copies its neighbour's wings; a street wall
+        # is filled wall to wall whatever its neighbours' wings.
+        if not wall and lot_w * d >= MANSION_LOT_M2:
+            lot.template = next((n_["shape"] for n_ in near if n_.get("shape")), None)
+        out.append(lot)
     return out, _modal_kind(near), _levels(near)
 
 
@@ -459,7 +608,10 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
         for f in buckets.get(cat, []):
             if _is_polygon(f):
                 continue
-            half = _way_width_m(f, cat) / 2 + _sidewalk_width_m(f, cat)
+            # As wide as the road is drawn, which is never under the game's own
+            # minimum (road_width_tiles), not as wide as the street really is:
+            # a lot that cleared the real road stood on the tiles of the drawn one.
+            half = road_width_tiles(f, cat, k, extra_m=_sidewalk_width_m(f, cat)) * k / 2
             for ring in _feature_coords_px(f, proj):
                 if len(ring) < 2:
                     continue
@@ -493,8 +645,13 @@ def _world(buckets: dict, vegetation_feats: list, building_feats: list,
 
 def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list,
                      proj: Projector, clip=None,
-                     extend_ends: bool = True) -> list[OSMFeature]:
-    """New buildings for the gaps along streets. See the module docstring."""
+                     extend_ends: bool = True,
+                     report: Counter | None = None) -> list[OSMFeature]:
+    """New buildings for the gaps along streets. See the module docstring.
+
+    `report` is filled with why gaps and lots were left empty ("gap: ...",
+    "lot: ...") and how many were made, trimmed and shaped, so a hole that is
+    still there can be explained."""
     from shapely.geometry import Polygon
 
     from .projection import _inside
@@ -545,28 +702,61 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                 run = (i, j)
                 i = j + 1
                 if not (left or right):
+                    _note(report, "gap: no building on either side")
                     continue
                 got = _lots_for_gap(scan, run[0], run[1], left, right, free,
-                                    joined_l or joined_r, lo, hi, extend_ends)
+                                    joined_l or joined_r, lo, hi, extend_ends, report)
                 if not got:
                     continue
                 lots, kind, levels = got
-                for corners in lots:
-                    poly = Polygon(corners)
+                def clear(cand):
+                    """(the polygon of `cand`, None) if it stands on free ground,
+                    else (None, why not)."""
+                    poly = Polygon(cand)
                     if not poly.is_valid or poly.is_empty:
-                        continue
+                        return None, "lot: not a valid shape"
                     x0, y0, x1, y1 = poly.bounds
                     if x0 < 0 or y0 < 0 or x1 > width_m or y1 > height_m:
-                        continue
+                        return None, "lot: off the edge of the map"
                     core = poly.buffer(-0.4)
                     if core.is_empty:
-                        continue
+                        return None, "lot: not a valid shape"
                     if b_tree.query(core, predicate="intersects").size:
-                        continue
+                        return None, "lot: would stand on a building"
                     if hard_tree is not None and hard_tree.query(core, predicate="intersects").size:
-                        continue
+                        return None, "lot: would stand on a road, water, a park or a wood"
                     if any(core.intersects(p) for p in grid.near(poly)):
+                        return None, "lot: would stand on another new building"
+                    return poly, None
+
+                for lot in lots:
+                    box = _squared(lot, k)
+                    if box is None:
+                        _note(report, "lot: too small to build once squared to the tile grid")
                         continue
+                    # As drawn if it clears; else the biggest of its trims that
+                    # does, which carries the row up to a corner, a neighbour
+                    # or the side street.
+                    poly = corners = None
+                    first_why = None
+                    for n_cand, cand in enumerate([box] + _trimmed(box, k)):
+                        poly, why = clear(cand)
+                        if n_cand == 0:
+                            first_why = why
+                        if poly is not None:
+                            corners = cand
+                            if n_cand:
+                                _note(report, "lot: trimmed to fit")
+                            break
+                    if corners is None:
+                        _note(report, first_why)
+                        continue
+                    if lot.template and lot.t:
+                        copy = _shaped(corners, lot.t, lot.n, lot.template, k)
+                        # only ever less ground than the box it was cut from
+                        if copy is not None and Polygon(copy).within(poly.buffer(1e-6)):
+                            corners, poly = copy, Polygon(copy)
+                            _note(report, "lot: outline copied from a neighbour")
                     tags = {"building": kind}
                     if levels:
                         tags["building:levels"] = levels
@@ -575,11 +765,80 @@ def _infill_frontage(buckets: dict, vegetation_feats: list, building_feats: list
                         geometry=[proj.to_latlon(x / k, y / k)
                                   for x, y in corners + [corners[0]]])
                     if clip is not None and not _inside(feat, proj, clip):
+                        _note(report, "lot: outside the area being made")
                         continue
                     grid.add(poly)
                     made.append(feat)
+                    _note(report, "lot: made")
                     ident -= 1
     return made
+
+
+def _report_lines(report: Counter) -> list[str]:
+    """A report as lines for a log: the makings first, then the reasons, most
+    common first."""
+    if not report:
+        return []
+    made = [(r, n) for r, n in report.items() if r in KEPT]
+    left = sorted(((r, n) for r, n in report.items() if r not in KEPT), key=lambda rn: -rn[1])
+    return [f"  {n:>6}  {r}" for r, n in made + left]
+
+
+# What a report counts that did not leave something out.
+KEPT = {"lot: made", "lot: trimmed to fit", "lot: outline copied from a neighbour"}
+
+
+# Buildings that came from a footprint file (Microsoft, Overture) are drawn by a
+# machine that knows nothing of the roads, and the roads have since been moved
+# onto the game's 45-degree lattice, so some stand right across one. The build
+# moves a footprint off the road where it can (footprint._clear_of) and refuses
+# one that is still more than ROAD_SHARE_MAX road; here the ones that cannot be
+# moved out are dropped up front, while the roads are still lines with a width.
+GAP_FILL_IDS = (-2 * 10**9, 0)     # Overture's and Microsoft's, not the infill's
+ROAD_DROP_SHARE = 0.5              # of its own area on a carriageway
+
+
+def _drop_on_roads(buckets: dict, building_feats: list, proj: Projector
+                   ) -> tuple[list, int]:
+    """`building_feats` without the footprint-file buildings that are mostly on
+    a carriageway, and how many were dropped."""
+    from shapely.geometry import LineString
+    from shapely.ops import unary_union
+    from shapely.strtree import STRtree
+
+    k = proj.meters_per_tile
+    lo, hi = GAP_FILL_IDS
+    candidates = [f for f in building_feats
+                  if isinstance(f.osm_id, int) and lo < f.osm_id < hi]
+    if not candidates:
+        return building_feats, 0
+    roads = []
+    for cat in ADDRESS_AVOIDS_ROADS:
+        for f in buckets.get(cat, []):
+            if _is_polygon(f):
+                continue
+            half = _way_width_m(f, cat) / 2
+            for ring in _feature_coords_px(f, proj):
+                if len(ring) >= 2:
+                    line = LineString([(x * k, y * k) for x, y in ring])
+                    if line.length >= 0.5:
+                        roads.append(line.buffer(half, cap_style="flat"))
+    if not roads:
+        return building_feats, 0
+    tree = STRtree(roads)
+    gone: set[int] = set()
+    for f in candidates:
+        for poly in _polys(f, proj, k):
+            hits = tree.query(poly, predicate="intersects")
+            if not hits.size:
+                continue
+            on_road = poly.intersection(unary_union([roads[i] for i in hits])).area
+            if on_road > ROAD_DROP_SHARE * poly.area:
+                gone.add(id(f))
+                break
+    if not gone:
+        return building_feats, 0
+    return [f for f in building_feats if id(f) not in gone], len(gone)
 
 
 # Sheds and garages behind the houses along a street: what a yard has in it.

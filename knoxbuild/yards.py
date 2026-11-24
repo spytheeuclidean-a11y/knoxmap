@@ -169,10 +169,13 @@ def _outside_windows(tbx_path: str) -> set[tuple[int, int]]:
     return found
 
 
-def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
-    """(outside x, y, inside x, y) of each ground-floor outside door, front first."""
+def _outside_doors(tbx_path: str, skip_garage: bool = False) -> list[tuple[int, int, int, int]]:
+    """(outside x, y, inside x, y) of each ground-floor outside door, front first.
+
+    `skip_garage` leaves out the panels of a garage door: a house's front path
+    goes to its front door, and its drive to the garage (_outside_garage_doors)."""
     try:
-        key = (tbx_path, os.stat(tbx_path).st_mtime_ns)
+        key = (tbx_path, os.stat(tbx_path).st_mtime_ns, skip_garage)
     except OSError:
         key = None
     if key is not None and key in _OUTSIDE_DOORS_CACHE:
@@ -194,7 +197,10 @@ def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
         return 0 <= x < w and 0 <= y < h and grid[y][x] != 0
 
     found = []
-    for m in re.finditer(r'type="door"[^>]*? x="(\d+)" y="(\d+)" dir="([NW])"', floor):
+    garage = {str(t) for t in _catalog().GARAGE_DOOR} if skip_garage else ()
+    for m in re.finditer(r'type="door"[^>]*? x="(\d+)" y="(\d+)" dir="([NW])"([^>]*)', floor):
+        if garage and re.search(r'Tile="(\d+)"', m.group(4)) and                 re.search(r'Tile="(\d+)"', m.group(4)).group(1) in garage:
+            continue
         x, y, d = int(m.group(1)), int(m.group(2)), m.group(3)
         a, b = ((x, y - 1), (x, y)) if d == "N" else ((x - 1, y), (x, y))
         if inside(*a) != inside(*b):
@@ -202,6 +208,52 @@ def _outside_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
             found.append((out[0], out[1], into[0], into[1]))
     if key is not None:
         _OUTSIDE_DOORS_CACHE[key] = found
+    return found
+
+
+_GARAGE_DOORS_CACHE: dict = {}
+
+
+def _catalog():
+    from . import catalog
+    return catalog
+
+
+def _outside_garage_doors(tbx_path: str) -> list[tuple[int, int, int, int]]:
+    """(outside x, y, inside x, y) of each ground-floor garage door panel of a
+    house: the doors _widen_vehicle_entry cut, which the .tbx writes with the
+    garage door tiles (catalog.GARAGE_DOOR). Empty for a house with none."""
+    from . import catalog as C
+    try:
+        key = (tbx_path, os.stat(tbx_path).st_mtime_ns)
+    except OSError:
+        return []
+    if key in _GARAGE_DOORS_CACHE:
+        return _GARAGE_DOORS_CACHE[key]
+    with open(tbx_path, encoding="utf-8") as f:
+        text = f.read()
+    first = text.split("<floor>", 2)
+    found: list[tuple[int, int, int, int]] = []
+    grid_text = re.search(r"<rooms>(.*?)</rooms>", first[1], re.S) if len(first) > 1 else None
+    if grid_text:
+        grid = [[int(v) for v in row.strip().strip(",").split(",")]
+                for row in grid_text.group(1).strip().splitlines() if row.strip()]
+        h, w = len(grid), len(grid[0])
+
+        def inside(x, y):
+            return 0 <= x < w and 0 <= y < h and grid[y][x] != 0
+
+        garage = {str(t) for t in C.GARAGE_DOOR}
+        for m in re.finditer(r'type="door"[^>]*? x="(\d+)" y="(\d+)" dir="([NW])"[^>]*? Tile="(\d+)"',
+                             first[1]):
+            if m.group(4) not in garage:
+                continue
+            x, y, d = int(m.group(1)), int(m.group(2)), m.group(3)
+            a, b = ((x, y - 1), (x, y)) if d == "N" else ((x - 1, y), (x, y))
+            if inside(*a) != inside(*b):
+                out, into = (a, b) if inside(*b) else (b, a)
+                found.append((out[0], out[1], into[0], into[1]))
+    _GARAGE_DOORS_CACHE[key] = found
     return found
 
 
@@ -410,8 +462,11 @@ def _dress_non_home_surroundings(
                 sx, sy = bx0 + ox, by0 + oy
                 if nrng.random() < 0.90:
                     sides = [(-2, 2), (2, -2)]
+                    # A wall facing south or east is an edge of the outside tile
+                    # itself, so a bin on that tile stands in the wall: one tile out.
+                    off = 1 if dx > 0 or dy > 0 else 0
                     for k in nrng.choice(sides) + (-3, 3):
-                        bx_, by_ = sx + px * k, sy + py * k
+                        bx_, by_ = sx + px * k + dx * off, sy + py * k + dy * off
                         if (bx_, by_) not in window_tiles and place_veg(bx_, by_, C.BIN):
                             bin_spots.append((bx_, by_))
                             break
@@ -518,7 +573,8 @@ def _dress_non_home_surroundings(
                 )
         if service_ring and bw >= 6 and bh >= 6:
             if kind in _DUMPSTER_KINDS and nrng.random() < 0.85:
-                _dumpster(service_ring, bx0, by0, bw, bh, doors, can_veg, place_veg, nrng)
+                _dumpster(service_ring, bx0, by0, bw, bh, doors, can_veg, place_veg, nrng,
+                          lambda x, y: 0 <= x < w and 0 <= y < h and bool(occupied[y, x]))
             clutter_chance = 0.75 if kind in _SERVICE_CLUTTER_KINDS else 0.45
             if nrng.random() < clutter_chance:
                 far_wall = sorted(
@@ -876,6 +932,46 @@ def _pave_building_apron(bx0: int, by0: int, bw: int, bh: int,
             paint(gx, gy, C.PALE_CONCRETE)
 
 
+# Trees stand this many tiles from a building's tiles, and the big ones, which
+# take a square of their own, further: a wall facing south or east is the edge
+# of the tile in front of it, and a tree there, or its crown beside it, comes
+# out of the wall. Painted before the buildings were placed, the trees knew
+# nothing of where the footprints came to.
+TREE_CLEAR_TILES = 2
+BIG_TREE_CLEAR_TILES = 5
+SMALL_TREE_COLOURS = (C.TREES, C.TREES_DARK_GRASS, C.SPARSE_TREES,
+                      C.LOT_OF_GRASS_AND_TREES, C.BUSHES_TREES_DARK_GRASS, C.TREE_SMALL)
+BIG_TREE_COLOURS = (C.TREE_BIG, C.TREE_HUGE, C.TREE_GIANT)
+
+
+def _grown(mask: np.ndarray, r: int) -> np.ndarray:
+    """`mask` and every tile within `r` tiles of it, square-wise."""
+    out = mask.copy()
+    for _ in range(r):
+        out[:, 1:] |= out[:, :-1]
+        out[:, :-1] |= out[:, 1:]
+    for _ in range(r):
+        out[1:, :] |= out[:-1, :]
+        out[:-1, :] |= out[1:, :]
+    return out
+
+
+def _clear_trees_near_walls(veg: np.ndarray, occ: np.ndarray) -> int:
+    """Take the trees off the ground beside buildings. Returns tiles cleared."""
+    cleared = 0
+    for colours, r in ((SMALL_TREE_COLOURS, TREE_CLEAR_TILES),
+                       (BIG_TREE_COLOURS, BIG_TREE_CLEAR_TILES)):
+        trees = np.zeros(occ.shape, dtype=bool)
+        for colour in colours:
+            trees |= same_colour(veg, colour)
+        if not trees.any():
+            continue
+        near = trees & _grown(occ, r)
+        veg[near] = C.VEG_NOTHING
+        cleared += int(near.sum())
+    return cleared
+
+
 def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 drives: list | None = None,
                 lights: list | None = None,
@@ -919,6 +1015,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         occ = np.zeros((h, w), dtype=bool)
         ch, cw = min(h, occ_h), min(w, occ_w)
         occ[:ch, :cw] = occupied[:ch, :cw]
+
+    if veg is not None:
+        _clear_trees_near_walls(veg, occ)
 
     def match(colours):
         mask = np.zeros((h, w), dtype=bool)
@@ -985,9 +1084,10 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     # order, which keeps the random choices the same.
     from concurrent.futures import ThreadPoolExecutor
     house_files = [r["file"] for r in rows if r.get("kind") in FRONT_PATH_KINDS]
+    homes = {r["file"] for r in rows if r.get("kind") == "house"}
     with ThreadPoolExecutor(max_workers=8) as pool:
         door_lists = dict(zip(house_files, pool.map(
-            lambda f: _outside_doors(os.path.join(out_dir, "buildings", f)),
+            lambda f: _outside_doors(os.path.join(out_dir, "buildings", f), f in homes),
             house_files)))
     for row in rows:
         if row.get("kind") not in FRONT_PATH_KINDS:
@@ -1443,10 +1543,16 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         dressed += 1
 
     for row in rows:
+        path = os.path.join(out_dir, "buildings", row["file"])
         if (row.get("building") not in ("garage", "garages")
                 and row.get("kind") != "garage"):
-            continue
-        doors = _outside_doors(os.path.join(out_dir, "buildings", row["file"]))
+            # A house with a garage built into it gets its drive from the
+            # garage door, not from the front door.
+            if row.get("kind") != "house":
+                continue
+            doors = _outside_garage_doors(path)
+        else:
+            doors = _outside_doors(path)
         if not doors:
             continue
         ox, oy, _ix, _iy = doors[0]

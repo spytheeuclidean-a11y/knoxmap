@@ -363,10 +363,17 @@ def _dense(check, work, renderer, build, Settings) -> None:
 
     true_rows, _ = got[1]
     laid_rows, laid_out = got[0]
-    n_true, n_laid = len(houses(true_rows)), len(houses(laid_rows))
+    # As mapped these are three-tile boxes, which the build now calls sheds
+    # (too_small_for_rooms); they are still the houses OSM drew.
+    mapped = [r for r in true_rows if r["kind"] in ("house", "shed")]
+    # Terraces drawn shoulder to shoulder overlap by a tile; the ones a neighbour
+    # cuts to scraps are refused as built ("cut"), but were still mapped.
+    with open(os.path.join(got[1][1], "dense_left_out.csv"), encoding="utf-8") as f:
+        cut = [r for r in _csv.DictReader(f) if r["reason"] == "cut" and r["building"] == "house"]
+    n_true, n_laid = len(mapped) + len(cut), len(houses(laid_rows))
     check(0.25 <= n_laid / max(1, n_true) <= 0.75,
           f"about half the houses are left out ({n_laid} of {n_true} kept)")
-    rooms_true, rooms_laid = median_rooms(houses(true_rows)), median_rooms(houses(laid_rows))
+    rooms_true, rooms_laid = median_rooms(mapped), median_rooms(houses(laid_rows))
     check(rooms_laid >= rooms_true + 2,
           f"and the ones that stay are proper houses "
           f"({rooms_true} rooms each as mapped, {rooms_laid} laid out for the game)")

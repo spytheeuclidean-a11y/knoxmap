@@ -12,6 +12,7 @@ meters-per-tile scale stays consistent.
 """
 from __future__ import annotations
 
+from collections import Counter
 import logging
 import os
 import shutil
@@ -41,7 +42,7 @@ from .rendering.buildings import (ADDRESS_APART_M, ADDRESS_AVOIDS_ROADS,
                                   BUILDING_TAGS, MAX_ADDRESS_HOUSES,
                                   _buildings_geojson, _houses_from_addresses,
                                   _off_the_road)  # noqa: F401
-from .rendering.infill import _back_sheds, _infill_frontage
+from .rendering.infill import _back_sheds, _drop_on_roads, _infill_frontage, _report_lines
 from .rendering.furniture import (CRACK_SHARE, DRAIN_EVERY,
                                   EDGE_LINE_MIN_WIDTH, GRIME_SHARE,
                                   HYDRANT_EVERY, LAMP_EVERY, LITTER_SHARE,
@@ -560,12 +561,21 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                                if id(f) not in lifted.not_buildings]
 
     # Streets where every home is an address point and not a drawn building.
+    addressed: list[OSMFeature] = []
     infilled: list[OSMFeature] = []
+    infill_report: Counter = Counter()
     sheds: list[OSMFeature] = []
     if terrain_only:
         building_feats = []
         buckets["building"] = []
     elif not _skip_infill:
+        # Footprint-file buildings that stand across a road, now that the roads
+        # are where the game will have them.
+        kept, dropped = _drop_on_roads(buckets, building_feats, proj)
+        if dropped:
+            keep = {id(f) for f in kept}
+            building_feats = kept
+            buckets["building"] = [f for f in buckets.get("building", []) if id(f) in keep]
         addressed = _houses_from_addresses(features, building_feats, proj)
         if addressed:
             building_feats = building_feats + addressed
@@ -577,7 +587,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         if fill_frontage:
             infilled = _infill_frontage(
                 buckets, vegetation_feats, building_feats,
-                proj, clip, extend_ends=(int(fill_frontage) != 2))
+                proj, clip, extend_ends=(int(fill_frontage) != 2), report=infill_report)
+            if infill_report:
+                print("street infill (what was made, and why gaps stayed empty):")
+                print(chr(10).join(_report_lines(infill_report)))
             if infilled:
                 building_feats = building_feats + infilled
                 buckets["building"] = buckets.get("building", []) + infilled
@@ -822,18 +835,21 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     t_veg = time.perf_counter()
     if render_progress:
         render_progress(0.78, "Drawing details")
-    _clear_road_vegetation(vegetation, landscape)
-    _paint_road_details(vegetation, landscape, buckets, proj,
-                        smooth_edges=(road_layout != 5))
-    # The threshold bars go on last of all: they are pale concrete inside the
-    # strip, and the kerb pass above draws a kerb wherever concrete meets
-    # asphalt - run before it, every stripe would be kerbed like a pavement.
-    try:
-        from .rendering.airfield import paint_runway_markings
-        paint_runway_markings(landscape, buckets, proj)
-    except Exception as exc:        # noqa: BLE001 - never lose a map to it
-        _log.warning("runway markings skipped: %s: %s", type(exc).__name__, exc)
-    hierarchy_image = _road_hierarchy_image(buckets, proj)
+    # The hierarchy uses the road geometry, while details paint the existing
+    # bitmaps. Street furniture needs both results.
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        hierarchy = pool.submit(_road_hierarchy_image, buckets, proj)
+        _clear_road_vegetation(vegetation, landscape)
+        _paint_road_details(vegetation, landscape, buckets, proj,
+                            smooth_edges=(road_layout != 5))
+        # The threshold bars go on last of all: they are pale concrete inside
+        # the strip, and the kerb pass draws a kerb where concrete meets asphalt.
+        try:
+            from .rendering.airfield import paint_runway_markings
+            paint_runway_markings(landscape, buckets, proj)
+        except Exception as exc:        # noqa: BLE001 - never lose a map to it
+            _log.warning("runway markings skipped: %s: %s", type(exc).__name__, exc)
+        hierarchy_image = hierarchy.result()
     # Where the buildings are, so a hydrant, a bin or a mailbox only stands
     # where it has something to serve.
     _paint_street_furniture(vegetation, landscape, hierarchy_image, building_mask,
@@ -984,6 +1000,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             "houses_from_addresses": len(addressed),
             # And how many were put into gaps along a street.
             "houses_infilled": len(infilled),
+            # Why gaps and lots were left empty, and what was made, trimmed and shaped.
+            "street_infill_report": dict(infill_report),
             "sheds_infilled": len(sheds),
             "guide_reference": "Thuztor Mapping Guide v0.2",
         }, indent=2)
