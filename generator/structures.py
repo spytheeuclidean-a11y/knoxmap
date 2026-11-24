@@ -37,6 +37,10 @@ from shapely.ops import unary_union
 RAMP_FIRST = {"N": 0, "S": 24, "W": 48, "E": 72}
 RAMP_STEPS = 20                      # segments, and so tiles, to climb a storey
 MAX_LEVEL = 2
+# Elevated flyover bridges (ramps + upper decks) are disabled until they avoid
+# clipping into nearby houses, fences, and yards. Ground-level water bridges
+# stay enabled.
+ENABLE_FLYOVERS = False
 
 
 def ramp_tile(direction: str, segment: int) -> str:
@@ -283,6 +287,8 @@ def plan_bridges(buckets: dict, proj, meters_per_tile: float, way_width, plan: P
                     plan.water_rails.append(deck)
                 else:
                     plan.water_rails.append(run.buffer(width / 2, cap_style=2))
+                continue
+            if not ENABLE_FLYOVERS:
                 continue
             # A flyover is only walkable where its ramps line up with the tile
             # grid. Laid along a diagonal the ramp tiles step one at a time and

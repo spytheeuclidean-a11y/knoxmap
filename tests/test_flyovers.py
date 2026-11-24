@@ -6,7 +6,9 @@ at ground level: a junction a player can use, not a bridge they cannot.
 """
 import unittest
 from types import SimpleNamespace
+from unittest import mock
 
+import generator.structures as structures
 from generator.osm import OSMFeature
 from generator.structures import Plan, plan_bridges
 
@@ -31,14 +33,21 @@ def build(overpass):
 
 
 class Flyovers(unittest.TestCase):
-    def test_a_square_crossing_gets_its_ramps(self):
+    def test_elevated_flyovers_are_disabled_by_default(self):
         plan = build([(60, 20), (60, 100)])
+        self.assertEqual(plan.bridges, 0)
+        self.assertEqual(plan.tiles, {})
+
+    def test_a_square_crossing_gets_its_ramps(self):
+        with mock.patch.object(structures, "ENABLE_FLYOVERS", True):
+            plan = build([(60, 20), (60, 100)])
         self.assertEqual(plan.bridges, 1)
         self.assertTrue(any(layer == "Floor" and tile.startswith("ramps_01")
                             for (_x, _y, _z, layer), tile in plan.tiles.items()))
 
     def test_a_diagonal_crossing_is_left_on_the_ground(self):
-        plan = build([(20, 20), (100, 100)])
+        with mock.patch.object(structures, "ENABLE_FLYOVERS", True):
+            plan = build([(20, 20), (100, 100)])
         self.assertEqual(plan.bridges, 0)
         self.assertEqual(plan.tiles, {})
         self.assertEqual(plan.straight, [])
