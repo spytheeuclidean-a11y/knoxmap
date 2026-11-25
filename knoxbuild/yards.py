@@ -134,14 +134,29 @@ CARPORT_SHARE = 0.60
 FRONT_PORCH_SHARE = 0.55
 BACK_DECK_SHARE = 0.65
 BACK_DECK_MIN_AREA = 110
-ELECTRIC_BOX = {"N": "industry_01_014", "W": "industry_01_015"}
+# Exterior wall AC units (verified in newtiledefinitions.tiles:
+# 004 = Facing=S, attachedN; 005 = Facing=E, attachedW; 014/015 are interior N/W).
 WALL_AC_UNIT = {"N": "industry_01_004", "W": "industry_01_005"}
-PORCH_POST_WOOD = "fixtures_railings_01_035"
+# Expected (attached_side, expected_pz_facing) for every exterior wall prop.
+EXTERIOR_PROP_ORIENTATION: dict[str, tuple[str, str]] = {
+    **{style["N"]: ("N", "S") for style in PORCH_LIGHTS},
+    **{style["W"]: ("W", "E") for style in PORCH_LIGHTS},
+    **{style["S"]: ("S", "N") for style in PORCH_LIGHTS},
+    **{style["E"]: ("E", "W") for style in PORCH_LIGHTS},
+    "industry_01_004": ("N", "S"),
+    "industry_01_005": ("W", "E"),
+}
+PORCH_POST_WOOD = "fixtures_railings_01_033"
 PORCH_POST_WHITE = "fencing_01_007"
-PORCH_RAIL_WOOD = {"W": "fixtures_railings_01_024", "N": "fixtures_railings_01_025", "NW": "fixtures_railings_01_026"}
+PORCH_RAIL_WOOD = {"W": "fencing_01_020", "N": "fencing_01_021", "NW": "fencing_01_017"}
 PORCH_RAIL_WHITE = {"W": "fencing_01_004", "N": "fencing_01_005", "NW": "fencing_01_006"}
 DECK_FLOOR_WOOD = "floors_interior_tilesandwood_01_042"
 PORCH_FLOOR_STONE = "floors_exterior_tilesandstone_01_000"
+DECK_GRILL = "appliances_cooking_01_035"
+DECK_TABLE = "furniture_tables_high_01_014"
+DECK_CHAIRS = ("furniture_seating_outdoor_01_019", "furniture_seating_outdoor_01_018",
+               "furniture_seating_outdoor_01_016", "furniture_seating_outdoor_01_017")
+DECK_PLANT = "vegetation_indoor_01_010"
 
 
 _OUTSIDE_DOORS_CACHE: dict[tuple[str, int], list[tuple[int, int, int, int]]] = {}
@@ -991,11 +1006,11 @@ def _clear_trees_near_walls(veg: np.ndarray, occ: np.ndarray) -> int:
 
 
 def _add_house_carport(top: list[tuple[int, int]], dx: int, dy: int,
-                       frng: random.Random, structures: list) -> None:
+                       frng: random.Random, structures: list) -> tuple[int, int, int, int] | None:
     """Place a 3x4 or 4x3 open-sided roofed carport over the house-end of a
     driveway when the house has no garage."""
     if not top or frng.random() >= CARPORT_SHARE:
-        return
+        return None
     xs = [p[0] for p in top]
     ys = [p[1] for p in top]
     x0, x1, y0, y1 = min(xs), max(xs), min(ys), max(ys)
@@ -1008,8 +1023,9 @@ def _add_house_carport(top: list[tuple[int, int]], dx: int, dy: int,
         cy0 = y0
         cx0 = x0 if dx > 0 else max(x0, x1 - cw + 1)
     if (x1 - x0 + 1) < cw or (y1 - y0 + 1) < ch:
-        return
-    post = "fixtures_railings_01_033" if frng.random() < 0.6 else PORCH_POST_WHITE
+        return None
+    # Always use full-height pillars so they reach all the way up to the z=1 flat roof.
+    post = PORCH_POST_WOOD
     # Place posts on the outer grid corners (0..cw, 0..ch) so they straddle
     # the 3-tile driveway instead of sitting inside the parked car.
     tiles = [
@@ -1018,7 +1034,8 @@ def _add_house_carport(top: list[tuple[int, int]], dx: int, dy: int,
         (0, ch, 0, "Walls", post),
         (cw, ch, 0, "Walls", post),
     ]
-    structures.append((cx0, cy0, cw, ch, tiles, "Peak30Quad", "Zero"))
+    structures.append((cx0, cy0, cw, ch, tiles, "FlatTop", "Three"))
+    return (cx0, cy0, cw, ch)
 
 
 def _add_front_porch(sx: int, sy: int, dx: int, dy: int, px: int, py: int,
@@ -1028,7 +1045,7 @@ def _add_front_porch(sx: int, sy: int, dx: int, dy: int, px: int, py: int,
     """Build a covered front porch outside the front door when clear lawn exists."""
     if frng.random() >= FRONT_PORCH_SHARE:
         return
-    want_w = 5 if (bw if dy else bh) >= 10 else 3
+    want_w = 5 if (bw if dy else bh) >= 7 else 3
     chosen = None
     for pw, pd in ((want_w, 3), (3, 3), (3, 2)):
         half = pw // 2
@@ -1062,9 +1079,9 @@ def _add_front_porch(sx: int, sy: int, dx: int, dy: int, px: int, py: int,
         claimed_bytes[ty * w + tx] = 1
         paved_at[ty * w + tx] = 1
         tiles.append((tx - gx0, ty - gy0, 0, "Floor", floor_tile))
-    # Posts at outer corners + railings along outer edge (leaving door entry open).
+    # Posts at outer corners + railings along outer perimeter edges (leaving door entry open).
     entry = (sx + dx * (pd - 1), sy + dy * (pd - 1))
-    for lx, ly in ((0, 0), (gw - 1, 0), (0, gh - 1), (gw - 1, gh - 1)):
+    for lx, ly in ((0, 0), (gw, 0), (0, gh), (gw, gh)):
         if (gx0 + lx, gy0 + ly) != entry:
             tiles.append((lx, ly, 0, "Walls", post))
     for tx, ty, u, v in cells:
@@ -1072,9 +1089,29 @@ def _add_front_porch(sx: int, sy: int, dx: int, dy: int, px: int, py: int,
             continue
         lx, ly = tx - gx0, ty - gy0
         if v == pd - 1:
-            tiles.append((lx, ly, 0, "WallOverlay", rail["N" if dy else "W"]))
-        elif abs(u) == pw // 2:
-            tiles.append((lx, ly, 0, "WallOverlay", rail["W" if dy else "N"]))
+            if dy:
+                tiles.append((lx, ly + (1 if dy > 0 else 0), 0, "WallOverlay", rail["N"]))
+            else:
+                tiles.append((lx + (1 if dx > 0 else 0), ly, 0, "WallOverlay", rail["W"]))
+        if u == -(pw // 2):
+            if dy:
+                tiles.append((lx, ly, 0, "WallOverlay", rail["W"]))
+            else:
+                tiles.append((lx, ly, 0, "WallOverlay", rail["N"]))
+        elif u == pw // 2:
+            if dy:
+                tiles.append((lx + 1, ly, 0, "WallOverlay", rail["W"]))
+            else:
+                tiles.append((lx, ly + 1, 0, "WallOverlay", rail["N"]))
+    # Furnish wider porches with seating & potted plant flanking the door
+    if pw >= 5:
+        chair_idx = 2 if dy > 0 else 0 if dy < 0 else 1 if dx > 0 else 3
+        chair_tile = DECK_CHAIRS[chair_idx]
+        for side_u in (-2, 2):
+            fx, fy = sx + px * side_u, sy + py * side_u
+            if (gx0 <= fx < gx0 + gw and gy0 <= fy < gy0 + gh):
+                tiles.append((fx - gx0, fy - gy0, 0, "Furniture",
+                              chair_tile if side_u < 0 else DECK_PLANT))
     roof_type, roof_depth = ("Peak30Quad", "Zero") if pd == 3 else ("FlatTop", "Three")
     structures.append((gx0, gy0, gw, gh, tiles, roof_type, roof_depth))
 
@@ -1082,39 +1119,148 @@ def _add_front_porch(sx: int, sy: int, dx: int, dy: int, px: int, py: int,
 def _add_back_deck(u0: int, width: int, depth: int, at, free, paint,
                    claimed_bytes: bytearray, paved_at: bytearray,
                    w: int, h: int, dy: int, bdx: int, bdy: int,
-                   frng: random.Random, lights: list) -> None:
-    """Lay a wooden back deck with railings on large houses with yard depth."""
+                   frng: random.Random, lights: list,
+                   back_door_u: int | None = None) -> None:
+    """Lay a spacious, furnished wooden back deck anchored on the back door."""
     if depth < 4 or width < 5 or frng.random() >= BACK_DECK_SHARE:
         return
-    dw = min(width - 1, 5)
-    dd = 3
-    start_u = max(0, (width - dw) // 2)
-    cells = []
-    for u in range(start_u, start_u + dw):
-        for v in range(dd):
-            tx, ty = at(u, v)
-            if not (0 <= tx < w and 0 <= ty < h) or not free(tx, ty):
-                return
-            cells.append((tx, ty, u - start_u, v))
-    gap_u = dw // 2
+    chosen = None
+    for want_w, dd in ((7, 4), (6, 4), (5, 4), (5, 3)):
+        dw = min(width - 1, want_w)
+        if dw < 5 or depth < dd + 1:
+            continue
+        if back_door_u is not None:
+            start_u = max(0, min(width - dw, back_door_u - dw // 2))
+        else:
+            start_u = max(0, (width - dw) // 2)
+        cells = []
+        ok = True
+        for u in range(start_u, start_u + dw):
+            for v in range(dd):
+                tx, ty = at(u, v)
+                if not (0 <= tx < w and 0 <= ty < h) or not free(tx, ty):
+                    ok = False
+                    break
+                cells.append((tx, ty, u - start_u, v))
+            if not ok:
+                break
+        if ok:
+            chosen = (dw, dd, start_u, cells)
+            break
+    if not chosen:
+        return
+    dw, dd, start_u, cells = chosen
+    door_du = (back_door_u - start_u) if back_door_u is not None else dw // 2
+    door_du = max(1, min(dw - 2, door_du))
+    gap_dus = {door_du, min(dw - 2, door_du + 1)} if dw >= 6 else {door_du}
     for tx, ty, du, dv in cells:
         paint(tx, ty, C.PAVING_STONE)
         claimed_bytes[ty * w + tx] = 1
         paved_at[ty * w + tx] = 1
         lights.append((tx, ty, 0, "Floor", DECK_FLOOR_WOOD))
-        if dv == dd - 1 and du != gap_u:
-            lights.append((tx, ty, 0, "WallOverlay", PORCH_RAIL_WOOD["N" if dy else "W"]))
-        elif du in (0, dw - 1) and dv > 0:
-            lights.append((tx, ty, 0, "WallOverlay", PORCH_RAIL_WOOD["W" if dy else "N"]))
+    # Furnish the deck: grill on one side, table + chairs on the other, plants in far corners
+    by_du_dv = {(du, dv): (tx, ty) for tx, ty, du, dv in cells}
+    walk_dus = gap_dus | {door_du}
+    left_du = 0 if 0 not in walk_dus else None
+    right_du = dw - 1 if (dw - 1) not in walk_dus else None
+    if left_du is not None and (left_du, 0) in by_du_dv:
+        gx, gy = by_du_dv[(left_du, 0)]
+        lights.append((gx, gy, 0, "Furniture", DECK_GRILL))
+    if left_du is not None and (left_du, dd - 1) in by_du_dv:
+        px_, py_ = by_du_dv[(left_du, dd - 1)]
+        lights.append((px_, py_, 0, "Furniture", DECK_PLANT))
+    if right_du is not None and (right_du, 1) in by_du_dv:
+        tx_, ty_ = by_du_dv[(right_du, 1)]
+        lights.append((tx_, ty_, 0, "Furniture", DECK_TABLE))
+        # Chair at dv=0 faces toward dv=1 (bdx, bdy); chair at dv=2 faces back (-bdx, -bdy).
+        if dy:
+            near_face, far_face = ("S", "N") if bdy > 0 else ("N", "S")
+        else:
+            near_face, far_face = ("E", "W") if bdx > 0 else ("W", "E")
+        face_idx = {"W": 0, "N": 1, "E": 2, "S": 3}
+        for c_dv, face in ((0, near_face), (2, far_face)):
+            if (right_du, c_dv) in by_du_dv:
+                cx, cy = by_du_dv[(right_du, c_dv)]
+                lights.append((cx, cy, 0, "Furniture", DECK_CHAIRS[face_idx[face]]))
+    if right_du is not None and (right_du, dd - 1) in by_du_dv:
+        px_, py_ = by_du_dv[(right_du, dd - 1)]
+        lights.append((px_, py_, 0, "Furniture", DECK_PLANT))
+
+
+def verify_exterior_props(
+    props: list[tuple[int, int, int, str, str]],
+    occupied_at: bytearray,
+    w: int,
+    h: int,
+    window_tiles: set[tuple[int, int]] | None = None,
+    check_pz_defs: bool = False,
+) -> list[str]:
+    """Verify every exterior wall prop matches its wall's geometry and PZ tile
+    orientation (`Facing` and `attachedN`/`attachedW` in newtiledefinitions.tiles).
+
+    Returns a list of human-readable error strings (empty when all props are valid).
+    """
+    errors: list[str] = []
+    pz_props: dict[str, dict[str, str]] = {}
+    if check_pz_defs:
+        try:
+            import knoxpaths
+            from tools.extract_tiles import read_tiles_bin
+
+            pz = knoxpaths.pz_install_dir()
+            tpath = pz / "media" / "tile_definitions" / "newtiledefinitions.tiles" if pz else None
+            if tpath and tpath.is_file():
+                for sheet, _fn, _c, _r, tiles in read_tiles_bin(str(tpath)):
+                    if sheet in ("industry_01", "lighting_outdoor_01"):
+                        for idx, p in tiles.items():
+                            pz_props[f"{sheet}_{idx:03d}"] = p
+        except Exception:
+            pz_props = {}
+
+    avoid_win = set(window_tiles or ())
+    avoid_win |= {(wx + dx_, wy + dy_) for wx, wy in avoid_win
+                  for dx_, dy_ in ((-1, 0), (1, 0), (0, -1), (0, 1))}
+
+    for tx, ty, _z, layer, tile in props:
+        if layer != PORCH_LIGHT_LAYER:
+            continue
+        spec = EXTERIOR_PROP_ORIENTATION.get(tile)
+        if spec is None:
+            errors.append(f"unknown exterior prop {tile} at ({tx}, {ty})")
+            continue
+        side, expected_facing = spec
+        if not (0 <= tx < w and 0 <= ty < h) or occupied_at[ty * w + tx]:
+            errors.append(f"{tile} at ({tx}, {ty}) is inside or out of bounds")
+            continue
+        if side == "N":
+            if ty == 0 or not occupied_at[(ty - 1) * w + tx]:
+                errors.append(f"{tile} (N) at ({tx}, {ty}) has no wall to the north")
+            if tx > 0 and occupied_at[ty * w + (tx - 1)] and tile in WALL_AC_UNIT.values():
+                errors.append(f"{tile} (N) at ({tx}, {ty}) sits in an inner L-corner")
+        elif side == "W":
+            if tx == 0 or not occupied_at[ty * w + (tx - 1)]:
+                errors.append(f"{tile} (W) at ({tx}, {ty}) has no wall to the west")
+            if ty > 0 and occupied_at[(ty - 1) * w + tx] and tile in WALL_AC_UNIT.values():
+                errors.append(f"{tile} (W) at ({tx}, {ty}) sits in an inner L-corner")
+        if tile in WALL_AC_UNIT.values() and (tx, ty) in avoid_win:
+            errors.append(f"{tile} at ({tx}, {ty}) overlaps a window/shutter")
+        if tile in pz_props:
+            p = pz_props[tile]
+            if p.get("Facing") != expected_facing:
+                errors.append(f"{tile} PZ Facing={p.get('Facing')} != {expected_facing}")
+            if f"attached{side}" not in p:
+                errors.append(f"{tile} missing attached{side} in PZ tile defs")
+    return errors
 
 
 def _add_exterior_house_props(bx0: int, by0: int, bw: int, bh: int,
                               doors: list, window_tiles: set,
                               occupied_at: bytearray, w: int, h: int,
                               frng: random.Random, lights: list) -> None:
-    """Add secondary door lights, drainage downspouts, electric boxes, and AC units."""
+    """Add secondary door outdoor wall lights and wall AC units on camera-facing
+    walls, verified against wall geometry and PZ tile orientation."""
+    added: list[tuple[int, int, int, str, str]] = []
     door_tiles = {(bx0 + ox, by0 + oy) for ox, oy, _ix, _iy in doors}
-    # 1. Extra wall lights by secondary/back doors on camera-facing walls
     for _ox, _oy, _ix, _iy in doors[1:]:
         sx, sy = bx0 + _ox, by0 + _oy
         dx, dy = _ox - _ix, _oy - _iy
@@ -1128,45 +1274,36 @@ def _add_exterior_house_props(bx0: int, by0: int, bw: int, bh: int,
             wx, wy = lx - dx, ly - dy
             if (0 <= lx < w and 0 <= ly < h and not occupied_at[ly * w + lx]
                     and 0 <= wx < w and 0 <= wy < h and occupied_at[wy * w + wx]):
-                lights.append((lx, ly, 0, PORCH_LIGHT_LAYER, style[side]))
+                added.append((lx, ly, 0, PORCH_LIGHT_LAYER, style[side]))
                 break
 
-    # 2. Collect clean camera-facing (S/E exterior -> side N/W) wall-adjacent tiles,
-    # keeping clear of doors, windows, and their immediate neighbours (shutters/frames).
+    # Camera-facing (S/E exterior -> side N/W) non-window, non-corner tiles for AC units
     avoid = set(door_tiles) | set(window_tiles)
     avoid |= {(ax + dx_, ay + dy_) for ax, ay in avoid
               for dx_, dy_ in ((-1, 0), (1, 0), (0, -1), (0, 1))}
-    candidates: list[tuple[int, int, str, bool]] = []
-    # South wall (side N)
+    candidates: list[tuple[int, int, str]] = []
     sy_out = by0 + bh
-    if 0 <= sy_out < h:
-        for tx in range(bx0, bx0 + bw):
+    if 0 < sy_out < h:
+        for tx in range(bx0 + 1, bx0 + bw - 1):
             if (0 <= tx < w and not occupied_at[sy_out * w + tx]
                     and occupied_at[(sy_out - 1) * w + tx]
+                    and (tx == 0 or not occupied_at[sy_out * w + (tx - 1)])
                     and (tx, sy_out) not in avoid):
-                is_corner = tx in (bx0, bx0 + bw - 1)
-                candidates.append((tx, sy_out, "N", is_corner))
-    # East wall (side W)
+                candidates.append((tx, sy_out, "N"))
     ex_out = bx0 + bw
-    if 0 <= ex_out < w:
-        for ty in range(by0, by0 + bh):
+    if 0 < ex_out < w:
+        for ty in range(by0 + 1, by0 + bh - 1):
             if (0 <= ty < h and not occupied_at[ty * w + ex_out]
                     and occupied_at[ty * w + (ex_out - 1)]
+                    and (ty == 0 or not occupied_at[(ty - 1) * w + ex_out])
                     and (ex_out, ty) not in avoid):
-                is_corner = ty in (by0, by0 + bh - 1)
-                candidates.append((ex_out, ty, "W", is_corner))
-
-    if not candidates:
-        return
-    # Electric box & wall AC on non-corner wall tiles
-    mids = [c for c in candidates if not c[3]]
-    frng.shuffle(mids)
-    if mids and frng.random() < 0.80:
-        tx, ty, side, _ = mids.pop()
-        lights.append((tx, ty, 0, PORCH_LIGHT_LAYER, ELECTRIC_BOX[side]))
-    if mids and frng.random() < 0.65:
-        tx, ty, side, _ = mids.pop()
-        lights.append((tx, ty, 0, PORCH_LIGHT_LAYER, WALL_AC_UNIT[side]))
+                candidates.append((ex_out, ty, "W"))
+    if candidates and frng.random() < 0.65:
+        tx, ty, side = frng.choice(candidates)
+        prop = (tx, ty, 0, PORCH_LIGHT_LAYER, WALL_AC_UNIT[side])
+        if not verify_exterior_props([prop], occupied_at, w, h, window_tiles):
+            added.append(prop)
+    lights.extend(added)
 
 
 def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
@@ -1276,6 +1413,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     dressed = 0
     fences = []
     apron_boxes = []
+    carport_clear: set[tuple[int, int]] = set()
     rng = random.Random(0xB17E)
     # Reading a thousand freshly written .tbx files is mostly waiting on the
     # disk, so it is done on threads up front; the loop below still runs in
@@ -1393,7 +1531,16 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                     xs, ys = [p[0] for p in top], [p[1] for p in top]
                     drives.append((min(xs), min(ys), max(xs) - min(xs) + 1, max(ys) - min(ys) + 1))
                     if structures is not None and not _outside_garage_doors(tbx_file):
-                        _add_house_carport(top, dx, dy, random.Random((bx0 * 31 + by0) ^ 0xCA7), structures)
+                        box = _add_house_carport(top, dx, dy, random.Random((bx0 * 31 + by0) ^ 0xCA7), structures)
+                        if box is not None:
+                            cx0, cy0, cw, ch = box
+                            for cy_ in range(cy0, cy0 + ch + 1):
+                                for cx_ in range(cx0, cx0 + cw + 1):
+                                    carport_clear.add((cx_, cy_))
+                                    if 0 <= cx_ < w and 0 <= cy_ < h:
+                                        claimed_bytes[cy_ * w + cx_] = 1
+                                        if veg is not None:
+                                            veg[cy_, cx_] = C.VEG_NOTHING
                 # The dustbin at the top of the drive, on the lawn beside it.
                 bx, by = strip[0]
                 if (bx - px, by - py) not in window_tiles:
@@ -1542,8 +1689,15 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             # The gate is beside the house, at the end of the last stretch.
 
             if lights is not None and bw * bh >= BACK_DECK_MIN_AREA:
+                back_door_u = next(
+                    ((bx0 + dox - u0) if dy else (by0 + doy - u0)
+                     for dox, doy, dix, diy in doors
+                     if (dox - dix, doy - diy) == (bdx, bdy)),
+                    None,
+                )
                 _add_back_deck(u0, width, depth, at, free, paint, claimed_bytes,
-                               paved_at, w, h, dy, bdx, bdy, yrng, lights)
+                               paved_at, w, h, dy, bdx, bdy, yrng, lights,
+                               back_door_u=back_door_u)
 
             taken = set()
 
@@ -1847,9 +2001,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             occ, road_at, free, fronts,
         )
 
-    if veg is not None and fronts:
-        # No tree or bush grows in a doorway.
-        for x, y in fronts:
+    if veg is not None and (fronts or drive_tiles or carport_clear):
+        # No tree or bush grows in a doorway, driveway, or carport.
+        for x, y in set(fronts) | drive_tiles | carport_clear:
             if 0 <= x < w and 0 <= y < h:
                 veg[y, x] = C.VEG_NOTHING
     # The credit for KnoxMap, in the ground near the first spawn house.

@@ -59,14 +59,16 @@ def build_building(width: int, height: int, levels: int = 1,
     staircase has to line up, and it does because the shaft is reserved first.
     """
     levels = max(1, levels)
-    if kind == "garage" and mask is None and min(width, height) >= 4 and min(width, height) % 2 == 0:
-        # The garage's low 30-degree roof needs an odd width across its slopes;
-        # even, it stops a tile short and a flat strip takes the last row. One
-        # tile off the narrow side, the far one, keeps the street door where it is.
-        if width <= height:
-            width -= 1
-        else:
-            height -= 1
+    if kind == "garage" and mask is None:
+        # Ensure rectangular exterior garages are large enough inside for a car
+        # (>= 5x5), and keep the shorter span odd for the 30-degree roof.
+        width = max(width, 5)
+        height = max(height, 5)
+        if min(width, height) % 2 == 0:
+            if width <= height:
+                width -= 1
+            else:
+                height -= 1
     rng = random.Random(seed ^ 0x5745)
     settings = settings or Settings()
     private_flats = kind == "apartment" and settings.apartment_layout != "classic" and not hotel

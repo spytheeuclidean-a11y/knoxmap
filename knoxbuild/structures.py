@@ -122,15 +122,29 @@ def render_tiles_tbx(width: int, height: int, tiles: list,
     for x, y, z, layer, tile in tiles:
         grids.setdefault(z, {}).setdefault(layer, {})[(x, y)] = number[tile]
 
+    extra_entries = []
+    roof_cap_idx = C.ROOF_CAP
+    roof_slope_idx = C.ROOF_SLOPE
+    roof_top_idx = C.ROOF_TOP
+    if roof_type:
+        # C.ROOF_SLOPE is the 45-degree default; Peak30Quad needs 30-degree
+        # Slope30* / Peak30Quad* tiles from HOUSE_STYLES[0]["roof"].
+        kit = C.HOUSE_STYLES[0]["roof"]
+        base_idx = len(C.TILE_ENTRIES)
+        extra_entries = [kit["caps"], kit["slopes"], kit["tops"]]
+        roof_cap_idx = base_idx + 1
+        roof_slope_idx = base_idx + 2
+        roof_top_idx = base_idx + 3
+
     out = ['<?xml version="1.0" encoding="UTF-8"?>']
     attrs = [("version", 4), ("width", width), ("height", height),
              ("ExteriorWall", C.EXTERIOR_WALL), ("ExteriorWallTrim", 0),
              ("Door", C.DOOR), ("DoorFrame", C.DOOR_FRAME), ("Window", C.WINDOW),
              ("Curtains", C.CURTAINS), ("Shutters", 0), ("Stairs", C.STAIRS),
-             ("RoofCap", C.ROOF_CAP), ("RoofSlope", C.ROOF_SLOPE),
-             ("RoofTop", C.ROOF_TOP), ("GrimeWall", 0)]
+             ("RoofCap", roof_cap_idx), ("RoofSlope", roof_slope_idx),
+             ("RoofTop", roof_top_idx), ("GrimeWall", 0)]
     out.append("<building" + "".join(f" {k}={quoteattr(str(v))}" for k, v in attrs) + ">")
-    for entry in C.TILE_ENTRIES:
+    for entry in list(C.TILE_ENTRIES) + extra_entries:
         out.append(f' <tile_entry category={quoteattr(entry["category"])}>')
         for enum_name, tile in entry["tiles"].items():
             out.append(f'  <tile enum={quoteattr(enum_name)} tile={quoteattr(tile)}/>')
@@ -146,13 +160,14 @@ def render_tiles_tbx(width: int, height: int, tiles: list,
                              for y in range(height)) + "\n"
     for z in range(levels):
         out.append(" <floor>")
-        if z == 0 and roof_type:
+        roof_z = 0 if roof_type == "FlatTop" else 1
+        if z == roof_z and roof_type:
             out.append(
                 f'  <object type="roof" width="{width}" height="{height}" '
                 f'RoofType={quoteattr(roof_type)} Depth={quoteattr(roof_depth)} '
                 f'cappedW="false" cappedN="false" cappedE="false" cappedS="false" '
-                f'CapTiles="{C.ROOF_CAP}" SlopeTiles="{C.ROOF_SLOPE}" '
-                f'TopTiles="{C.ROOF_TOP}" x="0" y="0"/>'
+                f'CapTiles="{roof_cap_idx}" SlopeTiles="{roof_slope_idx}" '
+                f'TopTiles="{roof_top_idx}" x="0" y="0"/>'
             )
         out.append("  <rooms>" + rooms + "</rooms>")
         for layer, cells in sorted(grids.get(z, {}).items()):
