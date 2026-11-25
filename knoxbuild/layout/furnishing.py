@@ -2277,7 +2277,7 @@ def _is_sink(role: str) -> bool:
 WORKTOP_ROOMS = ({"kitchen", "bathroom", "laundry", "breakroom", "openplan"}
                  | KITCHENS)
 # Opened from the front: the tile before them is kept clear.
-FRONT_CLEAR_ROLES = {"fridge", "stove", "stove_alt", "washer", "dryer", "wardrobe",
+FRONT_CLEAR_ROLES = {"fridge", "stove", "stove_alt", "washer", "wardrobe",
                      "bookshelf", "dresser", "dresser_alt", "filing_cabinet"}
 DOOR_CLEAR_DEPTH = 2
 
