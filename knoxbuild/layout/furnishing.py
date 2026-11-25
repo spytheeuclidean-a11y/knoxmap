@@ -1375,6 +1375,11 @@ def _seat_the_table(plan: Plan, idx: int, keep_clear: set[tuple[int, int]],
 
 
 # Pieces a room has one of, however big it is.
+# Erika's Tiles name its assets by family; these are the prefixes the
+# predicates below match on. Adding a family means adding it here.
+ERIKA_ART_PREFIXES = ("erika_art", "erika_ad")
+ERIKA_PLANT_PREFIX = "erika_plant"
+ERIKA_VENDING_PREFIX = "erika_vending"
 ONCE = {"sofa", "tv", "double_bed", "bed", "bath", "toilet", "stove", "fridge", "washer",
         "vanity", "crib",
         "shower", "kitchen_sink", "sink", "coffee_table", "dining_table", "wardrobe",
@@ -1382,7 +1387,7 @@ ONCE = {"sofa", "tv", "double_bed", "bed", "bath", "toilet", "stove", "fridge", 
 
 
 def _once(role: str) -> bool:
-    return role in ONCE or role.startswith(("sofa_", "double_bed", "bed_", "wardrobe", "erika_vending"))
+    return role in ONCE or role.startswith(("sofa_", "double_bed", "bed_", "wardrobe", ERIKA_VENDING_PREFIX))
 
 
 def _place_group(plan: Plan, idx: int, room: Room,
@@ -2010,7 +2015,7 @@ def _furnish(plan: Plan, storey_rng: random.Random,
             # Pictures and mirrors are the one thing that repeats freely, so
             # scaling the list with floor area turned a big room into a
             # gallery. Everything else keeps its share.
-            if role in ("painting", "mirror") or role.startswith(("erika_art", "erika_ad")):
+            if role in ("painting", "mirror") or role.startswith(ERIKA_ART_PREFIXES):
                 if art >= art_cap:
                     continue
                 art += 1
@@ -2290,7 +2295,7 @@ def _needs_front(role: str) -> bool:
 
 
 def _needs_surface(role: str) -> bool:
-    return role in SURFACE_ROLES or _is_sink(role) or role.startswith("erika_plant")
+    return role in SURFACE_ROLES or _is_sink(role) or role.startswith(ERIKA_PLANT_PREFIX)
 
 
 # Sprite geometry, read off the tiles themselves. A small thing is drawn with
@@ -3670,7 +3675,7 @@ def _off_the_tall_furniture(storey: Plan) -> int:
     gone = {i for i, (role, fx, fy, fd) in enumerate(storey.furniture)
             if role != SWITCH and _is_wall_piece(role) and (fx, fy) in tall
             and (role in ("painting", "mirror", "mirror_small", "corkboard", "clock")
-                 or role.startswith(("poster_", "erika_art", "erika_ad")))}
+                 or role.startswith(("poster_",) + ERIKA_ART_PREFIXES))}
     if gone:
         storey.furniture = [f for i, f in enumerate(storey.furniture)
                             if i not in gone]
