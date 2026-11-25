@@ -190,9 +190,6 @@ body.ws-loading > * { visibility: hidden; }
 @container (max-width: 490px) {
   .ws-chip:not(.next, .running, .error) .step-label { position: absolute; width: 1px; clip-path: inset(50%); }
 }
-@container (max-width: 330px) {
-  .ws-auto-standalone .ws-clip { position: absolute; width: 1px; clip-path: inset(50%); }
-}
 .ws-pop { position: absolute; top: calc(100% + 4px); z-index: 1150; width: min(560px, 92%); max-height: 70vh;
   left: clamp(0px, var(--pop-left, 0px), calc(100% - min(560px, 92%) - 8px));
   overflow-y: auto; background: var(--panel); border: 1px solid var(--line-strong); border-radius: 6px;
