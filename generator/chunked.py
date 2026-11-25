@@ -26,7 +26,7 @@ import knoxfiles
 import knoxstop
 
 from . import pz_colors as C
-from .osm import OSMFeature, classify
+from .osm import OSMFeature, classify, rail_is_disused
 from .rendering.geometry import _feature_coords_px, _is_polygon
 from .rendering.noise import global_tile_offset
 from .rendering.projection import Projector, _inside, shape_px
@@ -288,7 +288,11 @@ def render_chunked(
     if render_progress:
         render_progress(0.78, "Fitting railways")
     from .rendering.rails import global_rail_sections
-    rail_feats = [f for f in feats if classify(f.tags, _is_polygon(f)) == "railway"]
+    # A disused track lays no steel, so it fits no sections either: planning
+    # them would paint rail tiles that paint_rails then refuses to draw.
+    rail_feats = [f for f in feats
+                  if classify(f.tags, _is_polygon(f)) == "railway"
+                  and not rail_is_disused(f.tags)]
     rail_sections_global = global_rail_sections(rail_feats, full_proj, should_stop=should_stop)
 
     if render_progress:

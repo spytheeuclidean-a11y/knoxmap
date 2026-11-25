@@ -24,6 +24,9 @@ ROAD_WIDTHS_M = {
     "dirt_path": 2.5,
     "paved_path": 2.5,
     "pier": 3.0,
+    # A breakwater is a wall of stone with a road on it, not a jetty: on the
+    # 3 m fallback of a line category it read as a narrow causeway.
+    "breakwater": 6.0,
     "railway": 4.0,
     # An airfield. A runway is the widest thing a town has by a long way:
     # a county strip is 18-23 m, a regional one 30, an international 45-60.
@@ -123,8 +126,11 @@ def _verge_width_m(feat: OSMFeature, cat: str) -> float:
 
 def _way_width_m(feat: OSMFeature, cat: str) -> float:
     """Carriageway width for this way, from its own tags where it has them."""
+    # The 4.0 default is for a line category that is in none of the tables -
+    # a breakwater, a drainage ditch - rather than a KeyError halfway through
+    # a map.
     base = ROAD_WIDTHS_BY_HIERARCHY_M.get(road_hierarchy(feat.tags),
-                                         ROAD_WIDTHS_M[cat])
+                                         ROAD_WIDTHS_M.get(cat, 4.0))
     raw = feat.tags.get("width") or feat.tags.get("est_width")
     if raw:
         # OSM widths are metres unless suffixed; "7", "7 m" and "7.5" all occur.

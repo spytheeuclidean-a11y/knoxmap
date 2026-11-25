@@ -1,3 +1,32 @@
+## Unreleased
+
+- **Drainage, disused track and breakwaters: ground that was mapped and dropped**
+  (`generator/osm.py`, `generator/rendering/landcover.py`, `generator/renderer.py`,
+  `generator/rendering/roads.py`, `generator/chunked.py`,
+  `generator/rendering/infill.py`, `generator/rendering/widths.py`,
+  `tests/test_discarded_features.py`).
+  - **Drains, ditches, dams and weirs** were asked for and then answered with
+    nothing: `waterway` was fetched for every value, and only `river`,
+    `riverbank`, `canal` and `stream` got an answer. They are a dry channel of
+    clay now, drawn at their own width - a drain 1.5 m, a ditch 2.5 m - rather
+    than the 3 m fallback that made a field ditch as wide as a lane.
+    Deliberately **not** `C.WATER`: that colour is how the passes below know to
+    keep zombies out, turn doors away and stand no street furniture, so a
+    roadside ditch painted as water came out as a swimming pool nobody lived
+    beside.
+  - **Disused and preserved track** was painted as a working line: steel,
+    sleepers and bare ballast were laid down a railway nobody runs on. It keeps
+    its bed and loses its steel, in dirt with grass through it, and the section
+    fitting no longer plans tiles that would not be drawn.
+  - **Breakwaters and groynes** were piers: the same pale concrete, and the same
+    railing following the top of a walkway. They are rubble now, and no railing
+    follows them.
+  - All three reuse colours already bound to a tile rule. A new colour needs a
+    new rule in `Rules.txt`, and a rule naming artwork the player's Build 42
+    does not have stops the BMP-to-TMX conversion outright
+    (`worlded/patch_rules_b42_trees.py`), so the palette was the constraint here
+    and not the drawing.
+
 ## 1.8.7.1
 
 - **Houses: halls, box rooms, dumpsters, fridge walls, jewelry rows and footprint shapes**

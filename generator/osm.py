@@ -1298,6 +1298,18 @@ def road_hierarchy(tags: dict) -> str | None:
     return HIGHWAY_HIERARCHY.get(str(tags.get("highway") or "").lower())
 
 
+# A track that carries no trains. It keeps its bed and loses its steel, so it
+# is drawn as a bed and no rail tile is laid on it (generator/rendering/roads.py,
+# generator/renderer.py). "abandoned" is not here because OVERPASS_FILTERS does
+# not ask for it; a line torn up and gone is not a line.
+DISUSED_RAIL_VALUES = frozenset({"disused", "preserved"})
+
+
+def rail_is_disused(tags: dict) -> bool:
+    """True for a mapped railway that no longer runs on that steel."""
+    return (tags.get("railway") or "") in DISUSED_RAIL_VALUES
+
+
 def classify(tags: dict, area: bool = False) -> str | None:
     """Map OSM tags to a PZ feature category string. None = ignore.
 
@@ -1396,7 +1408,12 @@ def classify(tags: dict, area: bool = False) -> str | None:
         return "pool"
     if tags.get("natural") == "coastline":
         return "coastline"
-    if tags.get("man_made") in {"pier", "breakwater", "groyne"}:
+    # A breakwater or a groyne is rock thrown against the sea, not a walkway.
+    # Read as a pier it was painted the same pale concrete and given the same
+    # railing along its top, which is a jetty.
+    if tags.get("man_made") in {"breakwater", "groyne"}:
+        return "breakwater"
+    if tags.get("man_made") == "pier":
         return "pier"
     if tags.get("railway") in {"rail", "light_rail", "narrow_gauge", "disused", "preserved"}:
         return "railway"
@@ -1405,6 +1422,12 @@ def classify(tags: dict, area: bool = False) -> str | None:
         return "water"
     if landuse in {"reservoir", "basin"}:
         return "water"
+    # Drainage is water you can stand in. Every pass that keeps zombies out,
+    # turns a door away and stands no street furniture keys off C.WATER, so a
+    # roadside ditch painted as water came out as a swimming pool that nobody
+    # lived beside. It gets its own dry channel instead.
+    if tags.get("waterway") in {"drain", "ditch", "dam", "weir"}:
+        return "drainage"
     if landuse in {"forest"} or tags.get("natural") == "wood":
         return "forest"
     if tags.get("natural") in {"scrub", "heath"}:

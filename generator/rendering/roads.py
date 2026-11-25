@@ -7,7 +7,7 @@ import math
 from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
-from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, road_hierarchy
+from ..osm import OSMFeature, ROAD_HIERARCHY_CODES, rail_is_disused, road_hierarchy
 from .crossings import paint_crossings
 from .geometry import _draw_roads, _feature_coords_px, _is_polygon
 from .landcover import DENSE_COVERAGE, GREEN_CATEGORIES, MAX_PAVED_BLOCK
@@ -317,7 +317,10 @@ def paint_rails(draw, buckets: dict[str, list[OSMFeature]], proj: Projector, sho
                         draw.point((px, py), fill=rail_colour(sheet, tile))
         return
 
-    for ring in rail_paths(buckets.get("railway", []), proj):
+    # A track carrying no trains gets no steel. Its bed was already painted
+    # overgrown by the landscape pass (renderer.py, DISUSED_RAIL_FILL).
+    for ring in rail_paths([f for f in buckets.get("railway", [])
+                            if not rail_is_disused(f.tags)], proj):
         paint_track(draw, ring, should_stop)
 
 

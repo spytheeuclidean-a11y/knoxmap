@@ -32,7 +32,7 @@ from . import pz_colors as C
 from . import structures
 from .osm import (FENCE_BARRIERS, GATE_BARRIERS, OSMFeature,  # noqa: F401
                   ROAD_HIERARCHY_BY_CODE, ROAD_HIERARCHY_CODES, classify,
-                  road_hierarchy)
+                  rail_is_disused, road_hierarchy)
 
 # Everything that moved out is still importable from here: the tests, the
 # tools and knoxbuild reach into this module by name.
@@ -56,9 +56,9 @@ from .rendering.gridangle import (ALIGN_MIN_STRENGTH, DISTRICT_CELL_M,
                                   DISTRICT_CLUSTER_DEG, DISTRICT_MIN_ROAD_M,
                                   GRID_ROADS, _grid_delta, dominant_road_angle)  # noqa: F401
 from .rendering.landcover import (AREA_CATEGORIES, DENSE_COVERAGE,
-                                  GREEN_CATEGORIES, LANDSCAPE_FILL,
-                                  LANDSCAPE_ORDER, VEG_CATEGORIES,
-                                  WATERWAY_WIDTH_M, paint_markers,
+                                  DISUSED_RAIL_FILL, GREEN_CATEGORIES,
+                                  LANDSCAPE_FILL, LANDSCAPE_ORDER,
+                                  VEG_CATEGORIES, WATERWAY_WIDTH_M, paint_markers,
                                   grid_for_map, refine_owned, resized_grid,
                                   settle_markers)  # noqa: F401
 from .rendering.fields import paint_fields, paint_pools, paint_rocks
@@ -668,23 +668,42 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                          for feat in buckets.get(cat, []) if not _is_polygon(feat)],
                         C.PALE_CONCRETE, crisp=(road_layout == 5))
         if cat in ROAD_WIDTHS_M:
-            strokes = [(road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
-                       for feat in buckets.get(cat, []) if not _is_polygon(feat)]
-            _draw_roads(landscape, strokes, fill, crisp=(road_layout == 5))
+            # A track carrying no trains keeps its bed and loses its steel:
+            # the ballast is overgrown rather than bare, and paint_rails lays
+            # no tile on it. Everything else here is one colour.
+            tracks: dict[bool, list] = {True: [], False: []}
+            for feat in buckets.get(cat, []):
+                if _is_polygon(feat):
+                    continue
+                overgrown = cat == "railway" and rail_is_disused(feat.tags)
+                tracks[overgrown].append(
+                    (road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat)))
+            for overgrown, strokes in tracks.items():
+                if strokes:
+                    _draw_roads(landscape, strokes,
+                                DISUSED_RAIL_FILL if overgrown else fill,
+                                crisp=(road_layout == 5))
         for feat in buckets.get(cat, []):
             if cat == "railway" and not _is_polygon(feat):
                 continue  # the continuous track pass supplies its own ballast
+            # Its own name, not the loop's: reassigning fill here left the
+            # disused bed's colour on every later polygon of the category,
+            # so a working railway mapped as an area came out overgrown
+            # depending on the order the features arrived in.
+            feat_fill = (DISUSED_RAIL_FILL
+                         if cat == "railway" and rail_is_disused(feat.tags) else fill)
             rings = _feature_coords_px(feat, proj)
             if cat in ROAD_WIDTHS_M and not _is_polygon(feat):
                 continue  # Painted together so split ways share the same beveled join.
             elif feat.kind == "relation":
-                _paint_multipolygon(landscape, feat, proj, fill)
+                _paint_multipolygon(landscape, feat, proj, feat_fill)
             elif _is_polygon(feat):
-                _draw_polygon(l_draw, rings, fill)
+                _draw_polygon(l_draw, rings, feat_fill)
             else:
                 # A river or canal mapped only as its centre line.
                 metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
-                _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
+                _draw_line(l_draw, rings, feat_fill,
+                           _pixel_width(metres, meters_per_tile))
 
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:
