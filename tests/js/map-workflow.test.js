@@ -79,3 +79,33 @@ test('generation uses the same nonempty name for the request, progress and Stop'
     assert.deepEqual(stops.slice(-2), [name, null]);
   }
 });
+
+test('opening a draft discards a pending map response', async () => {
+  const { ctx, field, run } = workspace();
+  run(fs.readFileSync(path.join(__dirname, '../../static/js/settings.js'), 'utf8'));
+  run("currentMap = 'A'; openedMap = { mapName: 'A' }");
+  field('mapName').value = field('boardName').value = 'A';
+  const rendered = [];
+  let finish;
+  ctx.fetch = () => new Promise(resolve => { finish = resolve; });
+  ctx.renderResults = data => rendered.push(data.mapName);
+  ctx.loadZones = () => {};
+  ctx.loadSketchGeoJSON = () => {};
+  const opening = ctx.openMap('A');
+  ctx.clearOpenedMap();
+  finish({ ok: true, json: async () => ({ mapName: 'A' }) });
+  await opening;
+  assert.deepEqual(rendered, []);
+  assert.equal(run('currentMap'), null);
+  assert.equal(run('openedMap'), null);
+  assert.equal(field('mapName').value, '');
+  assert.equal(field('boardName').value, '');
+  assert.equal(field('upgradeNote').hidden, true);
+  assert.equal(field('reapply').hidden, true);
+
+  // A portable preset keeps the exact values that its sliders rounded for display.
+  run('importedSettings = { settings: { density: 0.18 }, shown: { density: 0.2 } }');
+  ctx.readSettings = () => ({ density: 0.2 });
+  ctx.clearOpenedMap();
+  assert.equal(ctx.settingsForRequest().density, 0.18);
+});

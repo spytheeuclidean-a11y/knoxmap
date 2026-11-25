@@ -1856,16 +1856,35 @@ async function deleteMap(mapName) {
 }
 window.deleteMap = deleteMap;
 
+// Opening a saved map is asynchronous. Only the latest selection owns the editor.
+let mapOpenRequest = 0;
+
+function clearOpenedMap() {
+  ++mapOpenRequest;
+  if (document.getElementById('boardName').value === currentMap) {
+    document.getElementById('boardName').value = '';
+  }
+  currentMap = null;
+  document.getElementById('mapName').value = '';
+  document.getElementById('status').textContent = '';
+  rememberMap(null);
+  showUpgrade({});
+  loadSketchGeoJSON(null);
+  loadZones(null);
+}
+
 async function openMap(mapName) {
+  const request = ++mapOpenRequest;
   let data;
   try {
     const res = await fetch(`/api/maps/${encodeURIComponent(mapName)}`);
     data = await res.json();
     if (!res.ok) throw apiError(data, res);
   } catch (err) {
-    fx.toast('bad', 'Could not open that map', err.message, 8000);
+    if (request === mapOpenRequest) fx.toast('bad', 'Could not open that map', err.message, 8000);
     return;
   }
+  if (request !== mapOpenRequest) return;
   renderResults(data);
   showUpgrade(data);
   // The settings this map was made with, back in the panel, so one of them can
@@ -1875,7 +1894,7 @@ async function openMap(mapName) {
   loadZones(data.mapName);
   fetch(`/api/sketch/${encodeURIComponent(data.mapName)}`)
     .then(r => r.json())
-    .then(loadSketchGeoJSON)
+    .then(sketch => { if (request === mapOpenRequest) loadSketchGeoJSON(sketch); })
     .catch(() => { /* a map with nothing drawn simply has none */ });
   rememberMap({ mapName: data.mapName, bbox: data.bbox,
                 metersPerTile: data.metersPerTile, shape: data.shape,
@@ -1975,7 +1994,8 @@ function wirePictures(mapName) {
 
 async function upgradeMap(data, button) {
   const box = document.getElementById('upgradeNote');
-  const say = text => { box.querySelector('span').textContent = text; };
+  const progress = box.querySelector('span');
+  const say = text => { progress.textContent = text; };
   for (const b of box.querySelectorAll('button')) b.disabled = true;
   fx.toast('ok', 'Upgrading', `${data.mapName}: ${data.needsLabels.join(' → ')}`);
   const post = async (url, body) => {
@@ -2047,12 +2067,14 @@ async function upgradeMap(data, button) {
         }
       }
     }
+    if (!box.contains(button)) { loadMaps(); return; }
     box.innerHTML = '<span></span>';
     box.querySelector('span').textContent =
       `${data.mapName} is up to date with KnoxMap ${data.current}.`;
     fx.toast('ok', 'Map upgraded', `${data.needsLabels.join(', ')} ran again.`);
     loadMaps();
   } catch (err) {
+    if (!box.contains(button)) return;
     say(`Could not upgrade it: ${err.message}`);
     for (const b of box.querySelectorAll('button')) b.disabled = false;
     if (button) button.textContent = 'Try again';
@@ -2095,6 +2117,7 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
   // Name it here rather than letting the server invent one, so progress can be
   // polled under a key the page already knows.
   const nameField = document.getElementById('mapName');
+  ++mapOpenRequest;
   const chosen = mapNameForRequest(nameField.value, 'knoxmap');
   nameField.value = chosen;
 
@@ -2426,22 +2449,11 @@ document.getElementById('resultsClose').addEventListener('click', () => {
   document.getElementById('map').scrollIntoView({ block: 'start' });
 });
 
-function getActiveMapName() {
-  const badge = document.querySelector('.map-badge');
-  const name = badge ? badge.textContent.trim() : '';
-  if (name && name !== '—') return name;
-  return typeof currentMap !== 'undefined' && currentMap ? currentMap : '';
+for (const id of ['resultsDelete', 'deleteMapSideBtn']) {
+  document.getElementById(id)?.addEventListener('click', () => {
+    if (currentMap) deleteMap(currentMap);
+  });
 }
-
-document.getElementById('resultsDelete')?.addEventListener('click', () => {
-  const name = getActiveMapName();
-  if (name) deleteMap(name);
-});
-
-document.getElementById('deleteMapSideBtn')?.addEventListener('click', () => {
-  const name = getActiveMapName();
-  if (name) deleteMap(name);
-});
 
 // What the street infill made and why it left the rest of the gaps empty. The
 // reasons come from the generator (generator/rendering/infill.py), already in
@@ -2875,8 +2887,7 @@ function note(id, text, cls) {
 
 function setupPipeline(data) {
   currentMap = data.mapName;
-  const upgrade = document.getElementById('upgradeNote');
-  if (upgrade) { upgrade.hidden = true; upgrade.innerHTML = ''; }
+  showUpgrade({});
   document.getElementById('mapTitle').value = data.mapName;
   document.getElementById('modId').value = data.mapName;
   document.getElementById('buildingsBtn').disabled = false;
@@ -2915,6 +2926,7 @@ function setupPipeline(data) {
   fetch(`/api/compile-status?map=${encodeURIComponent(data.mapName)}`)
     .then(r => r.json())
     .then(p => {
+      if (data.mapName !== currentMap) return;
       if (p.state === 'running' || p.state === 'stopping') {
         document.getElementById('compileBtn').disabled = true;
         showStop(data.mapName);
@@ -2967,7 +2979,7 @@ async function loadLeftOut(mapName) {
   try {
     const res = await fetch(`/api/why/${encodeURIComponent(mapName)}`);
     const data = await res.json();
-    if (res.ok) showLeftOut(data);
+    if (res.ok && currentMap === mapName) showLeftOut(data);
   } catch (err) { /* nothing to show if it cannot be asked */ }
 }
 
@@ -3058,10 +3070,12 @@ function startLotsPoll() {
 }
 
 async function checkLots() {
-  if (!currentMap) return;
+  const mapName = currentMap;
+  if (!mapName) return;
   try {
-    const res = await fetch(`/api/lots?map=${encodeURIComponent(currentMap)}`);
+    const res = await fetch(`/api/lots?map=${encodeURIComponent(mapName)}`);
     const data = await res.json();
+    if (mapName !== currentMap) return;
     if (data.compiled) {
       clearInterval(lotsPoll);
       note('worldedNote', `${data.cells} cells compiled.`, 'ok');
