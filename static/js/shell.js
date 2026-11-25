@@ -930,7 +930,7 @@
     const canAuto = !n?.stop && !n?.done && !!currentRect && !currentMap && !off('autoBtn');
     const autoChecked = !!$('autoStandalone')?.checked;
     const autoCtrl = canAuto
-      ? `<label class="ws-auto-standalone" title="Play without Knox County (cell 0,0)"><input type="checkbox" data-flow-standalone${autoChecked ? ' checked' : ''}><span class="ws-clip">Standalone</span></label>`
+      ? `<span class="ws-flow-sep" aria-hidden="true">|</span><label class="ws-auto-standalone" title="Play without Knox County (cell 0,0)"><span class="ws-clip">Standalone</span><input type="checkbox" data-flow-standalone${autoChecked ? ' checked' : ''}></label>`
         + '<button type="button" class="btn go" data-flow-auto title="Run Generate, Build, Compile, and Install automatically">Auto ▶</button>'
       : '';
     const btn = !n ? '' : n.stop
