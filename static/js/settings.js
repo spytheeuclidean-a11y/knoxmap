@@ -397,8 +397,8 @@ function buildSettingsForm(values) {
     tab.dataset.tab = name;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-controls', `setting-panel-${name}`);
-    tab.innerHTML = (group.icon ? `<span class="setting-tab-icon" aria-hidden="true">${group.icon}</span>` : '')
-      + `<span class="setting-tab-name">${group.title}</span>`
+    tab.innerHTML = KnoxDraw.icon(name)
+      + `<span class="setting-tab-name ws-clip">${group.title}</span>`
       + '<span class="setting-tab-dot" title="Changed from the defaults for this kind of place" hidden></span>'
       + '<span class="setting-tab-count"></span>';
     tab.addEventListener('click', () => {

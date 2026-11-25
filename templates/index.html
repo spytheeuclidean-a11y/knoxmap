@@ -43,9 +43,9 @@
   <section id="map-pane">
     <div id="search-box">
       <input id="searchInput" type="search" autocomplete="off"
-             placeholder="Search for a place and press Enter" />
+             placeholder="Search for a place and press Enter" title="Search for a place and press Enter" />
       <label class="search-scope">
-        <input type="checkbox" id="searchHere" /> in this view
+        <input type="checkbox" id="searchHere" /><span class="ws-clip">in this view</span>
       </label>
       <ul id="search-results" hidden></ul>
     </div>
@@ -65,8 +65,8 @@
 
     <div id="gen-overlay" hidden>
       <div class="gen-box">
-        <div class="gen-kicker">Generating terrain</div>
-        <div id="gen-stage">Contacting OpenStreetMap…</div>
+        <div class="gen-kicker ws-clip">Generating terrain</div>
+        <div id="gen-stage" class="ws-clip">Contacting OpenStreetMap…</div>
         <div id="gen-detail"></div>
         <div class="bar"><div id="gen-bar" class="bar-fill"></div></div>
         <div class="gen-elapsed"><span id="gen-clock">0:00</span><span id="gen-eta"></span></div>
@@ -180,19 +180,19 @@
         <summary>Saved areas <span class="count" id="presetsCount"></span></summary>
         <p class="hint">Keep the area you have drawn, with its scale and settings,
           under a name, and bring it back later.</p>
-        <div class="preset-row">
+        <div class="preset-row" id="presetSavedRow" hidden>
           <select id="presetList" aria-label="Saved areas"></select>
           <button id="presetLoad" class="btn btn-small" type="button">Load</button>
           <button id="presetDelete" class="btn btn-small" type="button">Delete</button>
         </div>
-        <div class="preset-row">
+        <div class="preset-row" id="presetSaveRow" hidden>
           <input type="text" id="presetName" maxlength="60" placeholder="Name for this area">
           <button id="presetSave" class="btn btn-small" type="button">Save</button>
         </div>
         <div class="preset-row preset-share">
-          <button id="presetExport" class="btn btn-small" type="button">Export file</button>
+          <button id="presetExport" class="btn btn-small" type="button" hidden>Export file</button>
           <button id="presetImport" class="btn btn-small" type="button">Import file</button>
-          <button id="presetShare" class="btn btn-small" type="button">Copy link</button>
+          <button id="presetShare" class="btn btn-small" type="button" hidden>Copy link</button>
           <button id="presetOpenLink" class="btn btn-small" type="button">Open link</button>
           <input id="presetFile" type="file" accept=".json,application/json" hidden>
         </div>
@@ -275,10 +275,10 @@
           <div class="setting setting-static">
             <div class="field-label">Kind of place</div>
             <div class="preset-cards" id="presetCards" role="radiogroup" aria-label="Kind of place">
-              <button type="button" class="preset-card is-on" data-preset="town" role="radio" aria-checked="true">Town</button>
-              <button type="button" class="preset-card" data-preset="suburb" role="radio" aria-checked="false">Suburb</button>
-              <button type="button" class="preset-card" data-preset="city" role="radio" aria-checked="false">City</button>
-              <button type="button" class="preset-card" data-preset="rural" role="radio" aria-checked="false">Rural</button>
+              <button type="button" class="preset-card ws-clip is-on" data-preset="town" role="radio" aria-checked="true">Town</button>
+              <button type="button" class="preset-card ws-clip" data-preset="suburb" role="radio" aria-checked="false">Suburb</button>
+              <button type="button" class="preset-card ws-clip" data-preset="city" role="radio" aria-checked="false">City</button>
+              <button type="button" class="preset-card ws-clip" data-preset="rural" role="radio" aria-checked="false">Rural</button>
             </div>
           </div>
           <!-- Drawn like the generated settings' switches (settingElement). -->
@@ -374,8 +374,8 @@
           in one brick, a quiet edge. Anything outside every zone is built to
           the settings in Properties.</p>
         <div class="sketch-actions">
-          <button type="button" id="zoneDraw" class="btn">Draw a zone</button>
-          <button type="button" id="zoneSave" class="btn" disabled>Save zones</button>
+          <button type="button" id="zoneDraw" class="btn ws-clip">Draw a zone</button>
+          <button type="button" id="zoneSave" class="btn ws-clip" disabled>Save zones</button>
         </div>
         <div id="zoneTools" class="sketch-actions"></div>
         <!-- One foldable item per zone; the open one holds its settings
@@ -416,10 +416,10 @@
           really is; drag its corners to move it. Generate map again and the
           change is in.</p>
         <div class="sketch-actions">
-          <button type="button" id="editLoad" class="btn" disabled>Load what is here</button>
-          <button type="button" id="editShape" class="btn" disabled>Move and reshape</button>
-          <button type="button" id="editSave" class="btn" disabled>Save changes</button>
-          <button type="button" id="editReset" class="btn" disabled>Undo all</button>
+          <button type="button" id="editLoad" class="btn" disabled><span class="ws-clip">Load what is here</span></button>
+          <button type="button" id="editShape" class="btn" disabled><span class="ws-clip">Move and reshape</span></button>
+          <button type="button" id="editSave" class="btn" disabled><span class="ws-clip">Save changes</span></button>
+          <button type="button" id="editReset" class="btn" disabled><span class="ws-clip">Undo all</span></button>
         </div>
         <div id="editSelected" class="edit-selected" hidden></div>
         <div id="editNote" class="hint"></div>

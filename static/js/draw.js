@@ -448,8 +448,7 @@
   // The same row of buttons everywhere. They follow the editor's state, so
   // Undo is dimmed when there is nothing to undo and Duplicate when nothing is
   // picked, wherever the row happens to be.
-  // Line icons for the editing buttons, here and in the Tools panel
-  // (KnoxDraw.icon), drawn in the text's colour.
+  // Line icons for editing buttons and workspace tabs, drawn in the text's colour.
   const ICONS = {
     undo: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     redo: '<path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/>',
@@ -460,6 +459,18 @@
     load: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
     save: '<path d="M5 3h11l3 3v15H5z"/><path d="M8 3v5h7V3M8 21v-7h8v7"/>',
     reset: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+    extent: '<path d="M9 4H4v5m11-5h5v5M4 15v5h5m11-5v5h-5"/>',
+    features: '<rect x="3" y="3" width="9" height="9" rx="1"/><circle cx="16" cy="16" r="5"/>',
+    zones: '<path d="M4 5h16v14H4zM4 12h16m-9-7v7m4 0v7"/>',
+    edit: '<path d="m4 16 12-12 4 4L8 20H4zm10-10 4 4"/>',
+    hammer: '<path d="m13 10-9 9 2 2 9-9m2 2 4-4-7-7-5 1 3 3-2 2z"/>',
+    map: '<path d="m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3zm6-3v15m6-12v15"/>',
+    gameplay: '<path d="M8 7h8a4 4 0 0 1 4 3l1 4a3 3 0 0 1-5 3l-2-2h-4l-2 2a3 3 0 0 1-5-3l1-4a4 4 0 0 1 4-3z"/><path d="M8 10v4m-2-2h4m6 0h.1m2-2h.1"/>',
+    roads: '<path d="M7 3 4 21M17 3l3 18M12 4v3m0 3v3m0 3v3"/>',
+    buildings: '<path d="M4 21V7h8v14m0-10h8v10H4m3-10h2m-2 4h2m6 0h2"/>',
+    land: '<path d="m3 19 6-12 4 7 3-5 5 10zm4-8 2 2 2-2"/>',
+    forest: '<path d="m12 3-5 7h3l-5 7h14l-5-7h3zm0 14v4"/>',
+    other: '<path d="M4 7h6m4 0h6M4 17h10m4 0h2"/><circle cx="12" cy="7" r="2"/><circle cx="16" cy="17" r="2"/>',
   };
   function icon(name) {
     return `<svg class="kd-ico" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
@@ -495,7 +506,7 @@
       for (const [id, ico, text, title, run, iconOnly] of defs) {
         const b = document.createElement('button');
         b.type = 'button'; b.className = 'btn kd-' + id + (iconOnly ? ' kd-icon-only' : '');
-        b.innerHTML = icon(ico) + (iconOnly ? '' : '<span></span>');
+        b.innerHTML = icon(ico) + (iconOnly ? '' : '<span class="ws-clip"></span>');
         if (iconOnly) b.setAttribute('aria-label', text);
         else b.querySelector('span').textContent = text;
         b.title = title;

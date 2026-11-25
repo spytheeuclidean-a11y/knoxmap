@@ -763,6 +763,7 @@ async function requestForecast(s, w, n, e, mpt) {
 
 function updateBboxFields() {
   if (!currentRect) return clearBboxFields();
+  showSelectedAreaActions(true);
   const { s, w, n, e } = rectBounds(currentRect);
   document.getElementById('south').value = s.toFixed(6);
   document.getElementById('west').value  = w.toFixed(6);
@@ -842,7 +843,7 @@ function updateBboxFields() {
   fx.step('area', 'done');
 
   const lm = document.getElementById('landmarksBtn');
-  lm.disabled = false;
+  syncLandmarkArea([s, w, n, e]);
   lm.title = area > BIG_LANDMARK_KM2
     ? `${Math.round(area)} km² is a lot to search for landmarks — it will take a while.`
     : '';
@@ -891,6 +892,7 @@ for (const id of ['south', 'west', 'north', 'east']) {
 }
 
 function clearBboxFields() {
+  showSelectedAreaActions(false);
   ['south', 'west', 'north', 'east'].forEach(id => {
     document.getElementById(id).value = '';
   });
@@ -902,10 +904,7 @@ function clearBboxFields() {
   document.getElementById('generateBtn').disabled = true;
   const autoBtn = document.getElementById('autoBtn');
   if (autoBtn) autoBtn.disabled = true;
-  document.getElementById('landmarksBtn').disabled = true;
-  document.getElementById('landmark-results').innerHTML = '';
-  const count = document.getElementById('landmarkCount');
-  if (count) count.textContent = '';
+  syncLandmarkArea(null);
   fx.resetFrom('area');
   updateRotateHandle();
 }
@@ -1139,6 +1138,12 @@ document.getElementById('presetOpenLink').addEventListener('click', async () => 
   catch (err) { presetNote(err.message, 'bad'); }
 });
 
+function showSelectedAreaActions(hasArea) {
+  for (const id of ['presetSaveRow', 'presetExport', 'presetShare']) {
+    document.getElementById(id).hidden = !hasArea;
+  }
+}
+
 async function loadPresets() {
   const restoreBtn = document.getElementById('presetRestore');
   if (restoreBtn) restoreBtn.hidden = true;
@@ -1161,6 +1166,7 @@ async function loadPresets() {
     : '<option value="">(none saved yet)</option>';
   document.getElementById('presetsCount').textContent =
     savedAreas.length ? `(${savedAreas.length})` : '';
+  document.getElementById('presetSavedRow').hidden = !savedAreas.length;
   for (const id of ['presetLoad', 'presetDelete']) {
     document.getElementById(id).disabled = !savedAreas.length;
   }
@@ -2295,9 +2301,13 @@ function showGapFill(data, status) {
   if (!why) return;
   status.appendChild(document.createTextNode(' ' + why));
   if (!/duckdb/i.test(why)) return;
+  const message = document.createElement('span');
+  message.className = 'ws-clip';
+  message.append(...status.childNodes);
+  status.appendChild(message);
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'btn btn-small';
+  btn.className = 'btn btn-small ws-clip';
   btn.textContent = 'Install DuckDB';
   btn.addEventListener('click', async () => {
     btn.disabled = true;
@@ -2309,15 +2319,15 @@ function showGapFill(data, status) {
       });
       const done = await res.json();
       if (!res.ok) throw apiError(done, res);
-      btn.replaceWith(document.createTextNode(
-        'DuckDB is installed. Generate this area again to fill the gaps.'));
+      btn.remove();
+      message.appendChild(document.createTextNode(
+        ' DuckDB is installed. Generate this area again to fill the gaps.'));
     } catch (err) {
       btn.disabled = false;
       btn.textContent = 'Try again';
-      status.appendChild(document.createTextNode(` Could not install it: ${err.message}`));
+      message.appendChild(document.createTextNode(` Could not install it: ${err.message}`));
     }
   });
-  status.appendChild(document.createTextNode(' '));
   status.appendChild(btn);
 }
 
@@ -2692,11 +2702,29 @@ document.addEventListener('click', (e) => {
 
 // ---- landmarks inside the selection ---------------------------------------
 
-let landmarkMarkers = L.layerGroup().addTo(map);
+const landmarkMarkers = L.layerGroup().addTo(map);
+let landmarkBounds = '';
+let landmarkRequest = null;
+
+function syncLandmarkArea(bounds) {
+  const key = bounds?.join(',') ?? '';
+  if (key !== landmarkBounds) {
+    landmarkBounds = key;
+    landmarkRequest?.abort();
+    landmarkRequest = null;
+    landmarkMarkers.clearLayers();
+    document.getElementById('landmark-results').replaceChildren();
+    const count = document.getElementById('landmarkCount');
+    if (count) count.textContent = '';
+  }
+  document.getElementById('landmarksBtn').disabled = !key || !!landmarkRequest;
+}
 
 document.getElementById('landmarksBtn').addEventListener('click', async () => {
-  if (!currentRect) return;
+  if (!currentRect || landmarkRequest) return;
   const bb = rectBounds(currentRect);
+  const request = new window.AbortController();
+  landmarkRequest = request;
   const btn = document.getElementById('landmarksBtn');
   const out = document.getElementById('landmark-results');
   btn.disabled = true;
@@ -2710,18 +2738,23 @@ document.getElementById('landmarksBtn').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/landmarks', {
       method: 'POST',
+      signal: request.signal,
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         south: bb.s, west: bb.w, north: bb.n, east: bb.e,
       }),
     });
     const data = await res.json();
+    if (landmarkRequest !== request) return;
     if (!res.ok) throw apiError(data, res);
     renderLandmarks(data.landmarks);
   } catch (err) {
-    out.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
+    if (landmarkRequest === request) out.innerHTML = `<div class="error">${escapeHtml(err.message)}</div>`;
   } finally {
-    btn.disabled = false;
+    if (landmarkRequest === request) {
+      landmarkRequest = null;
+      btn.disabled = !landmarkBounds;
+    }
   }
 });
 
