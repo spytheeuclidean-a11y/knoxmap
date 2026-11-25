@@ -32,7 +32,6 @@ FIELD_SEED = 4421
 STRIP_ROWS = 512
 
 
-_hash01 = hash01
 
 
 def _borders(field, pid):
@@ -59,19 +58,19 @@ def _paint_plots(land, veg, field, pid, furrow_h, tile_ids, salt: int):
         return set()
     border = _borders(field, pid)
     inside = field & ~border
-    kind = _hash01(pid, salt)
+    kind = hash01(pid, salt)
     corn = kind < CORN_SHARE
     fallow = kind >= CORN_SHARE + BARE_SHARE
     ploughed = inside & ~fallow
     empty = np.all(veg == 0, axis=2)
     land[ploughed & furrow_h] = C.DIRT_ROWS_H
     land[ploughed & ~furrow_h] = C.DIRT_ROWS_V
-    second = _hash01(pid, salt + 1) < 0.5
+    second = hash01(pid, salt + 1) < 0.5
     veg[ploughed & corn & ~second & empty] = C.CORN_1
     veg[ploughed & corn & second & empty] = C.CORN_2
-    tufts = inside & fallow & empty & (_hash01(tile_ids, salt + 2) < FALLOW_TUFTS)
+    tufts = inside & fallow & empty & (hash01(tile_ids, salt + 2) < FALLOW_TUFTS)
     veg[tufts] = C.SHORT_GRASS
-    hedged = border & empty & (_hash01(pid, salt + 3) < HEDGE_CHANCE)
+    hedged = border & empty & (hash01(pid, salt + 3) < HEDGE_CHANCE)
     veg[hedged] = C.BUSHES
     return set(np.unique(pid[field]).tolist())
 
@@ -360,13 +359,13 @@ def paint_rocks(landscape, veg, proj, grid, owned) -> int:
             if moss_edge is not None:
                 land[r & (smooth_noise(ys, xs, moss_lats) > moss_edge)] = C.DARK_GRASS
             inside = r & (smooth_noise(ys, xs, lats) > edge)
-            roll = _hash01(tile_ids, ROCK_SEED + code)
+            roll = hash01(tile_ids, ROCK_SEED + code)
             rocks = inside & (roll < 0.5)
-            boulders = rocks & open_[top:bottom] & (_hash01(tile_ids, ROCK_SEED + code + 1) < boulder_p)
+            boulders = rocks & open_[top:bottom] & (hash01(tile_ids, ROCK_SEED + code + 1) < boulder_p)
             vegp[rocks] = C.ROCKS
             vegp[boulders] = C.BOULDERS
             if code == 100:
-                bush = r & ~rocks & (_hash01(tile_ids, ROCK_SEED + 2) < TUNDRA_BUSH)
+                bush = r & ~rocks & (hash01(tile_ids, ROCK_SEED + 2) < TUNDRA_BUSH)
                 vegp[bush] = C.BUSHES
             placed += int(rocks.sum())
             landscape.paste(Image.fromarray(land, "RGB"), (0, top))

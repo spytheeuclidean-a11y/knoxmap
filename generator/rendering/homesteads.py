@@ -21,8 +21,7 @@ import shapely
 from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
-from .fields import _hash01
-from .noise import global_origin, global_window_ids
+from .noise import global_origin, global_window_ids, hash01
 
 YARD_M = 6.0                   # no field or water this near a building
 YARD_CLASSES = (40, 80)        # WorldCover cropland and water
@@ -223,7 +222,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         seed = int((int(round(poly.centroid.x + gx)) * 73856093)
                    ^ (int(round(poly.centroid.y + gy)) * 19349663)
                    ^ HOME_SEED) & 0xFFFFFFFF
-        roll = float(_hash01(np.array([seed]), HOME_SEED)[0])
+        roll = float(hash01(np.array([seed]), HOME_SEED)[0])
         radius = (clear_min_m + roll * (clear_max_m - clear_min_m)) / mpt
         clearing = _wobbly(poly, radius, seed)
         bw, bh = x1 - x0, y1 - y0
@@ -243,7 +242,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         fringe = _wobbly(poly, radius, seed, extra=EDGE_M / mpt)
         edge = _rasterise(fringe, x0, y0, bw, bh) & ~inside
         ids = global_window_ids(y0, y1, x0, x1)
-        thin = edge & woods & (_hash01(ids, HOME_SEED + 1) < EDGE_THIN)
+        thin = edge & woods & (hash01(ids, HOME_SEED + 1) < EDGE_THIN)
         for colour, to in THINNER.items():
             sel = thin & np.all(win == colour, axis=2)
             win[sel] = to
@@ -266,7 +265,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         if gap <= DRIVE_MIN_TILES or gap * mpt > DRIVE_MAX_M:
             continue
         p, q = nearest_points(poly, line)
-        bend = DRIVE_BEND * (2 * float(_hash01(np.array([seed]), HOME_SEED + 2)[0]) - 1)
+        bend = DRIVE_BEND * (2 * float(hash01(np.array([seed]), HOME_SEED + 2)[0]) - 1)
         for b in (bend, 0.0):
             path = _bezier((p.x, p.y), (q.x, q.y), b)
             xs = [x for x, _ in path]

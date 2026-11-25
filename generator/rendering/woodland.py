@@ -2,32 +2,16 @@
 import logging
 import struct
 import subprocess
-import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
+from contextlib import closing
 
 from PIL import Image
 
-import knoxstop
 from .. import pz_colors as C
 from ..roadgraph.rustsearch import exe
+from .worker import run_strips
 
 MAX_PIXELS = 1_048_576
 MIN_PIXELS = 1_048_576
-TIMEOUT_S = 30
-
-
-def _exchange(proc, data, expected):
-    view = memoryview(data)
-    while view:
-        sent = proc.stdin.write(view)
-        if not sent:
-            raise RuntimeError('woodland worker input closed')
-        view = view[sent:]
-    proc.stdin.flush()
-    reply = proc.stdout.read(expected)
-    if len(reply) != expected or reply[:4] != b'KWD1':
-        raise RuntimeError('invalid woodland worker reply')
-    return reply[4:]
 
 
 def paint(veg, landscape, mask, eroded, scrub, edge, inside, should_stop=None):
@@ -42,38 +26,28 @@ def paint(veg, landscape, mask, eroded, scrub, edge, inside, should_stop=None):
                C.BUSHES_TREES_DARK_GRASS, edge, inside, C.VEG_NOTHING)
     palette = bytes(v for colour in colours for v in colour)
     rows = min(256, MAX_PIXELS // width)
+    bands = [(top, min(top + rows, height)) for top in range(0, height, rows)]
+
+    def strips():
+        for i, (top, bottom) in enumerate(bands):
+            box = (0, top, width, bottom)
+            size = (width, bottom - top)
+            n = size[0] * size[1]
+            data = (b'KWD1' + struct.pack('<I', len(bands))) if i == 0 else b''
+            data += struct.pack('<II', *size) + palette
+            data += b''.join(im.crop(box).tobytes() for im in (veg, landscape, mask, eroded, scrub))
+            yield data, 4 + 6 * n, b'KWD1'
+
     try:
-        with subprocess.Popen([binary, '--woodland'], stdin=subprocess.PIPE,
-                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                              creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0)) as proc:
-            with ThreadPoolExecutor(max_workers=1) as pool:
-                try:
-                    for top in range(0, height, rows):
-                        knoxstop.check(should_stop, 'the woodland')
-                        box = (0, top, width, min(top+rows, height))
-                        size = (width, box[3]-top)
-                        n = size[0]*size[1]
-                        data = (b'KWD1'+struct.pack('<I', (height+rows-1)//rows)) if top == 0 else b''
-                        data += struct.pack('<II', *size) + palette
-                        data += b''.join(im.crop(box).tobytes() for im in (veg, landscape, mask, eroded, scrub))
-                        future = pool.submit(_exchange, proc, data, 4+6*n)
-                        deadline = time.monotonic() + TIMEOUT_S
-                        while True:
-                            knoxstop.check(should_stop, 'the woodland')
-                            if time.monotonic() >= deadline:
-                                raise TimeoutError('native woodland worker timed out')
-                            try:
-                                result = future.result(timeout=.1)
-                                break
-                            except FutureTimeout:
-                                continue
-                        veg.paste(Image.frombytes('RGB', size, result[:3*n]), box)
-                        landscape.paste(Image.frombytes('RGB', size, result[3*n:]), box)
-                finally:
-                    if proc.poll() is None:
-                        proc.kill()
-                        proc.wait()
+        with closing(run_strips(binary, '--woodland', strips(), 'woodland', should_stop)) as replies:
+            for (top, bottom), result in zip(bands, replies):
+                size = (width, bottom - top)
+                n = size[0] * size[1]
+                box = (0, top, width, bottom)
+                veg.paste(Image.frombytes('RGB', size, result[:3 * n]), box)
+                landscape.paste(Image.frombytes('RGB', size, result[3 * n:]), box)
     except (OSError, RuntimeError, subprocess.SubprocessError) as exc:
         logging.getLogger(__name__).warning('native woodland unavailable; using Python: %s', exc)
         return False
     return True
+

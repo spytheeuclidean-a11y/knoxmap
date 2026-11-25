@@ -17,7 +17,8 @@ import numpy as np
 from PIL import Image
 
 from .. import pz_colors as C
-from .fields import _hash01, _strips
+from .fields import _strips
+from .noise import hash01
 
 SHRUB_CLUMP_M = 40.0           # how far a thicket or an opening runs
 SHRUB_IN = 0.35                # chance per tile inside a thicket
@@ -68,8 +69,8 @@ def plant_landcover(veg, landscape, grid, owned, proj, density: float = 1.0):
         land = np.array(landscape.crop((0, top, w, bottom)))
         empty = np.all(vegp == 0, axis=2)
         tile_ids = global_tile_ids(top, bottom, w)
-        roll = _hash01(tile_ids, VEG_SEED)
-        pick = _hash01(tile_ids, VEG_SEED + 1)
+        roll = hash01(tile_ids, VEG_SEED)
+        pick = hash01(tile_ids, VEG_SEED + 1)
 
         shrub = live & empty & (g == SHRUB)
         if shrub.any():

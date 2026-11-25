@@ -2,7 +2,7 @@
 
 Each test renders a full grid inside ``global_tile_offset(0, 0)`` (the origin
 chunk) and compares it with a sub-window rendered inside
-``global_tile_offset(ox, oy)``. Only the per-tile id fed to ``_hash01`` is
+``global_tile_offset(ox, oy)``. Only the per-tile id fed to ``hash01`` is
 allowed to differ between the runs, so each input is built to keep the other
 chunk-dependent parts (plot cuts, centroid seeds, quantile thresholds) equal.
 """
@@ -128,14 +128,14 @@ class HomesteadEdgeThinning(unittest.TestCase):
         land = Image.new("RGB", (w, h), C.DARK_GRASS)
         veg = Image.new("RGB", (w, h), C.TREES)
         calls = []
-        real = H._hash01
+        real = H.hash01
 
         def spy(values, salt):
             if salt == H.HOME_SEED + 1:
                 calls.append(values.copy())
             return real(values, salt)
 
-        with mock.patch.object(H, "_hash01", spy), global_tile_offset(ox, oy):
+        with mock.patch.object(H, "hash01", spy), global_tile_offset(ox, oy):
             H.clear_homesteads(veg, land, [self.HOUSE], [], 1.0)
         self.assertEqual(len(calls), 1)
         return calls[0]
