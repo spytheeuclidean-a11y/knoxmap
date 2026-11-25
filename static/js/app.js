@@ -1725,7 +1725,10 @@ async function loadMaps() {
     const open = document.createElement('button');
     open.type = 'button';
     open.textContent = 'Open';
-    open.addEventListener('click', () => openMap(m.mapName));
+    open.addEventListener('click', () => {
+      if (window.knoxShell) window.knoxShell.openTab(m.mapName);
+      else openMap(m.mapName);
+    });
     li.append(open);
     if (m.installed) {
       const remove = document.createElement('button');
@@ -1856,16 +1859,45 @@ async function deleteMap(mapName) {
 }
 window.deleteMap = deleteMap;
 
+// Opening a saved map is asynchronous. Only the latest selection owns the editor.
+let mapOpenRequest = 0;
+
+/* exported clearOpenedMap */
+function clearOpenedMap() {
+  ++mapOpenRequest;
+  if (document.getElementById('boardName').value === currentMap) {
+    document.getElementById('boardName').value = '';
+  }
+  currentMap = null;
+  document.getElementById('mapName').value = '';
+  document.getElementById('status').textContent = '';
+  rememberMap(null);
+  showUpgrade({});
+  loadSketchGeoJSON(null);
+  loadZones(null);
+}
+
+// One map at a time is worked on: a step reports back to the cards of the map
+// that is open, so switching while one runs would put its result on another.
+function busyElsewhere(name) {
+  if (!runningMap || runningMap === name) return false;
+  fx.toast('bad', 'Busy', `${runningMap} is busy. Switch maps once it has finished, or Stop it.`, 6000);
+  return true;
+}
+
 async function openMap(mapName) {
+  if (busyElsewhere(mapName) || runningMap) return;
+  const request = ++mapOpenRequest;
   let data;
   try {
     const res = await fetch(`/api/maps/${encodeURIComponent(mapName)}`);
     data = await res.json();
     if (!res.ok) throw apiError(data, res);
   } catch (err) {
-    fx.toast('bad', 'Could not open that map', err.message, 8000);
+    if (request === mapOpenRequest) fx.toast('bad', 'Could not open that map', err.message, 8000);
     return;
   }
+  if (request !== mapOpenRequest) return;
   renderResults(data);
   showUpgrade(data);
   // The settings this map was made with, back in the panel, so one of them can
@@ -1875,7 +1907,7 @@ async function openMap(mapName) {
   loadZones(data.mapName);
   fetch(`/api/sketch/${encodeURIComponent(data.mapName)}`)
     .then(r => r.json())
-    .then(loadSketchGeoJSON)
+    .then(sketch => { if (request === mapOpenRequest) loadSketchGeoJSON(sketch); })
     .catch(() => { /* a map with nothing drawn simply has none */ });
   rememberMap({ mapName: data.mapName, bbox: data.bbox,
                 metersPerTile: data.metersPerTile, shape: data.shape,
@@ -1975,7 +2007,8 @@ function wirePictures(mapName) {
 
 async function upgradeMap(data, button) {
   const box = document.getElementById('upgradeNote');
-  const say = text => { box.querySelector('span').textContent = text; };
+  const progress = box.querySelector('span');
+  const say = text => { progress.textContent = text; };
   for (const b of box.querySelectorAll('button')) b.disabled = true;
   fx.toast('ok', 'Upgrading', `${data.mapName}: ${data.needsLabels.join(' → ')}`);
   const post = async (url, body) => {
@@ -2047,12 +2080,14 @@ async function upgradeMap(data, button) {
         }
       }
     }
+    if (!box.contains(button)) { loadMaps(); return; }
     box.innerHTML = '<span></span>';
     box.querySelector('span').textContent =
       `${data.mapName} is up to date with KnoxMap ${data.current}.`;
     fx.toast('ok', 'Map upgraded', `${data.needsLabels.join(', ')} ran again.`);
     loadMaps();
   } catch (err) {
+    if (!box.contains(button)) return;
     say(`Could not upgrade it: ${err.message}`);
     for (const b of box.querySelectorAll('button')) b.disabled = false;
     if (button) button.textContent = 'Try again';
@@ -2062,6 +2097,11 @@ async function upgradeMap(data, button) {
 loadMaps();
 
 // ---- generation ----
+
+function mapNameForRequest(value, prefix) {
+  const clean = value.trim().replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+  return clean || `${prefix}_${Date.now()}`;
+}
 
 async function runGenerate({ skipBigConfirm = false } = {}) {
   if (!currentRect) return false;
@@ -2090,8 +2130,8 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
   // Name it here rather than letting the server invent one, so progress can be
   // polled under a key the page already knows.
   const nameField = document.getElementById('mapName');
-  const chosen = (nameField.value.trim() || `knoxmap_${Date.now()}`)
-    .replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+  ++mapOpenRequest;
+  const chosen = mapNameForRequest(nameField.value, 'knoxmap');
   nameField.value = chosen;
 
   const bb = rectBounds(currentRect);
@@ -2154,12 +2194,12 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
     renderResults(data);
     // What it was just made from, so a knob can be moved and put into it
     // without drawing the box again.
-    rememberMap({ mapName: chosen,
+    rememberMap({ mapName: data.mapName,
                   bbox: { south: bb.s, west: bb.w, north: bb.n, east: bb.e },
                   metersPerTile: body.metersPerTile, shape: body.shape,
                   settings: data.settings || body.settings });
     loadMaps();
-    return true;
+    return data.mapName;
   } catch (err) {
     status.className = 'error';
     status.textContent = `Error: ${err.message}`;
@@ -2190,46 +2230,49 @@ async function runAuto() {
   }
   const status = document.getElementById('status');
   const standalone = !!document.getElementById('autoStandalone')?.checked;
-  if (!await runGenerate({ skipBigConfirm: true })) return;
+  const mapName = await runGenerate({ skipBigConfirm: true });
+  if (!mapName || currentMap !== mapName) return;
+  const request = mapOpenRequest;
+  const stillHere = () => currentMap === mapName && request === mapOpenRequest;
 
-  if (standalone && currentMap) {
+  if (standalone) {
     status.className = '';
     status.textContent = 'Auto mode: setting standalone placement…';
     try {
-      const res = await fetch(`/api/placement/${encodeURIComponent(currentMap)}`, {
+      const res = await fetch(`/api/placement/${encodeURIComponent(mapName)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ standalone: true }),
       });
-      if (res.ok) {
-        const box = document.getElementById('placeStandalone');
-        if (box) box.checked = true;
-        if (typeof loadPlacement === 'function') loadPlacement();
-      }
-    } catch (_) { /* build will read placement.json */ }
+      const layout = await res.json();
+      if (!stillHere()) return;
+      if (!res.ok) throw apiError(layout, res);
+      if (!layout.standalone) throw new Error('Standalone placement was not confirmed.');
+      await loadPlacement(mapName, layout);
+    } catch (err) {
+      if (!stillHere()) return;
+      status.className = 'error';
+      status.textContent = 'Auto mode stopped at Standalone placement.';
+      fx.problem(status.textContent, err.message, err.errorId);
+      return;
+    }
   }
 
-  status.className = '';
-  status.textContent = 'Auto mode (2/4): Building…';
-  if (!await runBuildings()) {
-    status.className = 'error';
-    status.textContent = 'Auto mode stopped at Build.';
-    return;
-  }
-
-  status.className = '';
-  status.textContent = 'Auto mode (3/4): Compiling…';
-  if (!await startCompile(false)) {
-    status.className = 'error';
-    status.textContent = 'Auto mode stopped at Compile.';
-    return;
-  }
-
-  status.className = '';
-  status.textContent = 'Auto mode (4/4): Installing…';
-  if (!await runInstall()) {
-    status.className = 'error';
-    status.textContent = 'Auto mode stopped at Install.';
-    return;
+  if (!stillHere()) return;
+  const steps = [
+    ['Auto mode (2/4): Building…', 'Auto mode stopped at Build.', runBuildings],
+    ['Auto mode (3/4): Compiling…', 'Auto mode stopped at Compile.', () => startCompile(false)],
+    ['Auto mode (4/4): Installing…', 'Auto mode stopped at Install.', runInstall],
+  ];
+  for (const [message, failure, run] of steps) {
+    status.className = '';
+    status.textContent = message;
+    const ok = await run();
+    if (!stillHere()) return;
+    if (!ok) {
+      status.className = 'error';
+      status.textContent = failure;
+      return;
+    }
   }
 
   status.className = 'success';
@@ -2412,7 +2455,7 @@ function wireDownload(link, name, label) {
   if (!IN_WINDOW) return;
   link.removeAttribute('download');
   link.href = '#';
-  link.addEventListener('click', e => { e.preventDefault(); saveFile(name, label); });
+  link.onclick = e => { e.preventDefault(); saveFile(name, label); };
 }
 
 // Done with this map: put the page back as it was before Generate, ready for
@@ -2422,22 +2465,11 @@ document.getElementById('resultsClose').addEventListener('click', () => {
   document.getElementById('map').scrollIntoView({ block: 'start' });
 });
 
-function getActiveMapName() {
-  const badge = document.querySelector('.map-badge');
-  const name = badge ? badge.textContent.trim() : '';
-  if (name && name !== '—') return name;
-  return typeof currentMap !== 'undefined' && currentMap ? currentMap : '';
+for (const id of ['resultsDelete', 'deleteMapSideBtn']) {
+  document.getElementById(id)?.addEventListener('click', () => {
+    if (currentMap) deleteMap(currentMap);
+  });
 }
-
-document.getElementById('resultsDelete')?.addEventListener('click', () => {
-  const name = getActiveMapName();
-  if (name) deleteMap(name);
-});
-
-document.getElementById('deleteMapSideBtn')?.addEventListener('click', () => {
-  const name = getActiveMapName();
-  if (name) deleteMap(name);
-});
 
 // What the street infill made and why it left the rest of the gaps empty. The
 // reasons come from the generator (generator/rendering/infill.py), already in
@@ -2871,8 +2903,7 @@ function note(id, text, cls) {
 
 function setupPipeline(data) {
   currentMap = data.mapName;
-  const upgrade = document.getElementById('upgradeNote');
-  if (upgrade) { upgrade.hidden = true; upgrade.innerHTML = ''; }
+  showUpgrade({});
   document.getElementById('mapTitle').value = data.mapName;
   document.getElementById('modId').value = data.mapName;
   document.getElementById('buildingsBtn').disabled = false;
@@ -2911,6 +2942,7 @@ function setupPipeline(data) {
   fetch(`/api/compile-status?map=${encodeURIComponent(data.mapName)}`)
     .then(r => r.json())
     .then(p => {
+      if (data.mapName !== currentMap) return;
       if (p.state === 'running' || p.state === 'stopping') {
         document.getElementById('compileBtn').disabled = true;
         showStop(data.mapName);
@@ -2963,7 +2995,7 @@ async function loadLeftOut(mapName) {
   try {
     const res = await fetch(`/api/why/${encodeURIComponent(mapName)}`);
     const data = await res.json();
-    if (res.ok) showLeftOut(data);
+    if (res.ok && currentMap === mapName) showLeftOut(data);
   } catch (err) { /* nothing to show if it cannot be asked */ }
 }
 
@@ -3054,10 +3086,12 @@ function startLotsPoll() {
 }
 
 async function checkLots() {
-  if (!currentMap) return;
+  const mapName = currentMap;
+  if (!mapName) return;
   try {
-    const res = await fetch(`/api/lots?map=${encodeURIComponent(currentMap)}`);
+    const res = await fetch(`/api/lots?map=${encodeURIComponent(mapName)}`);
     const data = await res.json();
+    if (mapName !== currentMap) return;
     if (data.compiled) {
       clearInterval(lotsPoll);
       note('worldedNote', `${data.cells} cells compiled.`, 'ok');
@@ -3098,6 +3132,7 @@ async function runInstall() {
         lifts += ' With "Spawn Selector" enabled you can start at any landmark of the map.';
       }
     } catch (_) { /* the install itself worked; the tip is optional */ }
+    if (currentMap !== installing) return false;
     // Build 42 draws the in-game map (M) from worldmap.xml.bin and cannot read
     // the XML, so a map without it opens the map on nothing while everything
     // else works - worth saying, and worth saying what to do about it.
@@ -3116,6 +3151,7 @@ async function runInstall() {
     loadMaps();
     return true;
   } catch (err) {
+    if (currentMap !== installing) return false;
     note('installNote', err.message, 'bad');
     btn.disabled = false;
     return false;
