@@ -146,6 +146,7 @@ EXTERIOR_PROP_ORIENTATION: dict[str, tuple[str, str]] = {
     "industry_01_004": ("N", "S"),
     "industry_01_005": ("W", "E"),
 }
+CARPORT_POST = "fixtures_railings_01_035"
 PORCH_POST_WOOD = "fixtures_railings_01_033"
 PORCH_POST_WHITE = "fencing_01_007"
 PORCH_RAIL_WOOD = {"W": "fencing_01_020", "N": "fencing_01_021", "NW": "fencing_01_017"}
@@ -1024,15 +1025,15 @@ def _add_house_carport(top: list[tuple[int, int]], dx: int, dy: int,
         cx0 = x0 if dx > 0 else max(x0, x1 - cw + 1)
     if (x1 - x0 + 1) < cw or (y1 - y0 + 1) < ch:
         return None
-    # Always use full-height pillars so they reach all the way up to the z=1 flat roof.
-    post = PORCH_POST_WOOD
     # Place posts on the outer grid corners (0..cw, 0..ch) so they straddle
     # the 3-tile driveway instead of sitting inside the parked car.
+    # The centered pillar reaches the flat roof's corner one storey up.
+    # The edge-aligned porch post draws left of that corner and ends lower.
     tiles = [
-        (0, 0, 0, "Walls", post),
-        (cw, 0, 0, "Walls", post),
-        (0, ch, 0, "Walls", post),
-        (cw, ch, 0, "Walls", post),
+        (0, 0, 0, "Walls", CARPORT_POST),
+        (cw, 0, 0, "Walls", CARPORT_POST),
+        (0, ch, 0, "Walls", CARPORT_POST),
+        (cw, ch, 0, "Walls", CARPORT_POST),
     ]
     structures.append((cx0, cy0, cw, ch, tiles, "FlatTop", "Three"))
     return (cx0, cy0, cw, ch)
@@ -1413,7 +1414,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     dressed = 0
     fences = []
     apron_boxes = []
-    carport_clear: set[tuple[int, int]] = set()
+    driveway_clear: set[tuple[int, int]] = set()
     rng = random.Random(0xB17E)
     # Reading a thousand freshly written .tbx files is mostly waiting on the
     # disk, so it is done on threads up front; the loop below still runs in
@@ -1525,6 +1526,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                     paint(x, y, C.DARK_ASPHALT)
                     paved_at[y * w + x] = True
                 drive_tiles.update(strip)
+                driveway_clear.update(strip)
                 if drives is not None:
                     # The strip starts beside the house: its first five rows.
                     top = strip[:DRIVE_WIDTH * 5]
@@ -1536,7 +1538,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                             cx0, cy0, cw, ch = box
                             for cy_ in range(cy0, cy0 + ch + 1):
                                 for cx_ in range(cx0, cx0 + cw + 1):
-                                    carport_clear.add((cx_, cy_))
+                                    driveway_clear.add((cx_, cy_))
                                     if 0 <= cx_ < w and 0 <= cy_ < h:
                                         claimed_bytes[cy_ * w + cx_] = 1
                                         if veg is not None:
@@ -2001,9 +2003,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             occ, road_at, free, fronts,
         )
 
-    if veg is not None and (fronts or drive_tiles or carport_clear):
+    if veg is not None:
         # No tree or bush grows in a doorway, driveway, or carport.
-        for x, y in set(fronts) | drive_tiles | carport_clear:
+        for x, y in driveway_clear.union(fronts or ()):
             if 0 <= x < w and 0 <= y < h:
                 veg[y, x] = C.VEG_NOTHING
     # The credit for KnoxMap, in the ground near the first spawn house.

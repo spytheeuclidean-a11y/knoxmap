@@ -45,7 +45,7 @@ class LivedInHouseStructuresTests(unittest.TestCase):
                     self.assertEqual(objs[0].attrib["Depth"], "Three")
                     self.assertFalse(floors[1].findall("object"))
                     user_tiles = [t.attrib["tile"] for t in root.findall("./user_tiles/tile")]
-                    self.assertEqual(user_tiles, [yards.PORCH_POST_WOOD])
+                    self.assertEqual(user_tiles, ["fixtures_railings_01_035"])
                 else:
                     # Pitched roofs (Peak30Quad) must live on floor z=1 so knoxlots
                     # draws them above the z=0 posts rather than on the ground.
