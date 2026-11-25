@@ -15,7 +15,7 @@ class BuildCacheFingerprint(unittest.TestCase):
             layout = root / "layout" / "furnishing.py"
             layout.write_text("before", encoding="utf-8")
             with patch.object(build, "__file__", str(root / "build.py")), \
-                    patch("knoxbuild.layout._erika_ready", return_value=False):
+                    patch("knoxbuild.layout.furnishing._erika_ready", return_value=False):
                 before = build._code_fingerprint()
                 layout.write_text("after", encoding="utf-8")
                 self.assertNotEqual(before, build._code_fingerprint())
