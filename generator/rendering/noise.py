@@ -56,6 +56,39 @@ def global_ids_of(ys, xs) -> np.ndarray:
     return (gy << 32) | gx
 
 
+def global_origin() -> tuple[int, int]:
+    """``(ox, oy)``: where this window starts in global tiles, ``(0, 0)`` outside a chunk."""
+    return _current_offset() or (0, 0)
+
+
+def aligned_start(local_lo: int, offset: int, step: int) -> int:
+    """First local index at or after ``local_lo`` whose global index is a multiple of ``step``.
+
+    Blocks laid out from here sit on the same global grid in every chunk, so a
+    block is the same block whichever chunk it is drawn in.
+    """
+    return local_lo + (-(local_lo + offset)) % step
+
+
+def block_ids(first_row: int, rows: int, first_col: int, cols: int) -> np.ndarray:
+    """Ids of a ``rows`` x ``cols`` run of blocks, from their global block indices."""
+    by = np.arange(first_row, first_row + rows, dtype=np.int64)[:, None]
+    bx = np.arange(first_col, first_col + cols, dtype=np.int64)[None, :]
+    return (by << 32) | bx
+
+
+def hash01(values, salt: int) -> np.ndarray:
+    """A uniform number in [0, 1) for each integer in ``values``, the same every
+    run and independent of what order anything is painted in (splitmix64)."""
+    values = np.asarray(values)
+    with np.errstate(over="ignore"):
+        z = values.astype(np.uint64) + np.uint64((salt * 0x9E3779B97F4A7C15) & 0xFFFFFFFFFFFFFFFF)
+        z = (z ^ (z >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        z = (z ^ (z >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        z = z ^ (z >> np.uint64(31))
+    return (z >> np.uint64(11)).astype(np.float64) / float(1 << 53)
+
+
 def _hash_lattice_slice(y0: int, y1: int, x0: int, x1: int,
                         cell: int, seed: int) -> np.ndarray:
     """Deterministic [0, 1) float32 lattice over global grid indices ``[y0..y1) x [x0..x1)``."""

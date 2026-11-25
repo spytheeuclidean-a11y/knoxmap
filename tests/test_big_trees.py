@@ -443,9 +443,8 @@ class ParksHaveTreesRoundTheEdge(unittest.TestCase):
 class PlantingBlocks(unittest.TestCase):
     """_block_picks: one place per block, inside the mask, once each."""
 
-    def picks(self, mask, step, chance=1.0, seed=3):
-        rng = np.random.default_rng(seed)
-        return list(V._block_picks(mask, step, rng, chance))
+    def picks(self, mask, step, chance=1.0, salt=3):
+        return [(x, y) for x, y, _ in V._block_picks(mask, step, salt, chance)]
 
     def test_every_pick_is_a_tile_of_the_mask(self):
         mask = np.zeros((40, 40), dtype=bool)
