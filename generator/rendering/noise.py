@@ -31,6 +31,31 @@ def global_tile_offset(ox: int, oy: int):
         _tls.offset = prev
 
 
+def global_tile_ids(top: int, bottom: int, w: int) -> np.ndarray:
+    """Per-tile ids for rows ``[top, bottom)`` of a ``w``-wide window, as int64.
+
+    An id depends only on the tile's global ``(row, col)`` (the window offset
+    from ``global_tile_offset`` included), never on ``w``, so hashing it gives
+    the same value for a world tile whatever chunk it is rendered in.
+    Coordinates are assumed to stay below 2**31.
+    """
+    return global_window_ids(top, bottom, 0, w)
+
+
+def global_window_ids(y0: int, y1: int, x0: int, x1: int) -> np.ndarray:
+    """`global_tile_ids` for the window ``[y0, y1) x [x0, x1)`` of the local grid."""
+    return global_ids_of(np.arange(y0, y1, dtype=np.int64)[:, None],
+                         np.arange(x0, x1, dtype=np.int64)[None, :])
+
+
+def global_ids_of(ys, xs) -> np.ndarray:
+    """Global per-tile ids for already-built local row/col arrays (broadcastable)."""
+    ox, oy = _current_offset() or (0, 0)
+    gy = np.asarray(ys, dtype=np.int64) + oy
+    gx = np.asarray(xs, dtype=np.int64) + ox
+    return (gy << 32) | gx
+
+
 def _hash_lattice_slice(y0: int, y1: int, x0: int, x1: int,
                         cell: int, seed: int) -> np.ndarray:
     """Deterministic [0, 1) float32 lattice over global grid indices ``[y0..y1) x [x0..x1)``."""

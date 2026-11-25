@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from .fields import _hash01
+from .noise import global_window_ids
 
 YARD_M = 6.0                   # no field or water this near a building
 YARD_CLASSES = (40, 80)        # WorldCover cropland and water
@@ -237,8 +238,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         # The fringe: some trees a grade thinner, so the wood fades out.
         fringe = _wobbly(poly, radius, seed, extra=EDGE_M / mpt)
         edge = _rasterise(fringe, x0, y0, bw, bh) & ~inside
-        ids = (np.arange(y0, y1, dtype=np.int64)[:, None] * w
-               + np.arange(x0, x1, dtype=np.int64)[None, :])
+        ids = global_window_ids(y0, y1, x0, x1)
         thin = edge & woods & (_hash01(ids, HOME_SEED + 1) < EDGE_THIN)
         for colour, to in THINNER.items():
             sel = thin & np.all(win == colour, axis=2)

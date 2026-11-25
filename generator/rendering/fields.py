@@ -86,6 +86,8 @@ def _paint_plots(land, veg, field, pid, furrow_h, tile_ids, salt: int):
 def _polygon_field(landscape, veg, proj, ring, index: int, blocked=None) -> int:
     from shapely.geometry import Polygon
 
+    from .noise import global_ids_of
+
     poly = Polygon(ring)
     if not poly.is_valid:
         poly = poly.buffer(0)
@@ -135,7 +137,7 @@ def _polygon_field(landscape, veg, proj, ring, index: int, blocked=None) -> int:
         pid = iu * (int(iv.max()) + 1) + iv
     pid = pid + (index + 1) * (1 << 32)
     furrow_h = np.full(field.shape, across)
-    tile_ids = ys.astype(np.int64) * w + xs
+    tile_ids = global_ids_of(ys, xs)
     painted = _paint_plots(land, vegp, field, pid, furrow_h, tile_ids, FIELD_SEED)
     landscape.paste(Image.fromarray(land, "RGB"), (x0, y0))
     veg.paste(Image.fromarray(vegp, "RGB"), (x0, y0))
@@ -156,6 +158,8 @@ def _cuts(length: int, cell, rng):
 
 
 def _cropland(landscape, veg, proj, cropland) -> int:
+    from .noise import global_tile_ids
+
     h, w = cropland.shape
     rng = np.random.default_rng(FIELD_SEED + 1)
     cell = (FIELD_CELL_M[0] / proj.meters_per_tile, FIELD_CELL_M[1] / proj.meters_per_tile)
@@ -172,7 +176,7 @@ def _cropland(landscape, veg, proj, cropland) -> int:
         c = col[None, :]
         pid = (r * len(col_w) + c).astype(np.int64)
         furrow_h = col_w[c] >= row_h[r]
-        tile_ids = np.arange(a, b, dtype=np.int64)[:, None] * w + np.arange(w)[None, :]
+        tile_ids = global_tile_ids(a, b, w)
         land = np.array(landscape.crop((0, a, w, b)))
         vegp = np.array(veg.crop((0, a, w, b)))
         painted |= _paint_plots(land, vegp, field, pid, furrow_h, tile_ids, FIELD_SEED)
@@ -327,7 +331,7 @@ def paint_pools(landscape, veg, proj, wet, blocked) -> int:
 def paint_rocks(landscape, veg, proj, grid, owned) -> int:
     """Rock fields on WorldCover moss and lichen (100) and bare ground (60)
     that OSM left blank. Returns the rock and boulder tiles."""
-    from .noise import lattices, smooth_noise
+    from .noise import global_tile_ids, lattices, smooth_noise
 
     if grid is None or owned is None:
         return 0
@@ -352,8 +356,7 @@ def paint_rocks(landscape, veg, proj, grid, owned) -> int:
             if not r.any():
                 continue
             ys = np.arange(top, bottom, dtype=np.float32)
-            tile_ids = (np.arange(top, bottom, dtype=np.int64)[:, None] * w
-                        + np.arange(w, dtype=np.int64)[None, :])
+            tile_ids = global_tile_ids(top, bottom, w)
             land = np.array(landscape.crop((0, top, w, bottom)))
             vegp = np.array(veg.crop((0, top, w, bottom)))
             land[r] = C.DIRT
