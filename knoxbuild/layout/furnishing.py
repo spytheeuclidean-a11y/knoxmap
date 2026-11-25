@@ -1788,7 +1788,8 @@ def _furnish(plan: Plan, storey_rng: random.Random,
                     home = households[r.unit] = interiors.household(
                         random.Random(f"{seed}:{r.unit}:household"), plan)
                 _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
-                                 stair_tiles, door_edges, stairs, rng,
+                                 stair_tiles, door_edges, stairs,
+                                 random.Random(f"{home_seed}:{idx}:hall_rng"),
                                  pieces=interiors.hall_pieces(HALL_PIECES, home, random.Random(
                                      f"{home_seed}:{idx}:hall")))
             if plan.kind not in HOUSE_LIKE_KINDS:

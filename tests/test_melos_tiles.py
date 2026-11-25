@@ -1,5 +1,4 @@
 """Tests for Melos Tiles for Miles (workshop 2879745353) integration."""
-import os
 import tempfile
 import unittest
 from pathlib import Path

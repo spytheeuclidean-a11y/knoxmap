@@ -783,7 +783,6 @@ _MELOS_SPECIAL_GROUPS = {
 def wall_variants(kind: str) -> list[dict]:
     """Every style a building of this kind may be built in."""
     from . import catalog as C
-    from . import regional
     from .layout import _erika_ready, _melos_ready
 
     houses = {s["name"]: s for s in C.HOUSE_STYLES}
@@ -873,7 +872,6 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
     are the last things a regional pool should flatten.
     """
     from . import catalog as C
-    from . import regional
     from .layout import _erika_ready, _melos_ready
 
     mod_roll = ((tile_x * 2654435761 ^ tile_y * 2246822519) >> 8) % 100
@@ -902,6 +900,7 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
 
     if region == "cn" and not (profile and profile.dated
                                and profile.era == "prewar"):
+        from . import regional
         pool = regional.cn_house_styles()
         styles = [s for s in pool if style_fits(s["name"], density)] or pool
     elif use_melos:
