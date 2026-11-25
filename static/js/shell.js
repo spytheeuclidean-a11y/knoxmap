@@ -325,10 +325,10 @@
           + item('Recount the zombies', () => click('recountBtn'), { off: !open || off('recountBtn'),
               title: 'After a zombie setting changed: seconds, no rebuild' })
           + item('Compile', () => click('compileBtn'), { off: !open || off('compileBtn') })
-          + item('Compile the cells that failed', () => click('retryCellsBtn'), { off: $('retryCellsBtn').hidden })
+          + item('Compile the cells that failed', () => click('retryCellsBtn'), { off: !open || $('retryCellsBtn').hidden })
           + item('Open in WorldEd', () => click('worldedBtn'), { off: !open || off('worldedBtn') })
           + item('Install', () => click('installBtn'), { off: !open || off('installBtn') })
-          + item('Check before publishing', () => click('publishCheckBtn'), { off: $('publishCard').hidden });
+          + item('Check before publishing', () => click('publishCheckBtn'), { off: !open || $('publishCard').hidden });
       },
       Tools: () => item('Check an OpenStreetMap extract…', () => dialog('Tools', [$('toolsBody')]))
         + item('Pick an extract file…', () => {
@@ -593,6 +593,7 @@
   function newMap() {
     if (busyElsewhere(null)) return;
     if (currentMap) leaveMap();
+    else ++mapOpenRequest;  // a saved map may still be opening over this draft
     ws.draft = true;
     showMap();
     setTool('area');
@@ -602,19 +603,13 @@
   // stays on disk; nothing is stopped or deleted.
   function leaveMap() {
     $('resultsClose').click();
-    currentMap = null;
+    clearOpenedMap();
+    ws.lastData = null;
     ws.view = 'place';
     world.hidden = true;
     isoView.hidden = true;
     if (window.closeIsoView) window.closeIsoView();
     closePop();
-  }
-  // One map at a time is worked on: a step reports back to the cards of the map
-  // that is open, so switching while one runs would put its result on another.
-  function busyElsewhere(name) {
-    if (!runningMap || runningMap === name) return false;
-    fx.toast('bad', 'Busy', `${runningMap} is busy. Switch maps once it has finished, or Stop it.`, 6000);
-    return true;
   }
   function openTab(name) {
     if (!name || busyElsewhere(name)) return;
@@ -903,7 +898,7 @@
       const cls = st === 'ready' && n && n.step === s.id ? 'next' : st;
       const ic = { done: '✓', error: '!', running: '●' }[cls] || String(i + 1);
       return (i ? '<span class="arrow">›</span>' : '')
-        + `<button type="button" class="ws-chip ${cls}" data-chip="${s.id}" title="Click for this step’s details">`
+        + `<button type="button" class="ws-chip ${cls}" data-chip="${s.id}"${!currentMap && s.card ? ' disabled' : ''} title="Click for this step’s details">`
         + `<span class="ic">${ic}</span>${s.short}</button>`;
     }).join('');
     let msg = '', cls = '';
@@ -945,6 +940,7 @@
   popBox.addEventListener('click', e => e.stopPropagation());
   let popNodes = [];
   function openPop(id) {
+    if (!currentMap && id !== 'generate') return;
     if (ws.home) showMap();
     closePop();
     ws.pop = id;

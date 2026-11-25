@@ -89,6 +89,8 @@ def pack_loose(bdir: str, map_name: str, tag: str, tiles: list,
 
 def render_tiles_tbx(width: int, height: int, tiles: list) -> str:
     """A building with no rooms whose floors hold only user-drawn tiles."""
+    from .tbx import _roomless_tbx_header
+
     names = sorted({t[4] for t in tiles})
     number = {n: i + 1 for i, n in enumerate(names)}
     levels = max(t[2] for t in tiles) + 1
@@ -96,19 +98,7 @@ def render_tiles_tbx(width: int, height: int, tiles: list) -> str:
     for x, y, z, layer, tile in tiles:
         grids.setdefault(z, {}).setdefault(layer, {})[(x, y)] = number[tile]
 
-    out = ['<?xml version="1.0" encoding="UTF-8"?>']
-    attrs = [("version", 4), ("width", width), ("height", height),
-             ("ExteriorWall", C.EXTERIOR_WALL), ("ExteriorWallTrim", 0),
-             ("Door", C.DOOR), ("DoorFrame", C.DOOR_FRAME), ("Window", C.WINDOW),
-             ("Curtains", C.CURTAINS), ("Shutters", 0), ("Stairs", C.STAIRS),
-             ("RoofCap", C.ROOF_CAP), ("RoofSlope", C.ROOF_SLOPE),
-             ("RoofTop", C.ROOF_TOP), ("GrimeWall", 0)]
-    out.append("<building" + "".join(f" {k}={quoteattr(str(v))}" for k, v in attrs) + ">")
-    for entry in C.TILE_ENTRIES:
-        out.append(f' <tile_entry category={quoteattr(entry["category"])}>')
-        for enum_name, tile in entry["tiles"].items():
-            out.append(f'  <tile enum={quoteattr(enum_name)} tile={quoteattr(tile)}/>')
-        out.append(" </tile_entry>")
+    out = _roomless_tbx_header(width, height)
     out.append(" <user_tiles>")
     out.extend(f"  <tile tile={quoteattr(n)}/>" for n in names)
     out.append(" </user_tiles>")
@@ -118,16 +108,35 @@ def render_tiles_tbx(width: int, height: int, tiles: list) -> str:
 
     rooms = "\n" + "\n".join(",".join("0" for _ in range(width)) + ("," if y < height - 1 else "")
                              for y in range(height)) + "\n"
+    # BuildingFloor's tile layers include one extra row and column for edges.
+    columns, rows = width + 1, height + 1
+    blank_row = ["0"] * columns
+    blank_text = ",".join(blank_row)
     for z in range(levels):
         out.append(" <floor>")
         out.append("  <rooms>" + rooms + "</rooms>")
         for layer, cells in sorted(grids.get(z, {}).items()):
-            # BuildingFloor's user tile grids are one wider and taller than the
-            # building, so a wall piece can sit on the far edge.
             text = ["\n"]
-            for y in range(height + 1):
-                row = [str(cells.get((x, y), 0)) for x in range(width + 1)]
-                text.append(",".join(row) + ("," if y < height else "") + "\n")
+            if len(cells) * 4 <= columns * rows:
+                # Bridges and props often leave most of the layer empty.
+                painted = {}
+                for (x, y), tile_index in cells.items():
+                    if not (0 <= x < columns and 0 <= y < rows):
+                        continue
+                    col, row = int(x), int(y)
+                    if (col, row) != (x, y):
+                        continue
+                    values = painted.get(row)
+                    if values is None:
+                        values = painted[row] = blank_row.copy()
+                    values[col] = str(tile_index)
+                for y in range(rows):
+                    row_text = ",".join(painted[y]) if y in painted else blank_text
+                    text.append(row_text + (",\n" if y < height else "\n"))
+            else:
+                for y in range(rows):
+                    row = [str(cells.get((x, y), 0)) for x in range(columns)]
+                    text.append(",".join(row) + (",\n" if y < height else "\n"))
             out.append(f'  <tiles layer={quoteattr(layer)}>' + escape("".join(text)) + "</tiles>")
         out.append(" </floor>")
     out.append("</building>")

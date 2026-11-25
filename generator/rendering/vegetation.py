@@ -9,7 +9,8 @@ from ..osm import OSMFeature, classify
 from .geometry import _feature_coords_px, _is_polygon
 from .projection import Projector
 from . import woodland
-from .noise import lattices, smooth_noise
+from .noise import (aligned_start, block_ids, global_ids_of, global_origin,
+                    global_window_ids, hash01, lattices, noise_quantiles, smooth_noise)
 
 import knoxstop
 
@@ -154,9 +155,7 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
     the air is that its trees stand in rows. Cemeteries get scattered flowers
     and the odd tree, wetland patches of dense bush.
     """
-    import random
-
-    rng = random.Random(0x5EED)
+    gx0, gy0 = global_origin()
     draw = ImageDraw.Draw(veg)
     vp = veg.load()
     lp = landscape.load()
@@ -185,24 +184,27 @@ def _paint_vegetation_extras(veg: Image.Image, landscape: Image.Image,
             mp = mask.load()
             x0, y0, x1, y1 = bbox
             spacing = max(2, int(round(4 / proj.meters_per_tile)))
+            # One roll a tile, a hash of the tile's global position, so a
+            # polygon is planted the same whichever chunk it is drawn in.
+            rolls = hash01(global_window_ids(y0, y1, x0, x1), 0x5EED)
             for y in range(y0, y1):
                 for x in range(x0, x1):
                     # Keep roads, sidewalks, paving, paths, rail, and water intact.
                     if not mp[x, y] or lp[x, y] not in GRASS_COLOURS:
                         continue
                     if cat == "orchard":
-                        if x % spacing == 0 and y % spacing == 0:
+                        if (x + gx0) % spacing == 0 and (y + gy0) % spacing == 0:
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
                     elif cat == "cemetery":
                         # Sparse shade trees only; headstones, paths and plazas
                         # go in later via knoxbuild/props.py (which clears veg
                         # wherever a plot or walkway lands).
-                        if rng.random() < 0.008:
+                        if rolls[y - y0, x - x0] < 0.008:
                             vp[x, y] = C.TREES
                             lp[x, y] = C.DARK_GRASS
                     else:
-                        if rng.random() < 0.35:
+                        if rolls[y - y0, x - x0] < 0.35:
                             vp[x, y] = C.DENSE_BUSHES_GRASS
                             lp[x, y] = C.DARK_GRASS
 
@@ -312,19 +314,25 @@ def _paint_gardens(veg: Image.Image, landscape: Image.Image,
 
     del houses
 
-    rng = np.random.default_rng(1234)
+    # Every roll is a hash of the block's or tile's global position, so a yard
+    # comes out the same whichever chunk it is drawn in.
     step = GARDEN_TREE_EVERY
     chance = min(1.0, GARDEN_TREE_CHANCE * density)
     px = veg.load()
     planted = 0
-    for y0 in range(0, h, step):
-        for x0 in range(0, w, step):
-            if rng.random() >= chance:
-                continue
+    ox, oy = global_origin()
+    r0, c0 = aligned_start(0, oy, step), aligned_start(0, ox, step)
+    rows, cols = (h - r0 + step - 1) // step, (w - c0 + step - 1) // step
+    if rows > 0 and cols > 0:
+        ids = block_ids((oy + r0) // step, rows, (ox + c0) // step, cols)
+        won = hash01(ids, 1234) < chance
+        pick = hash01(ids, 1235)
+        for row, col in zip(*np.nonzero(won)):
+            y0, x0 = r0 + int(row) * step, c0 + int(col) * step
             ys, xs = np.nonzero(yard[y0:y0 + step, x0:x0 + step])
             if len(xs) == 0:
                 continue
-            i = rng.integers(len(xs))
+            i = int(pick[row, col] * len(xs))
             px[int(x0 + xs[i]), int(y0 + ys[i])] = C.TREES
             planted += 1
 
@@ -332,12 +340,12 @@ def _paint_gardens(veg: Image.Image, landscape: Image.Image,
     # The dice are rolled for the tiles in question, not for every tile on the
     # map: one roll each way over a town is a quarter of a gigabyte of floats.
     ys, xs = np.nonzero(beside)
-    keep = rng.random(len(xs)) < SHRUB_CHANCE * density
+    keep = hash01(global_ids_of(ys, xs), 1236) < SHRUB_CHANCE * density
     for x, y in zip(xs[keep].tolist(), ys[keep].tolist()):
         px[x, y] = C.BUSHES
 
     ys, xs = np.nonzero(open_grass)
-    roll = rng.random(len(xs))
+    roll = hash01(global_ids_of(ys, xs), 1237)
     for colour, share, lo in ((C.SHORT_GRASS, SHORT_GRASS_SHARE, 0.0),
                               (C.GRASS_ON_DARK, LONG_GRASS_SHARE, SHORT_GRASS_SHARE)):
         pick = (roll >= lo) & (roll < lo + share)
@@ -405,35 +413,48 @@ def _paint_wild_growth(veg: Image.Image, landscape: Image.Image,
     w, h = veg.size
     step = max(2, int(round(WILD_TREE_EVERY_M / proj.meters_per_tile)))
     clump = max(step * 2, int(round(WILD_CLUMP_M / proj.meters_per_tile)))
-    rng = np.random.default_rng(9871)
-    field = rng.random(((h // clump) + 2, (w // clump) + 2)) ** 1.6
     px = veg.load()
     young = C.TREE_SMALL if tree_rules_ready() else C.TREES
     planted = 0
 
+    # Blocks, clumps and strips all sit on the global grid, and each roll is a
+    # hash of its global position: a chunk draws exactly what the whole map
+    # would, whatever its size or where it starts.
+    ox, oy = global_origin()
     strip_step_rows = max(step, (BOX_STRIP_ROWS // step) * step)
+    first = aligned_start(0, oy, strip_step_rows)
+    cuts = ([0] if first > 0 else []) + list(range(first, h, strip_step_rows)) + [h]
+    c0 = aligned_start(0, ox, step)
+    xs_all = np.arange(c0, w, step)
 
-    for top in range(0, h, strip_step_rows):
-        bottom = min(h, top + strip_step_rows)
+    for top, bottom in zip(cuts, cuts[1:]):
+        if bottom <= top:
+            continue
         free_strip = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
                                           WILD_CLEAR_OF_PAVING, exclude)
-
-        for y_cur in range(top, bottom, step):
+        ys_all = np.arange(aligned_start(top, oy, step), bottom, step)
+        if len(ys_all) == 0 or len(xs_all) == 0:
+            continue
+        gy, gx = ys_all + oy, xs_all + ox
+        bid = block_ids(int(gy[0]) // step, len(ys_all), int(gx[0]) // step, len(xs_all))
+        cell = (gy // clump)[:, None].astype(np.int64) << 32 | (gx // clump)[None, :].astype(np.int64)
+        thickness = hash01(cell, 9871) ** 1.6
+        won = hash01(bid, 9872) < np.minimum(1.0, WILD_TREE_CHANCE * thickness * density)
+        pick = hash01(bid, 9873)
+        kind = hash01(bid, 9874)
+        for row, col in zip(*np.nonzero(won)):
+            y_cur, x0 = int(ys_all[row]), int(xs_all[col])
             local_y = y_cur - top
-            for x0 in range(0, w, step):
-                thickness = field[y_cur // clump, x0 // clump]
-                if rng.random() >= min(1.0, WILD_TREE_CHANCE * thickness * density):
-                    continue
-                ys, xs = np.nonzero(free_strip[local_y : local_y + step, x0 : x0 + step])
-                if len(xs) == 0:
-                    continue
-                i = int(rng.integers(len(xs)))
-                roll = rng.random()
-                px[int(x0 + xs[i]), int(y_cur + ys[i])] = (
-                    C.BUSHES if roll < WILD_BUSH_SHARE
-                    else young if roll < WILD_BUSH_SHARE + WILD_SAPLING_SHARE
-                    else C.TREES)
-                planted += 1
+            ys, xs = np.nonzero(free_strip[local_y : local_y + step, x0 : x0 + step])
+            if len(xs) == 0:
+                continue
+            i = int(pick[row, col] * len(xs))
+            roll = kind[row, col]
+            px[int(x0 + xs[i]), int(y_cur + ys[i])] = (
+                C.BUSHES if roll < WILD_BUSH_SHARE
+                else young if roll < WILD_BUSH_SHARE + WILD_SAPLING_SHARE
+                else C.TREES)
+            planted += 1
     return planted
 
 
@@ -462,36 +483,17 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
 
     big = max(8, int(round(GROVE_CELL_M / proj.meters_per_tile)))
     small = max(4, int(round(GROVE_RAGGED_M / proj.meters_per_tile)))
-    lats = lattices(h, w, [(big, 0.85), (small, 0.15)], GROVE_SEED)
+    specs = ((big, 0.85), (small, 0.15))
+    lats = lattices(h, w, specs, GROVE_SEED)
 
     def noise(ys, xs):
         return smooth_noise(ys, xs, lats)
 
-    # The edge is where the noise is high enough for `share` of the open
-    # ground to lie above it, read off a thin sample in strips.
-    sample_parts = []
-    sx = np.arange(0, w, 6, dtype=np.float32)
-    for top in range(0, h, BOX_STRIP_ROWS):
-        bottom = min(h, top + BOX_STRIP_ROWS)
-        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
-                                      WILD_CLEAR_OF_PAVING, exclude)
-        sub_y = [y for y in range(top, bottom) if y % 6 == 0]
-        if not sub_y:
-            continue
-        rel_y = [y - top for y in sub_y]
-        sub_free = free_s[rel_y][:, ::6]
-        if not sub_free.any():
-            continue
-        n_sub = noise(np.array(sub_y, dtype=np.float32), sx)
-        sample_parts.append(n_sub[sub_free])
-
-    if not sample_parts:
-        return 0
-    sample = np.concatenate(sample_parts)
-    if sample.size == 0:
-        return 0
+    # The edge is where the noise is high enough for `share` of the ground to
+    # lie above it. It is the same number for every chunk of a map
+    # (noise.noise_quantiles), not a quantile of the open ground in this one.
     share = min(0.6, GROVE_SHARE * density)
-    edge = float(np.quantile(sample, 1.0 - share))
+    edge = noise_quantiles(specs, GROVE_SEED, (1.0 - share,), (w, h))[0]
 
     planted = 0
     xs = np.arange(w, dtype=np.float32)
@@ -616,8 +618,9 @@ def _polygon_mask(size, feats, proj):
     return np.array(mask, dtype=bool)
 
 
-def _block_picks(mask, step: int, rng, chance: float):
-    """One place from each `step` x `step` block of the mask that wins its roll.
+def _block_picks(mask, step: int, salt: int, chance: float):
+    """One place from each `step` x `step` block of the mask that wins its roll,
+    as `(x, y, extra)`: `extra` is one more uniform number for the caller to use.
 
     The roll is per block, not per tile: one roll a tile plants something every
     so often everywhere, which is an orchard, while a block at a time leaves
@@ -625,23 +628,33 @@ def _block_picks(mask, step: int, rng, chance: float):
     worked out over the whole mask at once - a town is thirty million tiles and
     looking at each of them in Python is minutes - and only the few that do are
     then looked into for a tile to use.
+
+    The blocks sit on the global grid (a multiple of `step` from the map's
+    corner) and every number is a hash of the block's global index and `salt`,
+    so a block comes out the same whichever chunk it is drawn in. Only blocks
+    that lie whole inside the mask are used.
     """
     import numpy as np
 
     h, w = mask.shape
-    rows, cols = h // step, w // step
+    ox, oy = global_origin()
+    r0, c0 = aligned_start(0, oy, step), aligned_start(0, ox, step)
+    rows, cols = (h - r0) // step, (w - c0) // step
     if rows < 1 or cols < 1:
         return
-    blocks = (mask[:rows * step, :cols * step]
+    blocks = (mask[r0:r0 + rows * step, c0:c0 + cols * step]
               .reshape(rows, step, cols, step)
               .transpose(0, 2, 1, 3)
               .reshape(rows * cols, step * step))
-    wanted = blocks.any(1) & (rng.random(rows * cols) < chance)
+    ids = block_ids((oy + r0) // step, rows, (ox + c0) // step, cols).ravel()
+    wanted = blocks.any(1) & (hash01(ids, salt) < chance)
+    at_roll = hash01(ids, salt + 1)
+    extra = hash01(ids, salt + 2)
     for i in np.nonzero(wanted)[0].tolist():
         inside = np.nonzero(blocks[i])[0]
-        at = int(inside[rng.integers(len(inside))])
+        at = int(inside[int(at_roll[i] * len(inside))])
         row, col = divmod(i, cols)
-        yield col * step + at % step, row * step + at // step
+        yield c0 + col * step + at % step, r0 + row * step + at // step, float(extra[i])
 
 
 def _paint_parks(veg: Image.Image, landscape: Image.Image,
@@ -699,17 +712,15 @@ def _paint_parks(veg: Image.Image, landscape: Image.Image,
 
     del park_im
 
-    rng = np.random.default_rng(0xBEEC4)
     px = veg.load()
     young = C.TREE_SMALL if tree_rules_ready() else C.TREES
     planted = 0
-    for where, every_m, chance, bushes, saplings in (
+    for n, (where, every_m, chance, bushes, saplings) in enumerate((
             (belt, PARK_EDGE_TREE_EVERY_M, PARK_EDGE_CHANCE,
              PARK_EDGE_BUSH_SHARE, PARK_BELT_SAPLINGS),
-            (middle, PARK_TREE_EVERY_M, PARK_CHANCE, 0.0, PARK_SAPLINGS)):
+            (middle, PARK_TREE_EVERY_M, PARK_CHANCE, 0.0, PARK_SAPLINGS))):
         step = max(2, int(round(every_m / proj.meters_per_tile)))
-        for x, y in _block_picks(where, step, rng, min(1.0, chance * density)):
-            roll = rng.random()
+        for x, y, roll in _block_picks(where, step, 0xBEEC4 + 8 * n, min(1.0, chance * density)):
             px[x, y] = (C.BUSHES if roll < bushes
                         else young if roll < bushes + saplings else C.TREES)
             planted += 1
@@ -848,16 +859,15 @@ def _plant_big_trees(veg: Image.Image, landscape: Image.Image,
         rest &= ~gardens
     rounds.append((rest, WILD_BIG_TREES, wood_mult))
 
-    rng = np.random.default_rng(0x7E3E5)
     px = veg.load()
-    for where, mix, mult in rounds:
+    for n_round, (where, mix, mult) in enumerate(rounds):
         here = tree & where
         if not here.any():
             continue
-        for colour, every, chance in mix:
+        for n_mix, (colour, every, chance) in enumerate(mix):
             side = C.BIG_TREE_ROOM[colour]
-            for x, y in _block_picks(here, every, rng,
-                                    min(1.0, chance * density * mult)):
+            for x, y, _ in _block_picks(here, every, 0x7E3E5 + 64 * n_round + 8 * n_mix,
+                                        min(1.0, chance * density * mult)):
                 box = canopy.room(x, y, side)
                 if box is None:
                     continue

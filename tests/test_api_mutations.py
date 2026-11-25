@@ -121,12 +121,12 @@ class Updates(unittest.TestCase):
         self.assertIn("ready", answer.get_json()["error"].lower())
 
     def test_choosing_something_that_is_not_a_version_is_refused(self):
-        for bad in ("../../etc", "latest", "", "1.2.3.4.5", None):
+        for bad in ("../../etc", "latest", "", "1..2", None):
             with self.subTest(version=bad):
                 answer = A.app.test_client().post("/api/versions/install",
                                                   json={"version": bad})
                 self.assertEqual(answer.status_code, 400)
-                self.assertIn("version", answer.get_json()["error"].lower())
+                self.assertIn("Choose a version", answer.get_json()["error"])
 
     def test_the_version_list_says_so_when_github_cannot_be_reached(self):
         with mock.patch("updater.releases", side_effect=OSError("offline")):

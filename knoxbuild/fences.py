@@ -635,21 +635,11 @@ def render_fence_tbx(width: int, height: int,
     Each distinct fence tile is its own single-tile furniture piece, defined for
     all four facings so the reader accepts it, and placed facing west.
     """
+    from .tbx import _roomless_tbx_header
+
     tiles = sorted({tile for square in pieces.values() for tile in square})
     index = {t: i for i, t in enumerate(tiles)}
-    out = ['<?xml version="1.0" encoding="UTF-8"?>']
-    attrs = [("version", 4), ("width", width), ("height", height),
-             ("ExteriorWall", C.EXTERIOR_WALL), ("ExteriorWallTrim", 0),
-             ("Door", C.DOOR), ("DoorFrame", C.DOOR_FRAME), ("Window", C.WINDOW),
-             ("Curtains", C.CURTAINS), ("Shutters", 0), ("Stairs", C.STAIRS),
-             ("RoofCap", C.ROOF_CAP), ("RoofSlope", C.ROOF_SLOPE),
-             ("RoofTop", C.ROOF_TOP), ("GrimeWall", 0)]
-    out.append("<building" + "".join(f" {k}={quoteattr(str(v))}" for k, v in attrs) + ">")
-    for entry in C.TILE_ENTRIES:
-        out.append(f' <tile_entry category={quoteattr(entry["category"])}>')
-        for enum_name, tile in entry["tiles"].items():
-            out.append(f'  <tile enum={quoteattr(enum_name)} tile={quoteattr(tile)}/>')
-        out.append(" </tile_entry>")
+    out = _roomless_tbx_header(width, height)
     for tile in tiles:
         out.append(" <furniture>")
         for orient in ("W", "N", "E", "S"):
