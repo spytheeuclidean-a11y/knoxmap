@@ -2412,7 +2412,7 @@ function wireDownload(link, name, label) {
   if (!IN_WINDOW) return;
   link.removeAttribute('download');
   link.href = '#';
-  link.addEventListener('click', e => { e.preventDefault(); saveFile(name, label); });
+  link.onclick = e => { e.preventDefault(); saveFile(name, label); };
 }
 
 // Done with this map: put the page back as it was before Generate, ready for
