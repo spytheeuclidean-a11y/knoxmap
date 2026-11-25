@@ -179,7 +179,7 @@ body.ws-loading > * { visibility: hidden; }
 .ws-flow .arrow { flex: none; }
 /* The Standalone label and Auto button keep their width; the status message shrinks instead. */
 .ws-flow .ws-auto-standalone, .ws-flow [data-flow-auto] { flex: none; }
-.ws-auto-standalone input { flex: none; }
+.ws-auto-standalone input { flex: none; width: auto; }
 @container (min-width: 520px) {
   .ws-flow .go[data-flow-go] { flex-shrink: 0; }
 }
