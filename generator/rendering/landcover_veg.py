@@ -40,7 +40,7 @@ def plant_landcover(veg, landscape, grid, owned, proj, density: float = 1.0):
     """Plant shrubland, grassland and wetland on `owned` tiles whose
     vegetation is still empty. Returns `(forest, counts)`: the tree-cover
     tiles for the woodland pass, and tiles planted per class."""
-    from .noise import lattices, smooth_noise
+    from .noise import global_tile_ids, lattices, smooth_noise
     from .vegetation import tree_rules_ready
 
     h, w = owned.shape
@@ -67,8 +67,7 @@ def plant_landcover(veg, landscape, grid, owned, proj, density: float = 1.0):
         vegp = np.array(veg.crop((0, top, w, bottom)))
         land = np.array(landscape.crop((0, top, w, bottom)))
         empty = np.all(vegp == 0, axis=2)
-        tile_ids = (np.arange(top, bottom, dtype=np.int64)[:, None] * w
-                    + np.arange(w, dtype=np.int64)[None, :])
+        tile_ids = global_tile_ids(top, bottom, w)
         roll = _hash01(tile_ids, VEG_SEED)
         pick = _hash01(tile_ids, VEG_SEED + 1)
 
