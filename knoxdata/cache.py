@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 import time
 from pathlib import Path
 
@@ -72,12 +73,13 @@ def prune(keep_bytes: int | None = None, folder=None, keep=None) -> int:
     total = 0
     for p in folder.rglob("*"):
         try:
-            if not p.is_file():
+            metadata = p.stat()
+            if not stat.S_ISREG(metadata.st_mode):
                 continue
-            size = p.stat().st_size
+            size = metadata.st_size
             total += size
             if p != held:
-                files.append((p.stat().st_mtime, size, p))
+                files.append((metadata.st_mtime, size, p))
         except OSError:
             continue
     if total <= limit:
