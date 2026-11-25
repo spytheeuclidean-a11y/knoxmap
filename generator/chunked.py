@@ -443,7 +443,7 @@ def render_chunked(
                     )
                 ]
                 chunk_out: dict = {}
-                with global_tile_offset(hx0, hy0):
+                with global_tile_offset(hx0, hy0, extent=(w, h)):
                     R.render(
                         chunk_feats,
                         sub_proj.south, sub_proj.west, sub_proj.north, sub_proj.east,

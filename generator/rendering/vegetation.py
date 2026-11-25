@@ -10,7 +10,7 @@ from .geometry import _feature_coords_px, _is_polygon
 from .projection import Projector
 from . import woodland
 from .noise import (aligned_start, block_ids, global_ids_of, global_origin,
-                    global_window_ids, hash01, lattices, smooth_noise)
+                    global_window_ids, hash01, lattices, noise_quantiles, smooth_noise)
 
 import knoxstop
 
@@ -483,36 +483,17 @@ def _paint_groves(veg: Image.Image, landscape: Image.Image,
 
     big = max(8, int(round(GROVE_CELL_M / proj.meters_per_tile)))
     small = max(4, int(round(GROVE_RAGGED_M / proj.meters_per_tile)))
-    lats = lattices(h, w, [(big, 0.85), (small, 0.15)], GROVE_SEED)
+    specs = ((big, 0.85), (small, 0.15))
+    lats = lattices(h, w, specs, GROVE_SEED)
 
     def noise(ys, xs):
         return smooth_noise(ys, xs, lats)
 
-    # The edge is where the noise is high enough for `share` of the open
-    # ground to lie above it, read off a thin sample in strips.
-    sample_parts = []
-    sx = np.arange(0, w, 6, dtype=np.float32)
-    for top in range(0, h, BOX_STRIP_ROWS):
-        bottom = min(h, top + BOX_STRIP_ROWS)
-        free_s = _get_wild_strip_free(landscape, veg, top, bottom, w, h,
-                                      WILD_CLEAR_OF_PAVING, exclude)
-        sub_y = [y for y in range(top, bottom) if y % 6 == 0]
-        if not sub_y:
-            continue
-        rel_y = [y - top for y in sub_y]
-        sub_free = free_s[rel_y][:, ::6]
-        if not sub_free.any():
-            continue
-        n_sub = noise(np.array(sub_y, dtype=np.float32), sx)
-        sample_parts.append(n_sub[sub_free])
-
-    if not sample_parts:
-        return 0
-    sample = np.concatenate(sample_parts)
-    if sample.size == 0:
-        return 0
+    # The edge is where the noise is high enough for `share` of the ground to
+    # lie above it. It is the same number for every chunk of a map
+    # (noise.noise_quantiles), not a quantile of the open ground in this one.
     share = min(0.6, GROVE_SHARE * density)
-    edge = float(np.quantile(sample, 1.0 - share))
+    edge = noise_quantiles(specs, GROVE_SEED, (1.0 - share,), (w, h))[0]
 
     planted = 0
     xs = np.arange(w, dtype=np.float32)

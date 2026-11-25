@@ -243,18 +243,13 @@ def _reach(mask, radius: int, outside: bool):
     return _box_any(padded, radius)[radius:-radius, radius:-radius]
 
 
-def _threshold(region, lats, share: float):
-    """The noise value above which `share` of `region` lies, read off every
-    fourth tile."""
-    from .noise import smooth_noise
+def _threshold(specs, seed: int, share: float, window) -> float:
+    """The noise value above which `share` of the map lies. It is the noise's
+    own quantile over the whole map (noise.noise_quantiles), the same for every
+    chunk, not a quantile of this region's tiles. `window` is (width, height)."""
+    from .noise import noise_quantiles
 
-    h, w = region.shape
-    sy, sx = np.arange(0, h, 4), np.arange(0, w, 4)
-    sample = smooth_noise(sy.astype(np.float32), sx.astype(np.float32), lats)
-    sample = sample[region[::4, ::4]]
-    if sample.size == 0:
-        return None
-    return float(np.quantile(sample, 1.0 - share))
+    return noise_quantiles(specs, seed, (1.0 - share,), window)[0]
 
 
 def _strips(h: int):
@@ -299,10 +294,9 @@ def paint_pools(landscape, veg, proj, wet, blocked) -> int:
     if not allowed.any():
         return 0
     cell = max(3, int(round(POOL_CELL_M / proj.meters_per_tile)))
-    lats = lattices(h, w, [(cell, 1.0)], POOL_SEED)
-    edge = _threshold(wet, lats, POOL_SHARE)
-    if edge is None:
-        return 0
+    specs = [(cell, 1.0)]
+    lats = lattices(h, w, specs, POOL_SEED)
+    edge = _threshold(specs, POOL_SEED, POOL_SHARE, (w, h))
     pool = np.zeros((h, w), dtype=bool)
     xs = np.arange(w, dtype=np.float32)
     for top, bottom in _strips(h):
@@ -346,10 +340,13 @@ def paint_rocks(landscape, veg, proj, grid, owned) -> int:
         region = owned & (grid == code)
         if not region.any():
             continue
-        lats = lattices(h, w, [(clump, 0.8), (max(2, clump // 3), 0.2)], ROCK_SEED + code)
-        edge = _threshold(region, lats, min(1.0, 2 * share))
-        moss_lats = lattices(h, w, [(moss_cell, 1.0)], ROCK_SEED + 1000 + code)
-        moss_edge = _threshold(region, moss_lats, MOSS_SHARE) if code == 100 else None
+        specs = [(clump, 0.8), (max(2, clump // 3), 0.2)]
+        lats = lattices(h, w, specs, ROCK_SEED + code)
+        edge = _threshold(specs, ROCK_SEED + code, min(1.0, 2 * share), (w, h))
+        moss_specs = [(moss_cell, 1.0)]
+        moss_lats = lattices(h, w, moss_specs, ROCK_SEED + 1000 + code)
+        moss_edge = (_threshold(moss_specs, ROCK_SEED + 1000 + code, MOSS_SHARE, (w, h))
+                     if code == 100 else None)
         boulder_p = BOULDER_SHARE[code] / max(1e-6, 2 * share)
         for top, bottom in _strips(h):
             r = region[top:bottom]

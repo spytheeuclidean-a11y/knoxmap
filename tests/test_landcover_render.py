@@ -162,7 +162,9 @@ class RenderWorldCoverTest(unittest.TestCase):
         def wood(width, height, bounds=None):
             return np.full((height, width), 10, dtype="uint8")
         proj, _, veg = render(wood, feats=[])
-        ys, xs = region(proj, 0.2, 0.2, 0.8, 0.8)
+        # The whole map: the grade cuts are the noise's quantiles over the
+        # map, so the shares are the map's, not a corner's.
+        ys, xs = region(proj, 0.0, 0.0, 1.0, 1.0)
         v = veg[ys, xs]
         # Mostly trees in grass, a tenth of it a wall, the rest sparse - and
         # no clearing it was not given (generator/rendering/forest_shape.py).
