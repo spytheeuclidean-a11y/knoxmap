@@ -219,7 +219,10 @@ LAST_RESORT_ROOMS = {"bedroom", "kidsbedroom"}
 HOUSE_BASEMENTS = (("basement_house", 35, False), ("basement_house_rec", 20, True),
                    ("basement_house_workshop", 15, False),
                    ("basement_house_shelter", 10, True),
-                   ("basement_house_cellar", 20, False))
+                   ("basement_house_cellar", 20, False),
+                   ("basement_house_gym", 10, True), ("basement_house_utility", 12, False),
+                   ("basement_house_games", 8, True), ("basement_house_guest", 8, True),
+                   ("basement_house_study", 7, True), ("basement_house_playroom", 6, True))
 
 
 def _house_basement(seed: int) -> tuple[str, bool]:

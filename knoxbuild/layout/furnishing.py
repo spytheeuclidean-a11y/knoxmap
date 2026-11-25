@@ -160,7 +160,12 @@ WAREHOUSE_ROLES = {"metal_rack", "crate"}
 # out as a laundromat, coin washers down one wall and dryers down the other.
 HOME_KINDS = {None, "house", "apartment", "basement_house", "basement_house_rec",
               "basement_house_workshop", "basement_house_shelter",
-              "basement_house_cellar"}
+              "basement_house_cellar", "basement_house_gym", "basement_house_utility",
+              "basement_house_games", "basement_house_guest", "basement_house_study",
+              "basement_house_playroom"}
+# A home's cellar may still fit out these rooms the way a business does: its
+# gym with treadmills and weights, its bar with a counter and a pool table.
+HOME_TRADE_ROOMS = {"gym", "bar"}
 # What a home puts in a box room instead.
 HOME_STORE = {"metal_rack": "shelf", "crate": "dresser"}
 CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "fire_police",
@@ -1866,7 +1871,8 @@ def _furnish(plan: Plan, storey_rng: random.Random,
         eatery = r.kind in interiors.DINING_ROOMS
         salon = r.kind == "aesthetic" and plan.kind not in HOME_KINDS
         trade = (TRADE_LAYOUTS.get(r.kind)
-                 if plan.kind not in HOME_KINDS and plan.kind != "apartment" else None)
+                 if (plan.kind not in HOME_KINDS or r.kind in HOME_TRADE_ROOMS)
+                 and plan.kind != "apartment" else None)
         trade_fitted = False
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
         if r.kind in ("garage", "mechanic", "firegarage") and interiors.furnish_service_bay(
@@ -2448,6 +2454,32 @@ FLOOR_CHOICES = {
 # are one tile and nothing else - and the offices it does carpet are left
 # uncarpeted here on purpose.
 KIND_FLOOR_CHOICES = {
+    # A house's cellar. Whatever is not lived in is bare concrete or hard tile,
+    # even next to a finished room: the store, the laundry, the utility room.
+    "basement_house": {"storage": ["concrete"], "laundry": ["concrete", "tile_grey"]},
+    "basement_house_rec": {"storage": ["concrete"], "laundry": ["tile_grey", "concrete"],
+                           "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_workshop": {"storage": ["concrete"], "laundry": ["concrete"]},
+    "basement_house_shelter": {"storage": ["concrete"], "bathroom": ["tile_grey", "concrete"]},
+    "basement_house_cellar": {"storage": ["concrete"], "laundry": ["concrete", "tile_grey"]},
+    "basement_house_utility": {"janitor": ["concrete"], "storage": ["concrete"],
+                               "laundry": ["tile_grey", "concrete"]},
+    "basement_house_gym": {"gym": ["wood_dark", "wood_grey", "concrete"],
+                           "storage": ["concrete"], "laundry": ["tile_grey", "concrete"],
+                           "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_games": {"bar": ["wood_dark", "carpet_brown", "carpet_grey"],
+                             "livingroom": ["carpet_brown", "carpet_grey", "wood_mid"],
+                             "storage": ["concrete"], "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_guest": {"bedroom": ["carpet_beige", "carpet_grey", "wood_pale"],
+                             "livingroom": ["carpet_grey", "wood_pale"],
+                             "kitchen": ["tile_small", "tile_grey"],
+                             "storage": ["concrete"], "bathroom": ["tile_white", "tile_cream"]},
+    "basement_house_study": {"office": ["carpet_grey", "wood_mid", "carpet_brown"],
+                             "livingroom": ["carpet_grey", "wood_mid"],
+                             "storage": ["concrete"], "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_playroom": {"kidsbedroom": ["carpet_blue", "carpet_green", "carpet_red"],
+                                "livingroom": ["carpet_grey", "carpet_brown"],
+                                "storage": ["concrete"], "bathroom": ["tile_white", "tile_cream"]},
     "garage": {
         "garage": ["concrete"],
         "mechanic": ["concrete"],

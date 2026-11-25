@@ -191,7 +191,10 @@ class Planning(unittest.TestCase):
         self.assertNotEqual(parent.storeys[0].grid[py][px], 0)
         self.assertTrue(steps(px, py, d) <= parent.storeys[0].holes)
         kinds = {r.kind for r in b.building.rooms}
-        self.assertTrue(kinds <= {"laundry", "storage", "garage", "livingroom", "hall"}, kinds)
+        from knoxbuild.layout import SPECIAL_MIXES as KIND_ROOMS
+        allowed = {"hall"}.union(*(set(KIND_ROOMS[k][0]) | set(KIND_ROOMS[k][1])
+                                   for k, _w, _f in HOUSE_BASEMENTS))
+        self.assertTrue(kinds <= allowed, kinds)
 
     def test_a_house_cellar_laundry_is_a_home_s_not_a_laundromat(self):
         """A house cellar's laundry once got coin washers down one wall and
@@ -312,6 +315,28 @@ class Variety(unittest.TestCase):
     def test_house_cellars_are_not_all_the_same_programme(self):
         kinds = {_house_basement(seed)[0] for seed in range(200)}
         self.assertEqual(kinds, {k for k, _w, _f in HOUSE_BASEMENTS})
+
+    def test_cellars_include_a_gym_a_utility_room_and_a_games_room(self):
+        kinds = {k for k, _w, _f in HOUSE_BASEMENTS}
+        self.assertTrue({"basement_house_gym", "basement_house_utility",
+                         "basement_house_games"} <= kinds)
+
+    def test_a_cellar_store_room_is_floored_in_concrete(self):
+        from knoxbuild.layout import KIND_FLOOR_CHOICES
+        for kind, _w, _f in HOUSE_BASEMENTS:
+            self.assertEqual(KIND_FLOOR_CHOICES[kind]["storage"], ["concrete"], kind)
+
+    def test_a_home_gym_is_fitted_with_machines_when_it_has_room(self):
+        for seed in range(400):
+            if _house_basement(seed)[0] != "basement_house_gym":
+                continue
+            parent = build_building(22, 16, seed=seed)
+            b = plan_basement(parent, house_spec(parent), seed, Settings())
+            if b and any(r.kind == "gym" for r in b.building.storeys[0].rooms):
+                roles = {f[0] for f in b.building.storeys[0].furniture}
+                if "treadmill" in roles:
+                    return
+        self.fail("no home gym got a treadmill")
 
     def test_a_cellar_is_a_function_of_its_seed(self):
         self.assertEqual(_house_basement(17), _house_basement(17))
