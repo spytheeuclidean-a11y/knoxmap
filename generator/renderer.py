@@ -236,28 +236,45 @@ def _paint_climate_ground(landscape: Image.Image, climate: dict,
 
 
 def _paint_relief_ground(landscape: Image.Image, metres, span=None) -> None:
-    """Map relief bands to valid Rules.txt ground colours under OSM."""
+    """Map relief bands to valid Rules.txt ground colours under OSM.
+
+    `metres` covers the whole map, and `landscape` may be only a chunk of it
+    (noise.global_tile_offset says which): the part of the grid under the
+    chunk is the part read, and the band cuts are percentiles of the whole
+    grid, so every chunk bands the ground as the whole map would.
+    """
     import numpy as np
 
-    m = np.asarray(metres, dtype="float32")
-    if m.ndim != 2 or m.size == 0:
+    from .rendering.noise import global_origin, map_extent
+
+    src = np.asarray(metres, dtype="float32")
+    if src.ndim != 2 or src.size == 0:
         return
-    if (m.shape[1], m.shape[0]) != landscape.size:
-        m = np.asarray(Image.fromarray(m).resize(landscape.size, Image.BILINEAR))
-    if not np.isfinite(m).any():
+    if not np.isfinite(src).any():
         return
-    lo, hi = span if span else (float(np.nanmin(m)), float(np.nanmax(m)))
+    lo, hi = span if span else (float(np.nanmin(src)), float(np.nanmax(src)))
     relief = float(hi) - float(lo)
     if relief < MIN_RELIEF_M:
         return
-    m = np.nan_to_num(m, nan=float(np.nanmin(m)))
+    src = np.nan_to_num(src, nan=float(np.nanmin(src)))
+    w, h = landscape.size
+    ox, oy = global_origin()
+    whole_w, whole_h = map_extent((w, h))
+    grid_h, grid_w = src.shape
+    box = (ox / whole_w * grid_w, oy / whole_h * grid_h,
+           (ox + w) / whole_w * grid_w, (oy + h) / whole_h * grid_h)
+    if (grid_w, grid_h) == (w, h) and box == (0, 0, grid_w, grid_h):
+        m = src
+    else:
+        m = np.asarray(Image.fromarray(src).resize((w, h), Image.BILINEAR, box=box))
+    p65, p88, p95 = np.percentile(src, (65, 88, 95))
     arr = np.array(landscape, dtype="uint8", copy=True)
-    upper = m >= np.percentile(m, 65)
-    rock = m >= np.percentile(m, 88)
+    upper = m >= p65
+    rock = m >= p88
     arr[upper] = C.MEDIUM_GRASS
     arr[rock] = C.GRAVEL_DIRT
     if relief >= SNOW_RELIEF_M:
-        arr[m >= np.percentile(m, 95)] = C.LIGHT_GRASS
+        arr[m >= p95] = C.LIGHT_GRASS
     landscape.paste(Image.fromarray(arr, "RGB"), (0, 0))
 
 

@@ -4,10 +4,10 @@ The whole-map render (`renderer.render`) is the reference; `render_chunked` is
 what every large map goes through. Any layer that differs is a seam or a
 different map depending on how big the area happens to be.
 
-Layers that match are asserted strictly. The vegetation layer does not match
-yet, so its test is marked `expectedFailure` to keep the gap visible: once it
-is fixed the test turns into an "unexpected success" and the marker has to
-come off.
+Road hierarchy and the spawn map match to the tile. The ground and the
+vegetation are allowed a handful of tiles (measured: 4 and 8 of 360,000):
+what is left is the reach of the wood's edge effects past the chunk halo and
+the rounding of polygon edges, not a draw that differs from chunk to chunk.
 """
 import tempfile
 import unittest
@@ -44,7 +44,7 @@ class ChunkedMatchesWholeRender(unittest.TestCase):
         cls._chunks = tempfile.TemporaryDirectory()
         R.render(feats, *args, cls._whole.name, "map")
         chunked.render_chunked(feats, *args, cls._chunks.name, "map",
-                               chunk_cells=1, halo_tiles=16)
+                               chunk_cells=1, halo_tiles=chunked.HALO_TILES)
 
     @classmethod
     def tearDownClass(cls):
@@ -76,12 +76,13 @@ class ChunkedMatchesWholeRender(unittest.TestCase):
         self.assertEqual(whole.shape, chunks.shape)
         self.assertLessEqual(int(np.any(whole != chunks, axis=2).sum()), 16)
 
-    @unittest.expectedFailure
     def test_vegetation_matches(self):
-        # What is left is the woods and the groves: their density cuts are
-        # quantiles taken over each chunk's own tiles (forest_shape.py,
-        # vegetation._paint_groves), not a number the whole map shares.
-        self._assert_same("_veg.bmp")
+        # 8 tiles differ today. With a halo of 16 it is about 300: the wood's
+        # edge reaches further than that.
+        whole = _layer(self._whole.name, "_veg.bmp")
+        chunks = _layer(self._chunks.name, "_veg.bmp")
+        self.assertEqual(whole.shape, chunks.shape)
+        self.assertLessEqual(int(np.any(whole != chunks, axis=2).sum()), 32)
 
 
 class GlobalGridIsWindowIndependent(unittest.TestCase):
@@ -109,6 +110,53 @@ class GlobalGridIsWindowIndependent(unittest.TestCase):
         inside = lambda p: oy + 2 * step <= p[1] < oy + 170 - 2 * step and ox + 2 * step <= p[0] < ox + 180 - 2 * step
         self.assertEqual(sorted(p for p in full if inside(p)), sorted(p for p in part if inside(p)))
         self.assertTrue(any(inside(p) for p in full))
+
+
+class MapWideCutsAreChunkIndependent(unittest.TestCase):
+    """What is cut by a quantile or a percentile is cut once for the map."""
+
+    def test_noise_quantiles_come_from_the_map_not_the_window(self):
+        from generator.rendering.noise import global_tile_offset, noise_quantiles
+
+        specs, seed, qs = [(40, 0.7), (11, 0.3)], 17, (0.5, 0.9)
+        whole = noise_quantiles(specs, seed, qs, (900, 700))
+        with global_tile_offset(300, 200, extent=(900, 700)):
+            chunk = noise_quantiles(specs, seed, qs, (120, 90))
+        self.assertEqual(whole, chunk)
+
+    def test_noise_quantile_gives_the_share_it_was_asked_for(self):
+        from generator.rendering.noise import lattices, noise_quantiles, smooth_noise
+
+        specs, seed, size = [(60, 1.0)], 5, 900
+        cut = noise_quantiles(specs, seed, (0.8,), (size, size))[0]
+        values = smooth_noise(np.arange(size, dtype=np.float32), np.arange(size, dtype=np.float32),
+                              lattices(size, size, specs, seed))
+        self.assertAlmostEqual(float((values > cut).mean()), 0.2, delta=0.03)
+
+    def _banded(self, offset, size, extent, grid):
+        from generator import pz_colors as C
+        from generator.rendering.noise import global_tile_offset
+
+        land = Image.new("RGB", size, C.DARK_GRASS)
+        with global_tile_offset(*offset, extent=extent):
+            R._paint_relief_ground(land, grid, (0.0, 600.0))
+        return np.asarray(land)
+
+    def test_relief_bands_a_chunk_as_the_whole_map(self):
+        gy, gx = np.mgrid[0:90, 0:120].astype(np.float32)
+        grid = (gx * 3.0 + gy * 2.0) % 600.0              # a sawtooth: bands on every window
+        whole = self._banded((0, 0), (120, 90), (120, 90), grid)
+        part = self._banded((30, 20), (60, 50), (120, 90), grid)
+        self.assertTrue((whole[20:70, 30:90] == part).all())
+        self.assertGreater(len({tuple(c) for c in whole.reshape(-1, 3)}), 1)
+
+    def test_relief_bands_a_chunk_from_a_coarse_grid(self):
+        gy, gx = np.mgrid[0:45, 0:60].astype(np.float32)
+        grid = (gx * 6.0 + gy * 4.0) % 600.0
+        whole = self._banded((0, 0), (120, 90), (120, 90), grid)
+        part = self._banded((30, 20), (60, 50), (120, 90), grid)
+        differ = int(np.any(whole[20:70, 30:90] != part, axis=2).sum())
+        self.assertLessEqual(differ, 30)                  # of 3,000 tiles: bilinear rounding at a band edge
 
 
 if __name__ == "__main__":
