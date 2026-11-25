@@ -126,11 +126,11 @@ def _verge_width_m(feat: OSMFeature, cat: str) -> float:
 
 def _way_width_m(feat: OSMFeature, cat: str) -> float:
     """Carriageway width for this way, from its own tags where it has them."""
-    # The 4.0 default is for a line category that is in none of the tables -
-    # a breakwater, a drainage ditch - rather than a KeyError halfway through
-    # a map.
+    # Strict on purpose: a category with no entry is a mistake in the caller,
+    # and a silent default would paint it a lane wide without a word. Every
+    # category that reaches here has an entry in the table above.
     base = ROAD_WIDTHS_BY_HIERARCHY_M.get(road_hierarchy(feat.tags),
-                                         ROAD_WIDTHS_M.get(cat, 4.0))
+                                         ROAD_WIDTHS_M[cat])
     raw = feat.tags.get("width") or feat.tags.get("est_width")
     if raw:
         # OSM widths are metres unless suffixed; "7", "7 m" and "7.5" all occur.

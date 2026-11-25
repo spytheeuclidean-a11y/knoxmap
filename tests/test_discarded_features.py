@@ -92,11 +92,22 @@ class Breakwater(unittest.TestCase):
 class DisusedTrack(unittest.TestCase):
     """A track carrying no trains keeps its bed and loses its steel."""
 
-    def test_disused_and_preserved_are_disused(self):
-        for value in ("disused", "preserved"):
-            with self.subTest(value=value):
-                self.assertTrue(rail_is_disused({"railway": value}))
-                self.assertEqual(_classify({"railway": value}), "railway")
+    def test_a_disused_track_is_disused(self):
+        self.assertTrue(rail_is_disused({"railway": "disused"}))
+        self.assertEqual(_classify({"railway": "disused"}), "railway")
+
+    def test_a_preserved_railway_still_runs_on_its_steel(self):
+        # "preserved" sounds disused and is not: a heritage line is preserved
+        # precisely because it still carries trains.
+        self.assertFalse(rail_is_disused({"railway": "preserved"}))
+        self.assertEqual(_classify({"railway": "preserved"}), "railway")
+        img = Image.new("RGB", (60, 40), C.DIRT)
+        feat = OSMFeature(1, "way", {"railway": "preserved"}, [[0.0, 0.0], [0.0, 1.0]])
+        with mock.patch.object(rails, "_feature_coords_px",
+                              return_value=[[(5, 20), (50, 20)]]):
+            roads.paint_rails(ImageDraw.Draw(img), {"railway": [feat]}, _Proj())
+        painted = {img.getpixel((x, y)) for x in range(60) for y in range(40)}
+        self.assertTrue(painted & _rail_colours())
 
     def test_a_working_railway_is_not_disused(self):
         for value in ("rail", "light_rail", "narrow_gauge"):
@@ -163,6 +174,22 @@ class Rendered(unittest.TestCase):
         row = {tuple(int(v) for v in px) for px in land[30]}
         self.assertIn(C.CLAY, row)
         self.assertNotIn(C.WATER, row)
+
+    def test_a_breakwater_comes_out_rubble_and_not_concrete(self):
+        from generator import renderer
+        from generator.rendering.projection import Projector
+
+        south, west, north, east = 40.0, -85.0, 40.0012, -84.9985
+        proj = Projector.build(south, west, north, east, 1.0, 0.0)
+        mole = OSMFeature(1, "way", {"man_made": "breakwater"},
+                          [proj.to_latlon(20, 10), proj.to_latlon(20, 80)])
+        with tempfile.TemporaryDirectory() as out:
+            res = renderer.render([mole], south, west, north, east,
+                                  meters_per_tile=1.0, output_dir=out, map_name="bw")
+            land = np.asarray(Image.open(res.landscape_path).convert("RGB"))
+        painted = {tuple(int(v) for v in px) for row in land for px in row}
+        self.assertIn(C.GRAVEL_DIRT, painted)
+        self.assertNotIn(C.PALE_CONCRETE, painted)
 
     def test_a_breakwater_gets_no_railing(self):
         # plan_piers rails what stands over water to walk along. A wave

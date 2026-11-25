@@ -668,20 +668,25 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                          for feat in buckets.get(cat, []) if not _is_polygon(feat)],
                         C.PALE_CONCRETE, crisp=(road_layout == 5))
         if cat in ROAD_WIDTHS_M:
-            # A track carrying no trains keeps its bed and loses its steel:
-            # the ballast is overgrown rather than bare, and paint_rails lays
-            # no tile on it. Everything else here is one colour.
-            tracks: dict[bool, list] = {True: [], False: []}
-            for feat in buckets.get(cat, []):
-                if _is_polygon(feat):
-                    continue
-                overgrown = cat == "railway" and rail_is_disused(feat.tags)
-                tracks[overgrown].append(
-                    (road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat)))
-            for overgrown, strokes in tracks.items():
-                if strokes:
-                    _draw_roads(landscape, strokes,
-                                DISUSED_RAIL_FILL if overgrown else fill,
+            strokes = [(road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
+                       for feat in buckets.get(cat, []) if not _is_polygon(feat)]
+            _draw_roads(landscape, strokes, fill, crisp=(road_layout == 5))
+            if cat == "railway":
+                # A track carrying no trains keeps its bed and loses its steel:
+                # the ballast is overgrown rather than bare, and paint_rails
+                # lays no tile on it.
+                #
+                # Painted over the ballast rather than in place of it, so every
+                # way of the category still shares one beveled join: drawn as
+                # two runs, a disused stretch abutting a working one met it at
+                # a seam. Nothing is drawn at all when no track is disused, so
+                # a map without one is unchanged.
+                overgrown = [
+                    (road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
+                    for feat in buckets.get(cat, [])
+                    if not _is_polygon(feat) and rail_is_disused(feat.tags)]
+                if overgrown:
+                    _draw_roads(landscape, overgrown, DISUSED_RAIL_FILL,
                                 crisp=(road_layout == 5))
         for feat in buckets.get(cat, []):
             if cat == "railway" and not _is_polygon(feat):

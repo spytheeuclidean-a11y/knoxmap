@@ -1300,9 +1300,13 @@ def road_hierarchy(tags: dict) -> str | None:
 
 # A track that carries no trains. It keeps its bed and loses its steel, so it
 # is drawn as a bed and no rail tile is laid on it (generator/rendering/roads.py,
-# generator/renderer.py). "abandoned" is not here because OVERPASS_FILTERS does
-# not ask for it; a line torn up and gone is not a line.
-DISUSED_RAIL_VALUES = frozenset({"disused", "preserved"})
+# generator/renderer.py).
+#
+# "preserved" is not here, however much it sounds like it: a preserved railway
+# is a heritage line that still runs trains on that steel. "abandoned" is not
+# here either because OVERPASS_FILTERS does not ask for it; a line torn up and
+# gone is not a line.
+DISUSED_RAIL_VALUES = frozenset({"disused"})
 
 
 def rail_is_disused(tags: dict) -> bool:

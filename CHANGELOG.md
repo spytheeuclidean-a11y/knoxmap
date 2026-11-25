@@ -14,10 +14,12 @@
     keep zombies out, turn doors away and stand no street furniture, so a
     roadside ditch painted as water came out as a swimming pool nobody lived
     beside.
-  - **Disused and preserved track** was painted as a working line: steel,
-    sleepers and bare ballast were laid down a railway nobody runs on. It keeps
-    its bed and loses its steel, in dirt with grass through it, and the section
-    fitting no longer plans tiles that would not be drawn.
+  - **Disused track** was painted as a working line: steel, sleepers and bare
+    ballast were laid down a railway nobody runs on. It keeps its bed and loses
+    its steel, in dirt with grass through it, and the section fitting no longer
+    plans tiles that would not be drawn. A **preserved** railway is left alone,
+    however disused it sounds: a heritage line is preserved because it still
+    runs trains on that steel.
   - **Breakwaters and groynes** were piers: the same pale concrete, and the same
     railing following the top of a walkway. They are rubble now, and no railing
     follows them.
