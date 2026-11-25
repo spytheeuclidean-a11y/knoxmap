@@ -12,7 +12,7 @@ from generator.osm import ROAD_HIERARCHY_CODES
 
 from .bitmaps import read_rgb, same_colour
 from .entrances import Edge
-from .fences import _fenced_sites, _grid_path, _opening_tiles, _openings, _path_crossings
+from .fences import _crossing_points, _fenced_sites, _grid_path, _nearby, _openings
 
 SEARCH_MARGIN = 32
 FRONTAGE_RANGE = 24
@@ -45,11 +45,12 @@ def _fence_edges(mapped_lines, areas, gates, paths, closed_gates):
     else:
         crossings = None
 
-    gate_tiles = {tile for point in gates for tile in _opening_tiles(*point)}
+    gate_tiles = set(_nearby(gates))
     blocked = set()
     for line in lines:
-        clear = gate_tiles | {tile for point in _path_crossings(line, crossings)
-                              for tile in _opening_tiles(*point)}
+        intersections = (_crossing_points(LineString(line), crossings, include_overlaps=True)
+                         if crossings is not None and len(line) >= 2 else [])
+        clear = gate_tiles | set(_nearby(intersections))
         walk = _grid_path(line)
         for (x, y), (nx, ny) in zip(walk, walk[1:]):
             edge = (min(x, nx), y, "N") if y == ny else (x, min(y, ny), "W")
@@ -199,7 +200,7 @@ def pedestrian_context(out_dir, map_name, proj, occupied, hierarchy, road_weight
         street = motor & (hierarchy >= ROAD_HIERARCHY_CODES["residential"])
         service = motor & (hierarchy == ROAD_HIERARCHY_CODES["service"])
         pavement |= hierarchy == ROAD_HIERARCHY_CODES["footway"]
-    gates, paths, closed_gates = _openings(out_dir, map_name, proj)
+    gates, paths, closed_gates, _roads = _openings(out_dir, map_name, proj)
     for path_line in paths:
         for x, y in _grid_path(path_line):
             if _in_bounds(pavement.shape, x, y):

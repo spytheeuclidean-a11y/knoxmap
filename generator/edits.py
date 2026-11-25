@@ -36,6 +36,7 @@ EDITABLE_TAGS = {
     "building", "building:levels", "shop", "amenity", "leisure", "landuse",
     "natural", "highway", "railway", "waterway", "barrier", "name", "width",
     "bridge", "tunnel", "oneway", "layer", "surface", "area",
+    "fence_type", "material", "height", "est_height",
 }
 
 
