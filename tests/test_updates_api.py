@@ -37,15 +37,16 @@ class UpdateRoutes(unittest.TestCase):
 
     def test_choosing_a_version_starts_one_download(self):
         import updater
-        started = []
+        version = "1.2.3.4.5"
         with mock.patch.object(updater, "managed", return_value=True), \
                 mock.patch.object(updater, "status", return_value={"state": "idle"}), \
-                mock.patch.object(updater, "choose", side_effect=started.append), \
                 mock.patch("threading.Thread") as thread:
-            thread.return_value.start.side_effect = lambda: started.append("ran")
-            answer = post("/api/versions/install", {"version": "1.8.4.2"})
+            answer = post("/api/versions/install", {"version": version})
         self.assertEqual(answer.status_code, 200)
-        self.assertTrue(answer.get_json()["started"])
+        self.assertEqual(answer.get_json(), {"started": True, "version": version})
+        thread.assert_called_once_with(target=updater.choose, args=(version,),
+                                       name="choose-version", daemon=True)
+        thread.return_value.start.assert_called_once_with()
 
     def test_deep_and_multi_digit_versions_are_accepted_and_ordered(self):
         import re
