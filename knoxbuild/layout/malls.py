@@ -580,38 +580,6 @@ def _clear_concourse(plan: Plan) -> int:
     return dropped
 
 
-def _bridge_core(plan: Plan, along_x: bool) -> None:
-    """Keep the stairs out of the hole, and a way to them across it.
-
-    The stair core stands in the middle of the building, which is the middle
-    of the concourse, which is exactly where the hole goes: left alone it was
-    a landing marooned in mid-air with the galleries out of reach either side.
-    The core keeps its floor and a walkway runs from it to the nearer gallery.
-    """
-    if not plan.core:
-        return
-    cx0, cy0, cx1, cy1 = plan.core
-    rows = [y for x, y in plan.void]
-    cols = [x for x, y in plan.void]
-    lo, hi = (min(rows), max(rows)) if along_x else (min(cols), max(cols))
-    for x in range(cx0, cx1 + 1):
-        for y in range(cy0, cy1 + 1):
-            plan.void.discard((x, y))
-    if along_x:
-        # Out of the core to whichever edge of the hole is closer.
-        up = (cy0 - lo) <= (hi - cy1)
-        span = range(lo, cy0) if up else range(cy1 + 1, hi + 1)
-        for y in span:
-            for x in range(cx0, cx1 + 1):
-                plan.void.discard((x, y))
-    else:
-        left = (cx0 - lo) <= (hi - cx1)
-        span = range(lo, cx0) if left else range(cx1 + 1, hi + 1)
-        for x in span:
-            for y in range(cy0, cy1 + 1):
-                plan.void.discard((x, y))
-
-
 def _atrium_railings(plan: Plan) -> None:
     """Rail the edge of the hole, and take the windows off it.
 

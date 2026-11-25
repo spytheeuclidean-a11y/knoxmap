@@ -32,7 +32,7 @@ from . import pz_colors as C
 from . import structures
 from .osm import (FENCE_BARRIERS, GATE_BARRIERS, OSMFeature,  # noqa: F401
                   ROAD_HIERARCHY_BY_CODE, ROAD_HIERARCHY_CODES, classify,
-                  road_hierarchy)
+                  rail_is_disused, road_hierarchy)
 
 # Everything that moved out is still importable from here: the tests, the
 # tools and knoxbuild reach into this module by name.
@@ -56,9 +56,9 @@ from .rendering.gridangle import (ALIGN_MIN_STRENGTH, DISTRICT_CELL_M,
                                   DISTRICT_CLUSTER_DEG, DISTRICT_MIN_ROAD_M,
                                   GRID_ROADS, _grid_delta, dominant_road_angle)  # noqa: F401
 from .rendering.landcover import (AREA_CATEGORIES, DENSE_COVERAGE,
-                                  GREEN_CATEGORIES, LANDSCAPE_FILL,
-                                  LANDSCAPE_ORDER, VEG_CATEGORIES,
-                                  WATERWAY_WIDTH_M, paint_markers,
+                                  DISUSED_RAIL_FILL, GREEN_CATEGORIES,
+                                  LANDSCAPE_FILL, LANDSCAPE_ORDER,
+                                  VEG_CATEGORIES, WATERWAY_WIDTH_M, paint_markers,
                                   grid_for_map, refine_owned, resized_grid,
                                   settle_markers)  # noqa: F401
 from .rendering.fields import paint_fields, paint_pools, paint_rocks
@@ -131,14 +131,6 @@ CLIMATE_TINT = {
     "temperate": (1.0, 1.0, 1.0),
 }
 _WINTER_GROUND = (210, 214, 218)
-
-
-def _colour_mask(ground, colours) -> "np.ndarray":
-    """Which pixels of `ground` are one of `colours`."""
-    mask = np.zeros(ground.shape[:2], dtype=bool)
-    for colour in colours:
-        mask |= np.all(ground == np.array(colour, dtype=ground.dtype), axis=2)
-    return mask
 
 
 def _paint_climate(landscape: Image.Image, climate: dict,
@@ -236,28 +228,45 @@ def _paint_climate_ground(landscape: Image.Image, climate: dict,
 
 
 def _paint_relief_ground(landscape: Image.Image, metres, span=None) -> None:
-    """Map relief bands to valid Rules.txt ground colours under OSM."""
+    """Map relief bands to valid Rules.txt ground colours under OSM.
+
+    `metres` covers the whole map, and `landscape` may be only a chunk of it
+    (noise.global_tile_offset says which): the part of the grid under the
+    chunk is the part read, and the band cuts are percentiles of the whole
+    grid, so every chunk bands the ground as the whole map would.
+    """
     import numpy as np
 
-    m = np.asarray(metres, dtype="float32")
-    if m.ndim != 2 or m.size == 0:
+    from .rendering.noise import global_origin, map_extent
+
+    src = np.asarray(metres, dtype="float32")
+    if src.ndim != 2 or src.size == 0:
         return
-    if (m.shape[1], m.shape[0]) != landscape.size:
-        m = np.asarray(Image.fromarray(m).resize(landscape.size, Image.BILINEAR))
-    if not np.isfinite(m).any():
+    if not np.isfinite(src).any():
         return
-    lo, hi = span if span else (float(np.nanmin(m)), float(np.nanmax(m)))
+    lo, hi = span if span else (float(np.nanmin(src)), float(np.nanmax(src)))
     relief = float(hi) - float(lo)
     if relief < MIN_RELIEF_M:
         return
-    m = np.nan_to_num(m, nan=float(np.nanmin(m)))
+    src = np.nan_to_num(src, nan=float(np.nanmin(src)))
+    w, h = landscape.size
+    ox, oy = global_origin()
+    whole_w, whole_h = map_extent((w, h))
+    grid_h, grid_w = src.shape
+    box = (ox / whole_w * grid_w, oy / whole_h * grid_h,
+           (ox + w) / whole_w * grid_w, (oy + h) / whole_h * grid_h)
+    if (grid_w, grid_h) == (w, h) and box == (0, 0, grid_w, grid_h):
+        m = src
+    else:
+        m = np.asarray(Image.fromarray(src).resize((w, h), Image.BILINEAR, box=box))
+    p65, p88, p95 = np.percentile(src, (65, 88, 95))
     arr = np.array(landscape, dtype="uint8", copy=True)
-    upper = m >= np.percentile(m, 65)
-    rock = m >= np.percentile(m, 88)
+    upper = m >= p65
+    rock = m >= p88
     arr[upper] = C.MEDIUM_GRASS
     arr[rock] = C.GRAVEL_DIRT
     if relief >= SNOW_RELIEF_M:
-        arr[m >= np.percentile(m, 95)] = C.LIGHT_GRASS
+        arr[m >= p95] = C.LIGHT_GRASS
     landscape.paste(Image.fromarray(arr, "RGB"), (0, 0))
 
 
@@ -384,6 +393,38 @@ def _collect_global_features(features: list[OSMFeature], proj, clip,
     return buckets, building_feats, indoor_feats, fence_feats, gate_feats, place_feats
 
 
+def _prepare_roads(features, proj, road_layout: int, shape, output_dir: str,
+                   map_name: str, *, should_stop=None, progress=None) -> None:
+    """Apply the selected road layout once for the full map."""
+    knoxstop.check(should_stop, "the roads")
+    if road_layout == 0:
+        from .mapped_roads import clean_mapped_roads
+        clean_mapped_roads(features, proj, classify, _is_polygon)
+    elif road_layout == 5:
+        from .vanilla_grid import apply_vanilla_grid
+        apply_vanilla_grid(features, proj, classify, _is_polygon)
+    elif road_layout in (1, 4):
+        from .octilinear import straighten_roads
+        straighten_roads(features, proj, classify, _is_polygon, clean=True)
+    elif road_layout in ROAD_LAYOUTS:
+        # Build and the paper map read the graph back rather than routing again.
+        from .octilinear import apply_road_graph, graph_path
+        from .roadgraph.route import route
+
+        def tick(done, total):
+            knoxstop.check(should_stop, "the roads")
+            if progress:
+                progress(done, total)
+
+        graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape,
+                      log=knoxlog.log.info, tick=tick)
+        knoxstop.check(should_stop, "the roads")
+        knoxfiles.write(graph_path(output_dir, map_name), graph)
+        apply_road_graph(features, graph, proj)
+
+    knoxstop.check(should_stop, "the roads")
+
+
 def render(features: Iterable[OSMFeature], south: float, west: float,
            north: float, east: float, meters_per_tile: float,
            output_dir: str, map_name: str,
@@ -413,7 +454,12 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            _rail_override: list[tuple[int, int, int]] | None = None,
            _rail_offset: tuple[int, int] = (0, 0),
            _write_geojson: bool = True,
-           _chunk_out: dict | None = None) -> RenderResult:
+           _chunk_out: dict | None = None, *, road_progress=None) -> RenderResult:
+    """Render a map. Road links go to road_progress and chunks to progress.
+
+    For a single render, progress also works as the road callback if
+    road_progress is omitted.
+    """
     proj = _proj_override or Projector.build(south, west, north, east, meters_per_tile, rotation)
     from .chunked import CHUNK_MIN_CELLS, render_chunked
     cx_cells, cy_cells = proj.cell_grid()
@@ -432,6 +478,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             winter_look=winter_look, elevation=elevation,
             elevation_span=elevation_span, should_stop=should_stop,
             progress=progress, render_progress=render_progress,
+            road_progress=road_progress,
         )
     from .rendering.forest_params import ForestParams
     # The Forest card's knobs. Callers that only know Stand size and Edge
@@ -443,30 +490,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     import copy
     features = [copy.copy(f) for f in features]
     road_layout = int(straight_roads or 0)
-    if not _skip_road_layout and road_layout == 0:
-        from .mapped_roads import clean_mapped_roads
-        clean_mapped_roads(features, proj, classify, _is_polygon)
-    elif not _skip_road_layout and road_layout == 5:
-        from .vanilla_grid import apply_vanilla_grid
-        apply_vanilla_grid(features, proj, classify, _is_polygon)
-    elif not _skip_road_layout and road_layout in (1, 4):
-        # Every road in straight runs at 45-degree steps (octilinear.py).
-        from .octilinear import straighten_roads
-        straighten_roads(features, proj, classify, _is_polygon, clean=True)
-    elif not _skip_road_layout and road_layout in ROAD_LAYOUTS:
-        # Routed on vanilla's lattice (roadgraph/route.py), and saved: Build and
-        # the paper map read the roads back rather than routing them again.
-        from .octilinear import apply_road_graph, graph_path
-        from .roadgraph.route import route
-
-        def tick(done, total):
-            knoxstop.check(should_stop, "the roads")
-            if progress:
-                progress(done, total)
-        graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape, log=knoxlog.log.info, tick=tick)
-        knoxfiles.write(graph_path(output_dir, map_name), graph)
-        apply_road_graph(features, graph, proj)
     if not _skip_road_layout:
+        _prepare_roads(features, proj, road_layout, shape, output_dir, map_name,
+                       should_stop=should_stop,
+                       progress=road_progress if road_progress is not None else progress)
         from .rendering.parking import square_parking_lots
         square_parking_lots(features, proj, classify, _is_polygon)
     t_render0 = time.perf_counter()
@@ -671,20 +698,44 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             strokes = [(road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
                        for feat in buckets.get(cat, []) if not _is_polygon(feat)]
             _draw_roads(landscape, strokes, fill, crisp=(road_layout == 5))
+            if cat == "railway":
+                # A track carrying no trains keeps its bed and loses its steel:
+                # the ballast is overgrown rather than bare, and paint_rails
+                # lays no tile on it.
+                #
+                # Painted over the ballast rather than in place of it, so every
+                # way of the category still shares one beveled join: drawn as
+                # two runs, a disused stretch abutting a working one met it at
+                # a seam. Nothing is drawn at all when no track is disused, so
+                # a map without one is unchanged.
+                overgrown = [
+                    (road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
+                    for feat in buckets.get(cat, [])
+                    if not _is_polygon(feat) and rail_is_disused(feat.tags)]
+                if overgrown:
+                    _draw_roads(landscape, overgrown, DISUSED_RAIL_FILL,
+                                crisp=(road_layout == 5))
         for feat in buckets.get(cat, []):
             if cat == "railway" and not _is_polygon(feat):
                 continue  # the continuous track pass supplies its own ballast
+            # Its own name, not the loop's: reassigning fill here left the
+            # disused bed's colour on every later polygon of the category,
+            # so a working railway mapped as an area came out overgrown
+            # depending on the order the features arrived in.
+            feat_fill = (DISUSED_RAIL_FILL
+                         if cat == "railway" and rail_is_disused(feat.tags) else fill)
             rings = _feature_coords_px(feat, proj)
             if cat in ROAD_WIDTHS_M and not _is_polygon(feat):
                 continue  # Painted together so split ways share the same beveled join.
             elif feat.kind == "relation":
-                _paint_multipolygon(landscape, feat, proj, fill)
+                _paint_multipolygon(landscape, feat, proj, feat_fill)
             elif _is_polygon(feat):
-                _draw_polygon(l_draw, rings, fill)
+                _draw_polygon(l_draw, rings, feat_fill)
             else:
                 # A river or canal mapped only as its centre line.
                 metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
-                _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
+                _draw_line(l_draw, rings, feat_fill,
+                           _pixel_width(metres, meters_per_tile))
 
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:
@@ -969,8 +1020,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_areas.geojson"),
                         _areas_geojson(buckets))
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_fences.geojson"),
-                        _lines_geojson([f for f in fence_feats
-                                        if clip is None or _inside(f, proj, clip)]))
+                        _lines_geojson(fence_feats, proj, clip))
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_fence_openings.geojson"),
                         _openings_geojson(gate_feats, buckets))
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_places.json"),

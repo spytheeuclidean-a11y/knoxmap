@@ -2,15 +2,15 @@
 zombie spawn map and the preview picture."""
 from __future__ import annotations
 
-import random
-
 from PIL import Image
 
 from .. import pz_colors as C
 from ..osm import OSMFeature
 from .geometry import _is_polygon
 from .landcover import AREA_CATEGORIES
+from .noise import block_ids, global_origin, hash01
 from .projection import Projector
+from .widths import _way_width_m
 
 
 def _places(feats: list[OSMFeature], proj: Projector) -> list[dict]:
@@ -57,27 +57,39 @@ def _areas_geojson(buckets: dict[str, list[OSMFeature]]) -> dict:
     return {"type": "FeatureCollection", "features": features}
 
 
-LINE_TAGS = {"barrier", "fence_type", "material", "height", "wall"}
+LINE_TAGS = {"barrier", "fence_type", "material", "height", "est_height", "wall"}
 
 
-def _lines_geojson(feats: list[OSMFeature]) -> dict:
+def _lines_geojson(feats: list[OSMFeature], proj: Projector | None = None, clip=None) -> dict:
     """Fence and wall lines for knoxbuild to turn into fence tiles."""
+    from shapely.geometry import LineString
+
     features = []
     for f in feats:
         if f.kind != "way" or len(f.geometry) < 2:
             continue
-        features.append({
-            "type": "Feature",
-            "properties": {k: v for k, v in f.tags.items() if k in LINE_TAGS},
-            "geometry": {"type": "LineString",
-                         "coordinates": [[lon, lat] for lat, lon in f.geometry]},
-        })
+        runs = [f.geometry]
+        if clip is not None:
+            line = LineString([proj.to_px(lat, lon) for lat, lon in f.geometry])
+            if not clip.covers(line):
+                trimmed = line.intersection(clip)
+                runs = [[proj.to_latlon(x, y) for x, y in part.coords]
+                        for part in getattr(trimmed, "geoms", [trimmed])
+                        if part.geom_type == "LineString" and not part.is_empty]
+        for run in runs:
+            features.append({
+                "type": "Feature",
+                "properties": {k: v for k, v in f.tags.items() if k in LINE_TAGS},
+                "geometry": {"type": "LineString",
+                             "coordinates": [[lon, lat] for lat, lon in run]},
+            })
     return {"type": "FeatureCollection", "features": features}
 
 
 # Ways people walk through a fence on: the path to the playing field, the
 # track to the yard. A fence drawn across one is drawn with a gap.
 OPENING_PATHS = {"paved_path", "dirt_path", "pedestrian"}
+OPENING_ROADS = {"road_major", "road_medium", "road_minor", "road_service"}
 
 
 def _openings_geojson(gates: list[OSMFeature], buckets: dict) -> dict:
@@ -96,18 +108,23 @@ def _openings_geojson(gates: list[OSMFeature], buckets: dict) -> dict:
                            **{key: f.tags[key] for key in ("access", "foot", "locked") if key in f.tags}},
             "geometry": {"type": "Point", "coordinates": [lon, lat]},
         })
-    for cat in sorted(OPENING_PATHS):
+    for cat in sorted(OPENING_PATHS | OPENING_ROADS):
         for f in buckets.get(cat, ()):
             if f.kind != "way" or len(f.geometry) < 2 or _is_polygon(f):
                 continue
+            props = {"opening": "path", "category": cat,
+                     **{key: f.tags[key] for key in ("access", "foot") if key in f.tags}}
+            if cat in OPENING_ROADS:
+                if any(f.tags.get(tag) not in (None, "", "no") for tag in ("bridge", "tunnel")):
+                    continue
+                props = {"opening": "road", "category": cat, "width_m": _way_width_m(f, cat)}
             features.append({
                 "type": "Feature",
-                "properties": {"opening": "path", "category": cat,
-                               **{key: f.tags[key] for key in ("access", "foot") if key in f.tags}},
+                "properties": props,
                 "geometry": {"type": "LineString",
                              "coordinates": [[lon, lat] for lat, lon in f.geometry]},
             })
-    return {"type": "FeatureCollection", "features": features}
+    return {"type": "FeatureCollection", "road_geometry": True, "features": features}
 
 
 def _build_spawn_map(landscape: Image.Image, w: int, h: int,
@@ -125,9 +142,15 @@ def _build_spawn_map(landscape: Image.Image, w: int, h: int,
     out = Image.new("RGB", (w, h), (0, 0, 0))
     sp = scaled.load()
     op = out.load()
-    rng = random.Random(0xABBA)
+    # Two rolls a pixel, hashes of the pixel's global position: a chunk's
+    # spawn map is then the same pixels the whole map's would be. The chunk's
+    # window starts on a spawn-map pixel (render_chunked sees to that).
+    ox, oy = global_origin()
+    ids = block_ids(oy // C.SPAWN_MAP_SCALE, h, ox // C.SPAWN_MAP_SCALE, w)
+    chance_roll = hash01(ids, 0xABBA)
+    level_roll = hash01(ids, 0xABBB)
 
-    def band(chance: float, lo: float, hi: float) -> int:
+    def band(x: int, y: int, chance: float, lo: float, hi: float) -> int:
         """Density between two fractions of the ceiling, `chance` of the time.
 
         Sparsity matters as much as the ceiling. Vanilla leaves 97% of the map
@@ -136,9 +159,9 @@ def _build_spawn_map(landscape: Image.Image, w: int, h: int,
         maps are denser than county-wide wilderness, but the shape should be
         the same: crowds on the streets, almost nothing in the fields.
         """
-        if rng.random() > chance:
+        if chance_roll[y, x] > chance:
             return 0
-        return int(round(rng.uniform(max_density * lo, max_density * hi)))
+        return int(round(max_density * lo + level_roll[y, x] * max_density * (hi - lo)))
 
     for y in range(h):
         for x in range(w):
@@ -150,15 +173,15 @@ def _build_spawn_map(landscape: Image.Image, w: int, h: int,
                 # The low end has to reach 75 now that the widest roads are
                 # painted street4 at 80,80,80 - a range starting at 95 left
                 # every main road through town as quiet as a field.
-                v = band(0.40, 0.4, 1.0)
+                v = band(x, y, 0.40, 0.4, 1.0)
             elif r > g and r > 90 and g < 110:
                 # Dirt tracks, yards, building footprints.
-                v = band(0.15, 0.2, 0.5)
+                v = band(x, y, 0.15, 0.2, 0.5)
             elif g > r and g > 80:
                 # Open grass: the odd wanderer, nothing more.
-                v = band(0.03, 0.1, 0.2)
+                v = band(x, y, 0.03, 0.1, 0.2)
             else:
-                v = band(0.08, 0.1, 0.3)
+                v = band(x, y, 0.08, 0.1, 0.3)
             op[x, y] = (v, v, v)
     return out
 

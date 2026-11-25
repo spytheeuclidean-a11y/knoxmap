@@ -71,6 +71,8 @@ jobs:
           for f in static/js/*.js; do
             node -e "new Function(require('fs').readFileSync('$f', 'utf8'))" && echo "ok $f"
           done
+      - name: Frontend unit tests
+        run: npm run test:js
       - name: The shipped file list is the release
         run: python tools/check_manifest.py
 

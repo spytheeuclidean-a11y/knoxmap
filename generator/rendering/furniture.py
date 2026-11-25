@@ -16,6 +16,8 @@ from ..osm import ROAD_HIERARCHY_BY_CODE
 # The grime was smooth dark patches on the road that read as shadows across it,
 # so it is off; set above 0 to bring it back.
 GRIME_SHARE = 0.0
+GRIME_CELL = 5                 # tiles across one patch of wear
+FURNITURE_SEED = 4321
 # Roads at least this wide get a faded edge line down each side.
 EDGE_LINE_MIN_WIDTH = 5
 # Straight edge runs shorter than this are staircase steps on a diagonal road;
@@ -151,7 +153,13 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     """
     import numpy as np
 
-    rng = np.random.default_rng(4321)
+    from .noise import (global_ids_of, global_origin, global_window_ids, hash01,
+                        lattices, noise_quantiles, smooth_noise)
+
+    # Every dice roll, every priority and every spacing cell below is worked
+    # out from global tile positions, so a chunk furnishes its streets as the
+    # whole map would.
+    gox, goy = global_origin()
     ground = np.asarray(landscape.convert("RGB"))
     vp = np.array(veg.convert("RGB"))
     h, w = ground.shape[:2]
@@ -321,7 +329,7 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     for edge, (sx, sy), lamp in straight:
         kerb_mask = np.all(vp == edge, axis=2) | diag_kerbs[edge]
         ys, xs = np.nonzero(kerb_mask)
-        order = rng.permutation(len(xs))
+        order = np.argsort(hash01(global_ids_of(ys, xs), FURNITURE_SEED), kind="stable")
         for i in order.tolist():
             gx, gy = int(xs[i]), int(ys[i])     # the gutter square itself
             bx, by = gx + 2 * sx, gy + 2 * sy   # past the kerb or the verge
@@ -377,7 +385,8 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                     continue
                 # Speed signs keep a spacing per facing: the north-south roads,
                 # met first, took every cell and left east-west ones none.
-                cell = (px // every, py // every, facing if what == "speed" else None)
+                cell = ((px + gox) // every, (py + goy) // every,
+                        facing if what == "speed" else None)
                 if cell in taken[what]:
                     continue
                 # A drain takes the gutter square from its edge line; other
@@ -408,18 +417,29 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
     # Wear comes in patches, as it does on a real road and on the vanilla
     # map; picked square by square it came out as a chequerboard. Smooth noise
     # - coarse random values, blurred up to full size - gives the patches.
-    coarse = Image.fromarray((rng.random((max(1, h // 5), max(1, w // 5))) * 255).astype(np.uint8))
-    noise = np.asarray(coarse.resize((w, h), Image.BICUBIC)
-                       .filter(ImageFilter.GaussianBlur(2)), dtype=np.float32)
-    level = (np.quantile(noise[asphalt], 1 - GRIME_SHARE)
-             if GRIME_SHARE > 0 and asphalt.any() else 256)
-    pick = asphalt & empty & (noise >= level)
+    # Smooth noise over the global tile grid, cut at the noise's own quantile
+    # over the whole map (noise.noise_quantiles), so the patches line up
+    # across chunks.
+    pick = np.zeros((h, w), dtype=bool)
+    if GRIME_SHARE > 0:
+        wear = ((GRIME_CELL, 1.0),)
+        wear_lats = lattices(h, w, wear, FURNITURE_SEED + 1)
+        level = noise_quantiles(wear, FURNITURE_SEED + 1, (1 - GRIME_SHARE,), (w, h))[0]
+        xs_all = np.arange(w, dtype=np.float32)
+        for top in range(0, h, 512):
+            bottom = min(h, top + 512)
+            pick[top:bottom] = smooth_noise(np.arange(top, bottom, dtype=np.float32),
+                                            xs_all, wear_lats) >= level
+        pick &= asphalt & empty
     out[pick] = C.ASPHALT_GRIME
     empty &= ~pick
     counts["grime"] = int(pick.sum())
     # Scattered things: each square rolls once, and each kind has its own band
     # of the roll, so no square gets two.
-    roll = rng.random((h, w))
+    roll = np.empty((h, w), dtype=np.float32)
+    for top in range(0, h, 512):
+        bottom = min(h, top + 512)
+        roll[top:bottom] = hash01(global_window_ids(top, bottom, 0, w), FURNITURE_SEED + 2)
     scattered = [(asphalt, CRACK_SHARE, C.ASPHALT_CRACKS, "cracks"),
                  (pavement, LITTER_SHARE, C.LITTER, "litter")]
     if _rule_ready("Manhole cover"):
@@ -448,7 +468,8 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
             dx, dy = (0, 1) if along_y else (1, 0)
             kerb_mask = np.all(vp == edge, axis=2) | diag_kerbs[edge]
             ys, xs = np.nonzero(kerb_mask)
-            for i in rng.permutation(len(xs)).tolist():
+            order = np.argsort(hash01(global_ids_of(ys, xs), FURNITURE_SEED + 3), kind="stable")
+            for i in order.tolist():
                 gx, gy = int(xs[i]), int(ys[i])
                 # A bench leans on a straight kerb. On a road at an angle the
                 # kerb steps a square at a time, so the squares either side of
@@ -467,7 +488,7 @@ def _paint_street_furniture(veg: Image.Image, landscape: Image.Image,
                 px, py = spot
                 if near_buildings is not None and not near_buildings[py, px]:
                     continue
-                cell = (px // BENCH_EVERY, py // BENCH_EVERY)
+                cell = ((px + gox) // BENCH_EVERY, (py + goy) // BENCH_EVERY)
                 if cell in taken["bench"]:
                     continue
                 run = [(px + k * dx, py + k * dy) for k in range(len(tiles))]

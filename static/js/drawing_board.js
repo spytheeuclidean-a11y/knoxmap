@@ -210,9 +210,16 @@ function editReady(mapName) {
 // What a feature is, in the palette's words where the palette has a word for
 // it, so "Street" and "House" rather than highway=residential.
 function describeTags(tags) {
+  let best = null;
+  let matches = 0;
   for (const entry of sketchPalette) {
-    if (Object.entries(entry.tags).every(([k, v]) => tags[k] === v)) return entry.label;
+    const entries = Object.entries(entry.tags);
+    if (entries.length > matches && entries.every(([k, v]) => tags[k] === v)) {
+      best = entry.label;
+      matches = entries.length;
+    }
   }
+  if (best) return best;
   // Its name before any tag of its own: "Manhattan New York Temple" is what
   // somebody is looking for, and "addr:city=New York" is the first tag in
   // alphabetical order rather than anything about the building.
@@ -270,7 +277,7 @@ function pickEdit(layer) {
   const box = document.getElementById('editSelected');
   if (!layer) { box.hidden = true; box.innerHTML = ''; return; }
   layer.setStyle(EDIT_PICKED);
-  const tags = mapEdits.tags[layer.osmId] || layer.osmTags || {};
+  const tags = { ...layer.osmTags, ...mapEdits.tags[layer.osmId] };
   box.hidden = false;
   box.innerHTML = `<span class="hint">${escapeHtml(describeTags(tags))}
       <small>#${layer.osmId}</small></span>
@@ -297,7 +304,6 @@ function pickEdit(layer) {
     const entry = sketchPalette.find(e => e.id === ev.target.value);
     if (!entry) return;
     mapEdits.tags[layer.osmId] = { ...entry.tags };
-    layer.osmTags = { ...entry.tags };
     showEditCount();
     pickEdit(layer);
     noteEdit(`Now a ${entry.label.toLowerCase()}.`);
@@ -321,7 +327,8 @@ function addEditable(feature) {
 }
 
 async function loadEditable() {
-  if (!openedMap) return;
+  const target = openedMap;
+  if (!target) return;
   const b = map.getBounds();
   const q = new URLSearchParams({
     south: b.getSouth(), west: b.getWest(),
@@ -330,13 +337,14 @@ async function loadEditable() {
   noteEdit('Reading what this map was built from...');
   let data;
   try {
-    const res = await fetch(`/api/features/${encodeURIComponent(openedMap.mapName)}?${q}`);
+    const res = await fetch(`/api/features/${encodeURIComponent(target.mapName)}?${q}`);
     data = await res.json();
     if (!res.ok) throw apiError(data, res);
   } catch (err) {
-    noteEdit(err.message);
+    if (openedMap === target) noteEdit(err.message);
     return;
   }
+  if (openedMap !== target) return;
   editLayer.clearLayers();
   pickEdit(null);
   mapEdits = { removed: [], moved: {}, tags: {}, ...(data.edits || {}) };
@@ -390,7 +398,8 @@ document.getElementById('editLoad').addEventListener('click', loadEditable);
 document.getElementById('editShape').addEventListener('click', toggleShaping);
 
 document.getElementById('editSave').addEventListener('click', async () => {
-  if (!openedMap) return;
+  const target = openedMap;
+  if (!target) return;
   const btn = document.getElementById('editSave');
   btn.disabled = true;
   try {
@@ -400,27 +409,30 @@ document.getElementById('editSave').addEventListener('click', async () => {
     });
     const out = await res.json();
     if (!res.ok) throw apiError(out, res);
+    if (openedMap !== target) return;
     noteEdit(`${out.changes} change${out.changes === 1 ? '' : 's'} saved. `
       + 'Generate map again to build them in.');
     fx.toast('ok', 'Changes saved',
              `${openedMap.mapName}: generate the map again to see them.`);
   } catch (err) {
-    noteEdit(err.message);
+    if (openedMap === target) noteEdit(err.message);
   } finally {
     showEditCount();
   }
 });
 
 document.getElementById('editReset').addEventListener('click', async () => {
-  if (!openedMap) return;
+  const target = openedMap;
+  if (!target) return;
   mapEdits = { removed: [], moved: {}, tags: {} };
   await fetch(`/api/edits/${encodeURIComponent(openedMap.mapName)}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(mapEdits),
   }).catch(() => {});
+  if (openedMap !== target) return;
   showEditCount();
   await loadEditable();
-  noteEdit('Every change undone. The map is back to what was downloaded.');
+  if (openedMap === target) noteEdit('Every change undone. The map is back to what was downloaded.');
 });
 
 // ---- the drawing board ------------------------------------------------------
@@ -769,7 +781,9 @@ document.getElementById('boardOpen').addEventListener('click', async () => {
     try {
       const res = await fetch(`/api/design/${encodeURIComponent(name)}`);
       if (res.ok) {
-        boardLoadDesign(await res.json());
+        const design = await res.json();
+        if (openedMap?.mapName !== name) return;
+        boardLoadDesign(design);
         boardNote(`${name} as it was drawn. Change it and build it again.`);
       }
     } catch { /* a map with no sheet simply opens an empty one */ }
@@ -884,9 +898,7 @@ document.getElementById('boardTraceOff').addEventListener('click', () => {
 });
 
 function boardMapName() {
-  const typed = document.getElementById('boardName').value.trim();
-  const clean = typed.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
-  return clean || `drawn_${Date.now()}`;
+  return mapNameForRequest(document.getElementById('boardName').value, 'drawn');
 }
 
 document.getElementById('boardSave').addEventListener('click', async () => {
@@ -1346,9 +1358,10 @@ function zonesSync() {
 }
 
 async function loadZones(mapName) {
-  await loadZoneMeta();
+  const request = mapOpenRequest;
   const items = [];
   if (mapName) {
+    await loadZoneMeta();
     try {
       const data = await (await fetch(`/api/zones/${encodeURIComponent(mapName)}`)).json();
       for (const z of data.zones || []) {
@@ -1361,6 +1374,7 @@ async function loadZones(mapName) {
       }
     } catch { /* a map with no zones simply has none */ }
   }
+  if (request !== mapOpenRequest || mapName !== currentMap) return;
   zoneLoading = true;
   zoneEd.replace(items);
   zoneLoading = false;
@@ -1404,7 +1418,8 @@ for (const [event, on] of [['mouseover', true], ['mouseout', false]]) {
 }
 
 document.getElementById('zoneSave').addEventListener('click', async () => {
-  if (!openedMap) {
+  const target = openedMap;
+  if (!target) {
     zoneNote('Open or generate a map first: zones are saved beside one.');
     return;
   }
@@ -1417,13 +1432,14 @@ document.getElementById('zoneSave').addEventListener('click', async () => {
     });
     const out = await res.json();
     if (!res.ok) throw apiError(out, res);
+    if (openedMap !== target) return;
     zoneDirty(false);
     zoneNote(`${out.saved} zone${out.saved === 1 ? '' : 's'} saved. `
       + 'Generate buildings again to build them in.');
     fx.toast('ok', 'Zones saved',
              `${openedMap.mapName}: build the buildings again to see them.`);
   } catch (err) {
-    zoneNote(err.message);
+    if (openedMap === target) zoneNote(err.message);
   }
 });
 

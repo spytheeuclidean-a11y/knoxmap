@@ -18,9 +18,6 @@ ones above them in that list.
 """
 from __future__ import annotations
 
-import sys
-import types
-
 from . import (assemble, core, dwellings, furnishing, houses, malls,
                openings, shops)
 
@@ -28,29 +25,10 @@ _MODULES = (core, openings, malls, dwellings, houses, shops, furnishing,
             assemble)
 
 # Re-export every name, private helpers included: the tests and
-# tools/audit_layouts.py reach for _blocks, _room_edges and friends.
+# tools/audit_layouts.py reach for _blocks, _room_edges and friends. These are
+# copies: to swap a helper or tune a number, set it on the module that reads it
+# (e.g. `layout.houses._house_by_kind = spy`), not on this package.
 for _module in _MODULES:
     globals().update({k: v for k, v in vars(_module).items()
                       if not k.startswith('__')})
 del _module
-
-
-class _Layout(types.ModuleType):
-    """Assignment goes to the module that owns the name.
-
-    Tests and tools tune a number or swap a helper through this module -
-    `layout.MANSION_FLOOR_TILES = 10 ** 6`, `layout._house_by_kind = spy`.
-    With the code split between eight modules, setting the name here alone
-    would leave every reader in its own module looking at the old value, so a
-    write is forwarded to the module that defined it.
-    """
-
-    def __setattr__(self, name, value):
-        for module in _MODULES:
-            if name in vars(module):
-                setattr(module, name, value)
-                break
-        super().__setattr__(name, value)
-
-
-sys.modules[__name__].__class__ = _Layout

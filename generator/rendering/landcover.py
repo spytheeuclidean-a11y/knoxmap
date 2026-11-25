@@ -170,10 +170,15 @@ LANDSCAPE_ORDER = [
     # every bridge, leaving no way over. Above land use, which it still wins.
     "water",
     "pool",
+    # A ditch, a drain, a dam or a weir: a dry channel of clay. Above the land
+    # use, so a drain cut across a field shows; below every road and path, so
+    # one crossing it is still a bridge and not a stripe down the middle.
+    "drainage",
     "railway",        # gravel track bed; roads cross it at level crossings
     "dirt_path",      # thin dirt line
     "paved_path",     # footway, pavement, cycleway
-    "pier",           # jetties and breakwaters, over the water
+    "pier",           # jetties, over the water
+    "breakwater",     # rock groynes and breakwaters, over the water too
     "parking",        # car park tarmac
     "plaza",          # paved pedestrian square
     "pedestrian",     # pedestrian zone, paved wall to wall
@@ -195,7 +200,20 @@ LANDSCAPE_ORDER = [
 
 # Waterways drawn from a centre line, when no area is mapped around them.
 # A river is usually mapped with its banks too, which paints over this.
-WATERWAY_WIDTH_M = {"river": 12.0, "canal": 8.0, "stream": 2.0}
+# Drainage is drawn from its centre line like a waterway and it is the
+# narrowest water a town has: a storm drain is a pipe trench, a field ditch a
+# step across. On the 3 m fallback they came out as wide as a lane.
+WATERWAY_WIDTH_M = {"river": 12.0, "canal": 8.0, "stream": 2.0,
+                    "ditch": 2.5, "drain": 1.5, "dam": 4.0, "weir": 3.0}
+
+# The bed of a track that carries no trains: it keeps its shape and loses its
+# steel, so it is ballast with grass through it rather than bare dirt.
+#
+# An existing colour on purpose. A new RGB would need a new rule in Rules.txt
+# naming a tile, and a rule naming artwork the player's Build 42 does not have
+# stops the BMP-to-TMX conversion outright
+# (worlded/patch_rules_b42_trees.py); the palette is otherwise free.
+DISUSED_RAIL_FILL = C.DIRT_GRASS
 
 
 LANDSCAPE_FILL = {
@@ -205,6 +223,11 @@ LANDSCAPE_FILL = {
     "dirt_path": C.DIRT,
     "paved_path": C.PALE_CONCRETE,
     "pier": C.PALE_CONCRETE,
+    # Rubble, not the pale concrete of a pier: a breakwater is a wall of stone
+    # thrown into the sea, and it read as a promenade.
+    "breakwater": C.GRAVEL_DIRT,
+    # A dry channel. C.WATER would carry swimming, no spawns and no props.
+    "drainage": C.CLAY,
     # Dirt, not lightgravel: a rail bed is bare earth and gravel, and the pale
     # gravel strip read as a sandy footpath across the whole map.
     "railway": C.DIRT,

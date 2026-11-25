@@ -26,10 +26,10 @@ import knoxfiles
 import knoxstop
 
 from . import pz_colors as C
-from .osm import OSMFeature, classify
+from .osm import OSMFeature, classify, rail_is_disused
 from .rendering.geometry import _feature_coords_px, _is_polygon
 from .rendering.noise import global_tile_offset
-from .rendering.projection import Projector, _inside, shape_px
+from .rendering.projection import Projector, shape_px
 
 _log = logging.getLogger(__name__)
 
@@ -199,14 +199,21 @@ def render_chunked(
     should_stop=None,
     progress=None,
     render_progress=None,
+    road_progress=None,
     chunk_cells: int = CHUNK_CELLS,
     halo_tiles: int = HALO_TILES,
 ):
-    """Render a large map in cell-aligned chunks and stitch outputs to ``output_dir``."""
+    """Render cell-aligned chunks after preparing roads for the full map.
+
+    Report chunks through progress and route links through road_progress.
+    """
     from . import renderer as R
     from .rendering.forest_params import ForestParams
 
     t0 = time.perf_counter()
+    # A chunk's window must start on a spawn-map pixel, or its spawn map is
+    # resampled out of phase with the whole map's and the seams show.
+    halo_tiles = -(-int(halo_tiles) // C.SPAWN_MAP_SCALE) * C.SPAWN_MAP_SCALE
     full_proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
     cells_x, cells_y = full_proj.cell_grid()
     fp = forest_params or ForestParams(stand_m=forest_stand_m, edge_m=forest_edge_m)
@@ -215,21 +222,8 @@ def render_chunked(
     if render_progress:
         render_progress(0.05, "Preparing roads")
     road_layout = int(straight_roads or 0)
-    if road_layout == 0:
-        from .mapped_roads import clean_mapped_roads
-        clean_mapped_roads(feats, full_proj, classify, _is_polygon)
-    elif road_layout == 5:
-        from .vanilla_grid import apply_vanilla_grid
-        apply_vanilla_grid(feats, full_proj, classify, _is_polygon)
-    elif road_layout in (1, 4):
-        from .octilinear import straighten_roads
-        straighten_roads(feats, full_proj, classify, _is_polygon, clean=True)
-    elif road_layout in R.ROAD_LAYOUTS:
-        from .octilinear import apply_road_graph, graph_path
-        from .roadgraph.route import route
-        graph = route(feats, full_proj, R.ROAD_LAYOUTS[road_layout], shape)
-        knoxfiles.write(graph_path(output_dir, map_name), graph)
-        apply_road_graph(feats, graph, full_proj)
+    R._prepare_roads(feats, full_proj, road_layout, shape, output_dir, map_name,
+                     should_stop=should_stop, progress=road_progress)
 
     if render_progress:
         render_progress(0.25, "Squaring parking & collecting features")
@@ -288,7 +282,11 @@ def render_chunked(
     if render_progress:
         render_progress(0.78, "Fitting railways")
     from .rendering.rails import global_rail_sections
-    rail_feats = [f for f in feats if classify(f.tags, _is_polygon(f)) == "railway"]
+    # A disused track lays no steel, so it fits no sections either: planning
+    # them would paint rail tiles that paint_rails then refuses to draw.
+    rail_feats = [f for f in feats
+                  if classify(f.tags, _is_polygon(f)) == "railway"
+                  and not rail_is_disused(f.tags)]
     rail_sections_global = global_rail_sections(rail_feats, full_proj, should_stop=should_stop)
 
     if render_progress:
@@ -440,7 +438,7 @@ def render_chunked(
                     )
                 ]
                 chunk_out: dict = {}
-                with global_tile_offset(hx0, hy0):
+                with global_tile_offset(hx0, hy0, extent=(w, h)):
                     R.render(
                         chunk_feats,
                         sub_proj.south, sub_proj.west, sub_proj.north, sub_proj.east,
@@ -505,6 +503,8 @@ def render_chunked(
 
         if pending_stitch is not None:
             pending_stitch.result()
+        if progress:
+            progress(total_chunks, total_chunks)
 
     for tmp_f in (ckpt_path, preview_wip_path):
         if os.path.exists(tmp_f):
@@ -533,8 +533,7 @@ def render_chunked(
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_areas.geojson"),
                     R._areas_geojson(buckets))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_fences.geojson"),
-                    R._lines_geojson([f for f in fence_feats
-                                      if clip is None or _inside(f, full_proj, clip)]))
+                    R._lines_geojson(fence_feats, full_proj, clip))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_fence_openings.geojson"),
                     R._openings_geojson(gate_feats, buckets))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_structures.json"),

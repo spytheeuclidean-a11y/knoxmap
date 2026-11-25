@@ -351,62 +351,80 @@ def furnish_service_bay(plan, idx: int, room, rng: random.Random,
     return True
 
 
-def _store_setup(plan, idx: int, room, door_tiles: set, keep_clear: set,
-                 street: str | None):
-    cells = _cells(plan, idx, room)
-    if len(cells) < MIN_SALES_FLOOR:
-        return None
-    front = _front_side(plan, idx, cells, street)
-    frame = Frame(cells, front)
-    blocked = set(keep_clear)
-    for dx, dy in door_tiles:
-        if (dx, dy) in cells:
-            blocked |= {(dx + i, dy + j) for i in (-1, 0, 1) for j in (-1, 0, 1)}
-    return cells, front, frame, blocked
+class _StoreFloor:
+    """Furniture placement and aisle clearance for a shop's sales floor."""
+
+    def __init__(self, plan, idx: int, cells: set, front: str,
+                 door_tiles: set, keep_clear: set):
+        self.plan = plan
+        self.idx = idx
+        self.cells = cells
+        self.frame = Frame(cells, front)
+        self.placed: set[tuple[int, int]] = set()
+        doors = cells.intersection(door_tiles)
+        # A tile's clearance round every door into the room.
+        self.blocked = set(keep_clear)
+        self.blocked.update((x + dx, y + dy) for x, y in doors
+                            for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+        self.door_along = next(
+            (a for a in range(self.frame.length) if self.frame.xy(a, 0) in doors),
+            self.frame.length // 2,
+        )
+
+    def fits(self, role, x, y, orient) -> list[tuple[int, int]] | None:
+        return _fits(self.plan, self.idx, role, x, y, orient, self.blocked | self.placed)
+
+    def put(self, role, x, y, orient, *, ring=False) -> bool:
+        footprint = self.fits(role, x, y, orient)
+        if footprint is None:
+            return False
+        self.plan.furniture.append((role, x, y, orient))
+        self.placed.update(footprint)
+        if ring:
+            self.placed.update((x + dx, y + dy) for x, y in footprint
+                               for dx in (-1, 0, 1) for dy in (-1, 0, 1))
+        return True
+
+    def place_checkouts(self, counter: str, *, wide_at: int = 9,
+                        count: int = 1, chair: bool = False) -> None:
+        """Place a short run parallel to the front, with space on both sides."""
+        L = _layout()
+        frame = self.frame
+        back = OPPOSITE[frame.front]
+        orient = L._facing(counter, back)
+        run = 3 if frame.length >= wide_at else 2
+        door = self.door_along
+        for start in (door + 2, door - 1 - run, 1, frame.length - run - 1):
+            spots = [frame.xy(start + k, 2) for k in range(run)]
+            if not all(self.fits(counter, x, y, orient) for x, y in spots):
+                continue
+            for x, y in spots:
+                self.put(counter, x, y, orient)
+            middle = run // 2
+            x, y = spots[middle]
+            self.plan.furniture.append(("register", x, y, L._facing("register", back)))
+            if chair:
+                self.put("chair", *frame.xy(start + middle, 1), L._facing("chair", frame.front))
+            self.placed.update(frame.xy(start + k, d)
+                               for k in range(-1, run + 1) for d in (1, 3))
+            count -= 1
+            if count == 0:
+                break
 
 
-def _furnish_jewelrystore(plan, idx: int, room, rng: random.Random,
-                          door_tiles: set, keep_clear: set,
-                          street: str | None) -> bool:
+def _furnish_jewelrystore(floor: _StoreFloor) -> bool:
     """Boutique jewelry showroom: rows of glass cases across the floor, a back
     line of cases, appraisal/checkout counter, mirrors, plants and seating."""
     L = _layout()
-    setup = _store_setup(plan, idx, room, door_tiles, keep_clear, street)
-    if setup is None:
-        return False
-    cells, front, frame, blocked = setup
+    plan, idx = floor.plan, floor.idx
+    frame = floor.frame
+    front = frame.front
     back_to = OPPOSITE[front]
     left, right = (("W", "E") if frame.along_x else ("N", "S"))
-    placed: set[tuple[int, int]] = set()
-
-    def put(role, x, y, orient, ring=False) -> bool:
-        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
-        if got is None:
-            return False
-        plan.furniture.append((role, x, y, orient))
-        placed.update(got)
-        if ring:
-            placed.update((cx + i, cy + j) for cx, cy in got
-                          for i in (-1, 0, 1) for j in (-1, 0, 1))
-        return True
+    put = floor.put
 
     # 1. Checkout & appraisal counter near the front entrance.
-    doors_in = [(x, y) for x, y in door_tiles if (x, y) in cells]
-    front_tiles = [(a, frame.xy(a, 0)) for a in range(frame.length)]
-    door_along = next((a for a, xy in front_tiles if xy in doors_in), frame.length // 2)
-    run = 3 if frame.length >= 9 else 2
-    for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
-        spots = [frame.xy(start + k, 2) for k in range(run)]
-        orient = L._facing("shop_counter", back_to)
-        if all(_fits(plan, idx, "shop_counter", x, y, orient, blocked | placed) for x, y in spots):
-            for x, y in spots:
-                put("shop_counter", x, y, orient)
-            mx, my = spots[len(spots) // 2]
-            plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
-            cx, cy = frame.xy(start + len(spots) // 2, 1)
-            put("chair", cx, cy, L._facing("chair", front))
-            placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
-            break
+    floor.place_checkouts("shop_counter", chair=True)
 
     # 2. Back vault/consultation line: display cases, safe/filing cabinet, seating.
     back_orient = L._facing("shop_display", back_to)
@@ -419,8 +437,8 @@ def _furnish_jewelrystore(plan, idx: int, room, rng: random.Random,
         if a % 4 != 3:      # runs of three, so the back wall is not one long case
             put("shop_display", bx, by, back_orient)
         ax, ay = frame.xy(a, frame.depth - 2)
-        if (ax, ay) in cells:
-            placed.add((ax, ay))
+        if (ax, ay) in floor.cells:
+            floor.placed.add((ax, ay))
 
     # 3. Side walls stay bare but for mirrors and paintings on the N/W ones: a
     # shop with its cases down every wall is a corridor, not a showroom.
@@ -450,46 +468,19 @@ def _furnish_jewelrystore(plan, idx: int, room, rng: random.Random,
     return True
 
 
-def _furnish_electronicsstore(plan, idx: int, room, rng: random.Random,
-                             door_tiles: set, keep_clear: set,
-                             street: str | None) -> bool:
+def _furnish_electronicsstore(floor: _StoreFloor) -> bool:
     """Electronics & appliance showroom: TV/audio wall stands, appliance row,
     central demo tables, tech-support desk, and media/accessory shelving."""
     L = _layout()
-    setup = _store_setup(plan, idx, room, door_tiles, keep_clear, street)
-    if setup is None:
-        return False
-    cells, front, frame, blocked = setup
+    plan = floor.plan
+    frame = floor.frame
+    front = frame.front
     back_to = OPPOSITE[front]
     left, right = (("W", "E") if frame.along_x else ("N", "S"))
-    placed: set[tuple[int, int]] = set()
-
-    def put(role, x, y, orient, ring=False) -> bool:
-        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
-        if got is None:
-            return False
-        plan.furniture.append((role, x, y, orient))
-        placed.update(got)
-        if ring:
-            placed.update((cx + i, cy + j) for cx, cy in got
-                          for i in (-1, 0, 1) for j in (-1, 0, 1))
-        return True
+    put = floor.put
 
     # 1. Checkout & tech-support counter near the front.
-    doors_in = [(x, y) for x, y in door_tiles if (x, y) in cells]
-    front_tiles = [(a, frame.xy(a, 0)) for a in range(frame.length)]
-    door_along = next((a for a, xy in front_tiles if xy in doors_in), frame.length // 2)
-    run = 3 if frame.length >= 9 else 2
-    for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
-        spots = [frame.xy(start + k, 2) for k in range(run)]
-        orient = L._facing("shop_counter", back_to)
-        if all(_fits(plan, idx, "shop_counter", x, y, orient, blocked | placed) for x, y in spots):
-            for x, y in spots:
-                put("shop_counter", x, y, orient)
-            mx, my = spots[len(spots) // 2]
-            plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
-            placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
-            break
+    floor.place_checkouts("shop_counter")
 
     # 2. Back wall: TV & audio demo stands alternating with metal inventory racks.
     back_orient = L._facing("counter_2", back_to)
@@ -545,51 +536,19 @@ def _furnish_electronicsstore(plan, idx: int, room, rng: random.Random,
     return True
 
 
-def _furnish_gunstore(plan, idx: int, room, rng: random.Random,
-                      door_tiles: set, keep_clear: set,
-                      street: str | None) -> bool:
+def _furnish_gunstore(floor: _StoreFloor, rng: random.Random) -> bool:
     """Firearms & ammo shop: gun lockers along walls, glass display counters,
     ammo/accessory shelving, crates, and a checkout register."""
     L = _layout()
-    cells = _cells(plan, idx, room)
-    if len(cells) < 12:
-        return False
-    front = _front_side(plan, idx, cells, street)
-    frame = Frame(cells, front)
-    blocked = set(keep_clear)
-    for dx, dy in door_tiles:
-        if (dx, dy) in cells:
-            blocked |= {(dx + i, dy + j) for i in (-1, 0, 1) for j in (-1, 0, 1)}
+    plan = floor.plan
+    frame = floor.frame
+    front = frame.front
     back_to = OPPOSITE[front]
     left, right = (("W", "E") if frame.along_x else ("N", "S"))
-    placed: set[tuple[int, int]] = set()
-
-    def put(role, x, y, orient, ring=False) -> bool:
-        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
-        if got is None:
-            return False
-        plan.furniture.append((role, x, y, orient))
-        placed.update(got)
-        if ring:
-            placed.update((cx + i, cy + j) for cx, cy in got
-                          for i in (-1, 0, 1) for j in (-1, 0, 1))
-        return True
+    put = floor.put
 
     # 1. Glass display checkout counter near the front.
-    doors_in = [(x, y) for x, y in door_tiles if (x, y) in cells]
-    front_tiles = [(a, frame.xy(a, 0)) for a in range(frame.length)]
-    door_along = next((a for a, xy in front_tiles if xy in doors_in), frame.length // 2)
-    run = 3 if frame.length >= 8 else 2
-    for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
-        spots = [frame.xy(start + k, 2) for k in range(run)]
-        orient = L._facing("shop_display", back_to)
-        if all(_fits(plan, idx, "shop_display", x, y, orient, blocked | placed) for x, y in spots):
-            for x, y in spots:
-                put("shop_display", x, y, orient)
-            mx, my = spots[len(spots) // 2]
-            plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
-            placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
-            break
+    floor.place_checkouts("shop_display", wide_at=8)
 
     # 2. Back wall: bank of gun lockers + stacked crates.
     back_orient = L._facing("gun_locker", back_to)
@@ -630,60 +589,28 @@ def _furnish_gunstore(plan, idx: int, room, rng: random.Random,
 def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
                   keep_clear: set, street: str | None) -> bool:
     """Fit out a shop's sales floor. False if the room is too small to."""
-    if room.kind == "jewelrystore":
-        return _furnish_jewelrystore(plan, idx, room, rng, door_tiles, keep_clear, street)
-    if room.kind == "electronicsstore":
-        return _furnish_electronicsstore(plan, idx, room, rng, door_tiles, keep_clear, street)
-    if room.kind == "gunstore":
-        return _furnish_gunstore(plan, idx, room, rng, door_tiles, keep_clear, street)
-    L = _layout()
-    spec = STORES[room.kind]
+    kind = room.kind
+    spec = STORES[kind]
     cells = _cells(plan, idx, room)
-    if len(cells) < MIN_SALES_FLOOR:
+    if len(cells) < (12 if kind == "gunstore" else MIN_SALES_FLOOR):
         return False
     front = _front_side(plan, idx, cells, street)
-    frame = Frame(cells, front)
-    blocked = set(keep_clear)
-    # A tile's clearance round every door into the room.
-    for dx, dy in door_tiles:
-        if (dx, dy) in cells:
-            blocked |= {(dx + i, dy + j) for i in (-1, 0, 1) for j in (-1, 0, 1)}
-    placed: set[tuple[int, int]] = set()
+    floor = _StoreFloor(plan, idx, cells, front, door_tiles, keep_clear)
+    if kind == "jewelrystore":
+        return _furnish_jewelrystore(floor)
+    if kind == "electronicsstore":
+        return _furnish_electronicsstore(floor)
+    if kind == "gunstore":
+        return _furnish_gunstore(floor, rng)
 
-    def put(role, x, y, orient, ring=False) -> bool:
-        got = _fits(plan, idx, role, x, y, orient, blocked | placed)
-        if got is None:
-            return False
-        plan.furniture.append((role, x, y, orient))
-        placed.update(got)
-        if ring:
-            placed.update((cx + i, cy + j) for cx, cy in got for i in (-1, 0, 1) for j in (-1, 0, 1))
-        return True
-
-    # The till counter: just inside the door, in a short run parallel to the
-    # shop front, with its register, and room behind it for the cashier.
-    doors_in = [(x, y) for x, y in door_tiles if (x, y) in cells]
-    front_tiles = [(a, frame.xy(a, 0)) for a in range(frame.length)]
-    door_along = next((a for a, xy in front_tiles if xy in doors_in), frame.length // 2)
-    counter = spec["counter"]
+    L = _layout()
+    frame = floor.frame
     back_to = OPPOSITE[front]
-    run = 3 if frame.length >= 9 else 2
+    placed = floor.placed
+    put = floor.put
     # A wide supermarket has more than one till open.
     tills_wanted = 2 if spec.get("tills", 1) > 1 and frame.length >= 16 else 1
-    tills = 0
-    for start in (door_along + 2, door_along - 1 - run, 1, frame.length - run - 1):
-        spots = [frame.xy(start + k, 2) for k in range(run)]
-        orient = L._facing(counter, back_to)
-        if all(_fits(plan, idx, counter, x, y, orient, blocked | placed) for x, y in spots):
-            for x, y in spots:
-                put(counter, x, y, orient)
-            mx, my = spots[len(spots) // 2]
-            plan.furniture.append(("register", mx, my, L._facing("register", back_to)))
-            # The cashier's tile behind, and a tile in front for customers.
-            placed.update(frame.xy(start + k, d) for k in range(-1, run + 1) for d in (1, 3))
-            tills += 1
-            if tills >= tills_wanted:
-                break
+    floor.place_checkouts(spec["counter"], count=tills_wanted)
 
     # A service counter along the back wall - the deli, the pharmacist's, the
     # butcher's - with the staff's tile behind it and the customers' in front.
@@ -695,7 +622,7 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
         for span in (min(6, frame.length // 3), 4, 3):
             for start in [frame.length - span - 1, 1] + list(range(2, frame.length - span - 1)):
                 spots = [frame.xy(start + k, frame.depth - 3) for k in range(span)]
-                if all(_fits(plan, idx, service, x, y, orient, blocked | placed)
+                if all(floor.fits(service, x, y, orient)
                        for x, y in spots):
                     for x, y in spots:
                         put(service, x, y, orient)
@@ -863,7 +790,7 @@ def furnish_store(plan, idx: int, room, rng: random.Random, door_tiles: set,
             parts = [("chair", frame.xy(a - 1, 3)), ("chair", frame.xy(a + 1, 3)),
                      ("round_table", frame.xy(a, 3))]
             sides = ["W" if frame.along_x else "N", "E" if frame.along_x else "S", "N"]
-            if all(_fits(plan, idx, role, x, y, L._facing(role, side), blocked | placed)
+            if all(floor.fits(role, x, y, L._facing(role, side))
                    for (role, (x, y)), side in zip(parts, sides)):
                 for (role, (x, y)), side in zip(parts, sides):
                     put(role, x, y, L._facing(role, side), ring=(role == "round_table"))

@@ -22,6 +22,7 @@ from generator.chunked import _SubProjector
 from generator.rendering.projection import Projector
 
 from . import bitmaps, guns, placement as _placement, worldmap
+from .fences import FENCE_TILE_DEPENDENCIES, FENCE_TILE_PROFILE
 from .population import build_spawn_map, official_population, save_footprints
 from .settings import Settings
 from .world import CELL_SIZE, Placement, origin, render_pzw, set_origin
@@ -104,6 +105,25 @@ def _feature_owner(feat: dict, proj: Projector,
     return 0
 
 
+def _fence_inputs(out_dir: str, map_name: str, proj: Projector) -> dict:
+    """Index fence ways and openings by their projected bounds."""
+    sources = {}
+    for suffix in ("fences", "fence_openings"):
+        path = os.path.join(out_dir, f"{map_name}_{suffix}.geojson")
+        data = knoxfiles.read(path, suffix, default={}) or {}
+        items = []
+        for feat in data.get("features", []):
+            geom = feat.get("geometry") or {}
+            coords = geom.get("coordinates") or []
+            if geom.get("type") == "Point":
+                coords = [coords]
+            if coords:
+                xs, ys = zip(*(proj.to_px(lat, lon) for lon, lat in coords))
+                items.append((min(xs), min(ys), max(xs), max(ys), feat))
+        sources[suffix] = (bool(data.get("road_geometry")), items)
+    return sources
+
+
 def build_chunked(
     out_dir: str,
     map_name: str,
@@ -179,6 +199,9 @@ def build_chunked(
         sidecars.extend(("_fences.geojson", "_fence_openings.geojson"))
         osm_cache = os.path.abspath(os.path.join(out_dir, info.get("osm_cache") or f"{map_name}_osm.json.gz"))
         osm_bbox = info.get("osm_bbox") or [info["bbox"][k] for k in ("south", "west", "north", "east")]
+    fence_inputs = {} if apartment_plans else _fence_inputs(out_dir, map_name, proj)
+    fence_profile = os.path.join(out_dir, FENCE_TILE_PROFILE)
+    fence_dependencies: dict[str, set[str]] = {}
 
     try:
         for qi, qx0, qy0, qw, qh, hx0, hy0, hw, hh in boxes:
@@ -222,8 +245,18 @@ def build_chunked(
                 src_path = os.path.join(out_dir, f"{map_name}{suffix}")
                 if os.path.isfile(src_path):
                     shutil.copy2(src_path, os.path.join(q_dir, f"{q_name}{suffix}"))
+            for suffix, (road_geometry, items) in fence_inputs.items():
+                features = [feat for x0, y0, x1, y1, feat in items
+                            if x1 >= hx0 and y1 >= hy0 and x0 <= hx0 + hw and y0 <= hy0 + hh]
+                if features or road_geometry:
+                    knoxfiles.write(os.path.join(q_dir, f"{q_name}_{suffix}.geojson"),
+                                    {"type": "FeatureCollection", "road_geometry": road_geometry,
+                                     "features": features})
+            if not settings.vanilla_tiles and os.path.isfile(fence_profile):
+                shutil.copy2(fence_profile, os.path.join(q_dir, FENCE_TILE_PROFILE))
 
             stitch: dict = {}
+            ix0, iy0 = qx0 - hx0, qy0 - hy0
 
             def q_say(text: str, frac: float | None = None, _qi: int = qi) -> None:
                 f = 0.0 if frac is None else max(0.0, min(1.0, frac))
@@ -236,6 +269,7 @@ def build_chunked(
                 _taken=[(x0 - hx0, y0 - hy0, m) for x0, y0, m in taken
                         if x0 < hx0 + hw and y0 < hy0 + hh
                         and x0 + m.shape[1] > hx0 and y0 + m.shape[0] > hy0],
+                _fence_core=(ix0, iy0, ix0 + qw, iy0 + qh),
             )
             if rc != 0:
                 return rc
@@ -246,9 +280,12 @@ def build_chunked(
                                        "tile_x": entry["tile_x"] + hx0, "tile_y": entry["tile_y"] + hy0}
                                       for entry in audit[key]]
                 audits.append(audit)
+            q_dependencies = knoxfiles.read(os.path.join(q_dir, FENCE_TILE_DEPENDENCIES),
+                                            "the fence tile dependencies", default={})
+            for mod, tiles in q_dependencies.items():
+                fence_dependencies.setdefault(mod, set()).update(tiles)
 
             # Stitch bitmaps (non-halo interior only) back into the global BMPs.
-            ix0, iy0 = qx0 - hx0, qy0 - hy0
             q_bmp = os.path.join(q_dir, f"{q_name}.bmp")
             q_veg = os.path.join(q_dir, f"{q_name}_veg.bmp")
             if os.path.isfile(q_bmp) and os.path.isfile(src_bmp):
@@ -362,6 +399,10 @@ def build_chunked(
             f.write(render_pzw(info["cells_x"], info["cells_y"],
                                f"{map_name}.bmp", all_placements, map_name,
                                project_dir=out_dir, zones=all_zones))
+        dependencies = os.path.join(out_dir, FENCE_TILE_DEPENDENCIES)
+        if fence_dependencies or os.path.isfile(dependencies):
+            knoxfiles.write(dependencies, {mod: sorted(tiles)
+                                           for mod, tiles in fence_dependencies.items()})
 
         csv_path = os.path.join(out_dir, f"{map_name}_placements.csv")
         with open(csv_path, "w", newline="", encoding="utf-8") as f:
