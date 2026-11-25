@@ -133,14 +133,6 @@ CLIMATE_TINT = {
 _WINTER_GROUND = (210, 214, 218)
 
 
-def _colour_mask(ground, colours) -> "np.ndarray":
-    """Which pixels of `ground` are one of `colours`."""
-    mask = np.zeros(ground.shape[:2], dtype=bool)
-    for colour in colours:
-        mask |= np.all(ground == np.array(colour, dtype=ground.dtype), axis=2)
-    return mask
-
-
 def _paint_climate(landscape: Image.Image, climate: dict,
                    winter_look: str = "auto") -> None:
     """Tint the ground for its real climate: dry, cold, lush or default."""

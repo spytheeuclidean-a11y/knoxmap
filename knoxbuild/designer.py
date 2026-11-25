@@ -663,14 +663,6 @@ def load_design(base_dir, name: str) -> dict | None:
     return None
 
 
-def drop_design(base_dir, name: str) -> bool:
-    try:
-        os.remove(design_path(base_dir, name))
-        return True
-    except OSError:
-        return False
-
-
 def keep(base_dir, name: str, design: dict) -> dict:
     """Save a design as a preset: the drawing, and the .tbx it builds into."""
     design = _table(design)

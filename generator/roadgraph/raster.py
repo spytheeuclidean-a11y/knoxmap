@@ -52,11 +52,6 @@ def _unit(a, b) -> tuple:
     return dx // g, dy // g
 
 
-def _heading(a, b) -> int:
-    from .snap import STEP
-    return STEP.index(_unit(a, b))
-
-
 def vertices(path):
     """The corners where a path turns (and its ends)."""
     path = [p for k, p in enumerate(path) if k == 0 or p != path[k - 1]]   # a corner given twice once
