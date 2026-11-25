@@ -111,6 +111,29 @@ PALETTE: list[tuple[str, str, str, dict]] = [
 
     # --- lines round things ----------------------------------------------
     ("fence", "Fence", "line", {"barrier": "fence"}),
+    ("fence_wood_low", "Low wooden fence", "line",
+     {"barrier": "fence", "fence_type": "wood", "height": "0.9"}),
+    ("fence_wood_high", "Tall wooden fence", "line",
+     {"barrier": "fence", "fence_type": "wood", "height": "2"}),
+    ("fence_picket", "Picket fence", "line",
+     {"barrier": "fence", "fence_type": "picket", "height": "0.9"}),
+    ("fence_mesh_low", "Low chain-link fence", "line",
+     {"barrier": "fence", "fence_type": "chain_link", "height": "1"}),
+    ("fence_mesh_high", "Tall chain-link fence", "line",
+     {"barrier": "fence", "fence_type": "chain_link", "height": "2"}),
+    ("fence_bars_low", "Low metal railing", "line",
+     {"barrier": "fence", "fence_type": "bars", "height": "1"}),
+    ("fence_bars_high", "Tall metal fence", "line",
+     {"barrier": "fence", "fence_type": "bars", "height": "2"}),
+    ("fence_krest", "Krest pedestrian railing", "line",
+     {"barrier": "fence", "fence_type": "krest", "height": "1"}),
+    ("fence_corrugated", "Corrugated metal fence", "line",
+     {"barrier": "fence", "fence_type": "corrugated_metal", "height": "2"}),
+    ("fence_concrete", "Concrete fence", "line",
+     {"barrier": "fence", "fence_type": "concrete", "height": "2"}),
+    ("fence_wire", "Barbed-wire fence", "line",
+     {"barrier": "fence", "fence_type": "barbed_wire", "height": "2"}),
+    ("fence_gate", "Fence gate", "point", {"barrier": "gate"}),
     ("hedge", "Hedge", "line", {"barrier": "hedge"}),
     ("pier", "Pier", "line", {"man_made": "pier"}),
 
@@ -145,7 +168,11 @@ GROUPS: list[tuple[str, tuple[str, ...]]] = [
                           "library", "townhall", "bank", "barracks",
                           "stadium", "castle")),
     ("Works and farm", ("warehouse", "barn", "shed")),
-    ("Edges and odds", ("fence", "hedge", "pier", "tree", "fuel")),
+    ("Fences", ("fence", "fence_wood_low", "fence_wood_high", "fence_picket",
+                "fence_mesh_low", "fence_mesh_high", "fence_bars_low", "fence_bars_high",
+                "fence_krest", "fence_corrugated", "fence_concrete", "fence_wire",
+                "fence_gate")),
+    ("Edges and odds", ("hedge", "pier", "tree", "fuel")),
 ]
 GROUP_OF = {entry_id: name for name, ids in GROUPS for entry_id in ids}
 
@@ -160,6 +187,10 @@ EXTRA_TAGS = {
     "tunnel",
     "oneway",
     "layer",
+    "fence_type",
+    "material",
+    "height",
+    "est_height",
 }
 
 
@@ -284,6 +315,8 @@ def category_of(entry_id: str) -> str | None:
     if entry is None:
         return None
     _i, _label, geom, tags = entry
+    if entry_id == "fence_gate":
+        return "fence"
     if "building" in tags:
         return "building"
     return classify(tags, area=geom == "area")

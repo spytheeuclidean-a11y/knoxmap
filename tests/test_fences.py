@@ -6,9 +6,14 @@ from types import SimpleNamespace
 from xml.etree import ElementTree
 
 import numpy as np
+from PIL import Image
+from shapely.geometry import box
 
-from knoxbuild.fences import (STYLES, TALLER, build_fences, height_m,
-                              mapped_fence_lines, style_for)
+from generator import pz_colors
+from generator.osm import OSMFeature
+from generator.rendering.outputs import _lines_geojson, _openings_geojson
+from knoxbuild.fences import (STYLES, TALLER, _grid_path, build_fences,
+                              height_m, mapped_fence_lines, style_for)
 from knoxbuild.footprint import Footprint
 
 
@@ -90,13 +95,36 @@ class FenceHeights(unittest.TestCase):
             self.assertIn(short, STYLES)
             self.assertIn(tall, STYLES)
 
+    def test_the_estimated_height_reaches_the_builder_and_selects_a_tall_fence(self):
+        fence = OSMFeature(1, "way", {"barrier": "fence", "fence_type": "welded_diamond_mesh",
+                                    "material": "steel", "est_height": "5'9\""},
+                           [(2, 6), (13, 6)])
+        tags = _lines_geojson([fence])["features"][0]["properties"]
+        self.assertAlmostEqual(height_m(tags), 1.7526)
+        self.assertEqual(style_for(tags, None), "tall_chainlink")
+        self.assertEqual(style_for({"fence_type": "panel", "material": "concrete"}, None),
+                         "tall_concrete")
+
+    def test_diagonal_edges_are_independent_of_way_direction(self):
+        points = [(0.1, 0.2), (6.6, 7.3), (15.1, 2.7)]
+        self.assertEqual(_grid_path(points), _grid_path(points[::-1])[::-1])
+
+    def test_closed_fence_crossing_a_drawn_map_outline_keeps_its_inside_run(self):
+        fence = OSMFeature(1, "way", {"barrier": "fence"},
+                           [(2, 2), (2, 12), (10, 12), (10, 2), (2, 2)])
+        projection = SimpleNamespace(to_px=lambda lat, lon: (lon, lat),
+                                     to_latlon=lambda x, y: (y, x))
+        features = _lines_geojson([fence], projection, box(10, 4, 14, 8))["features"]
+        self.assertEqual(len(features), 1)
+        self.assertEqual(sorted(features[0]["geometry"]["coordinates"]), [[12, 4], [12, 8]])
+
 
 class WaysThroughAFence(unittest.TestCase):
     """A mapper draws the fence as one line and the gate as a node on it, or
     runs a footpath through it. Built from the line alone the fence walls off
     the way in."""
 
-    def fence(self, openings, tags=None):
+    def fence(self, openings, tags=None, extra_lines=(), road_hierarchy=None):
         directory = self.enterContext(TemporaryDirectory())
         bdir = os.path.join(directory, "buildings")
         os.mkdir(bdir)
@@ -106,14 +134,19 @@ class WaysThroughAFence(unittest.TestCase):
                 "properties": tags or {"barrier": "fence", "fence_type": "wood",
                                        "height": "1.0"},
                 "geometry": {"type": "LineString",
-                             "coordinates": [[2, 6], [13, 6]]}}]}, f)
+                             "coordinates": [[2, 6], [13, 6]]}}, *extra_lines]}, f)
         with open(os.path.join(directory, "map_fence_openings.geojson"), "w") as f:
-            json.dump({"type": "FeatureCollection", "features": openings}, f)
+            data = openings if isinstance(openings, dict) else {
+                "type": "FeatureCollection", "features": openings}
+            json.dump(data, f)
         projection = SimpleNamespace(width=16, height=16,
                                      to_px=lambda lat, lon: (lon, lat))
+        if road_hierarchy is not None:
+            Image.new("RGB", (16, 16), pz_colors.LIGHT_ASPHALT).save(
+                os.path.join(directory, "map.bmp"))
         placements, _count = build_fences(
             directory, "map", projection, np.zeros((16, 16), dtype=bool),
-            None, bdir)
+            None, bdir, road_hierarchy=road_hierarchy)
         out = {}
         for placement in placements:
             root = ElementTree.parse(os.path.join(directory, placement.tbx_path))
@@ -130,7 +163,7 @@ class WaysThroughAFence(unittest.TestCase):
         gates = [x for (x, y), tile in built.items()
                  if tile.startswith("fixtures_doors_fences")]
         self.assertEqual(len(gates), 1, "one gate, not a gateway")
-        self.assertLessEqual(abs(gates[0] - 7), 1)
+        self.assertEqual(gates, [7])
         # ...and the fence either side of it is still there.
         self.assertIn((3, 6), built)
         self.assertIn((11, 6), built)
@@ -162,6 +195,37 @@ class WaysThroughAFence(unittest.TestCase):
         built = self.fence([])
         # Eleven tiles of fence from x=2 to x=12, and the post it ends on.
         self.assertEqual(sorted(x for (x, y) in built if y == 6), list(range(2, 14)))
+
+    def test_an_opening_does_not_cut_a_nearby_fence_the_path_never_crosses(self):
+        nearby = {"type": "Feature", "properties": {"barrier": "fence"},
+                  "geometry": {"type": "LineString", "coordinates": [[2, 7], [13, 7]]}}
+        built = self.fence([{"type": "Feature", "properties": {"opening": "path"},
+                             "geometry": {"type": "LineString",
+                                          "coordinates": [[7, 2], [7, 6.25]]}}],
+                           extra_lines=[nearby])
+        self.assertNotIn((7, 6), built)
+        self.assertIn((7, 7), built)
+
+    def test_a_fence_on_paved_ground_stays_except_where_a_road_crosses(self):
+        roads = np.zeros((16, 16), dtype=np.uint8)
+        roads[:, 9:11] = 2
+        built = self.fence([], road_hierarchy=roads)
+        self.assertIn((8, 6), built)
+        self.assertNotIn((9, 6), built)
+        self.assertNotIn((10, 6), built)
+        self.assertIn((11, 6), built)
+
+    def test_a_roadside_fence_stays_where_the_road_raster_overlaps_it(self):
+        road_tags = {"highway": "service", "width": "2"}
+        roads = [
+            OSMFeature(1, "way", road_tags, [(5, 1), (5, 15)]),   # parallel
+            OSMFeature(2, "way", road_tags, [(2, 9), (11, 9)]),   # crosses
+        ]
+        openings = _openings_geojson([], {"road_service": roads})
+        built = self.fence(openings, road_hierarchy=np.full((16, 16), 2))
+        self.assertIn((4, 6), built)
+        self.assertNotIn((9, 6), built)
+        self.assertIn((12, 6), built)
 
 
 class WhoseFenceItIs(unittest.TestCase):

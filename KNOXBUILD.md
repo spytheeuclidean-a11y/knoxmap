@@ -468,6 +468,54 @@ If you want a map larger than 400 km², raise `MAX_AREA_KM2` and coarsen metres
 per tile to stay under the tile cap — the tiling itself has no upper bound, only
 your RAM and willingness to wait.
 
+## Fences and external tilesets
+
+KnoxMap uses the fence type, material and height from OpenStreetMap. When
+the survey has no usable type, the surrounding land use supplies a default.
+The Fences group in the drawing palette offers explicit low and tall styles.
+Use the same presets to retag a surveyed line in the Edit panel. A Fence
+gate marker snaps to an edge near the point. Where the style has no gate
+sprite, the generator leaves a passage.
+
+Regenerate an older map to include road centrelines in its fence opening
+data. During Build these distinguish a fence crossing a roadway from one
+running along the same paved strip.
+
+To use a separate Project Zomboid tileset mod, install the mod and register
+its sheets in the mapping tools' `Tilesets.txt` and `Tiles/2x`, as for other
+custom tiles. The mod supplies the game textures and tile definitions,
+including the collision and climb properties for each direction. Create
+`fence_tiles.json` in the map folder (next to its BMP) before building:
+
+```json
+{
+  "mod_id": "MyFenceTiles",
+  "styles": {
+    "tall_corrugated": {
+      "west1": "fencing_my_pack_01_0",
+      "west2": "fencing_my_pack_01_1",
+      "north1": "fencing_my_pack_01_2",
+      "north2": "fencing_my_pack_01_3",
+      "nw": "fencing_my_pack_01_4",
+      "post": "fencing_my_pack_01_5",
+      "gate_w": "fixtures_doors_fences_my_pack_01_0",
+      "gate_n": "fixtures_doors_fences_my_pack_01_1"
+    }
+  }
+}
+```
+
+Use the mod's `id=` and its actual tile names. The style keys are listed in
+`knoxbuild/fences.py`. The two names for each direction can be identical.
+`post` is optional. Supply both gate names to use a gate sprite with that
+style. The `fencing_` and `fixtures_doors_fences_` prefixes tell KnoxMap to
+preserve the pieces when placing scenery. Rebuild and compile after changing
+the profile. Leave **Vanilla tiles only** off to use it. The packaged map
+lists the mod in `require=` when its compiled
+cells contain the configured sprites. Other styles use the base-game
+tiles. The base-game approximations for Krest and corrugated metal are
+a metal railing and solid wood respectively.
+
 ## Getting the tilesheets (tools/extract_tiles.py)
 
 The mapping tools want a "Tiles" tree of tilesheet PNGs and ship only a GUI

@@ -210,9 +210,16 @@ function editReady(mapName) {
 // What a feature is, in the palette's words where the palette has a word for
 // it, so "Street" and "House" rather than highway=residential.
 function describeTags(tags) {
+  let best = null;
+  let matches = 0;
   for (const entry of sketchPalette) {
-    if (Object.entries(entry.tags).every(([k, v]) => tags[k] === v)) return entry.label;
+    const entries = Object.entries(entry.tags);
+    if (entries.length > matches && entries.every(([k, v]) => tags[k] === v)) {
+      best = entry.label;
+      matches = entries.length;
+    }
   }
+  if (best) return best;
   // Its name before any tag of its own: "Manhattan New York Temple" is what
   // somebody is looking for, and "addr:city=New York" is the first tag in
   // alphabetical order rather than anything about the building.
@@ -270,7 +277,7 @@ function pickEdit(layer) {
   const box = document.getElementById('editSelected');
   if (!layer) { box.hidden = true; box.innerHTML = ''; return; }
   layer.setStyle(EDIT_PICKED);
-  const tags = mapEdits.tags[layer.osmId] || layer.osmTags || {};
+  const tags = { ...layer.osmTags, ...mapEdits.tags[layer.osmId] };
   box.hidden = false;
   box.innerHTML = `<span class="hint">${escapeHtml(describeTags(tags))}
       <small>#${layer.osmId}</small></span>
@@ -297,7 +304,6 @@ function pickEdit(layer) {
     const entry = sketchPalette.find(e => e.id === ev.target.value);
     if (!entry) return;
     mapEdits.tags[layer.osmId] = { ...entry.tags };
-    layer.osmTags = { ...entry.tags };
     showEditCount();
     pickEdit(layer);
     noteEdit(`Now a ${entry.label.toLowerCase()}.`);
