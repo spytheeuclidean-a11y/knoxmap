@@ -338,6 +338,18 @@ class Variety(unittest.TestCase):
                     return
         self.fail("no home gym got a treadmill")
 
+    def test_house_cellars_have_different_bare_walls(self):
+        walls = {basement_style(None, False, seed)["exterior"]["tiles"]["West"]
+                 for seed in range(200)}
+        self.assertGreaterEqual(len(walls), 4)
+
+    def test_a_cellar_without_a_seed_keeps_the_industrial_walls(self):
+        from knoxbuild import catalog as C
+        self.assertEqual(basement_style(None)["exterior"], C.SPECIAL_STYLES["industrial"]["exterior"])
+
+    def test_a_cellar_s_walls_are_a_function_of_its_seed(self):
+        self.assertEqual(basement_style(None, False, 9), basement_style(None, False, 9))
+
     def test_a_cellar_is_a_function_of_its_seed(self):
         self.assertEqual(_house_basement(17), _house_basement(17))
 

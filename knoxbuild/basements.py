@@ -242,6 +242,7 @@ class Basement:
     dy: int
     levels: int
     finished: bool = False
+    seed: int | None = None    # set for a house's cellar: picks its bare walls
 
 
 def _run(x: int, y: int, d: str) -> list[tuple[int, int]]:
@@ -506,7 +507,8 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
                      | {_wall_edge(dx, dy, dd) for dx, dy, dd in ground.doors}
                      | {_wall_edge(wx, wy, wd) for wx, wy, wd in ground.windows})
     _relight(ground, set(range(1, len(ground.rooms) + 1)), blocked_edges)
-    return Basement(building, spec.dx, spec.dy, spec.levels, finished)
+    return Basement(building, spec.dx, spec.dy, spec.levels, finished,
+                    seed if spec.tier == "house" else None)
 
 
 def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]) -> set:
@@ -526,20 +528,39 @@ def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]
     return set(squares) | {(x, y), (x, y - 1) if e == "N" else (x - 1, y)}
 
 
-def basement_style(style: dict | None, finished: bool = False) -> dict:
-    """The building's style with concrete walls and floors: the industrial kit.
-    A finished cellar keeps the house's own interior walls and floor."""
+# The bare walls a house's cellar may have, as (style table, variant index,
+# weight): grey block (the industrial kit), painted block, and the coloured
+# commercial plaster. Which a cellar gets is a function of its seed.
+CELLAR_WALLS = (("industrial", None, 40), ("civic", 0, 20), ("civic", 1, 15),
+                ("civic", 2, 15), ("civic", 3, 10))
+
+
+def _cellar_walls(seed: int | None) -> dict:
     from . import catalog as C
-    plant = C.SPECIAL_STYLES["industrial"]
+    if seed is None:
+        return C.SPECIAL_STYLES["industrial"]
+    table, i, _w = random.Random(seed ^ 0x3C6EF372).choices(
+        CELLAR_WALLS, weights=[w for _t, _i, w in CELLAR_WALLS])[0]
+    return C.SPECIAL_STYLES[table] if i is None else C.SPECIAL_STYLE_VARIANTS[table][i]
+
+
+def basement_style(style: dict | None, finished: bool = False,
+                   seed: int | None = None) -> dict:
+    """The building's style with concrete walls and floors: the industrial kit,
+    or for a house's cellar (`seed` given) one of CELLAR_WALLS laid over
+    concrete. A finished cellar keeps the house's own interior walls and floor."""
+    from . import catalog as C
+    plant = _cellar_walls(seed)
+    concrete = C.SPECIAL_STYLES["industrial"]
     out = dict(style or {})
     out.update(exterior=plant["exterior"], roof=None, trim=None, shutters=None,
                grime=None, windows_by_levels=None)
     if not (finished and out.get("interior") and out.get("floor")):
-        out.update(interior=plant["interior"], floor=plant["floor"])
+        out.update(interior=plant["interior"], floor=concrete["floor"])
     out.setdefault("name", "basement")
     return out
 
 
 def render_basement(b: Basement, label: str, style: dict | None) -> str:
     from .tbx import render_tbx
-    return render_tbx(b.building, label, basement_style(style, b.finished), roof=False)
+    return render_tbx(b.building, label, basement_style(style, b.finished, b.seed), roof=False)
