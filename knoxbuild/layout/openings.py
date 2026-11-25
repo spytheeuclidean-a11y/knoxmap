@@ -93,8 +93,6 @@ FRONT_DOOR_COST = {"livingroom": 0.0, "openplan": 0.0, "hall": 0.5, "kitchen": 1
 # bedroom into the next. The one pair a real house does have is a bathroom off
 # a bedroom, and the kitchen, dining room and living room share their walls
 # openly; everything else goes through the hall.
-PRIVATE_ROOMS = {"bedroom", "kidsbedroom", "bathroom", "office", "kitchen",
-                 "dining", "storage", "closet", "laundry"}
 ENSUITE = ({"bedroom", "bathroom"}, {"kidsbedroom", "bathroom"})
 # Dear enough that the tree takes any other way round, cheap enough that a
 # room with no other wall to open on is still reached rather than sealed.
