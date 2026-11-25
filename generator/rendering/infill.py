@@ -70,7 +70,8 @@ FILL_KINDS = {"yes", "house", "detached", "semidetached_house", "terrace",
 # Ground that is not for building on, drawn as areas.
 BLOCKING_AREAS = {"water", "pool", "park", "sports", "playground", "cemetery",
                   "wetland", "track", "parking", "plaza", "sand", "orchard",
-                  "farmland", "pier", "military", "schoolyard", "worship_grounds",
+                  "farmland", "pier", "breakwater", "drainage", "military",
+                  "schoolyard", "worship_grounds",
                   "hospital_grounds", "pedestrian", "industrial", "railway"}
 BLOCKING_VEGETATION = {"forest", "scrub"}
 PATH_AVOID_CATS = {"railway", "footway", "cycleway", "path", "bridleway",
