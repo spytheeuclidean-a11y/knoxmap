@@ -384,6 +384,38 @@ def _collect_global_features(features: list[OSMFeature], proj, clip,
     return buckets, building_feats, indoor_feats, fence_feats, gate_feats, place_feats
 
 
+def _prepare_roads(features, proj, road_layout: int, shape, output_dir: str,
+                   map_name: str, *, should_stop=None, progress=None) -> None:
+    """Apply the selected road layout once for the full map."""
+    knoxstop.check(should_stop, "the roads")
+    if road_layout == 0:
+        from .mapped_roads import clean_mapped_roads
+        clean_mapped_roads(features, proj, classify, _is_polygon)
+    elif road_layout == 5:
+        from .vanilla_grid import apply_vanilla_grid
+        apply_vanilla_grid(features, proj, classify, _is_polygon)
+    elif road_layout in (1, 4):
+        from .octilinear import straighten_roads
+        straighten_roads(features, proj, classify, _is_polygon, clean=True)
+    elif road_layout in ROAD_LAYOUTS:
+        # Build and the paper map read the graph back rather than routing again.
+        from .octilinear import apply_road_graph, graph_path
+        from .roadgraph.route import route
+
+        def tick(done, total):
+            knoxstop.check(should_stop, "the roads")
+            if progress:
+                progress(done, total)
+
+        graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape,
+                      log=knoxlog.log.info, tick=tick)
+        knoxstop.check(should_stop, "the roads")
+        knoxfiles.write(graph_path(output_dir, map_name), graph)
+        apply_road_graph(features, graph, proj)
+
+    knoxstop.check(should_stop, "the roads")
+
+
 def render(features: Iterable[OSMFeature], south: float, west: float,
            north: float, east: float, meters_per_tile: float,
            output_dir: str, map_name: str,
@@ -413,7 +445,12 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            _rail_override: list[tuple[int, int, int]] | None = None,
            _rail_offset: tuple[int, int] = (0, 0),
            _write_geojson: bool = True,
-           _chunk_out: dict | None = None) -> RenderResult:
+           _chunk_out: dict | None = None, *, road_progress=None) -> RenderResult:
+    """Render a map. Road links go to road_progress and chunks to progress.
+
+    For a single render, progress also works as the road callback if
+    road_progress is omitted.
+    """
     proj = _proj_override or Projector.build(south, west, north, east, meters_per_tile, rotation)
     from .chunked import CHUNK_MIN_CELLS, render_chunked
     cx_cells, cy_cells = proj.cell_grid()
@@ -432,6 +469,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             winter_look=winter_look, elevation=elevation,
             elevation_span=elevation_span, should_stop=should_stop,
             progress=progress, render_progress=render_progress,
+            road_progress=road_progress,
         )
     from .rendering.forest_params import ForestParams
     # The Forest card's knobs. Callers that only know Stand size and Edge
@@ -443,30 +481,10 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     import copy
     features = [copy.copy(f) for f in features]
     road_layout = int(straight_roads or 0)
-    if not _skip_road_layout and road_layout == 0:
-        from .mapped_roads import clean_mapped_roads
-        clean_mapped_roads(features, proj, classify, _is_polygon)
-    elif not _skip_road_layout and road_layout == 5:
-        from .vanilla_grid import apply_vanilla_grid
-        apply_vanilla_grid(features, proj, classify, _is_polygon)
-    elif not _skip_road_layout and road_layout in (1, 4):
-        # Every road in straight runs at 45-degree steps (octilinear.py).
-        from .octilinear import straighten_roads
-        straighten_roads(features, proj, classify, _is_polygon, clean=True)
-    elif not _skip_road_layout and road_layout in ROAD_LAYOUTS:
-        # Routed on vanilla's lattice (roadgraph/route.py), and saved: Build and
-        # the paper map read the roads back rather than routing them again.
-        from .octilinear import apply_road_graph, graph_path
-        from .roadgraph.route import route
-
-        def tick(done, total):
-            knoxstop.check(should_stop, "the roads")
-            if progress:
-                progress(done, total)
-        graph = route(features, proj, ROAD_LAYOUTS[road_layout], shape, log=knoxlog.log.info, tick=tick)
-        knoxfiles.write(graph_path(output_dir, map_name), graph)
-        apply_road_graph(features, graph, proj)
     if not _skip_road_layout:
+        _prepare_roads(features, proj, road_layout, shape, output_dir, map_name,
+                       should_stop=should_stop,
+                       progress=road_progress if road_progress is not None else progress)
         from .rendering.parking import square_parking_lots
         square_parking_lots(features, proj, classify, _is_polygon)
     t_render0 = time.perf_counter()
