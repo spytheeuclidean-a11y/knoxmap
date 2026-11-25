@@ -1257,7 +1257,8 @@ def verify_exterior_props(
 def _add_exterior_house_props(bx0: int, by0: int, bw: int, bh: int,
                               doors: list, window_tiles: set,
                               occupied_at: bytearray, w: int, h: int,
-                              frng: random.Random, lights: list) -> None:
+                              frng: random.Random, lights: list,
+                              garage_doors: set | None = None) -> None:
     """Add secondary door outdoor wall lights and wall AC units on camera-facing
     walls, verified against wall geometry and PZ tile orientation."""
     added: list[tuple[int, int, int, str, str]] = []
@@ -1279,7 +1280,8 @@ def _add_exterior_house_props(bx0: int, by0: int, bw: int, bh: int,
                 break
 
     # Camera-facing (S/E exterior -> side N/W) non-window, non-corner tiles for AC units
-    avoid = set(door_tiles) | set(window_tiles)
+    # Garage doors are not in `doors` for a home, so keep clear of them too.
+    avoid = set(door_tiles) | set(window_tiles) | set(garage_doors or ())
     avoid |= {(ax + dx_, ay + dy_) for ax, ay in avoid
               for dx_, dy_ in ((-1, 0), (1, 0), (0, -1), (0, 1))}
     candidates: list[tuple[int, int, str]] = []
@@ -1613,8 +1615,11 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 if free(bx_, by_) and tuple(ground[by_, bx_]) not in LAWNLESS:
                     put(bx_, by_, C.BIN)
         if home and lights is not None:
+            garage_doors = {(bx0 + gx, by0 + gy)
+                            for gx, gy, _ix, _iy in _outside_garage_doors(tbx_file)}
             _add_exterior_house_props(bx0, by0, bw, bh, doors, window_tiles,
-                                      occupied_at, w, h, frng, lights)
+                                      occupied_at, w, h, frng, lights,
+                                      garage_doors)
         if home and structures is not None and walk and not merged:
             _add_front_porch(sx, sy, dx, dy, px, py, bw, bh, free,
                              claimed_bytes, paved_at, w, h, drive_tiles,
