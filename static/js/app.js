@@ -2063,6 +2063,11 @@ loadMaps();
 
 // ---- generation ----
 
+function mapNameForRequest(value, prefix) {
+  const clean = value.trim().replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+  return clean || `${prefix}_${Date.now()}`;
+}
+
 async function runGenerate({ skipBigConfirm = false } = {}) {
   if (!currentRect) return false;
   // Only what I draw with nothing drawn downloads nothing and builds nothing:
@@ -2090,8 +2095,7 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
   // Name it here rather than letting the server invent one, so progress can be
   // polled under a key the page already knows.
   const nameField = document.getElementById('mapName');
-  const chosen = (nameField.value.trim() || `knoxmap_${Date.now()}`)
-    .replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
+  const chosen = mapNameForRequest(nameField.value, 'knoxmap');
   nameField.value = chosen;
 
   const bb = rectBounds(currentRect);
@@ -2154,7 +2158,7 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
     renderResults(data);
     // What it was just made from, so a knob can be moved and put into it
     // without drawing the box again.
-    rememberMap({ mapName: chosen,
+    rememberMap({ mapName: data.mapName,
                   bbox: { south: bb.s, west: bb.w, north: bb.n, east: bb.e },
                   metersPerTile: body.metersPerTile, shape: body.shape,
                   settings: data.settings || body.settings });

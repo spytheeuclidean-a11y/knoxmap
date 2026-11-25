@@ -884,9 +884,7 @@ document.getElementById('boardTraceOff').addEventListener('click', () => {
 });
 
 function boardMapName() {
-  const typed = document.getElementById('boardName').value.trim();
-  const clean = typed.replace(/[^A-Za-z0-9_-]+/g, '_').replace(/^_+|_+$/g, '');
-  return clean || `drawn_${Date.now()}`;
+  return mapNameForRequest(document.getElementById('boardName').value, 'drawn');
 }
 
 document.getElementById('boardSave').addEventListener('click', async () => {

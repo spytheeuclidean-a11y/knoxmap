@@ -48,3 +48,34 @@ test('rewiring a desktop download saves once and a browser keeps its native link
     assert.equal(link.download, desktop ? undefined : 'B.zip');
   }
 });
+
+test('generation uses the same nonempty name for the request, progress and Stop', async () => {
+  const { ctx, field, run } = workspace();
+  run('currentRect = {}');
+  ctx.rectBounds = () => ({ s: 0, w: 0, n: 1, e: 1 });
+  ctx.readScale = () => 1;
+  ctx.settingsForRequest = ctx.selectionShape = ctx.sketchGeoJSON = () => ({});
+  ctx.fx = { step() {}, overlay: { show() {} } };
+  ctx.stopProgress = () => {};
+  const stops = [], progress = [], requests = [];
+  ctx.showStop = name => stops.push(name);
+  ctx.startProgress = name => progress.push(name);
+  ctx.wasStopped = () => true;
+  ctx.fx.overlay.hide = ctx.fx.toast = () => {};
+  ctx.fetch = async (_, options) => {
+    requests.push(JSON.parse(options.body).mapName);
+    return { json: async () => ({}) };
+  };
+  for (const [typed, expected] of [
+    ['Город', /^knoxmap_\d+$/], ['', /^knoxmap_\d+$/], ['___', /^knoxmap_\d+$/],
+    ['Town_42-west', /^Town_42-west$/], ['East Город 2', /^East_2$/],
+  ]) {
+    field('mapName').value = typed;
+    await ctx.runGenerate({ skipBigConfirm: true });
+    const name = field('mapName').value;
+    assert.match(name, expected);
+    assert.equal(requests.at(-1), name);
+    assert.equal(progress.at(-1), name);
+    assert.deepEqual(stops.slice(-2), [name, null]);
+  }
+});
