@@ -82,6 +82,7 @@
     "generator/rendering/vegetation.py",
     "generator/rendering/widths.py",
     "generator/rendering/woodland.py",
+    "generator/rendering/worker.py",
     "generator/roadgraph/__init__.py",
     "generator/roadgraph/modes.py",
     "generator/roadgraph/network.py",
