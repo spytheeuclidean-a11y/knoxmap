@@ -18,6 +18,7 @@ from PIL import Image
 
 from .. import pz_colors as C
 from .forest_params import ForestParams
+from .noise import noise_quantiles
 
 # Thinnest first: the grade is an index into this.
 GRADES = (C.VEG_NOTHING, C.SPARSE_TREES, C.TREES_DARK_GRASS, C.TREES)
@@ -95,19 +96,18 @@ UNDERGROWTH_SHARE = 0.12       # of its sparse and trees-in-grass tiles
 UNDERGROWTH_CLUMP_M = 10.0
 
 
-def _pick(mask: np.ndarray, lat, share: float) -> np.ndarray:
-    """The `share` of `mask` where the noise `lat` is highest, read off a
-    thin sample and applied in strips."""
-    from .noise import smooth_noise
+def _pick(mask: np.ndarray, specs, seed: int, share: float) -> np.ndarray:
+    """The `share` of the noise (`specs`, `seed`) that is highest, within `mask`,
+    applied in strips. The cut is the noise's own quantile
+    (noise.noise_quantiles), the same for every chunk of a map."""
+    from .noise import lattices, noise_quantiles, smooth_noise
 
     h, w = mask.shape
     out = np.zeros_like(mask)
-    sy = np.arange(0, h, SAMPLE_EVERY, dtype=np.float32)
-    sx = np.arange(0, w, SAMPLE_EVERY, dtype=np.float32)
-    sample = smooth_noise(sy, sx, lat)[mask[::SAMPLE_EVERY, ::SAMPLE_EVERY]]
-    if sample.size == 0 or share <= 0:
+    if share <= 0 or not mask.any():
         return out
-    cut = float(np.quantile(sample, 1.0 - share))
+    lat = lattices(h, w, specs, seed)
+    cut = noise_quantiles(specs, seed, (1.0 - share,), (w, h))[0]
     xs = np.arange(w, dtype=np.float32)
     for top in range(0, h, STRIP_ROWS):
         bottom = min(h, top + STRIP_ROWS)
@@ -122,32 +122,27 @@ def _young_and_undergrowth(vegp, todo, cell: int, metres_per_tile: float, seed: 
                            young_trees: bool) -> tuple[int, int]:
     """Young trees and undergrowth in the wood's tiles `todo` of `vegp` (RGB
     array, changed in place). Returns how many of each."""
-    from .noise import lattices
-
     h, w = todo.shape
     key = _keys(vegp)
     trees = todo & np.isin(key, [_key(c) for c in GRADES[1:]])
     young = np.zeros_like(todo)
     if young_trees and YOUNG_SHARE > 0 and trees.any():
-        young = _pick(trees, lattices(h, w, [(max(2, cell // 4), 1.0)], seed + 2),
-                      YOUNG_SHARE)
+        young = _pick(trees, [(max(2, cell // 4), 1.0)], seed + 2, YOUNG_SHARE)
         vegp[young] = C.TREE_SMALL
     thin = trees & ~young & (key != _key(C.TREES))
     under = np.zeros_like(todo)
     if UNDERGROWTH_SHARE > 0 and thin.any():
         clump = max(2, int(round(UNDERGROWTH_CLUMP_M / metres_per_tile)))
-        under = _pick(thin, lattices(h, w, [(clump, 1.0)], seed + 3), UNDERGROWTH_SHARE)
+        under = _pick(thin, [(clump, 1.0)], seed + 3, UNDERGROWTH_SHARE)
         vegp[under] = C.BUSHES_TREES_DARK_GRASS
     return int(young.sum()), int(under.sum())
 
 
-def stand_lattices(h: int, w: int, cell: int, variety: float, raggedness: float,
-                   seed: int) -> list:
-    """The stand noise: stands 2.5 times as big weighted 0.5 x variety, Stand
-    size and a quarter of it sharing the rest by raggedness. A weight of 0
-    builds no lattice, so variety 0 and raggedness 0.25 draw today's two."""
-    from .noise import lattices
-
+def stand_specs(cell: int, variety: float, raggedness: float) -> list:
+    """The stand noise's (cell, weight) pairs: stands 2.5 times as big weighted
+    0.5 x variety, Stand size and a quarter of it sharing the rest by
+    raggedness. A weight of 0 builds no lattice, so variety 0 and raggedness
+    0.25 draw today's two."""
     specs = []
     if variety > 0:
         specs.append((max(2, int(round(cell * VARIETY_SCALE))), 0.5 * variety))
@@ -156,7 +151,15 @@ def stand_lattices(h: int, w: int, cell: int, variety: float, raggedness: float,
         specs.append((cell, (1.0 - raggedness) * rest))
     if raggedness > 0:
         specs.append((max(2, cell // 4), raggedness * rest))
-    return lattices(h, w, specs, seed)
+    return specs
+
+
+def stand_lattices(h: int, w: int, cell: int, variety: float, raggedness: float,
+                   seed: int) -> list:
+    """The stand noise (see `stand_specs`) as lattices for an h x w window."""
+    from .noise import lattices
+
+    return lattices(h, w, stand_specs(cell, variety, raggedness), seed)
 
 
 def _erode(cur: np.ndarray) -> np.ndarray:
@@ -338,22 +341,19 @@ def shape_forest(veg, landscape, forest, density: float, stand_m: float,
             & (edge[0] > -2 * np.clip(edge[1].astype(np.int16), 1, reach))
             if reach else np.zeros_like(forest))
 
-    # The cuts: quantiles of the value over the forest, so each grade gets
-    # exactly its share. A share of nothing or everything is an infinite cut.
-    sy = np.arange(0, h, SAMPLE_EVERY)
-    sx = np.arange(0, w, SAMPLE_EVERY)
-    sample = _value(sy, sx, lats)[todo[np.ix_(sy, sx)]]
-    if sample.size == 0:
-        sample = _value(np.arange(h), np.arange(w), lats)[todo]
-    cuts, total = [], 0.0
-    for share in shares(density, p.thickets)[:3]:
-        total += share
-        cuts.append(-np.inf if total <= 0 else np.inf if total >= 1
-                    else float(np.quantile(sample, total)))
-    cuts = np.array(cuts)
-    # The spill reads the noise as a rank, 0 to 1 over the wood's own spread
+    # The cuts: quantiles of the stand noise, so each grade gets its share of
+    # the wood. They are the noise's own quantiles (noise.noise_quantiles),
+    # the same for every chunk of a map, not taken over this chunk's wood. A
+    # share of nothing or everything is an infinite cut.
+    specs = tuple(stand_specs(cell, p.stand_variety, p.raggedness))
+    totals = np.cumsum(shares(density, p.thickets)[:3])
+    inner = tuple(float(t) for t in totals if 0 < t < 1)
+    got = noise_quantiles(specs, p.seed, inner + (0.02, 0.98), (w, h))
+    take = iter(got[:len(inner)])
+    cuts = np.array([-np.inf if t <= 0 else np.inf if t >= 1 else next(take) for t in totals])
+    # The spill reads the noise as a rank, 0 to 1 over the noise's own spread
     # of it, so a share of its tiles can be had by a line through that rank.
-    lo, hi = (np.quantile(sample, (0.02, 0.98)) if sample.size else (0.0, 1.0))
+    lo, hi = got[-2], got[-1]
     spill_on = shares(density, p.thickets)[0] < 1
 
     counts = np.zeros(4, dtype=np.int64)

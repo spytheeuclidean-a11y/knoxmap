@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from .fields import _hash01
+from .noise import global_origin, global_window_ids
 
 YARD_M = 6.0                   # no field or water this near a building
 YARD_CLASSES = (40, 80)        # WorldCover cropland and water
@@ -216,7 +217,11 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         woods = _is_woods(win)
         if not woods.any():
             continue
-        seed = int((int(poly.centroid.x) * 73856093) ^ (int(poly.centroid.y) * 19349663)
+        # From the building's global position, so the same house gets the same
+        # clearing whichever chunk it is drawn in.
+        gx, gy = global_origin()
+        seed = int((int(round(poly.centroid.x + gx)) * 73856093)
+                   ^ (int(round(poly.centroid.y + gy)) * 19349663)
                    ^ HOME_SEED) & 0xFFFFFFFF
         roll = float(_hash01(np.array([seed]), HOME_SEED)[0])
         radius = (clear_min_m + roll * (clear_max_m - clear_min_m)) / mpt
@@ -237,8 +242,7 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         # The fringe: some trees a grade thinner, so the wood fades out.
         fringe = _wobbly(poly, radius, seed, extra=EDGE_M / mpt)
         edge = _rasterise(fringe, x0, y0, bw, bh) & ~inside
-        ids = (np.arange(y0, y1, dtype=np.int64)[:, None] * w
-               + np.arange(x0, x1, dtype=np.int64)[None, :])
+        ids = global_window_ids(y0, y1, x0, x1)
         thin = edge & woods & (_hash01(ids, HOME_SEED + 1) < EDGE_THIN)
         for colour, to in THINNER.items():
             sel = thin & np.all(win == colour, axis=2)
