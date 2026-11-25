@@ -19,6 +19,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
+from .noise import global_origin, hash01
 
 # How big a plot is, metres, drawn per field (OSM) or per row and column of
 # the grid (WorldCover). A field no longer than the top of this is one plot.
@@ -31,15 +32,7 @@ FIELD_SEED = 4421
 STRIP_ROWS = 512
 
 
-def _hash01(values, salt: int):
-    """A uniform number in [0, 1) for each integer in `values`, the same every
-    run and independent of what order anything is painted in (splitmix64)."""
-    with np.errstate(over="ignore"):
-        z = values.astype(np.uint64) + np.uint64((salt * 0x9E3779B97F4A7C15) & 0xFFFFFFFFFFFFFFFF)
-        z = (z ^ (z >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
-        z = (z ^ (z >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
-        z = z ^ (z >> np.uint64(31))
-    return (z >> np.uint64(11)).astype(np.float64) / float(1 << 53)
+_hash01 = hash01
 
 
 def _borders(field, pid):
@@ -118,24 +111,29 @@ def _polygon_field(landscape, veg, proj, ring, index: int, blocked=None) -> int:
     theta = math.atan2(long_edge[1], long_edge[0])
     across = abs(math.cos(theta)) >= abs(math.sin(theta))
 
-    cx, cy = poly.centroid.x, poly.centroid.y
-    seed = int((int(cx) * 73856093) ^ (int(cy) * 19349663) ^ FIELD_SEED) & 0xFFFFFFFF
+    # Everything below is worked out in global tile coordinates, from the
+    # polygon's own position, so a field is laid out the same whichever chunk
+    # it is drawn in: the seed from its global centroid, the plot grid from
+    # global coordinates, the plot ids from the grid cell (not from this
+    # window's minimum or from the polygon's place in this chunk's list).
+    gox, goy = global_origin()
+    cx, cy = poly.centroid.x + gox, poly.centroid.y + goy
+    seed = int((int(round(cx)) * 73856093) ^ (int(round(cy)) * 19349663) ^ FIELD_SEED) & 0xFFFFFFFF
     rng = np.random.default_rng(seed)
     biggest = FIELD_CELL_M[1] / proj.meters_per_tile
     ys, xs = np.mgrid[y0:y1, x0:x1]
+    owner = (seed & 0x3FFFFF) << 40
     if math.hypot(*long_edge) <= biggest:
-        pid = np.zeros(field.shape, dtype=np.int64)
+        pid = np.full(field.shape, owner, dtype=np.int64)
     else:
         cu = rng.uniform(*FIELD_CELL_M) / proj.meters_per_tile
         cv = rng.uniform(*FIELD_CELL_M) / proj.meters_per_tile
-        u = xs * math.cos(theta) + ys * math.sin(theta) + rng.uniform(0, cu)
-        v = -xs * math.sin(theta) + ys * math.cos(theta) + rng.uniform(0, cv)
-        iu = np.floor(u / cu).astype(np.int64)
-        iv = np.floor(v / cv).astype(np.int64)
-        iu -= iu.min()
-        iv -= iv.min()
-        pid = iu * (int(iv.max()) + 1) + iv
-    pid = pid + (index + 1) * (1 << 32)
+        gxs, gys = xs + gox, ys + goy
+        u = gxs * math.cos(theta) + gys * math.sin(theta) + rng.uniform(0, cu)
+        v = -gxs * math.sin(theta) + gys * math.cos(theta) + rng.uniform(0, cv)
+        iu = np.floor(u / cu).astype(np.int64) + (1 << 19)
+        iv = np.floor(v / cv).astype(np.int64) + (1 << 19)
+        pid = owner | ((iu & 0xFFFFF) << 20) | (iv & 0xFFFFF)
     furrow_h = np.full(field.shape, across)
     tile_ids = global_ids_of(ys, xs)
     painted = _paint_plots(land, vegp, field, pid, furrow_h, tile_ids, FIELD_SEED)
@@ -144,27 +142,29 @@ def _polygon_field(landscape, veg, proj, ring, index: int, blocked=None) -> int:
     return len(painted)
 
 
-def _cuts(length: int, cell, rng):
-    """Boundaries of plots along one side of the map: plot index per tile, and
-    each plot's size."""
-    sizes = []
-    total = 0
-    while total < length:
-        size = max(4, int(round(rng.uniform(*cell))))
-        sizes.append(size)
-        total += size
-    index = np.repeat(np.arange(len(sizes)), sizes)[:length]
-    return index, np.array(sizes)
+def _cuts(origin: int, length: int, cell, salt: int):
+    """Boundaries of plots along one side of the map, laid out from global tile
+    0: the plot index of each of `length` tiles starting at global tile
+    `origin`, and every plot's size up to the last of them.
+
+    Plot k's size is a hash of k, so the plots are the same whatever window
+    they are read through."""
+    end = origin + length
+    most = end // 4 + 1                      # a plot is at least 4 tiles
+    sizes = np.maximum(4, np.rint(cell[0] + hash01(np.arange(most), salt) * (cell[1] - cell[0]))).astype(np.int64)
+    sizes = sizes[:int(np.searchsorted(np.cumsum(sizes), end)) + 1]
+    index = np.repeat(np.arange(len(sizes)), sizes)[origin:end]
+    return index, sizes
 
 
 def _cropland(landscape, veg, proj, cropland) -> int:
     from .noise import global_tile_ids
 
     h, w = cropland.shape
-    rng = np.random.default_rng(FIELD_SEED + 1)
+    ox, oy = global_origin()
     cell = (FIELD_CELL_M[0] / proj.meters_per_tile, FIELD_CELL_M[1] / proj.meters_per_tile)
-    col, col_w = _cuts(w, cell, rng)
-    row, row_h = _cuts(h, cell, rng)
+    col, col_w = _cuts(ox, w, cell, FIELD_SEED + 1)
+    row, row_h = _cuts(oy, h, cell, FIELD_SEED + 2)
     painted = set()
     for top in range(0, h, STRIP_ROWS):
         bottom = min(h, top + STRIP_ROWS)
@@ -174,7 +174,7 @@ def _cropland(landscape, veg, proj, cropland) -> int:
             continue
         r = row[a:b][:, None]
         c = col[None, :]
-        pid = (r * len(col_w) + c).astype(np.int64)
+        pid = (r.astype(np.int64) << 20) + c
         furrow_h = col_w[c] >= row_h[r]
         tile_ids = global_tile_ids(a, b, w)
         land = np.array(landscape.crop((0, a, w, b)))

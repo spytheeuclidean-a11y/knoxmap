@@ -576,24 +576,44 @@ def _weather_roads(landscape: Image.Image, proj: Projector) -> None:
     Patches go on asphalt only - they are skipped over grass, water, pavement
     and building footprints, so nothing outside the carriageway is touched.
     """
-    import random
+    from .noise import block_ids, global_origin, hash01
 
     asphalt = {C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT}
     px = landscape.load()
-    rng = random.Random(20250913)
-    # One patch per 1500 tiles of map. Denser than this and the roads read as
-    # bombed rather than worn.
-    attempts = max(1, (proj.width * proj.height) // 1500)
-    for _ in range(attempts):
-        cx = rng.randrange(proj.width)
-        cy = rng.randrange(proj.height)
-        if px[cx, cy] not in asphalt:
-            continue
-        shade = rng.choice((C.DARK_POTHOLE, C.LIGHT_POTHOLE))
-        radius = rng.randint(1, 3)
-        for y in range(max(0, cy - radius), min(proj.height, cy + radius + 1)):
-            for x in range(max(0, cx - radius), min(proj.width, cx + radius + 1)):
-                if (x - cx) ** 2 + (y - cy) ** 2 > radius * radius:
-                    continue
-                if px[x, y] in asphalt:
-                    px[x, y] = shade
+    # One patch per cell of 39 x 39 tiles (about one per 1500). Denser than
+    # this and the roads read as bombed rather than worn. The cells sit on the
+    # global grid and every roll is a hash of the cell, so a chunk wears the
+    # same patches the whole map would. A patch whose centre is outside the
+    # window is not drawn here: the chunk that has it in its core draws it,
+    # and the halo is wider than a patch.
+    cell = 39
+    ox, oy = global_origin()
+    r0, c0 = oy // cell, ox // cell
+    rows = (oy + proj.height - 1) // cell - r0 + 1
+    cols = (ox + proj.width - 1) // cell - c0 + 1
+    ids = block_ids(r0, rows, c0, cols)
+    at_x = hash01(ids, 20250913)
+    at_y = hash01(ids, 20250914)
+    which = hash01(ids, 20250915)
+    size = hash01(ids, 20250916)
+    for row in range(rows):
+        for col in range(cols):
+            cx = (c0 + col) * cell + int(at_x[row, col] * cell) - ox
+            cy = (r0 + row) * cell + int(at_y[row, col] * cell) - oy
+            if not (0 <= cx < proj.width and 0 <= cy < proj.height):
+                continue
+            if px[cx, cy] not in asphalt:
+                continue
+            shade = (C.DARK_POTHOLE, C.LIGHT_POTHOLE)[int(which[row, col] * 2)]
+            radius = 1 + int(size[row, col] * 3)
+            _wear_patch(px, proj, asphalt, cx, cy, radius, shade)
+
+
+def _wear_patch(px, proj, asphalt, cx: int, cy: int, radius: int, shade) -> None:
+    """One round blot of `shade` on the asphalt around (cx, cy)."""
+    for y in range(max(0, cy - radius), min(proj.height, cy + radius + 1)):
+        for x in range(max(0, cx - radius), min(proj.width, cx + radius + 1)):
+            if (x - cx) ** 2 + (y - cy) ** 2 > radius * radius:
+                continue
+            if px[x, y] in asphalt:
+                px[x, y] = shade

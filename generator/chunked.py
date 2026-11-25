@@ -207,6 +207,9 @@ def render_chunked(
     from .rendering.forest_params import ForestParams
 
     t0 = time.perf_counter()
+    # A chunk's window must start on a spawn-map pixel, or its spawn map is
+    # resampled out of phase with the whole map's and the seams show.
+    halo_tiles = -(-int(halo_tiles) // C.SPAWN_MAP_SCALE) * C.SPAWN_MAP_SCALE
     full_proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
     cells_x, cells_y = full_proj.cell_grid()
     fp = forest_params or ForestParams(stand_m=forest_stand_m, edge_m=forest_edge_m)

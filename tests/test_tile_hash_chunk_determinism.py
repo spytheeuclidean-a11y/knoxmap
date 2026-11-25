@@ -36,25 +36,27 @@ class PolygonFieldTufts(unittest.TestCase):
     SIZE = 300
     BOX = (100, 100, 160, 150)        # field rectangle in full-grid tiles
 
-    def _run(self, x0, y0, w, h, index):
+    def _run(self, x0, y0, w, h, shift):
         land = Image.new("RGB", (w, h), C.LIGHT_GRASS)
         veg = Image.new("RGB", (w, h), C.VEG_NOTHING)
         bx0, by0, bx1, by1 = self.BOX
+        bx0, bx1 = bx0 + shift, bx1 + shift
         ring = rect(bx0 - x0, by0 - y0, bx1 - x0, by1 - y0)
         with global_tile_offset(x0, y0):
-            F.paint_fields(land, veg, P(), [[]] * index + [ring], None)
+            F.paint_fields(land, veg, P(), [ring], None)
         return np.asarray(veg)
 
     def test_window_matches_full_grid(self):
-        # Pick a polygon index whose plot lies fallow, so it grows tufts.
-        for index in range(40):
-            full = self._run(0, 0, self.SIZE, self.SIZE, index)
+        # Slide the field along until its plot lies fallow, so it grows tufts
+        # (a field's plot is chosen from its global position).
+        for shift in range(40):
+            full = self._run(0, 0, self.SIZE, self.SIZE, shift)
             if (full == np.array(C.SHORT_GRASS)).all(axis=2).sum() > 50:
                 break
         else:
-            self.fail("no fallow plot among the first 40 indices")
+            self.fail("no fallow plot among 40 positions")
         x0, y0, w, h = 90, 95, 100, 80
-        win = self._run(x0, y0, w, h, index)
+        win = self._run(x0, y0, w, h, shift)
         self.assertEqual(diff_count(win, full[y0:y0 + h, x0:x0 + w]), 0)
 
 

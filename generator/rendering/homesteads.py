@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw
 
 from .. import pz_colors as C
 from .fields import _hash01
-from .noise import global_window_ids
+from .noise import global_origin, global_window_ids
 
 YARD_M = 6.0                   # no field or water this near a building
 YARD_CLASSES = (40, 80)        # WorldCover cropland and water
@@ -217,7 +217,11 @@ def clear_homesteads(veg, landscape, footprints, roads, meters_per_tile,
         woods = _is_woods(win)
         if not woods.any():
             continue
-        seed = int((int(poly.centroid.x) * 73856093) ^ (int(poly.centroid.y) * 19349663)
+        # From the building's global position, so the same house gets the same
+        # clearing whichever chunk it is drawn in.
+        gx, gy = global_origin()
+        seed = int((int(round(poly.centroid.x + gx)) * 73856093)
+                   ^ (int(round(poly.centroid.y + gy)) * 19349663)
                    ^ HOME_SEED) & 0xFFFFFFFF
         roll = float(_hash01(np.array([seed]), HOME_SEED)[0])
         radius = (clear_min_m + roll * (clear_max_m - clear_min_m)) / mpt
