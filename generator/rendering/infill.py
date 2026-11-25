@@ -70,7 +70,8 @@ FILL_KINDS = {"yes", "house", "detached", "semidetached_house", "terrace",
 # Ground that is not for building on, drawn as areas.
 BLOCKING_AREAS = {"water", "pool", "park", "sports", "playground", "cemetery",
                   "wetland", "track", "parking", "plaza", "sand", "orchard",
-                  "farmland", "pier", "military", "schoolyard", "worship_grounds",
+                  "farmland", "pier", "breakwater", "drainage", "military",
+                  "schoolyard", "worship_grounds",
                   "hospital_grounds", "pedestrian", "industrial", "railway"}
 BLOCKING_VEGETATION = {"forest", "scrub"}
 PATH_AVOID_CATS = {"railway", "footway", "cycleway", "path", "bridleway",
@@ -847,7 +848,7 @@ SHED_HOUSE_M2 = (70.0, 300.0)   # smaller is a shed already, bigger is not a hou
 SHED_NEAR_STREET_M = 30.0       # a house this close to a street stands on it
 SHED_SHARE = 35                 # per cent of the houses that have one
 SHED_SIZE_M = ((3.0, 6.0), (3.0, 5.0))    # across, deep
-SHED_BEHIND_M = 2.0             # clear of the house's back wall
+SHED_SETBACKS = (6, 5, 4)       # preferred to minimum clearance, in tiles at 1 m/tile
 SHED_CLEAR_M = 3.0              # kept clear of any outbuilding already there
 MAX_SHEDS = 20000
 
@@ -904,32 +905,37 @@ def _back_sheds(buckets: dict, vegetation_feats: list, building_feats: list,
         d = SHED_SIZE_M[1][0] + r2 * (SHED_SIZE_M[1][1] - SHED_SIZE_M[1][0])
         back = max((x - c.x) * nx + (y - c.y) * ny for x, y in poly.exterior.coords)
         side = (r3 - 0.5) * min(poly.length / 4, 8.0)
-        cx = c.x + nx * (back + SHED_BEHIND_M + d / 2) + tx * side
-        cy = c.y + ny * (back + SHED_BEHIND_M + d / 2) + ty * side
-        corners = [(cx - tx * w / 2 - nx * d / 2, cy - ty * w / 2 - ny * d / 2),
-                   (cx + tx * w / 2 - nx * d / 2, cy + ty * w / 2 - ny * d / 2),
-                   (cx + tx * w / 2 + nx * d / 2, cy + ty * w / 2 + ny * d / 2),
-                   (cx - tx * w / 2 + nx * d / 2, cy - ty * w / 2 + ny * d / 2)]
-        shed = Polygon(corners)
-        x0, y0, x1, y1 = shed.bounds
-        if x0 < 0 or y0 < 0 or x1 > width_m or y1 > height_m:
-            continue
-        if any(i != me for i in b_tree.query(shed.buffer(SHED_CLEAR_M),
-                                             predicate="intersects")):
-            continue
-        if hard_tree is not None and hard_tree.query(shed.buffer(0.4),
-                                                     predicate="intersects").size:
-            continue
-        if any(shed.intersects(p) for p in grid.near(shed)):
-            continue
-        feat = OSMFeature(
-            osm_id=ident, kind="way",
-            tags={"building": "garage" if w >= 5.0 else "shed"},
-            geometry=[proj.to_latlon(x / k, y / k)
-                      for x, y in corners + [corners[0]]])
-        if clip is not None and not _inside(feat, proj, clip):
-            continue
-        grid.add(shed)
-        made.append(feat)
-        ident -= 1
+        # Allow for the house and shed footprints snapping to the tile grid.
+        # On coarse maps keep the clearance in tiles, so it cannot shrink to a single tile.
+        for setback in SHED_SETBACKS:
+            depth = back + setback * max(1.0, k)
+            x = c.x + nx * depth + tx * side
+            y = c.y + ny * depth + ty * side
+            corners = [(x - tx * w / 2, y - ty * w / 2),
+                       (x + tx * w / 2, y + ty * w / 2),
+                       (x + tx * w / 2 + nx * d, y + ty * w / 2 + ny * d),
+                       (x - tx * w / 2 + nx * d, y - ty * w / 2 + ny * d)]
+            shed = Polygon(corners)
+            x0, y0, x1, y1 = shed.bounds
+            if x0 < 0 or y0 < 0 or x1 > width_m or y1 > height_m:
+                continue
+            if any(i != me for i in b_tree.query(shed.buffer(SHED_CLEAR_M),
+                                                 predicate="intersects")):
+                continue
+            if hard_tree is not None and hard_tree.query(shed.buffer(0.4),
+                                                         predicate="intersects").size:
+                continue
+            if any(shed.intersects(p) for p in grid.near(shed)):
+                continue
+            feat = OSMFeature(
+                osm_id=ident, kind="way",
+                tags={"building": "garage" if w >= 5.0 else "shed"},
+                geometry=[proj.to_latlon(x / k, y / k)
+                          for x, y in corners + [corners[0]]])
+            if clip is not None and not _inside(feat, proj, clip):
+                continue
+            grid.add(shed)
+            made.append(feat)
+            ident -= 1
+            break
     return made

@@ -48,14 +48,15 @@ def main(argv):
                         if not (0 <= nx < w and 0 <= ny < h and g[ny][nx]):
                             wall_tiles += 1
         top = grids[-1]
-        for roof in floors[-1].findall("./object[@type='roof']"):
-            rx, ry = int(roof.get("x")), int(roof.get("y"))
-            rw, rh = int(roof.get("width")), int(roof.get("height"))
-            for y in range(ry, ry + rh):
-                for x in range(rx, rx + rw):
-                    roof_tiles += 1
-                    if not (0 <= x < w and 0 <= y < h and top[y][x]):
-                        roof_over += 1
+        if any(v for row in top for v in row):
+            for roof in floors[-1].findall("./object[@type='roof']"):
+                rx, ry = int(roof.get("x")), int(roof.get("y"))
+                rw, rh = int(roof.get("width")), int(roof.get("height"))
+                for y in range(ry, ry + rh):
+                    for x in range(rx, rx + rw):
+                        roof_tiles += 1
+                        if not (0 <= x < w and 0 <= y < h and top[y][x]):
+                            roof_over += 1
         for lvl, fl in enumerate(floors[:-1]):
             st = fl.find("./object[@type='stairs']")
             if st is None:

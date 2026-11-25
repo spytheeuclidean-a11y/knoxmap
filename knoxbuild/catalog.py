@@ -381,13 +381,22 @@ def _load_tables() -> dict:
     import json
     from pathlib import Path
 
-    path = Path(__file__).resolve().parent / "data" / "catalog_tables.json.gz"
-    with gzip.open(path, "rt", encoding="utf-8") as f:
-        return json.load(f)
+    data_dir = Path(__file__).resolve().parent / "data"
+    with gzip.open(data_dir / "catalog_tables.json.gz", "rt", encoding="utf-8") as f:
+        tables = json.load(f)
+    melos_path = data_dir / "melos_catalog.json.gz"
+    if melos_path.is_file():
+        with gzip.open(melos_path, "rt", encoding="utf-8") as f:
+            tables["MELOS"] = json.load(f)
+    else:
+        tables["MELOS"] = {}
+    return tables
 
 
 _TABLES = _load_tables()
+_MELOS = _TABLES.get("MELOS", {})
 FURNITURE = _TABLES["FURNITURE"]
+FURNITURE.update(_MELOS.get("FURNITURE", {}))
 
 # Furniture layer per role; anything but Furniture sits on a wall.
 FURNITURE_LAYERS = {'armchair': 'Furniture',
@@ -782,6 +791,49 @@ ERIKA_SIGNS = {'N': [['signs_erika_01_000',
  'W': [['signs_erika_01_058', 'signs_erika_01_057', 'signs_erika_01_056'],
        ['signs_erika_02_019', 'signs_erika_02_018', 'signs_erika_02_017', 'signs_erika_02_016'],
        ['signs_erika_02_027', 'signs_erika_02_026', 'signs_erika_02_025', 'signs_erika_02_024']]}
+
+# Roles from Melos Tiles for Miles (workshop 2879745353), used only when
+# that mod is installed; see knoxpaths.melos_tiles_ready.
+MELOS_WALL_ART = _MELOS.get("MELOS_WALL_ART", [])
+MELOS_PLANTS = _MELOS.get("MELOS_PLANTS", [])
+MELOS_SHELVES = _MELOS.get("MELOS_SHELVES", [])
+MELOS_STOREFRONTS = _MELOS.get("MELOS_STOREFRONTS", [])
+MELOS_SIGNS = _MELOS.get("MELOS_SIGNS", {"N": [], "W": []})
+MELOS_EXTERIOR_WALLS = _MELOS.get("MELOS_EXTERIOR_WALLS", {})
+MELOS_INTERIOR_WALLS = _MELOS.get("MELOS_INTERIOR_WALLS", [])
+
+def _erika_wall_entry(sheet: str, base: int, category: str) -> dict:
+    tiles = {
+        "West": f"{sheet}_{base:03d}",
+        "North": f"{sheet}_{base + 1:03d}",
+        "NorthWest": f"{sheet}_{base + 2:03d}",
+        "SouthEast": f"{sheet}_{base + 3:03d}",
+        "WestWindow": f"{sheet}_{base + 8:03d}",
+        "NorthWindow": f"{sheet}_{base + 9:03d}",
+        "WestDoor": f"{sheet}_{base + 10:03d}",
+        "NorthDoor": f"{sheet}_{base + 11:03d}",
+    }
+    for k in range(1, 20):
+        tiles[f"WestWindow{k}"] = tiles["WestWindow"]
+        tiles[f"NorthWindow{k}"] = tiles["NorthWindow"]
+    return {"name": f"{sheet}_{base:03d}", "entry": {"category": category, "tiles": tiles}}
+
+
+ERIKA_EXTERIOR_WALLS = [
+    _erika_wall_entry("walls_exterior_house_erika_02", b, "exterior_walls")
+    for b in range(0, 144, 16)
+]
+ERIKA_INTERIOR_WALLS = [
+    _erika_wall_entry("walls_interior_house_erika_02", b, "interior_walls")
+    for b in range(0, 208, 16)
+]
+ERIKA_WINDOWS = [
+    {"category": "windows", "tiles": {
+        "West": f"fixtures_windows_erika_01_{b:03d}",
+        "North": f"fixtures_windows_erika_01_{b + 1:03d}",
+    }}
+    for b in (0, 8, 16, 24)
+]
 
 # The game's own shop signs: four tiles wide, hung on the wall above the glass
 # (BuildingFurniture.txt, "Signs - Advertising - Wall"). The strips read west
@@ -1309,6 +1361,7 @@ FURNITURE_LAYERS.update({'altar': 'Furniture',
  'wall_vent': 'WallFurniture',
  'weight_machine': 'Furniture',
  'weight_machine_alt': 'Furniture'})
+FURNITURE_LAYERS.update(_MELOS.get("FURNITURE_LAYERS", {}))
 POSTERS = ['poster_0', 'poster_1', 'poster_2', 'poster_3', 'poster_4', 'poster_5', 'poster_6', 'poster_7']
 
 

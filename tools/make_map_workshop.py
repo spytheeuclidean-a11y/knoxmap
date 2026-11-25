@@ -103,7 +103,18 @@ def build(mod_id: str, mods_dir: Path, workshop_dir: Path, title: str = "",
     info = _mod_info(mod_root)
     title = title or info.get("name") or mod_id
     about = info.get("description", "").replace(" Map data (c) OpenStreetMap contributors (ODbL).", "")
-    requires = "Erika's Tiles (the map's buildings use its tiles)." if info.get("require") else ""
+    req_raw = info.get("require", "")
+    req_mods = []
+    if "Erikas_Tiles" in req_raw:
+        req_mods.append("Erika's Tiles")
+    if "melos_tiles_for_miles_pack" in req_raw:
+        req_mods.append("Melos Tiles")
+    if req_mods:
+        requires = f"{', '.join(req_mods)} (the map's buildings use its tiles)."
+    elif req_raw:
+        requires = f"{req_raw} (required by this map)."
+    else:
+        requires = ""
     target = workshop_dir / (folder or re.sub(r"[^\w .-]+", "_", title).strip() or mod_id)
     keep_id = _existing_id(target / "workshop.txt")
     if target.exists():

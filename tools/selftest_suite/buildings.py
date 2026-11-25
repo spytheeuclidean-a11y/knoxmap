@@ -773,7 +773,7 @@ def check_porch_lights(check, out: str) -> None:
     """
     import csv as _csv
 
-    from knoxbuild.yards import PORCH_LIGHTS, _SIDE
+    from knoxbuild.yards import PORCH_LIGHTS, WALL_AC_UNIT, _SIDE
 
     name = os.path.basename(out.rstrip(os.sep))
     bdir = os.path.join(out, "buildings")
@@ -787,7 +787,7 @@ def check_porch_lights(check, out: str) -> None:
         text = open(os.path.join(bdir, fname), encoding="utf-8").read()
         block = re.search(r"<user_tiles>(.*?)</user_tiles>", text, re.S)
         order = re.findall(r'<tile tile="([^"]+)"/>', block.group(1)) if block else []
-        for grid in re.findall(r'<tiles layer="[^"]*">(.*?)</tiles>', text, re.S):
+        for grid in re.findall(r'<tiles layer="WallFurniture">(.*?)</tiles>', text, re.S):
             for value in grid.split(","):
                 value = value.strip()
                 if value and value != "0":
@@ -804,7 +804,7 @@ def check_porch_lights(check, out: str) -> None:
     shaped = all(set(style) == set(_SIDE.values()) for style in PORCH_LIGHTS)
     for style in PORCH_LIGHTS:
         seen.update(style.values())
-    known = {t for style in PORCH_LIGHTS for t in style.values()}
+    known = {t for style in PORCH_LIGHTS for t in style.values()} | set(WALL_AC_UNIT.values())
     check(shaped and max(seen.values()) == 1 and used <= known,
           f"and each one has a sprite for the wall it hangs on "
           f"({len(PORCH_LIGHTS)} styles, {len(used)} used)")

@@ -645,12 +645,17 @@ pub fn compose(old: &mut Stack, mut new: Stack, room: bool) {
     if new.iter().any(|(c, _)| *c == "floor") {
         old.clear();
     } else if old.iter().any(|(c, _)| *c == "floor") {
+        // A room's corner already closes both edges of the square.
+        let corner = old.iter().any(|(c, _)| *c == "walls");
         for (d, tr, gr) in [
             ("walls_west", "wall_trim_west", "wall_grime_west"),
             ("walls_north", "wall_trim_north", "wall_grime_north"),
         ] {
-            if old.iter().any(|(c, _)| *c == d) {
-                new.retain(|(c, _)| *c != d && *c != "walls_se" && *c != tr && *c != gr);
+            if corner || old.iter().any(|(c, _)| *c == d) {
+                new.retain(|(c, _)| {
+                    *c != d && *c != "walls_se" && *c != tr && *c != gr
+                        && !(corner && *c == "walls")
+                });
             }
         }
     }
@@ -694,6 +699,19 @@ pub fn finish(stack: &mut Stack) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_neighboring_lot_keeps_both_edges_of_an_interior_corner() {
+        let room = vec![
+            ("floor", Tile::from("floor_1")),
+            ("walls", Tile::from("interior_corner")),
+        ];
+        for edge in ["walls_north", "walls_west", "walls"] {
+            let mut square = room.clone();
+            compose(&mut square, vec![(edge, Tile::from("walls_exterior"))], false);
+            assert_eq!(square, room);
+        }
+    }
 
     #[test]
     fn a_later_lot_keeps_perpendicular_walls_and_skips_yard_props_on_fences() {

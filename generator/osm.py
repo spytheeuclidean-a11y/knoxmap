@@ -437,8 +437,6 @@ OVERPASS_FILTERS: Sequence[str] = (
     # Real interiors. Where a mapper drew the rooms inside a building, the
     # generated floor plan follows those walls instead of guessing (renderer
     # attaches them to the building, knoxbuild/layout cuts along them).
-    # Rooms are only drawn in public and commercial buildings - schools,
-    # hospitals, offices - so the payload is small next to the buildings.
     'way["indoor"~"^(room|corridor)$"]',
     # What the ground between buildings is used for. Without these a factory
     # yard, a schoolyard and a back garden all came out as the same wild grass,
@@ -463,7 +461,7 @@ OVERPASS_FILTERS: Sequence[str] = (
     # What the ground floors are: the pizza place, the bank, the pharmacy.
     # Mapped as points inside the building far more often than as the
     # building's own tags (knoxbuild/uses.py).
-    'node["shop"]',
+    'nwr["shop"]',
     'node["amenity"~"^(restaurant|fast_food|food_court|cafe|ice_cream|bar|pub|nightclub|'
     'biergarten|bank|bureau_de_change|post_office|pharmacy|dentist|doctors|clinic|'
     'veterinary|library|cinema|theatre|arts_centre|police|childcare|kindergarten|fuel|car_repair)$"]',
@@ -498,7 +496,7 @@ OVERPASS_FILTERS: Sequence[str] = (
 
 # Bumped whenever the filters above change, so a cached download made with
 # the old list is fetched again instead of silently lacking the new features.
-FILTERS_VERSION = 17
+FILTERS_VERSION = 18
 
 
 @dataclass
@@ -1300,6 +1298,22 @@ def road_hierarchy(tags: dict) -> str | None:
     return HIGHWAY_HIERARCHY.get(str(tags.get("highway") or "").lower())
 
 
+# A track that carries no trains. It keeps its bed and loses its steel, so it
+# is drawn as a bed and no rail tile is laid on it (generator/rendering/roads.py,
+# generator/renderer.py).
+#
+# "preserved" is not here, however much it sounds like it: a preserved railway
+# is a heritage line that still runs trains on that steel. "abandoned" is not
+# here either because OVERPASS_FILTERS does not ask for it; a line torn up and
+# gone is not a line.
+DISUSED_RAIL_VALUES = frozenset({"disused"})
+
+
+def rail_is_disused(tags: dict) -> bool:
+    """True for a mapped railway that no longer runs on that steel."""
+    return (tags.get("railway") or "") in DISUSED_RAIL_VALUES
+
+
 def classify(tags: dict, area: bool = False) -> str | None:
     """Map OSM tags to a PZ feature category string. None = ignore.
 
@@ -1398,7 +1412,12 @@ def classify(tags: dict, area: bool = False) -> str | None:
         return "pool"
     if tags.get("natural") == "coastline":
         return "coastline"
-    if tags.get("man_made") in {"pier", "breakwater", "groyne"}:
+    # A breakwater or a groyne is rock thrown against the sea, not a walkway.
+    # Read as a pier it was painted the same pale concrete and given the same
+    # railing along its top, which is a jetty.
+    if tags.get("man_made") in {"breakwater", "groyne"}:
+        return "breakwater"
+    if tags.get("man_made") == "pier":
         return "pier"
     if tags.get("railway") in {"rail", "light_rail", "narrow_gauge", "disused", "preserved"}:
         return "railway"
@@ -1407,6 +1426,12 @@ def classify(tags: dict, area: bool = False) -> str | None:
         return "water"
     if landuse in {"reservoir", "basin"}:
         return "water"
+    # Drainage is water you can stand in. Every pass that keeps zombies out,
+    # turns a door away and stands no street furniture keys off C.WATER, so a
+    # roadside ditch painted as water came out as a swimming pool that nobody
+    # lived beside. It gets its own dry channel instead.
+    if tags.get("waterway") in {"drain", "ditch", "dam", "weir"}:
+        return "drainage"
     if landuse in {"forest"} or tags.get("natural") == "wood":
         return "forest"
     if tags.get("natural") in {"scrub", "heath"}:

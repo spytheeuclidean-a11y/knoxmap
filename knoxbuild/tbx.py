@@ -16,7 +16,7 @@ import zlib
 from xml.sax.saxutils import quoteattr
 
 from . import catalog as C
-from .layout import ROOM_STYLE, STAIR_RUN, Building, Plan, _erika_ready, roof_rects
+from .layout import ROOM_STYLE, STAIR_RUN, Building, Plan, _erika_ready, _melos_ready, roof_rects
 
 
 def _stable_seed(*parts) -> int:
@@ -84,7 +84,8 @@ MANY_WING_PEAK30_MAX = 7
 MANY_WING_MIN_PITCHED_AREA = 8
 
 
-def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False, gable_only: bool = False):
+def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False,
+                 gable_only: bool = False, hip_only: bool = False):
     """(RoofType, Depth, caps, (x, y, w, h)) for each roof over a footprint.
 
     Flat roofs are never capped: at depth three a cap is a storey-high wall of
@@ -105,6 +106,20 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
         if not peaked or across < NARROW_PEAK_MIN or tooth:
             out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+            continue
+        if hip_only:
+            odd = across if across % 2 else across - 1
+            if not roof30 or not single or odd < 3 or odd > 11:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+                continue
+            along_x = rw >= rh
+            box = ((rx, ry + (rh - odd), rw, odd) if along_x
+                   else (rx + (rw - odd), ry, odd, rh))
+            if along_x and rh != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
+            elif not along_x and rw != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
+            out.append(("Peak30Quad", "Zero", dict(_NO_CAPS), box))
             continue
         along_x = rw >= rh
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
@@ -457,7 +472,13 @@ def render_tbx(plan: Plan | Building, name: str,
     if garage_kit:
         # The gable ends are the garage's own wall, not white clapboard: the caps
         # of the style its walls are made of, when it has the low-pitch tiles.
-        own_caps = ((style or {}).get("roof") or {}).get("caps") or {}
+        # A house style built of the same wall wins: the industrial kit's own
+        # gable tiles are cream whatever the walls are (cream gables on brick).
+        wall = entries[exterior_idx - 1]["tiles"].get("West")
+        own_caps = next((s["roof"]["caps"] for s in C.HOUSE_STYLES
+                         if wall and s["exterior"]["tiles"].get("West") == wall
+                         and "CapPeak30S1" in ((s.get("roof") or {}).get("caps") or {}).get("tiles", {})),
+                        None) or ((style or {}).get("roof") or {}).get("caps") or {}
         if "CapPeak30S1" not in (own_caps.get("tiles") or {}):
             own_caps = next(s["roof"]["caps"] for s in C.HOUSE_STYLES if s["name"] == "clapboard")
         garage_kit = dict(garage_kit, caps=own_caps)
@@ -470,11 +491,16 @@ def render_tbx(plan: Plan | Building, name: str,
     glazed: set[tuple[int, int, str]] = set()
     user_tiles: dict[int, dict[tuple[int, int], str]] = {}
     store_ext = store_int = store_door = 0
-    erika_front = bool(front_idx and C.ERIKA_STOREFRONTS and storeys[0].shop_front
-                       and _erika_ready())
+    erika = _erika_ready()
+    melos = _melos_ready()
+    storefronts = (
+        (list(C.ERIKA_STOREFRONTS) if erika else [])
+        + (list(getattr(C, "MELOS_STOREFRONTS", ())) if melos else [])
+    )
+    erika_front = bool(front_idx and storefronts and storeys[0].shop_front)
     if erika_front:
         rng = random.Random(name)
-        ext, inte, door = rng.choice(C.ERIKA_STOREFRONTS)
+        ext, inte, door = rng.choice(storefronts)
         store_ext, store_int, store_door = _add(entries, ext), _add(entries, inte), _add(entries, door)
         # A one-tile run is a step in a slanted wall, not a shop window.
         runs = [r for r in _storefront_runs(storeys[0], storeys[0].doors) if r[3] >= 2]
@@ -490,7 +516,11 @@ def render_tbx(plan: Plan | Building, name: str,
                 or (r[0] == "W" and (r[1] >= len(grid[0]) or not grid[r[2]][r[1]]))]
         if seen:
             d, fixed, start, length = max(seen, key=lambda r: r[3])
-            fits = [s for s in C.ERIKA_SIGNS.get(d, ()) if len(s) <= length]
+            signs = (
+                (list(C.ERIKA_SIGNS.get(d, ())) if erika else [])
+                + (list(getattr(C, "MELOS_SIGNS", {}).get(d, ())) if melos else [])
+            )
+            fits = [s for s in signs if len(s) <= length]
             if fits:
                 sign = rng.choice(fits)
                 first = start + (length - len(sign)) // 2
@@ -643,11 +673,34 @@ def render_tbx(plan: Plan | Building, name: str,
         room_wall[kind] = (palette[i % len(palette)] if want >= len(kinds_here)
                            else pick_rng.choice(palette))
 
+    flat_floors, flat_walls = {}, {}
+    apartment_floors = KIND_FLOOR_CHOICES.get("apartment", {})
+    for storey in storeys:
+        if storey.flat_furnishing_seed is None:
+            continue
+        for room in storey.rooms:
+            if not room.unit:
+                continue
+            seed = f"{storey.flat_furnishing_seed}:{room.unit}"
+            # Two rooms of the same kind share a finish within a flat.
+            flat_walls[id(room)] = random.Random(f"{seed}:walls").choice(palette)
+            options = floor_options(room.kind, apartment_floors)
+            if options:
+                floor_rng = random.Random(f"{seed}:{room.kind}:floor")
+                if building.profile:
+                    chosen = floor_rng.choices(options, weights=[
+                        building.profile.floor_weight(option) for option in options], k=1)[0]
+                else:
+                    chosen = floor_rng.choice(options)
+                flat_floors[id(room)] = _add(entries, C.floor_entry(chosen))
+
     # Every tile entry has to be in the table before the table is written:
     # one added later indexes past the end of it.
     rails = any(st.railing for st in storeys)
     rail_idx = _add(entries, C.RAILING) if rails else 0
     rail_ext_idx = _add(entries, C.RAILING_EXT) if rails else 0
+    balcony_floor = (_add(entries, C.floor_entry("concrete"))
+                     if any(r.is_balcony for r in building.rooms) else 0)
     stalls = any(st.stalls for st in storeys)
     stall_wall = _add(entries, {"category": "interior_walls", "tiles": {
         "West": "fixtures_bathroom_01_040", "North": "fixtures_bathroom_01_044",
@@ -724,7 +777,7 @@ def render_tbx(plan: Plan | Building, name: str,
             ("Name", game_name),
             ("InternalName", game_name),
             ("Color", C.ROOM_COLORS[room.kind]),
-            ("InteriorWall", room_wall.get(room.kind, interior_idx)),
+            ("InteriorWall", flat_walls.get(id(room), room_wall.get(room.kind, interior_idx))),
             # Skirting and picture rail. Set on every room it came to 2.43
             # pieces per 10 m2 against Knox County's 0.25 - a band of
             # detailing round every wall of every room, which at a distance
@@ -736,16 +789,17 @@ def render_tbx(plan: Plan | Building, name: str,
             # A room with a floor of its own first, then the style's, then
             # the room kind's own default.
             ("Floor",
-             (storey_floor.get(level_of.get(id(room)), 0)
+             (balcony_floor if room.is_balcony else 0)
+             or (storey_floor.get(level_of.get(id(room)), 0)
               if room.kind == "concourse" else 0)
-             or room_floor.get(room.kind) or floor_override or floor_idx),
+             or flat_floors.get(id(room)) or room_floor.get(room.kind) or floor_override or floor_idx),
             ("GrimeFloor", 0),
             ("GrimeWall", 0),
             # A concourse has no ceiling: it is open to the storey above, and
             # BuildingEd draws a room's ceiling on the floor above it - which
             # laid a lid straight across the hole and hid the ground floor
             # the hole is cut to show.
-            ("Ceiling", 0 if room.kind == "concourse" else C.CEILING),
+            ("Ceiling", 0 if room.kind == "concourse" or room.is_balcony else C.CEILING),
         ]
         out.append(f" <room{_attrs(room_attrs)}/>")
 
@@ -861,8 +915,7 @@ def render_tbx(plan: Plan | Building, name: str,
         # opening in the floor above by itself. Only N and W are valid
         # directions - Stairs::bounds returns an empty rect for anything else,
         # and an empty rect is treated as an invalid object.
-        if level < len(building.stairs):
-            sx, sy, sdir = building.stairs[level]
+        for sx, sy, sdir in building.stairs_at(level):
             dx, dy = (0, 1) if sdir == "N" else (1, 0)
             is_basement = bool(storey.kind and storey.kind.startswith("basement_"))
             if not roof or is_basement:
@@ -908,14 +961,17 @@ def render_tbx(plan: Plan | Building, name: str,
         # the floor the hole exists to show.
         open_above = (storeys[level + 1].void
                       if level + 1 < len(storeys) else set())
-        exposed = [[v if above is None or not (above[y][x] or (x, y) in open_above)
-                    else 0
+        exposed = [[v if v and not storey.rooms[v - 1].is_balcony
+                    and (above is None or not (above[y][x] or (x, y) in open_above)) else 0
                     for x, v in enumerate(row)] for y, row in enumerate(storey.grid)]
         if roof and any(any(row) for row in exposed):
             rects = roof_rects(exposed)
+            sname = str(style.get("name", "")) if style else ""
+            hip_only = bool(style and not garage_only
+                            and ("melos_tiles_walls_" in sname or "erika_" in sname))
             for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(
                     rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30,
-                    gable_only=garage_only):
+                    gable_only=garage_only, hip_only=hip_only):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),

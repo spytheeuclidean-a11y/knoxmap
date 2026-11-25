@@ -17,6 +17,8 @@ from collections import Counter
 
 from .layout import (ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, STAIR_RUN,
                      roof_rects)
+from .layout.access import door_sides
+from .layout.openings import _room_at
 
 def door_pair(storey, door):
     x, y, d = door
@@ -30,6 +32,8 @@ def door_pair(storey, door):
 def audit(building, kind):
     problems = Counter()
     for lvl, s in enumerate(building.storeys):
+        if s.unmapped_room_tiles:
+            problems["unplaced tiles of mapped rooms"] += s.unmapped_room_tiles
         n = len(s.rooms)
         adj = {i: set() for i in range(1, n + 1)}
         fronts = Counter()
@@ -114,7 +118,8 @@ def audit(building, kind):
                     problems["stat:room through a bathroom"] += 1
         lit = {s.grid[fy][fx] for role, fx, fy, _o in s.furniture if role == "switch"}
         shafts = {i for i, r in enumerate(s.rooms, 1) if r.is_shaft}
-        if any(i not in lit and i not in shafts for i in range(1, n + 1)):
+        if any(i not in lit and i not in shafts and not s.rooms[i - 1].is_balcony
+               for i in range(1, n + 1)):
             problems["room with no light switch"] += 1
         # A lift shaft is a sealed box: a doorway into it is a hole to fall down.
         for door in s.doors:
@@ -122,8 +127,16 @@ def audit(building, kind):
             if pair and any(p in shafts for p in pair):
                 problems["doorway into the lift shaft"] += 1
         if n:
-            start = next((i for i in range(1, n + 1) if i not in shafts), 1)
-            seen, stack = {start} | shafts, [start]
+            if building.whole_ground:
+                if lvl == 0:
+                    starts = {a or b for d in s.doors for a, b in [
+                        tuple(_room_at(s, *tile) for tile in door_sides(d))]
+                              if bool(a) != bool(b)}
+                else:
+                    starts = {_room_at(s, x, y) for x, y, _d in building.stairs_at(lvl - 1)} - {0}
+            else:
+                starts = {next((i for i in range(1, n + 1) if i not in shafts), 1)}
+            seen, stack = starts | shafts, list(starts)
             while stack:
                 cur = stack.pop()
                 for nx in adj[cur] - seen:
@@ -132,6 +145,20 @@ def audit(building, kind):
             if len(seen) != n:
                 problems["room with no way in"] += 1
         if kind == "apartment" and any(r.unit == 0 for r in s.rooms):
+            if s.clear_access & solid.keys():
+                problems["shared corridor or lift lobby obstructed"] += 1
+            for (x0, y0, x1, y1), door in s.shafts:
+                if not any(n and s.rooms[n - 1].access_role == "lift_lobby"
+                           for n in (room_at(*p) for p in door_sides(door))):
+                    continue
+                x, y, direction = door
+                if direction == "N":
+                    rear = ((i, y1 + 1 if y == y0 else y0 - 1) for i in range(x0, x1 + 1))
+                else:
+                    rear = ((x1 + 1 if x == x0 else x0 - 1, i) for i in range(y0, y1 + 1))
+                if any(n and s.rooms[n - 1].access_role == "lift_lobby"
+                       for n in (room_at(*p) for p in rear)):
+                    problems["lift lobby wraps behind shaft"] += 1
             for unit in {r.unit for r in s.rooms if r.unit}:
                 if fronts[unit] == 0:
                     problems["flat with no front door"] += 1
@@ -180,13 +207,17 @@ def audit(building, kind):
                     if 0 in sides or kinds != {True, False}:
                         problems["lift doors not between shaft and landing"] += 1
                         break
-    elif len(building.storeys) >= ELEVATOR_FROM_LEVELS and \
+    elif not any(s.private_flats for s in building.storeys) and \
+            len(building.storeys) >= ELEVATOR_FROM_LEVELS and \
             min(building.width, building.height) >= ELEVATOR_MIN_SIDE:
         problems["tall building without a lift"] += 1
+    if building.unplaced_lift_cores:
+        problems["apartment sections without space for a buffered lift"] += building.unplaced_lift_cores
     is_tower = bool(getattr(building, "tower", False)) or any(
         getattr(s, "tower", None) is not None for s in building.storeys
     )
-    for lvl, (x, y, d) in enumerate(building.stairs):
+    for lvl, (x, y, d) in ((lvl, flight) for lvl in range(len(building.storeys) - 1)
+                           for flight in building.stairs_at(lvl)):
         dx, dy = (0, 1) if d == "N" else (1, 0)
         px, py = dy, dx
         run = [(x + dx * i, y + dy * i) for i in range(STAIR_RUN)]

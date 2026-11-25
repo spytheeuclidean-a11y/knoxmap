@@ -32,7 +32,7 @@ from . import pz_colors as C
 from . import structures
 from .osm import (FENCE_BARRIERS, GATE_BARRIERS, OSMFeature,  # noqa: F401
                   ROAD_HIERARCHY_BY_CODE, ROAD_HIERARCHY_CODES, classify,
-                  road_hierarchy)
+                  rail_is_disused, road_hierarchy)
 
 # Everything that moved out is still importable from here: the tests, the
 # tools and knoxbuild reach into this module by name.
@@ -56,9 +56,9 @@ from .rendering.gridangle import (ALIGN_MIN_STRENGTH, DISTRICT_CELL_M,
                                   DISTRICT_CLUSTER_DEG, DISTRICT_MIN_ROAD_M,
                                   GRID_ROADS, _grid_delta, dominant_road_angle)  # noqa: F401
 from .rendering.landcover import (AREA_CATEGORIES, DENSE_COVERAGE,
-                                  GREEN_CATEGORIES, LANDSCAPE_FILL,
-                                  LANDSCAPE_ORDER, VEG_CATEGORIES,
-                                  WATERWAY_WIDTH_M, paint_markers,
+                                  DISUSED_RAIL_FILL, GREEN_CATEGORIES,
+                                  LANDSCAPE_FILL, LANDSCAPE_ORDER,
+                                  VEG_CATEGORIES, WATERWAY_WIDTH_M, paint_markers,
                                   grid_for_map, refine_owned, resized_grid,
                                   settle_markers)  # noqa: F401
 from .rendering.fields import paint_fields, paint_pools, paint_rocks
@@ -236,28 +236,45 @@ def _paint_climate_ground(landscape: Image.Image, climate: dict,
 
 
 def _paint_relief_ground(landscape: Image.Image, metres, span=None) -> None:
-    """Map relief bands to valid Rules.txt ground colours under OSM."""
+    """Map relief bands to valid Rules.txt ground colours under OSM.
+
+    `metres` covers the whole map, and `landscape` may be only a chunk of it
+    (noise.global_tile_offset says which): the part of the grid under the
+    chunk is the part read, and the band cuts are percentiles of the whole
+    grid, so every chunk bands the ground as the whole map would.
+    """
     import numpy as np
 
-    m = np.asarray(metres, dtype="float32")
-    if m.ndim != 2 or m.size == 0:
+    from .rendering.noise import global_origin, map_extent
+
+    src = np.asarray(metres, dtype="float32")
+    if src.ndim != 2 or src.size == 0:
         return
-    if (m.shape[1], m.shape[0]) != landscape.size:
-        m = np.asarray(Image.fromarray(m).resize(landscape.size, Image.BILINEAR))
-    if not np.isfinite(m).any():
+    if not np.isfinite(src).any():
         return
-    lo, hi = span if span else (float(np.nanmin(m)), float(np.nanmax(m)))
+    lo, hi = span if span else (float(np.nanmin(src)), float(np.nanmax(src)))
     relief = float(hi) - float(lo)
     if relief < MIN_RELIEF_M:
         return
-    m = np.nan_to_num(m, nan=float(np.nanmin(m)))
+    src = np.nan_to_num(src, nan=float(np.nanmin(src)))
+    w, h = landscape.size
+    ox, oy = global_origin()
+    whole_w, whole_h = map_extent((w, h))
+    grid_h, grid_w = src.shape
+    box = (ox / whole_w * grid_w, oy / whole_h * grid_h,
+           (ox + w) / whole_w * grid_w, (oy + h) / whole_h * grid_h)
+    if (grid_w, grid_h) == (w, h) and box == (0, 0, grid_w, grid_h):
+        m = src
+    else:
+        m = np.asarray(Image.fromarray(src).resize((w, h), Image.BILINEAR, box=box))
+    p65, p88, p95 = np.percentile(src, (65, 88, 95))
     arr = np.array(landscape, dtype="uint8", copy=True)
-    upper = m >= np.percentile(m, 65)
-    rock = m >= np.percentile(m, 88)
+    upper = m >= p65
+    rock = m >= p88
     arr[upper] = C.MEDIUM_GRASS
     arr[rock] = C.GRAVEL_DIRT
     if relief >= SNOW_RELIEF_M:
-        arr[m >= np.percentile(m, 95)] = C.LIGHT_GRASS
+        arr[m >= p95] = C.LIGHT_GRASS
     landscape.paste(Image.fromarray(arr, "RGB"), (0, 0))
 
 
@@ -671,20 +688,44 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             strokes = [(road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
                        for feat in buckets.get(cat, []) if not _is_polygon(feat)]
             _draw_roads(landscape, strokes, fill, crisp=(road_layout == 5))
+            if cat == "railway":
+                # A track carrying no trains keeps its bed and loses its steel:
+                # the ballast is overgrown rather than bare, and paint_rails
+                # lays no tile on it.
+                #
+                # Painted over the ballast rather than in place of it, so every
+                # way of the category still shares one beveled join: drawn as
+                # two runs, a disused stretch abutting a working one met it at
+                # a seam. Nothing is drawn at all when no track is disused, so
+                # a map without one is unchanged.
+                overgrown = [
+                    (road_width_tiles(feat, cat, meters_per_tile), ground_rings(feat))
+                    for feat in buckets.get(cat, [])
+                    if not _is_polygon(feat) and rail_is_disused(feat.tags)]
+                if overgrown:
+                    _draw_roads(landscape, overgrown, DISUSED_RAIL_FILL,
+                                crisp=(road_layout == 5))
         for feat in buckets.get(cat, []):
             if cat == "railway" and not _is_polygon(feat):
                 continue  # the continuous track pass supplies its own ballast
+            # Its own name, not the loop's: reassigning fill here left the
+            # disused bed's colour on every later polygon of the category,
+            # so a working railway mapped as an area came out overgrown
+            # depending on the order the features arrived in.
+            feat_fill = (DISUSED_RAIL_FILL
+                         if cat == "railway" and rail_is_disused(feat.tags) else fill)
             rings = _feature_coords_px(feat, proj)
             if cat in ROAD_WIDTHS_M and not _is_polygon(feat):
                 continue  # Painted together so split ways share the same beveled join.
             elif feat.kind == "relation":
-                _paint_multipolygon(landscape, feat, proj, fill)
+                _paint_multipolygon(landscape, feat, proj, feat_fill)
             elif _is_polygon(feat):
-                _draw_polygon(l_draw, rings, fill)
+                _draw_polygon(l_draw, rings, feat_fill)
             else:
                 # A river or canal mapped only as its centre line.
                 metres = WATERWAY_WIDTH_M.get(feat.tags.get("waterway"), 3.0)
-                _draw_line(l_draw, rings, fill, _pixel_width(metres, meters_per_tile))
+                _draw_line(l_draw, rings, feat_fill,
+                           _pixel_width(metres, meters_per_tile))
 
     # Bridges over water squared to the tiles (generator/structures.py).
     for deck, cat in lifted.straight:

@@ -12,7 +12,7 @@ not properly lining up".
 """
 import unittest
 
-from knoxbuild.layout import build_building
+from knoxbuild.layout import Building, Plan, Room, _facade_runs, _place_windows, build_building
 
 # Measured over the buildings below. Houses were at 0.27 before the floor
 # below's columns were taken first; the rest were already repeating their
@@ -56,6 +56,37 @@ class WindowsInColumns(unittest.TestCase):
         for level, storey in enumerate(built.storeys):
             with self.subTest(level=level):
                 self.assertGreater(len(storey.windows), 4)
+
+    def test_apartment_windows_share_the_facade_despite_a_moved_partition(self):
+        floors = []
+        for split in (6, 4, 7):
+            floors.append(Plan(12, 8, private_flats=True,
+                               rooms=[Room(0, 0, split - 1, 7, kind="bedroom", unit=1),
+                                      Room(split, 0, 11, 7, kind="openplan", unit=1)],
+                               grid=[[1] * split + [2] * (12 - split) for _ in range(8)]))
+        floors[1].wall_pieces.add((2, 0, "N"))
+        _place_windows(Building(12, 8, floors), "apartment")
+
+        columns = set(floors[1].windows)
+        self.assertGreater(len(columns), 5)
+        self.assertEqual(columns, set(floors[2].windows))
+        for floor in floors[1:]:
+            facade = {e[:3]: floor.grid[e[4]][e[3]]
+                      for _, run in _facade_runs(floor.grid) for e in run}
+            self.assertEqual({facade[edge] for edge in columns}, {1, 2})
+
+    def test_apartment_setback_gets_its_own_columns(self):
+        def floor(inset):
+            grid = [[int(inset <= x < 14 - inset and inset <= y < 10 - inset)
+                     for x in range(14)] for y in range(10)]
+            return Plan(14, 10, private_flats=True, grid=grid,
+                        rooms=[Room(inset, inset, 13 - inset, 9 - inset, kind="openplan", unit=1)])
+
+        floors = [floor(inset) for inset in (0, 0, 2, 2)]
+        _place_windows(Building(14, 10, floors), "apartment")
+        self.assertTrue(floors[2].windows)
+        self.assertEqual(floors[2].windows, floors[3].windows)
+        self.assertTrue(set(floors[1].windows).isdisjoint(floors[2].windows))
 
 
 if __name__ == "__main__":

@@ -221,6 +221,26 @@ class RailGarageFixes(unittest.TestCase):
                         if plan.grid[y][x]:
                             self.assertTrue(any(t.startswith("roofs_") for t in compiled[(x, y)]))
 
+    def test_garage_floors_are_concrete(self):
+        """A standalone garage, a house's attached one and a workshop bay are
+        all bare concrete, whatever the walls are made of."""
+        for style in [None, catalog.SPECIAL_STYLES["industrial"], *catalog.HOUSE_STYLES[:3]]:
+            with self.subTest(style=(style or {}).get("name")):
+                plan = layout.build_plan(11, 9, kind="garage", commercial=True, seed=3)
+                model = parse_tbx(tbx.render_tbx(plan, "garage", style))
+                self.assertEqual(level_tiles(model, 0)[(4, 4)], ["carpentry_02_56"])
+        for seed in range(60):
+            building = layout.build_building(16, 14, 1, seed=seed, kind="house", street="S")
+            if not any(r.kind == "garage" for r in building.rooms):
+                continue
+            model = parse_tbx(tbx.render_tbx(building, "house"))
+            floors = level_tiles(model, 0)
+            for room in building.storeys[0].rooms:
+                if room.kind == "garage":
+                    self.assertEqual(floors[(room.x0 + 1, room.y0 + 1)], ["carpentry_02_56"])
+            return
+        self.fail("no house had an attached garage in 60 seeds")
+
 
 if __name__ == "__main__":
     unittest.main()

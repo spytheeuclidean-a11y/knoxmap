@@ -539,8 +539,12 @@ def compose_lots(lots, on_footprint=None) -> dict[tuple[int, int, int], list[str
                         old = []
                     elif any(layer == "floor" for layer, _ in old):
                         # A neighbouring lot's outside wall must not paint exterior
-                        # siding over an earlier lot's interior room wall.
-                        existing = {layer for layer, _ in old if layer in ("walls_west", "walls_north")}
+                        # siding over an earlier lot's interior room wall. A
+                        # corner on "walls" already covers both edges.
+                        existing = {layer for layer, _ in old} & WALL_REPLACES["walls"]
+                        existing.discard("walls_se")
+                        if "walls" in existing:
+                            existing.update(("walls_west", "walls_north"))
                         if existing:
                             skip = set(existing) | {"walls_se"}
                             if "walls_west" in existing:

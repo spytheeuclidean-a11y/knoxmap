@@ -1,3 +1,72 @@
+## Unreleased
+
+- **Drainage, disused track and breakwaters: ground that was mapped and dropped**
+  (#173, `generator/osm.py`, `generator/rendering/landcover.py`, `generator/renderer.py`,
+  `generator/rendering/roads.py`, `generator/chunked.py`,
+  `generator/rendering/infill.py`, `generator/rendering/widths.py`,
+  `tests/test_discarded_features.py`).
+  - **Drains, ditches, dams and weirs** were asked for and then answered with
+    nothing: `waterway` was fetched for every value, and only `river`,
+    `riverbank`, `canal` and `stream` got an answer. They are a dry channel of
+    clay now, drawn at their own width - a drain 1.5 m, a ditch 2.5 m - rather
+    than the 3 m fallback that made a field ditch as wide as a lane.
+    Deliberately **not** `C.WATER`: that colour is how the passes below know to
+    keep zombies out, turn doors away and stand no street furniture, so a
+    roadside ditch painted as water came out as a swimming pool nobody lived
+    beside.
+  - **Disused track** was painted as a working line: steel, sleepers and bare
+    ballast were laid down a railway nobody runs on. It keeps its bed and loses
+    its steel, in dirt with grass through it, and the section fitting no longer
+    plans tiles that would not be drawn. A **preserved** railway is left alone,
+    however disused it sounds: a heritage line is preserved because it still
+    runs trains on that steel.
+  - **Breakwaters and groynes** were piers: the same pale concrete, and the same
+    railing following the top of a walkway. They are rubble now, and no railing
+    follows them.
+  - All three reuse colours already bound to a tile rule. A new colour needs a
+    new rule in `Rules.txt`, and a rule naming artwork the player's Build 42
+    does not have stops the BMP-to-TMX conversion outright
+    (`worlded/patch_rules_b42_trees.py`), so the palette was the constraint here
+    and not the drawing.
+
+## 1.8.7.1
+
+- **Houses: halls, box rooms, dumpsters, fridge walls, jewelry rows and footprint shapes**
+  (#161, `knoxbuild/layout/furnishing.py`, `knoxbuild/works.py`, `knoxbuild/yards.py`, `knoxbuild/interiors.py`, `knoxbuild/footprint.py`, `knoxbuild/build.py`, `knoxbuild/why.py`, `generator/rendering/infill.py`).
+  - **Dumpsters** only stand on a south or east wall with both tiles inside the wall and clear ground at either end and in front, so they stop clipping corners, windows and alleys.
+  - **House halls** are furnished: up to 8 pieces along the inner walls, with every door and the stairs still reachable. A house's box room that is a way through gets shelves or a dresser rather than staying bare.
+  - **Shop coolers** are capped by room and building size, back wall first, and the wall continues as shelving. **Jewelry stores** get rows of glass cases with aisles instead of cases round every wall.
+  - **Footprint shapes:** once roads, neighbours and lots have cut a footprint, spurs are trimmed and only its biggest piece kept. A building left under 55% of what was drawn, or under 65% of its convex hull, is skipped with the new reason `cut`.
+  - **Footprint-file buildings on roads** that are more than half on a carriageway are dropped, and street-infill lots are squared to the tile axes, trimmed instead of dropped at corners, and given a neighbour's L or T outline. The results panel shows a "Street infill" report.
+  - **Small houses are sheds:** a house footprint with both sides 6 tiles or less is built as a shed.
+
+- **Attached garages on houses**
+  (#162, `knoxbuild/layout/openings.py`, `knoxbuild/layout/assemble.py`, `knoxbuild/yards.py`). About 30% of houses with room for one (80+ ground-floor tiles, 4+ rooms, a known street side) get an integral garage on the street front with a three-tile garage door and a tarmac drive to the road.
+
+- **Mapped entrances and rooms, and a flats planner**
+  (#163, `knoxbuild/layout/flat_planning.py`, `knoxbuild/layout/access.py`, `knoxbuild/layout/mixed_ground.py`, `knoxbuild/layout/lift_core.py`, `knoxbuild/layout/balconies.py`, `knoxbuild/pedestrian_access.py`, `knoxbuild/street_context.py`, `knoxbuild/uses.py`, `knoxbuild/settings.py`).
+  - Mapped entrances are bound to their facade first; closed, locked or foot-restricted doors are kept out of automatic placement, and a mapped door that could not be placed is reported.
+  - Flats are planned from stair and lift access outward, with landings, corridors, an optional open gallery and balconies. Ground floors can be shops, flats or mixed.
+  - Mapped rooms above the ground floor (a school's classrooms and bathrooms) now reach the shared planner.
+  - New **Settings -> Buildings -> Flats** options: Apartment layout (Classic is the default), ground floor of flats, stairs via an open gallery, and furnishing variety (off by default).
+
+- **Faster rendering**
+  (#164, #165, #166, `generator/renderer.py`, `generator/rendering/`). Woodland clearing around buildings skips footprints with no woodland nearby and projects outlines in one batch; roadside furniture searches each kind of position once per kerb; the road hierarchy is built in a background thread while the road details are painted. On a 7 x 13-cell test map the three passes went from 11.68 s to 4.89 s, 4.81 s to 3.65 s, and the full render from 35.83 s to 31.85 s. Outputs matched byte for byte. The renderer's peak memory rose from 644 MiB to 668 MiB.
+
+- **Household personas**
+  (#167, `knoxbuild/personas.py`, `knoxbuild/layout/furnishing.py`). A home draws one of 25 ways of living (pianist, runner, lifter, gamer, bookworm, home office, green thumb, collector, host, hoarder, minimalist, students, young parents, handyman, prepper and more), and about a quarter get a second. A persona changes what a room's wishlist asks for and what a spare office or storeroom becomes; the furnisher still places each piece where it fits. Picks are seeded per home, so every storey agrees. Hall furniture takes the persona's pieces, and `_furnish_hallway` now keeps all the bare hall floor connected.
+
+- **Garage interiors, roofs and gables; benches; wall art**
+  (#169, `knoxbuild/layout/furnishing.py`, `knoxbuild/layout/core.py`, `knoxbuild/layout/assemble.py`, `knoxbuild/tbx.py`, `knoxbuild/yards.py`).
+  - A house's garage has a concrete floor and keeps steel racking, filing cabinets and crates instead of dressers and counters. Mechanic bays in other buildings get concrete floors too.
+  - A garage's narrow side is made odd so its 30-degree roof covers the whole width with no flat strip. Gables use the caps of the house style built of the same wall, so brick garages no longer have cream gables.
+  - Benches by doors were drawn reversed on south and east walls; the two halves are now in the right order.
+  - Pictures, mirrors, posters and corkboards are dropped from behind tall furniture (bookcases, wardrobes, fridges). Dressers, counters, tables and seats keep theirs.
+  - Not done: a garage wider than 11 tiles across still gets a flat strip.
+
+- **Fix: undefined `rng` in the house hallway call, and flyover and selftest changes**
+  (#168, `knoxbuild/layout/furnishing.py`, `generator/structures.py`, `tools/selftest.py`). The call added in #163 passed a name that is only assigned later in the room loop, so `ruff` failed and a hallway built there would have raised. `tools/selftest.py` can now tag any check taking 3 s or more when run with `SELFTEST_TIMES=1`.
+
 ## 1.8.7
 
 - **Airports**

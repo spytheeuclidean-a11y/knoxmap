@@ -171,8 +171,9 @@ def _houses_from_addresses(feats: list["OSMFeature"], buildings: list["OSMFeatur
 
 
 BUILDING_TAGS = {
-    "building", "building:levels", "building:part", "building:material",
+    "building", "building:levels", "building:flats", "building:part", "building:material",
     "building:use", "height", "levels", "roof:levels", "roof:shape",
+    "start_date", "year_built", "building:start_date", "construction_date", "start_construction_date",
     "name", "addr:housenumber", "addr:street", "addr:flats",
     "amenity", "shop", "leisure", "tourism", "industrial",
     "healthcare", "office", "craft", "man_made", "residential", "cuisine",
@@ -260,6 +261,8 @@ def _buildings_geojson(feats: list[OSMFeature],
                     features[i]["properties"].setdefault("rooms", []).append(
                         {"ring": ring,
                          "room": f.tags.get("room"),
-                         "amenity": f.tags.get("amenity")})
+                         "amenity": f.tags.get("amenity"),
+                         **{k: f.tags[k] for k in ("indoor", "level", "min_level", "location")
+                            if k in f.tags}})
                     break
     return {"type": "FeatureCollection", "features": features}

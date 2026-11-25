@@ -8,10 +8,26 @@ from xml.etree import ElementTree
 import numpy as np
 
 from knoxbuild.fences import (STYLES, TALLER, build_fences, height_m,
-                              style_for)
+                              mapped_fence_lines, style_for)
+from knoxbuild.footprint import Footprint
 
 
 class FenceCollisionTests(unittest.TestCase):
+    def test_only_a_fence_attached_to_the_source_footprint_follows_the_wall(self):
+        with TemporaryDirectory() as directory:
+            path = os.path.join(directory, "map_fences.geojson")
+            with open(path, "w") as f:
+                json.dump({"features": [
+                    {"geometry": {"type": "LineString", "coordinates": [[5, 10], [5, 15]]}},
+                    {"geometry": {"type": "LineString", "coordinates": [[9, 11], [9, 15]]}},
+                ]}, f)
+            projection = SimpleNamespace(to_px=lambda lat, lon: (lon, lat))
+            footprint = Footprint(5, 4, np.ones((4, 4), dtype=bool), 0, 4, 4)
+            source = [(5, 6), (9, 6), (9, 10), (5, 10)]
+            attached, independent = mapped_fence_lines(directory, "map", projection, [(footprint, source)])
+            self.assertEqual(attached[0], [(5, 8), (5, 10), (5, 15)])
+            self.assertEqual(independent[0], [(9, 11), (9, 15)])
+
     def test_mapped_fence_is_cut_around_building_footprint(self):
         with TemporaryDirectory() as directory:
             bdir = os.path.join(directory, "buildings")
@@ -125,6 +141,14 @@ class WaysThroughAFence(unittest.TestCase):
                                           "coordinates": [[10, 2], [10, 11]]}}])
         self.assertNotIn((10, 6), built)
         self.assertIn((4, 6), built)
+
+    def test_a_closed_gate_blocks_a_crossing_footpath(self):
+        built = self.fence([{"type": "Feature", "properties": {"opening": "gate", "locked": "yes"},
+                             "geometry": {"type": "Point", "coordinates": [10, 6]}},
+                            {"type": "Feature", "properties": {"opening": "path"},
+                             "geometry": {"type": "LineString",
+                                          "coordinates": [[10, 2], [10, 11]]}}])
+        self.assertTrue(all((x, 6) in built for x in range(9, 12)))
 
     def test_a_fence_with_no_gate_tile_gets_a_hole_instead(self):
         built = self.fence(

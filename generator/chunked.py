@@ -26,7 +26,7 @@ import knoxfiles
 import knoxstop
 
 from . import pz_colors as C
-from .osm import OSMFeature, classify
+from .osm import OSMFeature, classify, rail_is_disused
 from .rendering.geometry import _feature_coords_px, _is_polygon
 from .rendering.noise import global_tile_offset
 from .rendering.projection import Projector, _inside, shape_px
@@ -207,6 +207,9 @@ def render_chunked(
     from .rendering.forest_params import ForestParams
 
     t0 = time.perf_counter()
+    # A chunk's window must start on a spawn-map pixel, or its spawn map is
+    # resampled out of phase with the whole map's and the seams show.
+    halo_tiles = -(-int(halo_tiles) // C.SPAWN_MAP_SCALE) * C.SPAWN_MAP_SCALE
     full_proj = Projector.build(south, west, north, east, meters_per_tile, rotation)
     cells_x, cells_y = full_proj.cell_grid()
     fp = forest_params or ForestParams(stand_m=forest_stand_m, edge_m=forest_edge_m)
@@ -288,7 +291,11 @@ def render_chunked(
     if render_progress:
         render_progress(0.78, "Fitting railways")
     from .rendering.rails import global_rail_sections
-    rail_feats = [f for f in feats if classify(f.tags, _is_polygon(f)) == "railway"]
+    # A disused track lays no steel, so it fits no sections either: planning
+    # them would paint rail tiles that paint_rails then refuses to draw.
+    rail_feats = [f for f in feats
+                  if classify(f.tags, _is_polygon(f)) == "railway"
+                  and not rail_is_disused(f.tags)]
     rail_sections_global = global_rail_sections(rail_feats, full_proj, should_stop=should_stop)
 
     if render_progress:
@@ -440,7 +447,7 @@ def render_chunked(
                     )
                 ]
                 chunk_out: dict = {}
-                with global_tile_offset(hx0, hy0):
+                with global_tile_offset(hx0, hy0, extent=(w, h)):
                     R.render(
                         chunk_feats,
                         sub_proj.south, sub_proj.west, sub_proj.north, sub_proj.east,

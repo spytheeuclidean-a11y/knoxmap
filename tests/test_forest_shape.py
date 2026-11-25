@@ -66,7 +66,9 @@ class ShapeForest(unittest.TestCase):
             want = F.shares(density)
             for i in range(4):
                 with self.subTest(density=density, grade=i):
-                    self.assertAlmostEqual((g == i).mean(), want[i], delta=0.02)
+                    # The cuts are the noise's quantiles over the whole map, so
+                    # a share is right to a point or two, not to the tile.
+                    self.assertAlmostEqual((g == i).mean(), want[i], delta=0.04)
 
     def test_density_zero_leaves_no_trees(self):
         land, veg, mask = forest()
@@ -221,9 +223,12 @@ class ShapeForest(unittest.TestCase):
         self.assertEqual(a[1].tobytes(), b[1].tobytes())
 
 
-# What shape_forest drew for forest(edge=40) at density 1, stand 60 m, edge
-# 20 m before any of its constants were knobs. The defaults have to keep it.
-TODAY = "c07f5ea5a5c98cf9d708f69c6a91ee9ba393fc83fc835c8b27f38e79a07ee589"
+# What shape_forest draws for forest(edge=40) at density 1, stand 60 m, edge
+# 20 m. The defaults have to keep it. Last regenerated when the noise became a
+# hash of the global tile position and the grade cuts the noise's own
+# quantiles over the whole map (so a chunk of a map draws what the whole map
+# does); it was c07f5ea5... before.
+TODAY = "b58b663bff19d85ca0618eb05195597f685dd957e51b6f7564fa0d1ed3666e56"
 
 
 def fingerprint(veg, land):
@@ -264,7 +269,7 @@ class Knobs(unittest.TestCase):
 
     def test_thickets_reach_the_wood(self):
         _, veg, mask = self.shaped(thickets=2.0)
-        self.assertAlmostEqual((grade_of(veg)[mask] == 3).mean(), 0.20, delta=0.02)
+        self.assertAlmostEqual((grade_of(veg)[mask] == 3).mean(), 0.20, delta=0.04)
 
     def test_stand_variety_mixes_stand_sizes(self):
         def spread(variety):

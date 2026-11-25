@@ -1683,7 +1683,8 @@ def prewarm(jobs, cache: LayoutCache, processes: int = 2, seconds: float = 3.0,
 # ---- into Build ---------------------------------------------------------------
 
 def to_building(lay: Layout, seed: int = 0, profile=None, party: dict | None = None,
-                uses: list | None = None, converted: str | None = None, homes: bool = False):
+                uses: list | None = None, converted: str | None = None, homes: bool = False,
+                apartment_furnishing: bool = False):
     """The layout as Build's own Building: its rooms, doors and windows as
     solved, then Build's furnishing and walkways, as designer.stack does for
     a hand-drawn plan. converted: a house's layout for an office, surgery or
@@ -1744,7 +1745,9 @@ def to_building(lay: Layout, seed: int = 0, profile=None, party: dict | None = N
         storeys.append(plan)
     building = L.Building(width=house.width, height=house.height, storeys=storeys, profile=profile)
     for lvl, plan in enumerate(storeys):
-        L._furnish(plan, random.Random(seed + 977 * lvl), lay.stairs, house.street)
+        flat_seed = f"{seed}:{lvl}:flats" if apartment_furnishing and plan.kind == "apartment" else None
+        L._furnish(plan, random.Random(seed + 977 * lvl), lay.stairs, house.street,
+                   flat_seed=flat_seed)
     pubs = _pubs() if lay.programme.endswith("@pub") else None
     if pubs:
         for plan in storeys:
@@ -2133,7 +2136,7 @@ def house_from_job(job: tuple, roof: dict | None = None):
         uses, hotel, entrances, profile, mapped, garage_door, preset_file, party, *planned) = job
     roof = roof if roof is not None else (planned[0] if planned else None)
     style = style or {}
-    if not wanted(settings):
+    if not wanted(settings) or (kind == "apartment" and settings.apartment_layout != "classic"):
         return None
     # KnoxMap UK's regional record (age, dwelling, rooms); without one, a house is
     # laid out by its footprint and storeys alone
@@ -2149,7 +2152,8 @@ def house_from_job(job: tuple, roof: dict | None = None):
     block = info.get("dwelling") == "flats" and kind == "apartment" and not uses and not hotel
     if not shop and not block and (kind not in (None, "house") or commercial or uses):
         return None
-    if any(k != "garage" for _, k in (mapped or [])):
+    mapped_floors = mapped.values() if isinstance(mapped, dict) else (mapped or (),)
+    if any(kind != "garage" for floor in mapped_floors for _, kind in floor):
         return None
     # no mask: a plain rectangle, every square
     base = [[bool(v) for v in row] for row in mask] if mask is not None else [[True] * w for _ in range(h)]
@@ -2261,7 +2265,8 @@ def plan_for_job(job: tuple, roof: dict | None = None):
     info = (job[8] or {}).get("uk_rooms") or {}
     converted = conversion(info, shop_use_of(uses)) if info.get("dwelling") in ("shop", "shop_flats") else None
     return to_building(lay, seed=seed, profile=profile, party=party or {}, uses=uses,
-                       converted=converted, homes=info.get("dwelling") == "shop_flats")
+                       converted=converted, homes=info.get("dwelling") == "shop_flats",
+                       apartment_furnishing=bool(job[7].apartment_furnishing))
 
 
 def dump_job(path: str, job: tuple, roof: dict | None = None) -> None:

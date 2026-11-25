@@ -188,7 +188,25 @@ class BackSheds(unittest.TestCase):
         self.assertTrue(made)
         self.assertLess(len(made), 14)
         for p in made:
-            self.assertGreater(p.bounds[1], 168)      # behind the house
+            self.assertAlmostEqual(p.bounds[1], 174, places=5)
+
+    def test_a_shallower_yard_can_use_a_smaller_setback(self):
+        for house in self.yard():
+            shed = polys(self.sheds([house]))
+            if shed:
+                break
+        self.assertTrue(shed)
+        edge = shed[0].bounds[3] - 0.5
+        lake = way(50, [(0, edge), (400, edge), (400, 260), (0, 260), (0, edge)],
+                   natural="water")
+        made = polys(self.sheds([house], water=[lake]))
+        self.assertEqual(len(made), 1)
+        self.assertAlmostEqual(made[0].bounds[1], 173, places=5)
+
+    def test_skip_a_shed_when_only_the_old_close_setback_fits(self):
+        lake = way(50, [(0, 175.1), (400, 175.1), (400, 260), (0, 260), (0, 175.1)],
+                   natural="water")
+        self.assertEqual(self.sheds(self.yard(), water=[lake]), [])
 
     def test_nothing_overlaps_a_house_or_a_shed(self):
         houses = self.yard()

@@ -47,6 +47,14 @@ class Room:
     # An elevator shaft: a sealed box with the lift doors set into one wall.
     # No doorway, no furniture, no windows, never merged into a neighbour.
     is_shaft: bool = False
+    business: int | None = None
+    apartment_entry: bool = False
+    surveyed: bool = False
+    access_role: str | None = None
+
+    @property
+    def is_balcony(self) -> bool:
+        return self.access_role in ("balcony", "flat_balcony")
 
     @property
     def w(self) -> int:
@@ -119,6 +127,12 @@ class Plan:
     # The sleeve of floor round each room's way in that no optional piece may
     # take: one tile either side of the walkway and of every door.
     sleeve: set = field(default_factory=set)
+    # Clear floor reserved for the shared entrance, stairs and lift approaches.
+    public_path: set[tuple[int, int]] = field(default_factory=set)
+    clear_access: set[tuple[int, int]] = field(default_factory=set)
+    private_flats: bool = False
+    unmapped_room_tiles: int = 0
+    stair_steps: set[tuple[int, int]] = field(default_factory=set)
     # Ground-floor windows that are a shop front, glazed with big panels.
     shop_front: set = field(default_factory=set)
     # What the building is (build_plan's kind), for rooms furnished by it: an
@@ -134,9 +148,12 @@ class Plan:
     # no window, shop front or door goes in them.
     party: set = field(default_factory=set)
     profile: object | None = None
+    flat_furnishing_seed: str | None = None
     # A large house (build_plan): its rooms take a mansion's finishes and
     # dressing instead of a small house's.
     grand: bool = False
+    entrance_limits: dict[tuple[int, int, str], tuple] = field(default_factory=dict)
+    blocked_entrances: set[tuple[int, int, str]] = field(default_factory=set)
 
 
 # kind -> (floor tile entry index, display name, furniture wishlist)
@@ -389,7 +406,8 @@ ROOM_STYLE = {
                 ["counter", "shelf", "sink", "bed", "chair"]),
     "warehouse": (C.FLOOR_LINO, "Warehouse",
                   ["crate", "crate", "shelf", "shelf", "crate"]),
-    "garage": (C.FLOOR_LINO, "Garage", ["crate", "shelf", "counter"]),
+    "garage": (C.FLOOR_LINO, "Garage",
+               ["metal_rack", "filing_cabinet", "crate", "metal_rack", "filing_cabinet"]),
     # A hangar floor. The game is told "Warehouse", so its loot is a
     # warehouse's; the separate key is what lets the rest of the build know
     # the building is a hangar and roof it like one (knoxbuild/tbx.py) -
@@ -746,6 +764,24 @@ def _intersect(box: tuple, others: list[tuple]) -> list[tuple]:
         if ix0 <= ix1 and iy0 <= iy1:
             out.append((ix0, iy0, ix1, iy1))
     return out
+
+
+def mapped_room_tiles(ring, width, height):
+    """Rasterize a surveyed room by testing tile centres against its polygon."""
+    from math import ceil, floor
+    from shapely.geometry import Point, Polygon
+
+    if len(ring) < 3:
+        return set()
+    shape = Polygon(ring)
+    if not shape.is_valid:
+        shape = shape.buffer(0)
+    if shape.is_empty:
+        return set()
+    x0, y0, x1, y1 = shape.bounds
+    return {(x, y) for x in range(max(0, floor(x0)), min(width, ceil(x1)))
+            for y in range(max(0, floor(y0)), min(height, ceil(y1)))
+            if shape.covers(Point(x + .5, y + .5))}
 
 
 def _mapped_rooms(plan: Plan, rng: random.Random,

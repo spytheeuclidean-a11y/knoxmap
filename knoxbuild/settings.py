@@ -150,9 +150,13 @@ class Settings:
     # this often. OSM rarely says, so these two decide a town's character.
     apartment_footprint: int = 150
     apartment_chance: float = 0.55
+    apartment_layout: str = "classic"
+    apartment_furnishing: int = 0
+    apartment_stair_balcony: int = 2    # 0 = off, 1 = prefer an open passage, 2 = auto
+    apartment_ground_floor: str = "auto"
     max_levels: int = 6
-    # 1 builds with the game's own tiles only, leaving Erika's Tiles out
-    # even when it is installed.
+    # 1 builds with the game's own tiles only, leaving mod tile packs
+    # (Erika's Tiles, Melos Tiles) out even when installed.
     vanilla_tiles: int = 0
     # Legacy Smart-mode threshold, retained for existing settings files.
     square_buildings: int = 15
@@ -238,6 +242,8 @@ class Settings:
         kept: dict = {}
         types = {f.name: f.type for f in fields(cls)}
         enum_options = {"building_alignment": BUILDING_ALIGNMENT_OPTIONS,
+                        "apartment_layout": APARTMENT_LAYOUT_OPTIONS,
+                        "apartment_ground_floor": APARTMENT_GROUND_FLOOR_OPTIONS,
                         "arch_style": ARCH_STYLE_OPTIONS,
                         "height_mix": HEIGHT_MIX_OPTIONS,
                         "landcover": LANDCOVER_OPTIONS,
@@ -337,6 +343,8 @@ LIMITS = {
     "spread_buildings": (0, 1),
     "apartment_footprint": (16, 4000),
     "apartment_chance": (0.0, 1.0),
+    "apartment_furnishing": (0, 1),
+    "apartment_stair_balcony": (0, 2),
     # Build 42 has 32 levels above ground (WorldEd's MAX_WORLD_LEVELS is 64,
     # -32 to 31), and the vanilla map's tallest tower reaches level 29. tbx.py
     # always puts a roof floor on top of the last storey, and the roof takes
@@ -371,6 +379,8 @@ LIMITS = {
 }
 
 BUILDING_ALIGNMENT_OPTIONS = ("real", "smart", "rectilinear", "rectangle")
+APARTMENT_LAYOUT_OPTIONS = ("classic", "auto", "landing", "corridor")
+APARTMENT_GROUND_FLOOR_OPTIONS = ("auto", "residential", "mixed")
 ARCH_STYLE_OPTIONS = ("auto", "cn", "off")
 HEIGHT_MIX_OPTIONS = ("auto", "low", "middle", "tall", "even")
 LANDCOVER_OPTIONS = ("worldcover", "osm", "off")
