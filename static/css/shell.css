@@ -177,8 +177,10 @@ body.ws-loading > * { visibility: hidden; }
 .ws-flow .go { margin-left: 10px; width: auto; min-width: 0; max-width: 44%; white-space: nowrap; padding: 4px 14px; }
 .ws-flow .go.ws-clip { display: block; }
 .ws-flow .arrow { flex: none; }
-.ws-flow .ws-auto-standalone { min-width: 0; }
-.ws-auto-standalone input { flex: none; }
+.ws-flow-sep { flex: none; color: var(--faint); padding: 0 4px; }
+/* The Standalone label and Auto button keep their width; the status message shrinks instead. */
+.ws-flow .ws-auto-standalone, .ws-flow [data-flow-auto] { flex: none; }
+.ws-auto-standalone input { flex: none; width: auto; }
 @container (min-width: 520px) {
   .ws-flow .go[data-flow-go] { flex-shrink: 0; }
 }
@@ -189,9 +191,6 @@ body.ws-loading > * { visibility: hidden; }
 }
 @container (max-width: 490px) {
   .ws-chip:not(.next, .running, .error) .step-label { position: absolute; width: 1px; clip-path: inset(50%); }
-}
-@container (max-width: 330px) {
-  .ws-auto-standalone .ws-clip { position: absolute; width: 1px; clip-path: inset(50%); }
 }
 .ws-pop { position: absolute; top: calc(100% + 4px); z-index: 1150; width: min(560px, 92%); max-height: 70vh;
   left: clamp(0px, var(--pop-left, 0px), calc(100% - min(560px, 92%) - 8px));
