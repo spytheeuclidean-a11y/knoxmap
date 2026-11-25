@@ -7,7 +7,7 @@ rem On a Korean or Japanese Windows the default one cannot hold all of KnoxMap's
 set PYTHONUTF8=1
 call :runtime_ready
 if errorlevel 1 (
-  call Setup.bat
+  call "%~dp0Setup.bat"
 )
 rem Setup now also exits non-zero for work it could not finish - a rule file it
 rem could not write yet is a red row in the window and nothing more - so only a
