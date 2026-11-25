@@ -1,7 +1,7 @@
 ## Unreleased
 
 - **Drainage, disused track and breakwaters: ground that was mapped and dropped**
-  (`generator/osm.py`, `generator/rendering/landcover.py`, `generator/renderer.py`,
+  (#173, `generator/osm.py`, `generator/rendering/landcover.py`, `generator/renderer.py`,
   `generator/rendering/roads.py`, `generator/chunked.py`,
   `generator/rendering/infill.py`, `generator/rendering/widths.py`,
   `tests/test_discarded_features.py`).
