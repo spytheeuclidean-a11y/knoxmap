@@ -611,13 +611,6 @@
     if (window.closeIsoView) window.closeIsoView();
     closePop();
   }
-  // One map at a time is worked on: a step reports back to the cards of the map
-  // that is open, so switching while one runs would put its result on another.
-  function busyElsewhere(name) {
-    if (!runningMap || runningMap === name) return false;
-    fx.toast('bad', 'Busy', `${runningMap} is busy. Switch maps once it has finished, or Stop it.`, 6000);
-    return true;
-  }
   function openTab(name) {
     if (!name || busyElsewhere(name)) return;
     ws.draft = false;

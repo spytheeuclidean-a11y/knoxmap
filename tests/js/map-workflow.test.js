@@ -109,3 +109,84 @@ test('opening a draft discards a pending map response', async () => {
   ctx.clearOpenedMap();
   assert.equal(ctx.settingsForRequest().density, 0.18);
 });
+
+function autoWorkspace(standalone = true) {
+  const { ctx, field, run } = workspace();
+  run("currentRect = {}; currentMap = 'A'");
+  field('autoStandalone').checked = standalone;
+  ctx.rectBounds = () => ({});
+  ctx.boxSize = () => ({ area: 1, tilesX: 300, tilesY: 300 });
+  ctx.runGenerate = async () => 'A';
+  const steps = [], messages = [];
+  ctx.fx = { toast: (...args) => messages.push(args), problem: (...args) => messages.push(args) };
+  ctx.loadPlacement = (map, data) => steps.push(['placement', map, data?.standalone]);
+  for (const step of ['runBuildings', 'startCompile', 'runInstall']) {
+    ctx[step] = async () => { steps.push([step, run('currentMap')]); return true; };
+  }
+  return { ctx, field, run, steps, messages };
+}
+
+test('Auto stops before Build if Standalone is refused or the request fails', async () => {
+  for (const response of [
+    () => ({ ok: false, status: 409, json: async () => ({ error: 'Map is compiling' }) }),
+    () => { throw new Error('Offline'); },
+    () => ({ ok: true, json: async () => ({ standalone: false }) }),
+  ]) {
+    const { ctx, steps, field } = autoWorkspace();
+    ctx.fetch = response;
+    await ctx.runAuto();
+    assert.deepEqual(steps, []);
+    assert.equal(field('status').className, 'error');
+  }
+});
+
+test('a late Standalone reply cannot continue Auto on the newly selected map', async () => {
+  const { ctx, field, steps, messages, run } = autoWorkspace();
+  let finish;
+  ctx.fetch = (url, options) => {
+    assert.equal(url, '/api/placement/A');
+    assert.deepEqual(JSON.parse(options.body), { standalone: true });
+    return new Promise(resolve => { finish = resolve; });
+  };
+  const auto = ctx.runAuto();
+  await new Promise(resolve => setImmediate(resolve));
+  run("++mapOpenRequest; currentMap = 'B'");
+  field('status').textContent = 'Reading B';
+  finish({ ok: true, json: async () => ({ standalone: true }) });
+  await auto;
+  assert.deepEqual(steps, []);
+  assert.deepEqual(messages, []);
+  assert.equal(field('status').textContent, 'Reading B');
+});
+
+test('leaving a map during a later Auto step cancels the rest of that run', async () => {
+  for (const step of ['runBuildings', 'startCompile', 'runInstall']) {
+    const { ctx, steps, messages, run, field } = autoWorkspace(false);
+    ctx[step] = async () => {
+      steps.push([step, 'A']);
+      // Even returning to A opens a new editing session.
+      run('++mapOpenRequest');
+      field('status').textContent = 'Reopened A';
+      return true;
+    };
+    await ctx.runAuto();
+    assert.deepEqual(steps.at(-1), [step, 'A']);
+    assert.deepEqual(messages, []);
+    assert.equal(field('status').textContent, 'Reopened A');
+  }
+});
+
+test('Auto runs all steps for the generated map, with or without Standalone', async () => {
+  for (const standalone of [true, false]) {
+    const { ctx, steps, field } = autoWorkspace(standalone);
+    ctx.fetch = () => {
+      assert.equal(standalone, true);
+      return { ok: true, json: async () => ({ standalone: true }) };
+    };
+    await ctx.runAuto();
+    const expected = [['runBuildings', 'A'], ['startCompile', 'A'], ['runInstall', 'A']];
+    if (standalone) expected.unshift(['placement', 'A', true]);
+    assert.deepEqual(steps, expected);
+    assert.equal(field('status').className, 'success');
+  }
+});

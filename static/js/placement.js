@@ -293,14 +293,19 @@ function placeFetchPictures() {
   }
 }
 
-async function loadPlacement(mapName) {
+let placementRequest = 0;
+
+async function loadPlacement(mapName, layout) {
   const panel = document.getElementById('placePanel');
   if (!panel || !mapName) return;
+  const request = ++placementRequest;
   try {
-    placeWorld = await (await fetch(`/api/placement/${encodeURIComponent(mapName)}`)).json();
+    layout ??= await (await fetch(`/api/placement/${encodeURIComponent(mapName)}`)).json();
   } catch {
     return;                     // the step simply shows nothing about place
   }
+  if (request !== placementRequest || currentMap !== mapName) return;
+  placeWorld = layout;
   if (placeWorld.error) { placeWorld = null; return; }
   placePicked = null;
   placeRoad = [];
@@ -310,7 +315,7 @@ async function loadPlacement(mapName) {
   // The map as it came out, drawn in its place in the world.
   placePreview = new Image();
   placePreview.onload = drawWorld;
-  placePreview.onerror = () => { placePreview = null; };
+  placePreview.onerror = () => { if (request === placementRequest) placePreview = null; };
   placePreview.src = `/output/${encodeURIComponent(mapName)}/`
     + `${encodeURIComponent(mapName)}_preview.png`;
   drawWorld();

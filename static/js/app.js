@@ -1725,7 +1725,10 @@ async function loadMaps() {
     const open = document.createElement('button');
     open.type = 'button';
     open.textContent = 'Open';
-    open.addEventListener('click', () => openMap(m.mapName));
+    open.addEventListener('click', () => {
+      if (window.knoxShell) window.knoxShell.openTab(m.mapName);
+      else openMap(m.mapName);
+    });
     li.append(open);
     if (m.installed) {
       const remove = document.createElement('button');
@@ -1859,6 +1862,7 @@ window.deleteMap = deleteMap;
 // Opening a saved map is asynchronous. Only the latest selection owns the editor.
 let mapOpenRequest = 0;
 
+/* exported clearOpenedMap */
 function clearOpenedMap() {
   ++mapOpenRequest;
   if (document.getElementById('boardName').value === currentMap) {
@@ -1873,7 +1877,16 @@ function clearOpenedMap() {
   loadZones(null);
 }
 
+// One map at a time is worked on: a step reports back to the cards of the map
+// that is open, so switching while one runs would put its result on another.
+function busyElsewhere(name) {
+  if (!runningMap || runningMap === name) return false;
+  fx.toast('bad', 'Busy', `${runningMap} is busy. Switch maps once it has finished, or Stop it.`, 6000);
+  return true;
+}
+
 async function openMap(mapName) {
+  if (busyElsewhere(mapName) || runningMap) return;
   const request = ++mapOpenRequest;
   let data;
   try {
@@ -2186,7 +2199,7 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
                   metersPerTile: body.metersPerTile, shape: body.shape,
                   settings: data.settings || body.settings });
     loadMaps();
-    return true;
+    return data.mapName;
   } catch (err) {
     status.className = 'error';
     status.textContent = `Error: ${err.message}`;
@@ -2217,46 +2230,49 @@ async function runAuto() {
   }
   const status = document.getElementById('status');
   const standalone = !!document.getElementById('autoStandalone')?.checked;
-  if (!await runGenerate({ skipBigConfirm: true })) return;
+  const mapName = await runGenerate({ skipBigConfirm: true });
+  if (!mapName || currentMap !== mapName) return;
+  const request = mapOpenRequest;
+  const stillHere = () => currentMap === mapName && request === mapOpenRequest;
 
-  if (standalone && currentMap) {
+  if (standalone) {
     status.className = '';
     status.textContent = 'Auto mode: setting standalone placement…';
     try {
-      const res = await fetch(`/api/placement/${encodeURIComponent(currentMap)}`, {
+      const res = await fetch(`/api/placement/${encodeURIComponent(mapName)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ standalone: true }),
       });
-      if (res.ok) {
-        const box = document.getElementById('placeStandalone');
-        if (box) box.checked = true;
-        if (typeof loadPlacement === 'function') loadPlacement();
-      }
-    } catch (_) { /* build will read placement.json */ }
+      const layout = await res.json();
+      if (!stillHere()) return;
+      if (!res.ok) throw apiError(layout, res);
+      if (!layout.standalone) throw new Error('Standalone placement was not confirmed.');
+      await loadPlacement(mapName, layout);
+    } catch (err) {
+      if (!stillHere()) return;
+      status.className = 'error';
+      status.textContent = 'Auto mode stopped at Standalone placement.';
+      fx.problem(status.textContent, err.message, err.errorId);
+      return;
+    }
   }
 
-  status.className = '';
-  status.textContent = 'Auto mode (2/4): Building…';
-  if (!await runBuildings()) {
-    status.className = 'error';
-    status.textContent = 'Auto mode stopped at Build.';
-    return;
-  }
-
-  status.className = '';
-  status.textContent = 'Auto mode (3/4): Compiling…';
-  if (!await startCompile(false)) {
-    status.className = 'error';
-    status.textContent = 'Auto mode stopped at Compile.';
-    return;
-  }
-
-  status.className = '';
-  status.textContent = 'Auto mode (4/4): Installing…';
-  if (!await runInstall()) {
-    status.className = 'error';
-    status.textContent = 'Auto mode stopped at Install.';
-    return;
+  if (!stillHere()) return;
+  const steps = [
+    ['Auto mode (2/4): Building…', 'Auto mode stopped at Build.', runBuildings],
+    ['Auto mode (3/4): Compiling…', 'Auto mode stopped at Compile.', () => startCompile(false)],
+    ['Auto mode (4/4): Installing…', 'Auto mode stopped at Install.', runInstall],
+  ];
+  for (const [message, failure, run] of steps) {
+    status.className = '';
+    status.textContent = message;
+    const ok = await run();
+    if (!stillHere()) return;
+    if (!ok) {
+      status.className = 'error';
+      status.textContent = failure;
+      return;
+    }
   }
 
   status.className = 'success';
@@ -3116,6 +3132,7 @@ async function runInstall() {
         lifts += ' With "Spawn Selector" enabled you can start at any landmark of the map.';
       }
     } catch (_) { /* the install itself worked; the tip is optional */ }
+    if (currentMap !== installing) return false;
     // Build 42 draws the in-game map (M) from worldmap.xml.bin and cannot read
     // the XML, so a map without it opens the map on nothing while everything
     // else works - worth saying, and worth saying what to do about it.
@@ -3134,6 +3151,7 @@ async function runInstall() {
     loadMaps();
     return true;
   } catch (err) {
+    if (currentMap !== installing) return false;
     note('installNote', err.message, 'bad');
     btn.disabled = false;
     return false;
