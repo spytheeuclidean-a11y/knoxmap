@@ -2,19 +2,24 @@
 from __future__ import annotations
 
 import csv
+import json
 import os
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 import numpy as np
 from PIL import Image
 
+import knoxfiles
 from generator.osm import OSMFeature
 from generator import renderer
 from generator.rendering.projection import Projector
 from knoxbuild import bitmaps, chunked_build, placement
 from knoxbuild.build import build
+from knoxbuild.buildtiles import level_tiles, parse_tbx
+from knoxbuild.fences import FENCE_TILE_DEPENDENCIES, FENCE_TILE_PROFILE
 from knoxbuild.settings import Settings
 
 
@@ -75,12 +80,25 @@ class QuadrantBuildTests(unittest.TestCase):
                 feats.append(OSMFeature(idx, "way", {"building": "house"},
                                         [(la0, lo0), (la0, lo1), (la1, lo1), (la1, lo0), (la0, lo0)]))
 
+            proj = Projector.build(south, west, south + dlat, west + dlon, 1.0)
+            feats.extend([
+                OSMFeature(6, "way", {"barrier": "fence", "fence_type": "bars"},
+                           [proj.to_latlon(560, 150), proj.to_latlon(640, 150)]),
+                OSMFeature(7, "node", {"barrier": "gate"}, [proj.to_latlon(600.5, 150)]),
+            ])
             renderer.render(feats, south, west, south + dlat, west + dlon,
                             meters_per_tile=1.0, output_dir=tmp, map_name="qmap")
 
             # Standalone placement at (0, 0) must not be clobbered to (70, 0) by quadrant sub-builds.
             placement.save(tmp, (0, 0), standalone_flag=True)
 
+            fence = "fencing_demo_01_0"
+            gate = "fixtures_doors_fences_demo_01_0"
+            profile = dict.fromkeys(("west1", "west2", "north1", "north2", "nw"), fence)
+            knoxfiles.write(os.path.join(tmp, FENCE_TILE_PROFILE), {
+                "mod_id": "DemoFences", "styles": {"black_metal": {
+                    **profile, "gate_w": gate, "gate_n": gate}},
+            })
             with mock.patch.object(chunked_build, "BUILD_CHUNK_MIN_CELLS", 4):
                 rc = build(tmp, settings=Settings.from_dict({"preset": "town", "seed": 42}))
             self.assertEqual(rc, 0)
@@ -96,6 +114,16 @@ class QuadrantBuildTests(unittest.TestCase):
             # Every stitched .tbx file exists in buildings/
             for r in rows:
                 self.assertTrue(os.path.isfile(os.path.join(tmp, "buildings", r["file"])))
+            fence_lots = [name for name in os.listdir(os.path.join(tmp, "buildings"))
+                          if "_fences_" in name]
+            layers = [level_tiles(parse_tbx(Path(tmp, "buildings", name).read_text(encoding="utf-8")), 0)
+                      for name in fence_lots]
+            pieces = [tile for lot in layers for square in lot.values() for tile in square]
+            self.assertEqual(len(fence_lots), 2)
+            self.assertEqual(pieces.count(gate), 1)
+            self.assertEqual(pieces.count(fence), 79)
+            with open(os.path.join(tmp, FENCE_TILE_DEPENDENCIES), encoding="utf-8") as f:
+                self.assertEqual(json.load(f), {"DemoFences": [fence, gate]})
 
     def _seam_town(self, tmp, spans):
         """A 4x4-cell map built in four parts, with a 16-tile-deep house over

@@ -29,7 +29,7 @@ from . import pz_colors as C
 from .osm import OSMFeature, classify
 from .rendering.geometry import _feature_coords_px, _is_polygon
 from .rendering.noise import global_tile_offset
-from .rendering.projection import Projector, _inside, shape_px
+from .rendering.projection import Projector, shape_px
 
 _log = logging.getLogger(__name__)
 
@@ -533,8 +533,7 @@ def render_chunked(
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_areas.geojson"),
                     R._areas_geojson(buckets))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_fences.geojson"),
-                    R._lines_geojson([f for f in fence_feats
-                                      if clip is None or _inside(f, full_proj, clip)]))
+                    R._lines_geojson(fence_feats, full_proj, clip))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_fence_openings.geojson"),
                     R._openings_geojson(gate_feats, buckets))
     knoxfiles.write(os.path.join(output_dir, f"{map_name}_structures.json"),

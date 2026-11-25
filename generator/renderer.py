@@ -969,8 +969,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_areas.geojson"),
                         _areas_geojson(buckets))
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_fences.geojson"),
-                        _lines_geojson([f for f in fence_feats
-                                        if clip is None or _inside(f, proj, clip)]))
+                        _lines_geojson(fence_feats, proj, clip))
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_fence_openings.geojson"),
                         _openings_geojson(gate_feats, buckets))
         knoxfiles.write(os.path.join(output_dir, f"{map_name}_places.json"),
