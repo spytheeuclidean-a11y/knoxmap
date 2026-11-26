@@ -193,7 +193,7 @@ input[readonly] { background: var(--bg); color: var(--muted); }
 .gen-kicker { font-weight: 600; margin-bottom: 4px; }
 #gen-stage { color: var(--text); }
 #gen-detail, .gen-elapsed { color: var(--muted); font-size: 13px; }
-#gen-detail { height: 54px; line-height: 18px; overflow: hidden; overflow-wrap: anywhere;
+#gen-detail { max-height: 54px; line-height: 18px; overflow: hidden; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .gen-elapsed { margin-top: 6px; }
 
