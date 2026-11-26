@@ -1035,6 +1035,11 @@ def _add_house_carport(top: list[tuple[int, int]], dx: int, dy: int,
         (0, ch, 0, "Walls", CARPORT_POST),
         (cw, ch, 0, "Walls", CARPORT_POST),
     ]
+    # A second post a tile in along the drive at each corner, so the pillars
+    # read as sturdy rather than as thin poles. Never across the open end.
+    for gx, gy in ((0, 0), (cw, 0), (0, ch), (cw, ch)):
+        along = (0, 1 if gy == 0 else -1) if dy else (1 if gx == 0 else -1, 0)
+        tiles.append((gx + along[0], gy + along[1], 0, "Walls", CARPORT_POST))
     structures.append((cx0, cy0, cw, ch, tiles, "FlatTop", "Three"))
     return (cx0, cy0, cw, ch)
 
