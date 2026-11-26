@@ -5,7 +5,7 @@ from ..entrances import entrance_facade
 from ..sizing import SIZES
 from ..uses import FRONT_ROOMS
 import random
-from .core import HOUSE_OVERSIZE, Plan, RETAIL_ROOMS, Room
+from .core import HOUSE_OVERSIZE, Plan, RETAIL_ROOMS
 
 
 
