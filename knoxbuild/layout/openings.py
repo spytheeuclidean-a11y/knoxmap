@@ -571,64 +571,29 @@ ENTRY_KINDS = ["hall", "lobby", "livingroom", "restaurant", "church",
                "garage", "dining", "storage", "bedroom"]
 
 
+HOUSE_ESSENTIALS = {"kitchen", "bathroom", "bedroom", "livingroom"}
+SPARE_KINDS = {"hall", "office", "storage", "closet", "laundry"}
+
+
 def _carve_foyer(plan: Plan, front: tuple[int, int, str], side: str,
                  idx: int, avoid: tuple[int, int] | None) -> None:
-    """Give a residential house's front door a 2x2 foyer ('hall') inside `idx`."""
+    """Make the room a residential house's front door opens into its entry
+    hall ('hall'), the whole room and not a small room inside it."""
     if plan.kind not in (None, "house") or len(plan.rooms) < 2 or plan.private_flats:
         return
     room = plan.rooms[idx - 1]
     if room.kind == "hall" or room.is_core or room.is_shaft:
         return
-    dx, dy, _d = front
-    ix, iy = (dx, dy - 1) if side == "S" else (dx - 1, dy) if side == "E" else (dx, dy)
-    if not (0 <= ix < plan.width and 0 <= iy < plan.height) or plan.grid[iy][ix] != idx:
-        return
-    room_cells = {(x, y) for y in range(plan.height) for x in range(plan.width)
-                  if plan.grid[y][x] == idx}
-    if len(room_cells) < 8:
-        return
-    for fx0, fy0 in ((ix, iy), (ix - 1, iy), (ix, iy - 1), (ix - 1, iy - 1)):
-        foyer = {(fx0 + ox, fy0 + oy) for ox in (0, 1) for oy in (0, 1)}
-        if not (foyer <= room_cells):
-            continue
-        if avoid is not None and avoid in foyer:
-            continue
-        rem = room_cells - foyer
-        seed_cell = next(iter(rem))
-        seen = {seed_cell}
-        todo = [seed_cell]
-        while todo:
-            cx, cy = todo.pop()
-            for nx, ny in ((cx - 1, cy), (cx + 1, cy), (cx, cy - 1), (cx, cy + 1)):
-                if (nx, ny) in rem and (nx, ny) not in seen:
-                    seen.add((nx, ny))
-                    todo.append((nx, ny))
-        if len(seen) != len(rem):
-            continue
-        shared: list[tuple[int, int, str]] = []
-        for cx, cy in sorted(foyer):
-            if (cx - 1, cy) in rem:
-                shared.append((cx, cy, "W"))
-            if (cx + 1, cy) in rem:
-                shared.append((cx + 1, cy, "W"))
-            if (cx, cy - 1) in rem:
-                shared.append((cx, cy, "N"))
-            if (cx, cy + 1) in rem:
-                shared.append((cx, cy + 1, "N"))
-        if not shared:
-            continue
-        picked = _door_spot(shared, 1)
-        inner_door = picked[0] if picked else shared[0]
-        foyer_id = len(plan.rooms) + 1
-        for cx, cy in foyer:
-            plan.grid[cy][cx] = foyer_id
-        plan.rooms.append(Room(fx0, fy0, fx0 + 1, fy0 + 1, kind="hall", unit=room.unit))
-        rxs = [x for x, _ in rem]
-        rys = [y for _, y in rem]
-        room.x0, room.y0, room.x1, room.y1 = min(rxs), min(rys), max(rxs), max(rys)
-        if inner_door not in plan.doors:
-            plan.doors.append(inner_door)
-        return
+    # The house's only kitchen, bathroom, bedroom or living room is not lost:
+    # a spare room (a hall, office, store) takes its kind instead.
+    if room.kind in HOUSE_ESSENTIALS and sum(r.kind == room.kind for r in plan.rooms) < 2:
+        spare = [r for r in plan.rooms if r is not room and r.kind in SPARE_KINDS
+                 and not r.is_core and not r.is_shaft]
+        if not spare:
+            return
+        spare.sort(key=lambda r: -r.area)
+        spare[0].kind = room.kind
+    room.kind = "hall"
 
 
 def _exterior_door(plan: Plan, rng: random.Random,
