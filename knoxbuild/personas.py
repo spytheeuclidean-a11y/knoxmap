@@ -261,6 +261,14 @@ def _swapped(role: str, swap: dict) -> str:
     return role
 
 
+def _installed(role: str) -> bool:
+    """Whether a piece's tile pack is there: Erika's and Melos's pieces are
+    only used when their mods are installed."""
+    from .layout import _erika_ready, _melos_ready
+    return ((not role.startswith("erika_") or _erika_ready())
+            and (not role.startswith("melos_") or _melos_ready()))
+
+
 def apply(base: list[str], room_kind: str, persona: str | None,
           rng: random.Random) -> list[str]:
     """`base` as this persona asks for it. Roles the catalog does not have are
@@ -279,6 +287,6 @@ def apply(base: list[str], room_kind: str, persona: str | None,
         swap = part.get("swap", {})
         out = [_swapped(r, swap) for r in out if r not in drop]
         for role, chance in part.get("add", ()):
-            if role in C.FURNITURE and rng.random() < chance:
+            if role in C.FURNITURE and rng.random() < chance and _installed(role):
                 out.append(role)
     return out

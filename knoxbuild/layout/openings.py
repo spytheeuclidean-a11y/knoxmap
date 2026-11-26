@@ -575,12 +575,21 @@ SPARE_KINDS = {"hall", "office", "storage", "closet", "laundry"}
 
 def _carve_foyer(plan: Plan, front: tuple[int, int, str], side: str,
                  idx: int, avoid: tuple[int, int] | None) -> None:
-    """Make the room a residential house's front door opens into its entry
-    hall ('hall'), the whole room and not a small room inside it."""
-    if plan.kind not in (None, "house") or len(plan.rooms) < 2 or plan.private_flats:
+    """Note which room a residential house's front door opens into. It
+    becomes the entry hall in _make_foyer, once the garage has had its pick of
+    the rooms."""
+    plan.foyer_room = idx
+
+
+def _make_foyer(plan: Plan) -> None:
+    """Make the room the front door opens into the entry hall ('hall'), the
+    whole room and not a small room inside it."""
+    idx = getattr(plan, "foyer_room", None)
+    if (idx is None or plan.kind not in (None, "house") or len(plan.rooms) < 2
+            or plan.private_flats or plan.drawn):   # a drawn room keeps its kind
         return
     room = plan.rooms[idx - 1]
-    if room.kind == "hall" or room.is_core or room.is_shaft:
+    if room.kind in ("hall", "garage") or room.is_core or room.is_shaft:
         return
     # The house's only kitchen, bathroom, bedroom or living room is not lost:
     # a spare room (a hall, office, store) takes its kind instead.
