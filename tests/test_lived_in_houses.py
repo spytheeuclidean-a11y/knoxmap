@@ -9,6 +9,21 @@ from tools import validate_tbx
 
 
 class LivedInHouseStructuresTests(unittest.TestCase):
+    def test_carport_has_two_posts_per_corner_and_an_open_end(self):
+        for dx, dy, top in ((0, 1, [(10 + x, 20 + y) for y in range(5) for x in range(3)]),
+                            (1, 0, [(10 + x, 20 + y) for y in range(3) for x in range(5)])):
+            out = []
+            yards._add_house_carport(top, dx, dy, random.Random(1), out)
+            cx0, cy0, cw, ch, tiles, _roof, _d = out[0]
+            posts = [(x, y) for x, y, _z, _l, t in tiles if t == yards.CARPORT_POST]
+            self.assertEqual(len(posts), 8)
+            self.assertEqual(len(set(posts)), 8)
+            # the two rows of posts along the drive's open end hold none between the corners
+            end_rows = {0, ch} if dy else {0, cw}
+            for x, y in posts:
+                inner = (x if dy else y)
+                self.assertTrue(inner in ((0, cw) if dy else (0, ch)), (x, y))
+
     def test_carport_and_porch_pass_validate_tbx(self):
         structures_out = []
         top = [(10 + x, 20 + y) for y in range(5) for x in range(3)]
