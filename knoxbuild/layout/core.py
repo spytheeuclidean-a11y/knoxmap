@@ -512,6 +512,20 @@ SPECIAL_MIXES = {
     "basement_house_shelter":  (["storage", "bedroom", "kitchen", "storage", "bathroom"],
                                 ["storage", "bedroom"]),
     "basement_house_cellar":   (["storage", "storage", "laundry"], ["storage"]),
+    # More of what a house's cellar is: a home gym, the utility room with the
+    # laundry, a games room with a bar, a guest suite, a study, a playroom.
+    "basement_house_gym":      (["gym", "bathroom", "laundry", "storage"],
+                                ["storage"]),
+    "basement_house_utility":  (["janitor", "laundry", "storage", "storage"],
+                                ["storage"]),
+    "basement_house_games":    (["bar", "livingroom", "bathroom", "storage"],
+                                ["livingroom", "storage"]),
+    "basement_house_guest":    (["bedroom", "livingroom", "kitchen", "bathroom", "storage"],
+                                ["bedroom", "storage"]),
+    "basement_house_study":    (["office", "livingroom", "bathroom", "storage"],
+                                ["storage", "livingroom"]),
+    "basement_house_playroom": (["kidsbedroom", "livingroom", "bathroom", "storage"],
+                                ["storage", "livingroom"]),
     # A block of flats keeps its shared laundry and the tenants' store rooms
     # downstairs.
     "basement_apartment":  (["laundry", "storage", "storage"], ["storage"]),

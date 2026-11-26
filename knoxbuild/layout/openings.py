@@ -5,7 +5,7 @@ from ..entrances import entrance_facade
 from ..sizing import SIZES
 from ..uses import FRONT_ROOMS
 import random
-from .core import HOUSE_OVERSIZE, Plan, RETAIL_ROOMS
+from .core import HOUSE_OVERSIZE, Plan, RETAIL_ROOMS, Room
 
 
 
@@ -566,7 +566,32 @@ def _door_on_run(plan: Plan, side: str,
 # bathroom or a bedroom unless there is truly nothing else.
 ENTRY_KINDS = ["hall", "lobby", "livingroom", "restaurant", "church",
                "classroom", "clinic", "warehouse", "kitchen", "office",
-               "garage", "dining", "storage", "bedroom", "bathroom"]
+               "garage", "dining", "storage", "bedroom"]
+
+
+HOUSE_ESSENTIALS = {"kitchen", "bathroom", "bedroom", "livingroom"}
+SPARE_KINDS = {"hall", "office", "storage", "closet", "laundry"}
+
+
+def _carve_foyer(plan: Plan, front: tuple[int, int, str], side: str,
+                 idx: int, avoid: tuple[int, int] | None) -> None:
+    """Make the room a residential house's front door opens into its entry
+    hall ('hall'), the whole room and not a small room inside it."""
+    if plan.kind not in (None, "house") or len(plan.rooms) < 2 or plan.private_flats:
+        return
+    room = plan.rooms[idx - 1]
+    if room.kind == "hall" or room.is_core or room.is_shaft:
+        return
+    # The house's only kitchen, bathroom, bedroom or living room is not lost:
+    # a spare room (a hall, office, store) takes its kind instead.
+    if room.kind in HOUSE_ESSENTIALS and sum(r.kind == room.kind for r in plan.rooms) < 2:
+        spare = [r for r in plan.rooms if r is not room and r.kind in SPARE_KINDS
+                 and not r.is_core and not r.is_shaft]
+        if not spare:
+            return
+        spare.sort(key=lambda r: -r.area)
+        spare[0].kind = room.kind
+    room.kind = "hall"
 
 
 def _exterior_door(plan: Plan, rng: random.Random,
@@ -667,6 +692,7 @@ def _exterior_door(plan: Plan, rng: random.Random,
             -from_stairs(ir[1][1]), -len(ir[1][1])))
         front = _door_on_run(plan, side, wall)
         plan.doors.append(front)
+        _carve_foyer(plan, front, side, idx, avoid)
         _more_ways_in(plan, front)
         return
 
@@ -677,10 +703,11 @@ def _exterior_door(plan: Plan, rng: random.Random,
         deep_runs = [(idx, side, wall) for idx, side, wall in all_runs
                      if any(_has_door_depth(plan, side, e) for e in wall)]
         pool = deep_runs if deep_runs else all_runs
-        _idx, side, wall = max(pool, key=lambda item: (
+        idx, side, wall = max(pool, key=lambda item: (
             -candidates.index(item[0]), score((item[1], item[2]))))
         front = _door_on_run(plan, side, wall)
         plan.doors.append(front)
+        _carve_foyer(plan, front, side, idx, avoid)
         _more_ways_in(plan, front)
         return
 
@@ -738,10 +765,12 @@ def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:
 # suburb is built. Not every house: most have a drive and no garage, or a
 # detached one, and a map where every house had a garage door on the street
 # would look stamped.
-GARAGE_SHARE = 0.3
-GARAGE_MIN_FOOTPRINT = 80        # tiles of ground floor
+GARAGE_SHARE = 0.75
+GARAGE_MIN_FOOTPRINT = 96        # tiles of ground floor
 GARAGE_MIN_ROOMS = 4
-GARAGE_AREA = (12, 40)           # tiles; 24 is a one-car bay and some shelf
+GARAGE_AREA = (25, 56)           # tiles; >= 5x5 so a full car + shelves actually fit
+GARAGE_MIN_WIDTH = 5             # along the street
+GARAGE_MIN_DEPTH = 5             # perpendicular to the garage door
 GARAGE_NEVER = {"hall", "kitchen", "livingroom", "openplan", "bathroom", "dining",
                 "closet", "garage"}
 
@@ -795,9 +824,14 @@ def _attach_garage(plan: Plan, seed, street: str | None, stair_tiles: set) -> bo
             continue
         xs = [x for x, _ in cells]
         ys = [y for _, y in cells]
+        span_x = max(xs) - min(xs) + 1
+        span_y = max(ys) - min(ys) + 1
+        bay_w, bay_d = (span_x, span_y) if street in ("N", "S") else (span_y, span_x)
+        if bay_w < GARAGE_MIN_WIDTH or bay_d < GARAGE_MIN_DEPTH:
+            continue
         at_end = (min(xs) == 0 or max(xs) == plan.width - 1
                   or min(ys) == 0 or max(ys) == plan.height - 1)
-        score = (at_end, -abs(len(cells) - 24), idx)
+        score = (at_end, -abs(len(cells) - 30), idx)
         if best is None or score > best[0]:
             best = (score, idx)
     if best is None:

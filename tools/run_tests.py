@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import io
+import json
 import os
 import sys
 import time
@@ -17,6 +18,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+TIMINGS = ROOT / ".test_timings.json"
 
 
 def _run_module(module_name: str) -> tuple[str, int, int, int, float, str]:
@@ -58,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     total_failed = 0
     total_skipped = 0
     failures: list[tuple[str, str]] = []
+    timings: dict[str, float] = {}
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=args.jobs) as pool:
         futures = {pool.submit(_run_module, m): m for m in modules}
@@ -66,10 +69,19 @@ def main(argv: list[str] | None = None) -> int:
             total_run += ran
             total_failed += failed
             total_skipped += skipped
+            timings[mod] = round(elapsed, 1)
             status = "FAIL" if failed else "ok"
             print(f"  {status:4}  {mod:32} {ran:4} tests  ({elapsed:.1f}s)", flush=True)
             if detail:
                 failures.append((mod, detail))
+
+    # What each module took, so tools/quick_check.py can leave the slow ones out.
+    try:
+        old = json.loads(TIMINGS.read_text(encoding="utf-8")) if TIMINGS.exists() else {}
+        TIMINGS.write_text(json.dumps({**old, **timings}, indent=1, sort_keys=True),
+                           encoding="utf-8")
+    except (OSError, ValueError):
+        pass
 
     for mod, detail in failures:
         print(f"\n=== {mod} ===", file=sys.stderr)

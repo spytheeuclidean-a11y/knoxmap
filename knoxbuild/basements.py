@@ -219,7 +219,10 @@ LAST_RESORT_ROOMS = {"bedroom", "kidsbedroom"}
 HOUSE_BASEMENTS = (("basement_house", 35, False), ("basement_house_rec", 20, True),
                    ("basement_house_workshop", 15, False),
                    ("basement_house_shelter", 10, True),
-                   ("basement_house_cellar", 20, False))
+                   ("basement_house_cellar", 20, False),
+                   ("basement_house_gym", 10, True), ("basement_house_utility", 12, False),
+                   ("basement_house_games", 8, True), ("basement_house_guest", 8, True),
+                   ("basement_house_study", 7, True), ("basement_house_playroom", 6, True))
 
 
 def _house_basement(seed: int) -> tuple[str, bool]:
@@ -239,6 +242,7 @@ class Basement:
     dy: int
     levels: int
     finished: bool = False
+    seed: int | None = None    # set for a house's cellar: picks its bare walls
 
 
 def _run(x: int, y: int, d: str) -> list[tuple[int, int]]:
@@ -278,10 +282,10 @@ def _well(x: int, y: int, d: str, lane: int | None) -> list[tuple[int, int]]:
 # flight in the room as it is, last. Along a wall first; the shaft below has
 # to be inside the basement, a tile in from the outside walls, so a small
 # house's flight often has no wall to stand by and is walled in on both sides.
-WELL_TRIES = {"stairwell": [[(None, True)], [(None, False)], [(-1, True), (1, True)],
-                            ["open"]],
-              "hall": [[(-1, True), (1, True)], [(-1, False), (1, False)],
-                       [(None, True)], [(None, False)], ["open"]]}
+WELL_TRIES = {"stairwell": [[(None, True)], [(-1, True), (1, True)],
+                            [(None, False)], ["open"]],
+              "hall": [[(-1, True), (1, True)], [(None, True)],
+                       [(-1, False), (1, False)], [(None, False)], ["open"]]}
 
 
 def find_stair_spot(ground, under: np.ndarray, kinds: tuple[str, ...] | None,
@@ -478,16 +482,24 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
     building = Building(width=w, height=h, storeys=storeys, stairs=[here] * spec.levels)
     clear = set(_top(sx, sy, d))
     if door is not None:
-        clear = _wall_off(ground, _well(sx, sy, d, lane), door)
+        sq = _well(sx, sy, d, lane)
+        clear = _wall_off(ground, sq, door)
+        # Keep a 1-tile walkable ring around the stairwell free of floor
+        # furniture so a middle-of-room stairwell never has its side halls
+        # choked by armchairs or sofas.
+        ring = {(nx, ny) for ax, ay in sq
+                for nx, ny in ((ax + 1, ay), (ax - 1, ay), (ax, ay + 1), (ax, ay - 1))
+                if (nx, ny) not in sq}
+        clear |= ring
     ground.furniture = [f for f in ground.furniture if _is_wall_piece(f[0])
                         or not (set(_cells_for(f[0], f[1], f[2], f[3])) & clear)]
     ground.holes |= set(_top(sx, sy, d)[1:])
-    if ground.private_flats:
-        # The basement adds a new destination after the furnished ground
-        # floor was checked. Clear its route through the shop or landing.
-        from .layout.furnishing import _clear_blocked_routes, _ways_in
+    # The basement adds a new stairwell/door after the ground floor was
+    # furnished, so clear any furniture now blocking routes between rooms,
+    # hallways, doors, or the basement access itself.
+    from .layout.furnishing import _clear_blocked_routes, _ways_in
 
-        _clear_blocked_routes(ground, _ways_in(parent, 0, ground))
+    _clear_blocked_routes(ground, _ways_in(parent, 0, ground))
     # _wall_off carves a new hall room (and may move a wall switch into it),
     # so ensure every ground-floor room still has a light switch.
     from .layout.assemble import _relight, _wall_edge
@@ -495,7 +507,8 @@ def plan_basement(parent, spec: BasementSpec, seed: int, settings) -> Basement |
                      | {_wall_edge(dx, dy, dd) for dx, dy, dd in ground.doors}
                      | {_wall_edge(wx, wy, wd) for wx, wy, wd in ground.windows})
     _relight(ground, set(range(1, len(ground.rooms) + 1)), blocked_edges)
-    return Basement(building, spec.dx, spec.dy, spec.levels, finished)
+    return Basement(building, spec.dx, spec.dy, spec.levels, finished,
+                    seed if spec.tier == "house" else None)
 
 
 def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]) -> set:
@@ -515,20 +528,39 @@ def _wall_off(ground, squares: list[tuple[int, int]], door: tuple[int, int, str]
     return set(squares) | {(x, y), (x, y - 1) if e == "N" else (x - 1, y)}
 
 
-def basement_style(style: dict | None, finished: bool = False) -> dict:
-    """The building's style with concrete walls and floors: the industrial kit.
-    A finished cellar keeps the house's own interior walls and floor."""
+# The bare walls a house's cellar may have, as (style table, variant index,
+# weight): grey block (the industrial kit), painted block, and the coloured
+# commercial plaster. Which a cellar gets is a function of its seed.
+CELLAR_WALLS = (("industrial", None, 40), ("civic", 0, 20), ("civic", 1, 15),
+                ("civic", 2, 15), ("civic", 3, 10))
+
+
+def _cellar_walls(seed: int | None) -> dict:
     from . import catalog as C
-    plant = C.SPECIAL_STYLES["industrial"]
+    if seed is None:
+        return C.SPECIAL_STYLES["industrial"]
+    table, i, _w = random.Random(seed ^ 0x3C6EF372).choices(
+        CELLAR_WALLS, weights=[w for _t, _i, w in CELLAR_WALLS])[0]
+    return C.SPECIAL_STYLES[table] if i is None else C.SPECIAL_STYLE_VARIANTS[table][i]
+
+
+def basement_style(style: dict | None, finished: bool = False,
+                   seed: int | None = None) -> dict:
+    """The building's style with concrete walls and floors: the industrial kit,
+    or for a house's cellar (`seed` given) one of CELLAR_WALLS laid over
+    concrete. A finished cellar keeps the house's own interior walls and floor."""
+    from . import catalog as C
+    plant = _cellar_walls(seed)
+    concrete = C.SPECIAL_STYLES["industrial"]
     out = dict(style or {})
     out.update(exterior=plant["exterior"], roof=None, trim=None, shutters=None,
                grime=None, windows_by_levels=None)
     if not (finished and out.get("interior") and out.get("floor")):
-        out.update(interior=plant["interior"], floor=plant["floor"])
+        out.update(interior=plant["interior"], floor=concrete["floor"])
     out.setdefault("name", "basement")
     return out
 
 
 def render_basement(b: Basement, label: str, style: dict | None) -> str:
     from .tbx import render_tbx
-    return render_tbx(b.building, label, basement_style(style, b.finished), roof=False)
+    return render_tbx(b.building, label, basement_style(style, b.finished, b.seed), roof=False)

@@ -16,7 +16,7 @@ import zlib
 from xml.sax.saxutils import quoteattr
 
 from . import catalog as C
-from .layout import ROOM_STYLE, STAIR_RUN, Building, Plan, _erika_ready, roof_rects
+from .layout import ROOM_STYLE, STAIR_RUN, Building, Plan, _erika_ready, _melos_ready, roof_rects
 
 
 def _stable_seed(*parts) -> int:
@@ -40,16 +40,19 @@ def _attrs(pairs: list[tuple[str, object]]) -> str:
                    for k, v in pairs)
 
 
-def _roomless_tbx_header(width: int, height: int) -> list[str]:
-    """Write the standard header and tile entries for a roomless TBX."""
+def _roomless_tbx_header(width: int, height: int, extra_entries=(),
+                         roof_idx: tuple[int, int, int] | None = None) -> list[str]:
+    """Write the standard header and tile entries for a roomless TBX. A roofed
+    one adds `extra_entries` (its roof kit) and names their `roof_idx`."""
+    cap, slope, top = roof_idx or (C.ROOF_CAP, C.ROOF_SLOPE, C.ROOF_TOP)
     attrs = [("version", VERSION), ("width", width), ("height", height),
              ("ExteriorWall", C.EXTERIOR_WALL), ("ExteriorWallTrim", 0),
              ("Door", C.DOOR), ("DoorFrame", C.DOOR_FRAME), ("Window", C.WINDOW),
              ("Curtains", C.CURTAINS), ("Shutters", 0), ("Stairs", C.STAIRS),
-             ("RoofCap", C.ROOF_CAP), ("RoofSlope", C.ROOF_SLOPE),
-             ("RoofTop", C.ROOF_TOP), ("GrimeWall", 0)]
+             ("RoofCap", cap), ("RoofSlope", slope),
+             ("RoofTop", top), ("GrimeWall", 0)]
     out = ['<?xml version="1.0" encoding="UTF-8"?>', f"<building{_attrs(attrs)}>"]
-    for entry in C.TILE_ENTRIES:
+    for entry in list(C.TILE_ENTRIES) + list(extra_entries):
         out.append(f' <tile_entry category={quoteattr(entry["category"])}>')
         for enum_name, tile in entry["tiles"].items():
             out.append(f'  <tile enum={quoteattr(enum_name)} tile={quoteattr(tile)}/>')
@@ -101,7 +104,8 @@ MANY_WING_PEAK30_MAX = 7
 MANY_WING_MIN_PITCHED_AREA = 8
 
 
-def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False, gable_only: bool = False):
+def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False,
+                 gable_only: bool = False, hip_only: bool = False):
     """(RoofType, Depth, caps, (x, y, w, h)) for each roof over a footprint.
 
     Flat roofs are never capped: at depth three a cap is a storey-high wall of
@@ -122,6 +126,20 @@ def _roof_pieces(rects, peaked: bool, roof30: bool = True, shallow: bool = False
         tooth = len(rects) >= MANY_WING_RECTS and rw * rh < MANY_WING_MIN_PITCHED_AREA
         if not peaked or across < NARROW_PEAK_MIN or tooth:
             out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+            continue
+        if hip_only:
+            odd = across if across % 2 else across - 1
+            if not roof30 or not single or odd < 3 or odd > 11:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh)))
+                continue
+            along_x = rw >= rh
+            box = ((rx, ry + (rh - odd), rw, odd) if along_x
+                   else (rx + (rw - odd), ry, odd, rh))
+            if along_x and rh != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw, rh - odd)))
+            elif not along_x and rw != odd:
+                out.append(("FlatTop", "Three", dict(_NO_CAPS), (rx, ry, rw - odd, rh)))
+            out.append(("Peak30Quad", "Zero", dict(_NO_CAPS), box))
             continue
         along_x = rw >= rh
         # a narrow wing (2-3 across) takes a low 45-degree roof rather than a flat one
@@ -493,11 +511,16 @@ def render_tbx(plan: Plan | Building, name: str,
     glazed: set[tuple[int, int, str]] = set()
     user_tiles: dict[int, dict[tuple[int, int], str]] = {}
     store_ext = store_int = store_door = 0
-    erika_front = bool(front_idx and C.ERIKA_STOREFRONTS and storeys[0].shop_front
-                       and _erika_ready())
+    erika = _erika_ready()
+    melos = _melos_ready()
+    storefronts = (
+        (list(C.ERIKA_STOREFRONTS) if erika else [])
+        + (list(getattr(C, "MELOS_STOREFRONTS", ())) if melos else [])
+    )
+    erika_front = bool(front_idx and storefronts and storeys[0].shop_front)
     if erika_front:
         rng = random.Random(name)
-        ext, inte, door = rng.choice(C.ERIKA_STOREFRONTS)
+        ext, inte, door = rng.choice(storefronts)
         store_ext, store_int, store_door = _add(entries, ext), _add(entries, inte), _add(entries, door)
         # A one-tile run is a step in a slanted wall, not a shop window.
         runs = [r for r in _storefront_runs(storeys[0], storeys[0].doors) if r[3] >= 2]
@@ -513,7 +536,11 @@ def render_tbx(plan: Plan | Building, name: str,
                 or (r[0] == "W" and (r[1] >= len(grid[0]) or not grid[r[2]][r[1]]))]
         if seen:
             d, fixed, start, length = max(seen, key=lambda r: r[3])
-            fits = [s for s in C.ERIKA_SIGNS.get(d, ()) if len(s) <= length]
+            signs = (
+                (list(C.ERIKA_SIGNS.get(d, ())) if erika else [])
+                + (list(getattr(C, "MELOS_SIGNS", {}).get(d, ())) if melos else [])
+            )
+            fits = [s for s in signs if len(s) <= length]
             if fits:
                 sign = rng.choice(fits)
                 first = start + (length - len(sign)) // 2
@@ -959,9 +986,12 @@ def render_tbx(plan: Plan | Building, name: str,
                     for x, v in enumerate(row)] for y, row in enumerate(storey.grid)]
         if roof and any(any(row) for row in exposed):
             rects = roof_rects(exposed)
+            sname = str(style.get("name", "")) if style else ""
+            hip_only = bool(style and not garage_only
+                            and ("melos_tiles_walls_" in sname or "erika_" in sname))
             for roof_type, depth, cap, (rx, ry, rw, rh) in _roof_pieces(
                     rects, peaked and (above is None or PITCH_LOWER_ROOFS), roof30,
-                    gable_only=garage_only):
+                    gable_only=garage_only, hip_only=hip_only):
                 roof_attrs = [
                     ("type", "roof"),
                     ("width", rw),

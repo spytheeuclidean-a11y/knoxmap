@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import random
 
-from . import catalog as C
+from . import catalog as C, personas
 
 OPPOSITE = {"N": "S", "S": "N", "W": "E", "E": "W"}
 STEP = {"N": (0, -1), "S": (0, 1), "W": (-1, 0), "E": (1, 0)}
@@ -2473,14 +2473,42 @@ def household(rng: random.Random, plan) -> dict:
     roll = rng.random()
     family = FAMILY_SHARE.get(plan.kind, 0.3)
     kind = "family" if roll < family else "retired" if roll < family + retired else "adults"
-    return {"kind": kind, "teen": kind == "family" and rng.random() < TEEN_SHARE,
+    home = {"kind": kind, "teen": kind == "family" and rng.random() < TEEN_SHARE,
             "siblings": kind == "family" and rng.random() < SIBLINGS_SHARE,
             "baby": kind == "family" and rng.random() < BABY_SHARE}
+    # And how they live (knoxbuild/personas.py): a pianist, a hoarder, a gamer.
+    profile = plan.profile
+    who = {"household": kind, "plan_kind": plan.kind,
+           "wealth": getattr(profile, "wealth", 0.5), "wear": getattr(profile, "wear", 0.4),
+           "setting": getattr(profile, "setting", "suburban"), "age": age}
+    home["persona"] = personas.pick(rng, who)
+    home["persona2"] = personas.second(rng, who, home["persona"])
+    return home
 
 
 def for_household(base: list[str], room, home: dict, kid_rooms: dict,
                   rng: random.Random) -> list[str]:
-    """The room's wishlist for who lives there."""
+    """The room's wishlist for who lives there, and how they live."""
+    out = _for_family(base, room, home, kid_rooms, rng)
+    if room.kind == "hall":
+        return out           # a hall's pieces are chosen by hall_pieces
+    for name in (home.get("persona"), home.get("persona2")):
+        out = personas.apply(out, room.kind, name, rng)
+    return out
+
+
+def hall_pieces(pieces: tuple, home: dict, rng: random.Random) -> tuple:
+    """A hall's pieces, with what the household adds."""
+    out = list(pieces)
+    for name in (home.get("persona"), home.get("persona2")):
+        out = personas.apply(out, "hall", name, rng)
+    # A piece the hall already tries is not tried twice: more pieces than the
+    # hall was sized for leave a pocket of floor no one can reach.
+    return tuple(dict.fromkeys(out))
+
+
+def _for_family(base: list[str], room, home: dict, kid_rooms: dict,
+                rng: random.Random) -> list[str]:
     posters = list(getattr(C, "POSTERS", ()))
     kind = room.kind
     if home["kind"] == "retired":

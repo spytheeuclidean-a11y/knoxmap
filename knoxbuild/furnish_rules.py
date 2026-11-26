@@ -6,10 +6,10 @@ from collections import deque
 ESSENTIAL, SECONDARY, DECORATION = 0, 1, 2
 
 DECORATION_ROLES = (
-    "plant", "erika_plant", "lamp", "shelf", "bookshelf", "erika_shelves",
-    "painting", "mirror", "erika_art", "erika_ad", "rug", "shag_rug",
-    "bath_mat", "corkboard", "bin", "box", "hamper", "coat_rack", "sale_sign",
-    "door_mat")
+    "plant", "erika_plant", "melos_plant", "lamp", "shelf", "bookshelf",
+    "erika_shelves", "melos_shelves", "painting", "mirror", "erika_art",
+    "erika_ad", "melos_art", "rug", "shag_rug", "bath_mat", "corkboard",
+    "bin", "box", "hamper", "coat_rack", "sale_sign", "door_mat")
 
 _KITCHEN = ("fridge", "stove", "kitchen_sink", "counter")
 _BED = ("double_bed", "bed", "bunk_bed")

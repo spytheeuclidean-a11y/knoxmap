@@ -45,9 +45,23 @@ class Garages(unittest.TestCase):
             xs = sorted(x for x, _y, _d in tiles)
             self.assertEqual(xs, list(range(xs[0], xs[0] + 3)))
             self.assertTrue(all(st.grid[y - 1][x] in garage for x, y, _d in tiles))
+            g = garage[0]
+            cells = [(x, y) for y in range(h) for x in range(w) if st.grid[y][x] == g]
+            gxs = [x for x, _ in cells]
+            gys = [y for _, y in cells]
+            self.assertGreaterEqual(max(gxs) - min(gxs) + 1, 5)
+            self.assertGreaterEqual(max(gys) - min(gys) + 1, 5)
             # the house still has a door that is not the garage's
             self.assertTrue([d for d in st.doors if d not in tiles])
         self.assertGreater(seen, 20)
+
+    def test_detached_garages_are_at_least_5x5(self):
+        for w, h in ((4, 4), (4, 5), (5, 4), (6, 4), (6, 6)):
+            b = layout.build_building(width=w, height=h, seed=1, levels=1, kind="garage", street="S")
+            st = b.storeys[0]
+            self.assertGreaterEqual(len(st.grid[0]), 5)
+            self.assertGreaterEqual(len(st.grid), 5)
+            self.assertEqual(min(len(st.grid[0]), len(st.grid)) % 2, 1)
 
     def test_a_garage_is_not_a_way_through_and_the_house_joins_up(self):
         for _seed, _w, _h, st in houses():

@@ -125,7 +125,7 @@ CORE_WALL_ART_CIVIC: tuple = ()
 CORE_FACADE_SHARE = 4
 # One piece of art per this many wall slots. Hanging one on every slot filled
 # a corridor edge to edge and made pictures the commonest thing in a house.
-CORE_ART_EVERY = 3
+CORE_ART_EVERY = 6
 # Pictures and mirrors a room may hold, however long its wishlist, and how
 # often a room gets one at all. They repeat where other things do not and
 # they are on nearly every room's list, so almost every room had one or two
@@ -136,7 +136,7 @@ WALL_ART_CAP = 1
 # house hangs one. Pictures take wall squares, not floor, so this costs a room
 # nothing but the wall.
 MANSION_ART_CAP = 3
-WALL_ART_CHANCE = 0.55
+WALL_ART_CHANCE = 0.28
 # Workplaces hang nothing. Knox County's school rooms carry 0.19 pieces of
 # wall decoration per 10 m2 and ours sat at 0.21, but with Erika's Tiles
 # installed the substitution below turns every picture and mirror into one
@@ -160,7 +160,12 @@ WAREHOUSE_ROLES = {"metal_rack", "crate"}
 # out as a laundromat, coin washers down one wall and dryers down the other.
 HOME_KINDS = {None, "house", "apartment", "basement_house", "basement_house_rec",
               "basement_house_workshop", "basement_house_shelter",
-              "basement_house_cellar"}
+              "basement_house_cellar", "basement_house_gym", "basement_house_utility",
+              "basement_house_games", "basement_house_guest", "basement_house_study",
+              "basement_house_playroom"}
+# A home's cellar may still fit out these rooms the way a business does: its
+# gym with treadmills and weights, its bar with a counter and a pool table.
+HOME_TRADE_ROOMS = {"gym", "bar"}
 # What a home puts in a box room instead.
 HOME_STORE = {"metal_rack": "shelf", "crate": "dresser"}
 CIVIC_KINDS = {"police", "civic", "school", "medical", "fire", "fire_police",
@@ -834,7 +839,8 @@ NORTH_WEST_ONLY = (
     - _EITHER_WAY
     | {"painting", "mirror", "shelf"}
     | set(getattr(C, "ERIKA_WALL_ART", ()))
-    | set(getattr(C, "ERIKA_SHOP_ADS", ())))
+    | set(getattr(C, "ERIKA_SHOP_ADS", ()))
+    | set(getattr(C, "MELOS_WALL_ART", ())))
 # With Erika's Tiles: shops hang its drinks and magazine posters instead of
 # paintings, and these rooms get a drinks machine.
 SHOP_DECOR_ROOMS = {"generalstore", "conveniencestore", "clothingstore", "cafe", "bar",
@@ -844,15 +850,18 @@ VENDING_ROOMS = {"cafe", "lobby", "gym", "classroom", "clinic", "breakroom"}
 ERIKA_SHELF_SHARE = 0.5
 
 _ERIKA: list[bool] = []
+_MELOS: list[bool] = []
 # Set from the map's settings before anything is laid out. None means nobody
 # has said, and the answer is whatever is installed.
 _ERIKA_ALLOWED: list[bool] = []
+_MELOS_ALLOWED: list[bool] = []
 
 
 def use_mod_tiles(allowed: bool) -> None:
-    """Say whether this map may use Erika's Tiles, whatever is installed.
+    """Say whether this map may use mod tile packs (Erika's Tiles, Melos Tiles),
+    whatever is installed.
 
-    A map built with the mod's tiles needs the mod to look right, and a player
+    A map built with a mod's tiles needs the mod to look right, and a player
     who would rather keep to the game's own art - or hand the map to somebody
     who has not subscribed - has no way back once it is built. The settings
     carry the answer (vanilla_tiles), and the build sets it here before the
@@ -860,6 +869,8 @@ def use_mod_tiles(allowed: bool) -> None:
     """
     _ERIKA_ALLOWED[:] = [bool(allowed)]
     _ERIKA.clear()
+    _MELOS_ALLOWED[:] = [bool(allowed)]
+    _MELOS.clear()
 
 
 def _erika_ready() -> bool:
@@ -875,6 +886,21 @@ def _erika_ready() -> bool:
         except Exception:      # noqa: BLE001 - no tools, no mod tiles
             _ERIKA.append(False)
     return _ERIKA[0]
+
+
+def _melos_ready() -> bool:
+    """Whether buildings may use Melos Tiles; asked once per process."""
+    if _MELOS_ALLOWED and not _MELOS_ALLOWED[0]:
+        return False
+    if not _MELOS:
+        import os
+        try:
+            import knoxpaths
+            _MELOS.append(os.environ.get("KNOXMAP_NO_MOD_TILES") != "1"
+                          and knoxpaths.melos_tiles_ready())
+        except Exception:      # noqa: BLE001 - no tools, no mod tiles
+            _MELOS.append(False)
+    return _MELOS[0]
 
 
 def _is_wall_piece(role: str) -> bool:
@@ -1377,7 +1403,7 @@ def _seat_the_table(plan: Plan, idx: int, keep_clear: set[tuple[int, int]],
 # Pieces a room has one of, however big it is.
 # Erika's Tiles name its assets by family; these are the prefixes the
 # predicates below match on. Adding a family means adding it here.
-ERIKA_ART_PREFIXES = ("erika_art", "erika_ad")
+ERIKA_ART_PREFIXES = ("erika_art", "erika_ad", "melos_art")   # Melos art hangs the same way
 ERIKA_PLANT_PREFIX = "erika_plant"
 ERIKA_VENDING_PREFIX = "erika_vending"
 ONCE = {"sofa", "tv", "double_bed", "bed", "bath", "toilet", "stove", "fridge", "washer",
@@ -1766,8 +1792,16 @@ def _furnish(plan: Plan, storey_rng: random.Random,
                         laid += 1
                         break
             if plan.kind in ("house", None) and not dedicated_stair_core:
+                home = households.get(r.unit)
+                if home is None:
+                    seed = plan.profile.seed if plan.profile else home_seed
+                    home = households[r.unit] = interiors.household(
+                        random.Random(f"{seed}:{r.unit}:household"), plan)
                 _furnish_hallway(plan, idx, room_cells, slots, on_facade, door_tiles,
-                                 stair_tiles, door_edges, stairs, storey_rng)
+                                 stair_tiles, door_edges, stairs,
+                                 random.Random(f"{home_seed}:{idx}:hall_rng"),
+                                 pieces=interiors.hall_pieces(HALL_PIECES, home, random.Random(
+                                     f"{home_seed}:{idx}:hall")))
             if plan.kind not in HOUSE_LIKE_KINDS:
                 # Keep stair ends, lift doors and narrow hallway necks unobstructed.
                 core_no_go = set(keep_clear) | {
@@ -1842,7 +1876,8 @@ def _furnish(plan: Plan, storey_rng: random.Random,
         eatery = r.kind in interiors.DINING_ROOMS
         salon = r.kind == "aesthetic" and plan.kind not in HOME_KINDS
         trade = (TRADE_LAYOUTS.get(r.kind)
-                 if plan.kind not in HOME_KINDS and plan.kind != "apartment" else None)
+                 if (plan.kind not in HOME_KINDS or r.kind in HOME_TRADE_ROOMS)
+                 and plan.kind != "apartment" else None)
         trade_fitted = False
         commercial_kitchen = r.kind in interiors.COMMERCIAL_KITCHENS
         if r.kind in ("garage", "mechanic", "firegarage") and interiors.furnish_service_bay(
@@ -1941,22 +1976,30 @@ def _furnish(plan: Plan, storey_rng: random.Random,
         # game's own tiles, so a mansion hangs a different print in each room.
         if plan.grand and r.kind in MANSION_EXTRA:
             base = base + MANSION_EXTRA[r.kind]
-        if _erika_ready():
-            # With Erika's Tiles installed, pictures and plants come from its
-            # far larger range, so no two living rooms hang the same print.
+        erika = _erika_ready()
+        melos = _melos_ready()
+        if erika or melos:
+            # With Erika's Tiles and/or Melos Tiles installed, pictures, plants,
+            # and shelves come from their far larger range, so no two living rooms
+            # hang the same print.
             shop = r.kind in SHOP_DECOR_ROOMS
-            base = [rng.choice(C.ERIKA_SHOP_ADS) if role == "painting" and shop and C.ERIKA_SHOP_ADS
-                    else rng.choice(C.ERIKA_WALL_ART)
-                    if role in ("painting", "mirror") and C.ERIKA_WALL_ART
+            wall_art = (list(C.ERIKA_WALL_ART) if erika else []) + (list(C.MELOS_WALL_ART) if melos else [])
+            plants = (list(C.ERIKA_PLANTS) if erika else []) + (list(C.MELOS_PLANTS) if melos else [])
+            shelves = (list(C.ERIKA_SHELVES) if erika else []) + (list(C.MELOS_SHELVES) if melos else [])
+            shop_ads = list(C.ERIKA_SHOP_ADS) if erika else []
+            vending = list(C.ERIKA_VENDING) if erika else []
+            base = [rng.choice(shop_ads) if role == "painting" and shop and shop_ads
+                    else rng.choice(wall_art)
+                    if role in ("painting", "mirror") and wall_art
                     and plan.kind not in ART_FREE_KINDS
                     and not (role == "mirror" and (salon or r.kind == "bathroom"))
-                    else rng.choice(C.ERIKA_PLANTS)
-                    if role == "plant" and C.ERIKA_PLANTS and plan.kind in HOME_KINDS
-                    else rng.choice(C.ERIKA_SHELVES)
-                    if role == "bookshelf" and C.ERIKA_SHELVES and rng.random() < ERIKA_SHELF_SHARE
+                    else rng.choice(plants)
+                    if role == "plant" and plants and plan.kind in HOME_KINDS
+                    else rng.choice(shelves)
+                    if role == "bookshelf" and shelves and rng.random() < ERIKA_SHELF_SHARE
                     else role for role in base]
-            if r.kind in VENDING_ROOMS and C.ERIKA_VENDING:
-                base = base + [rng.choice(C.ERIKA_VENDING)]
+            if r.kind in VENDING_ROOMS and vending:
+                base = base + [rng.choice(vending)]
         # Scale the wishlist with floor area, or a 12x9 living room ends up
         # with four items rattling around in it.
         # Knox County's rooms hold 8-13 pieces per 10 m2 of floor (counting
@@ -1996,9 +2039,9 @@ def _furnish(plan: Plan, storey_rng: random.Random,
         art_chance = WALL_ART_CHANCE
         art_cap = WALL_ART_CAP
         if plan.profile:
-            art_chance = max(0.2, min(0.85,
-                                     art_chance + (plan.profile.wealth - 0.5) * 0.25
-                                     - plan.profile.wear * 0.12))
+            art_chance = max(0.1, min(0.45,
+                                     art_chance + (plan.profile.wealth - 0.5) * 0.15
+                                     - plan.profile.wear * 0.08))
             if plan.profile.wealth >= 0.78 and plan.profile.wear < 0.3:
                 art_cap = 2
         if plan.grand:
@@ -2416,6 +2459,32 @@ FLOOR_CHOICES = {
 # are one tile and nothing else - and the offices it does carpet are left
 # uncarpeted here on purpose.
 KIND_FLOOR_CHOICES = {
+    # A house's cellar. Whatever is not lived in is bare concrete or hard tile,
+    # even next to a finished room: the store, the laundry, the utility room.
+    "basement_house": {"storage": ["concrete"], "laundry": ["concrete", "tile_grey"]},
+    "basement_house_rec": {"storage": ["concrete"], "laundry": ["tile_grey", "concrete"],
+                           "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_workshop": {"storage": ["concrete"], "laundry": ["concrete"]},
+    "basement_house_shelter": {"storage": ["concrete"], "bathroom": ["tile_grey", "concrete"]},
+    "basement_house_cellar": {"storage": ["concrete"], "laundry": ["concrete", "tile_grey"]},
+    "basement_house_utility": {"janitor": ["concrete"], "storage": ["concrete"],
+                               "laundry": ["tile_grey", "concrete"]},
+    "basement_house_gym": {"gym": ["wood_dark", "wood_grey", "concrete"],
+                           "storage": ["concrete"], "laundry": ["tile_grey", "concrete"],
+                           "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_games": {"bar": ["wood_dark", "carpet_brown", "carpet_grey"],
+                             "livingroom": ["carpet_brown", "carpet_grey", "wood_mid"],
+                             "storage": ["concrete"], "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_guest": {"bedroom": ["carpet_beige", "carpet_grey", "wood_pale"],
+                             "livingroom": ["carpet_grey", "wood_pale"],
+                             "kitchen": ["tile_small", "tile_grey"],
+                             "storage": ["concrete"], "bathroom": ["tile_white", "tile_cream"]},
+    "basement_house_study": {"office": ["carpet_grey", "wood_mid", "carpet_brown"],
+                             "livingroom": ["carpet_grey", "wood_mid"],
+                             "storage": ["concrete"], "bathroom": ["tile_white", "tile_grey"]},
+    "basement_house_playroom": {"kidsbedroom": ["carpet_blue", "carpet_green", "carpet_red"],
+                                "livingroom": ["carpet_grey", "carpet_brown"],
+                                "storage": ["concrete"], "bathroom": ["tile_white", "tile_cream"]},
     "garage": {
         "garage": ["concrete"],
         "mechanic": ["concrete"],
@@ -2942,16 +3011,20 @@ def _furnish_hallway(plan: Plan, idx: int, room_cells: set, slots: list,
                for c in _cells_for(role, x, y, o)}
 
     def joined(down: set) -> bool:
-        if not ways:
+        # Every door and stair, and every bare tile between them: a pocket of
+        # floor walled in by two pieces is a hole in the hall.
+        floor = room_cells - down - stair_tiles
+        start = ways[0] if ways else next(iter(floor), None)
+        if start is None:
             return True
-        seen, todo = {ways[0]}, [ways[0]]
+        seen, todo = {start}, [start]
         while todo:
             cx, cy = todo.pop()
             for nx, ny in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
                 if (nx, ny) in room_cells and (nx, ny) not in down and (nx, ny) not in seen:
                     seen.add((nx, ny))
                     todo.append((nx, ny))
-        return all(w in seen for w in ways)
+        return all(w in seen for w in ways) and floor <= seen
 
     roles = [r for r in (pieces or HALL_PIECES) if r in C.FURNITURE]
     want = most or min(HALL_MAX_PIECES, max(2, len(room_cells) // HALL_PIECE_EVERY))

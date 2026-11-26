@@ -313,6 +313,11 @@ def _setup_report() -> dict:
          "fix": f"Subscribe to it on the Steam Workshop and run {setup} again for glass shop "
                 "fronts and signs, street signs, and far more varied pictures, posters and "
                 "plants. Maps made with it require it."},
+        {"id": "melos_tiles", "ok": knoxpaths.melos_tiles_ready(),
+         "label": "Melos Tiles (optional)",
+         "fix": f"Subscribe to Melos Tiles for Miles (2879745353) on the Steam Workshop and run "
+                f"{setup} again for hundreds more paintings, plants, shelves, shop fronts and "
+                "signs alongside Erika's Tiles. Maps made with it require it."},
     ]
     return {"ready": all(c["ok"] for c in checks), "checks": checks,
             "optional": optional, "setupCommand": setup,
@@ -570,6 +575,9 @@ def api_server_setup():
     if rec.get("needsErika") or _mod_uses_erika(rec.get("modRoot")):
         extra.append(knoxpaths.ERIKAS_TILES_MOD_ID)
         workshop.append(knoxpaths.ERIKAS_TILES_WORKSHOP_ID)
+    if rec.get("needsMelos") or _mod_uses_melos(rec.get("modRoot")):
+        extra.append(knoxpaths.MELOS_TILES_MOD_ID)
+        workshop.append(knoxpaths.MELOS_TILES_WORKSHOP_ID)
     if _mod_requires_airport(rec.get("modRoot")):
         for req_mod, req_wid in knoxpaths.AIRPORT_REQUIRED_MODS:
             extra.append(req_mod)
@@ -612,13 +620,22 @@ def _mod_uses_erika(mod_root) -> bool:
     """Whether the installed mod's cells carry Erika's tiles, read from the
     mod rather than remembered: a map installed by an older version has no
     note of it either way."""
+    return _mod_uses_tile_prefix(mod_root, b"_erika_")
+
+
+def _mod_uses_melos(mod_root) -> bool:
+    """Whether the installed mod's cells carry Melos tiles."""
+    return _mod_uses_tile_prefix(mod_root, b"melos_tiles_")
+
+
+def _mod_uses_tile_prefix(mod_root, prefix: bytes) -> bool:
     from pathlib import Path
 
     if not mod_root:
         return False
     try:
         for header in Path(str(mod_root)).rglob("*.lotheader"):
-            if b"_erika_" in header.read_bytes():
+            if prefix in header.read_bytes():
                 return True
     except OSError:
         return False
