@@ -104,6 +104,21 @@ class LivedInHouseStructuresTests(unittest.TestCase):
         bad = [(8, 13, 0, yards.PORCH_LIGHT_LAYER, yards.WALL_AC_UNIT["W"])]
         self.assertTrue(yards.verify_exterior_props(bad, occ_bytes, 30, 30, window_tiles=windows))
 
+    def test_wall_ac_keeps_clear_of_garage_doors(self):
+        import numpy as np
+        occ = np.zeros((30, 30), dtype=np.uint8)
+        occ[5:13, 5:15] = 1
+        occ_bytes = bytearray(occ.tobytes())
+        garage = {(8, 13)}
+        lights = []
+        for seed in range(60):
+            yards._add_exterior_house_props(
+                5, 5, 10, 8, [], set(), occ_bytes, 30, 30,
+                random.Random(seed), lights, garage)
+        ac = {t[4] for t in yards.WALL_AC_UNIT.values()}
+        near = {(8 + dx, 13 + dy) for dx in (-1, 0, 1) for dy in (-1, 0, 1)}
+        self.assertFalse([t for t in lights if t[4] in ac and (t[0], t[1]) in near])
+
     def test_residential_front_door_opens_into_hall(self):
         from knoxbuild import layout
 
