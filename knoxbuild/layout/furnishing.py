@@ -2058,7 +2058,8 @@ def _furnish(plan: Plan, storey_rng: random.Random,
             # Pictures and mirrors are the one thing that repeats freely, so
             # scaling the list with floor area turned a big room into a
             # gallery. Everything else keeps its share.
-            if role in ("painting", "mirror") or role.startswith(ERIKA_ART_PREFIXES):
+            if ((role in ("painting", "mirror") or role.startswith(ERIKA_ART_PREFIXES))
+                    and not (role == "mirror" and r.kind == "bathroom")):   # a basin has its mirror
                 if art >= art_cap:
                     continue
                 art += 1
