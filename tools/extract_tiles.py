@@ -138,6 +138,47 @@ def read_tilesets_txt(path: str) -> tuple[dict[str, tuple[int, int]],
     return sizes, packs
 
 
+def read_tiles_bin(path: str) -> list[tuple[str, str, int, int, dict[int, dict[str, str]]]]:
+    """Parse a binary Project Zomboid ``.tiles`` definition file.
+
+    Returns ``[(sheet_name, file_name, cols, rows, {tile_idx: props}), ...]``.
+    """
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:4] != b"tdef":
+        raise ValueError(f"Not a binary .tiles file: {path}")
+    pos = 8  # skip magic + version
+    n_sets = struct.unpack_from("<i", data, pos)[0]
+    pos += 4
+
+    def read_line() -> str:
+        nonlocal pos
+        end = data.index(b"\n", pos)
+        s = data[pos:end].decode("utf-8", errors="replace")
+        pos = end + 1
+        return s
+
+    sets = []
+    for _ in range(n_sets):
+        name = read_line()
+        fname = read_line()
+        cols, rows, _unk, n_tiles = struct.unpack_from("<4i", data, pos)
+        pos += 16
+        tiles: dict[int, dict[str, str]] = {}
+        for idx in range(n_tiles):
+            n_props = struct.unpack_from("<i", data, pos)[0]
+            pos += 4
+            if n_props > 0:
+                props = {}
+                for _ in range(n_props):
+                    k = read_line()
+                    v = read_line()
+                    props[k] = v
+                tiles[idx] = props
+        sets.append((name, fname, cols, rows, tiles))
+    return sets
+
+
 def extract_pack(pack_path: str, catalog: dict, wanted: set,
                  out_dir: str, merge: bool = False) -> set:
     """Write every wanted sheet this pack holds. Returns the names written.

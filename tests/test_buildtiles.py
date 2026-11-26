@@ -307,6 +307,18 @@ class AdditionalBuildingRulesTests(unittest.TestCase):
         self.assertIn("iwA_0", world[(4, 2, 0)])
         self.assertNotIn("ew_0", world[(4, 2, 0)])
 
+    def test_adjacent_house_cannot_erase_half_of_an_interior_corner(self):
+        from knoxbuild.buildtiles import compose_lots
+
+        house = parse_tbx(tbx(4, 4, [(grid(4, 4), [])]))
+        corner = (4, 2, 0)
+        right = (house, 4, 2, 0)
+        left = (house, 0, 0, 0)
+        expected = compose_lots([right])[corner]
+        self.assertIn("iwA_2", expected)
+        for lots in ([right, left], [left, right]):
+            self.assertEqual(compose_lots(lots)[corner], expected)
+
 
 if __name__ == "__main__":
     unittest.main()

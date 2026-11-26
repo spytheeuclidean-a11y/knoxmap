@@ -501,6 +501,7 @@ def configure_tools(tools: Path, game: Path | None) -> None:
             prune_tilesets.main(["prune_tilesets", str(tilesets), str(two_x)])
 
         add_erikas_tiles(tools, tilesets, two_x)
+        add_melos_tiles(tools, tilesets, two_x)
 
     # The rules last, and whether or not there is a game: the kerbs and street
     # furniture need no artwork, and the tree rules say what they are missing
@@ -573,6 +574,63 @@ def add_erikas_tiles(tools: Path, tilesets: Path, two_x: Path) -> None:
     if add:
         tilesets.write_text(text.rstrip("\n") + "\n" + add, encoding="utf-8")
     say(f"      Erika's Tiles set up ({len(catalog)} sheets)")
+
+
+def add_melos_tiles(tools: Path, tilesets: Path, two_x: Path) -> None:
+    """Melos Tiles for Miles, if subscribed: extract its KnoxMap-used sheets
+    into the map tools so maps can use them alongside or without Erika's Tiles."""
+    import gzip
+    import json
+
+    from tools import extract_tiles
+
+    media = knoxpaths.melos_tiles_media()
+    if media is None:
+        say("      Melos Tiles not installed - skipping")
+        return
+    cat_path = Path(__file__).resolve().parent / "knoxbuild" / "data" / "melos_catalog.json.gz"
+    if not cat_path.is_file():
+        say("      Melos catalog missing - skipping")
+        return
+    with gzip.open(cat_path, "rt", encoding="utf-8") as f:
+        wanted = set(json.load(f).get("MELOS_SHEETS", ()))
+    if not wanted:
+        return
+
+    pairs = [
+        ("melos_tiles_for_miles_def1.tiles", "melos_tiles_for_miles1.pack"),
+        ("melos_tiles_for_miles_def2.tiles", "melos_tiles_for_miles2.pack"),
+    ]
+    catalog: dict[str, tuple[int, int]] = {}
+    pack_of: dict[str, str] = {}
+    for def_name, pack_name in pairs:
+        def_path = media / def_name
+        pack_path = media / "texturepacks" / pack_name
+        if not def_path.is_file() or not pack_path.is_file():
+            continue
+        for name, _fname, cols, rows, _tiles in extract_tiles.read_tiles_bin(str(def_path)):
+            if name in wanted:
+                catalog[name] = (cols, rows)
+                pack_of[name] = pack_name
+
+    for pack_name in ("melos_tiles_for_miles1.pack", "melos_tiles_for_miles2.pack"):
+        missing = {n for n, p in pack_of.items()
+                   if p == pack_name and not (two_x / f"{n}.png").exists()}
+        if missing:
+            with contextlib.redirect_stdout(io.StringIO()):
+                extract_tiles.extract_pack(
+                    str(media / "texturepacks" / pack_name),
+                    catalog, missing, str(two_x),
+                )
+
+    text = tilesets.read_text(encoding="utf-8", errors="replace")
+    add = "".join(
+        f"tileset\n{{\n    file = {pack_of[n]}/{n}\n    size = {c},{r}\n}}\n"
+        for n, (c, r) in catalog.items() if f"/{n}\n" not in text
+    )
+    if add:
+        tilesets.write_text(text.rstrip("\n") + "\n" + add, encoding="utf-8")
+    say(f"      Melos Tiles set up ({len(catalog)} sheets)")
 
 
 # ---- 5. where the game keeps mods ---------------------------------------------------

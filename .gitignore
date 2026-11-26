@@ -98,3 +98,4 @@ rust/knoxlots/fixtures/
 # Design notes and scratch from the superpowers workflow, never shipped.
 docs/superpowers/
 .superpowers/
+.test_timings.json

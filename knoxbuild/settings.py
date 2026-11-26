@@ -155,8 +155,8 @@ class Settings:
     apartment_stair_balcony: int = 2    # 0 = off, 1 = prefer an open passage, 2 = auto
     apartment_ground_floor: str = "auto"
     max_levels: int = 6
-    # 1 builds with the game's own tiles only, leaving Erika's Tiles out
-    # even when it is installed.
+    # 1 builds with the game's own tiles only, leaving mod tile packs
+    # (Erika's Tiles, Melos Tiles) out even when installed.
     vanilla_tiles: int = 0
     # Legacy Smart-mode threshold, retained for existing settings files.
     square_buildings: int = 15
