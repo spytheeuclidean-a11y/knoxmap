@@ -9,7 +9,8 @@ function dictionary(file) {
   const result = {};
   for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
     if (line.trim().startsWith('#')) continue;
-    const eq = line.indexOf('=');
+    const sep = line.indexOf(' = ');
+    const eq = sep < 0 ? line.indexOf('=') : sep + 1;
     if (eq < 0) continue;
     const key = line.slice(0, eq).trim(), value = line.slice(eq + 1).trim();
     if (key && value && key !== value) result[key] = value;
@@ -19,13 +20,11 @@ function dictionary(file) {
 
 const russian = dictionary(path.join(root, 'lang', 'russian.txt'));
 let reply = russian;
-let reloads = 0;
 const text = { nodeType: 3, nodeValue: 'reading the map data: 11,763,000 tagged nodes and ways checked' };
 const context = vm.createContext({
   Node: { TEXT_NODE: 3, ELEMENT_NODE: 1 },
   document: { addEventListener() {}, body: { nodeType: 1, childNodes: [text] } },
   MutationObserver: class { observe() {} disconnect() {} },
-  window: { location: { reload() { reloads++; } } },
   fetch: async () => ({ ok: true, json: async () => ({ strings: reply }) }),
 });
 vm.runInContext(fs.readFileSync(path.join(root, 'static', 'js', 'i18n.js'), 'utf8'), context);
@@ -51,7 +50,7 @@ vm.runInContext(fs.readFileSync(path.join(root, 'static', 'js', 'i18n.js'), 'utf
   assert.equal(attributes.label, '1 м на тайл (рекомендуется)');
   assert.equal(attributes.alt, 'План здания');
   assert.equal(attributes.value, '1');
-  assert.equal(t('Shape area'), 'Площадь фигуры');
+  assert.equal(t('Shape area'), 'Площадь выделения');
   assert.equal(t('Map area'), 'Площадь карты');
   assert.equal(t('Map data source set to auto'), 'Источник данных карты: auto');
   assert.equal(t('Map data source set to Auto'), 'Источник данных карты: Авто');
@@ -67,9 +66,14 @@ vm.runInContext(fs.readFileSync(path.join(root, 'static', 'js', 'i18n.js'), 'utf
                '«https://host/$&/x» — неверный адрес сервера HTTP(S).');
   assert.equal(t('<img src=x onerror=alert(1)>'), '<img src=x onerror=alert(1)>');
   assert.equal(t('Unknown English message'), 'Unknown English message');
+  reply = dictionary(path.join(root, 'lang', 'espanol.txt'));
+  await vm.runInContext("i18n.use('espanol', true)", context);
+  assert.equal(attributes.label, '1 m por mosaico (recomendado)');
   reply = {};
   await vm.runInContext("i18n.use('english', true)", context);
   assert.equal(t('Map data source set to auto'), 'Map data source set to auto');
-  assert.equal(reloads, 1);
+  assert.equal(text.nodeValue, 'reading the map data: 11,763,000 tagged nodes and ways checked');
+  assert.equal(attributes.label, '1 m per tile (recommended)');
+  assert.equal(attributes.alt, 'The plan of this building');
   console.log('i18n template checks passed');
 })().catch(error => { console.error(error); process.exitCode = 1; });

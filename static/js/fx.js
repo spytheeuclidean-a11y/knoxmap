@@ -17,14 +17,16 @@ const fx = (() => {
   function resetFrom() {}
 
   // ---- messages -----------------------------------------------------------
-  function toast(kind, title, msg, ms = 5000) {
+  function toast(kind, title, msg, ms = 5000, { literal = false } = {}) {
     const box = $('#toasts');
     if (!box) return;
     const el = document.createElement('div');
     el.className = `toast ${kind}`;
     el.innerHTML = '<b></b> <span></span>';
     el.querySelector('b').textContent = title;
-    el.querySelector('span').textContent = msg || '';
+    const message = el.querySelector('span');
+    if (literal) message.dataset.noTranslate = '';
+    message.textContent = msg || '';
     box.appendChild(el);
     const kill = () => el.remove();
     el.addEventListener('click', kill);
@@ -163,7 +165,7 @@ const fx = (() => {
     fail(message) {
       $('#gen-bar').parentElement.classList.remove('is-indeterminate');
       $('.gen-kicker').textContent = 'Failed';
-      $('#gen-stage').textContent = i18n.t(message);
+      $('#gen-stage').textContent = message;
       $('#gen-detail').textContent = '';
       setEta(0);
       this.hide(2500);
@@ -397,9 +399,8 @@ const fx = (() => {
     const older = versionBefore(versionParts(item.version), versionParts(current));
     if (older && versionBefore(versionParts(item.version), VERSION_MENU_SINCE)) {
       const ok = window.confirm(
-        `KnoxMap ${item.version} has no version menu. To come back, download the newest ` +
-        'KnoxMap from GitHub, or set "auto_update" to true in knoxmap_config.json. ' +
-        `Go back to ${item.version}?`);
+        i18n.t('KnoxMap {version} has no version menu. To return, download the latest KnoxMap from GitHub, or set "auto_update" to true in knoxmap_config.json.', { version: item.version })
+        + '\n\n' + i18n.t('Go back to {version}?', { version: item.version }));
       if (!ok) return;
     }
     for (const b of document.querySelectorAll('#versionList button')) b.disabled = true;
@@ -452,8 +453,7 @@ const fx = (() => {
     } else if (!data.managed) {
       versionNote('This copy of KnoxMap is a git checkout: switch versions with git.');
     } else if (!data.auto_update && !keepNote) {
-      versionNote('Automatic updates are off while you are on an older version. ' +
-                  'Choose the newest to turn them back on.');
+      versionNote('Automatic updates are off while you are on an older version. Choose the newest to turn them back on.');
     }
     for (const item of data.releases) {
       const li = document.createElement('li');

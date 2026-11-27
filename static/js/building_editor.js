@@ -363,7 +363,8 @@ function bdCopyFloorUp() {
   next.rooms = next.rooms.filter(r => r.level !== to).concat(copy);
   bdSel = null;
   bdRefresh(next, to);
-  bdNote(`This floor copied up to ${to === 0 ? 'the ground floor' : 'floor ' + to}.`);
+  const storey = to + 1;
+  bdNote(`Floor plan copied to storey ${storey}.`);
 }
 
 function bdRoomsMarkup() {
@@ -384,7 +385,7 @@ function bdRoomsMarkup() {
   const eraser = `<div class="palette-group">
       <span class="palette-head">The eraser</span>
       <button type="button" class="sketch-pick ${bdRoom === '' ? 'on' : ''}"
-        data-room="" title="Takes what is under it out of the building">
+        data-room="" title="Cut out the selected part of the building.">
         <span class="swatch" style="background:#e8e7e2"></span>
         Nothing - cut it away</button></div>`;
   return adjust + eraser + groups.map(g => `<div class="palette-group">
@@ -410,7 +411,7 @@ function drawBdStoreys() {
   const names = [];
   for (let i = 0; i < bdDesign.storeys; i += 1) {
     names.push(`<button type="button" class="sketch-pick ${i === bdLevel ? 'on' : ''}"
-      data-storey="${i}">${i === 0 ? 'Ground floor' : 'Floor ' + i}</button>`);
+      data-storey="${i}">Storey ${i + 1}</button>`);
   }
   box.innerHTML = names.join('');
 }

@@ -30,10 +30,11 @@ const PLACE_MIN_SPAN = 110;     // never zoom in closer than this many cells
 const LINK_MARGIN_CELLS = 1;    // ground either side of a link road
 const LINK_MAX_CELLS = 2500;    // a link bigger than this is a map, not a road
 
-function placeNote(text, bad) {
+function placeNote(text, bad, detail = '') {
   const box = document.getElementById('placeNote');
   if (!box) return;
   box.textContent = text || '';
+  if (detail) box.append(' ', detail);
   box.classList.toggle('bad', !!bad);
 }
 
@@ -218,7 +219,7 @@ function drawWorld() {
     ctx.lineWidth = 2;
     ctx.strokeRect(mineNow.x * k, mineNow.y * k, mineNow.w * k, mineNow.h * k);
     ctx.fillStyle = edge;
-    ctx.fillText('this map', mineNow.x * k + 3, (mineNow.y + mineNow.h) * k + 14);
+    ctx.fillText(i18n.t('This map'), mineNow.x * k + 3, (mineNow.y + mineNow.h) * k + 14);
   }
 
   // The road being drawn across the gap.
@@ -239,6 +240,8 @@ function drawWorld() {
   }
   ctx.restore();
 }
+
+document.addEventListener('knoxmap:language', drawWorld);
 
 function placeSummary() {
   const badge = document.getElementById('placeWhere');
@@ -262,20 +265,19 @@ function placeState() {
   const mine = placePicked || placeWorld.map;
   const clash = placeClashes(mine);
   const tiles = placeTiles();
-  const where = `Cell ${mine.x},${mine.y} - world tile `
-    + `${mine.x * tiles},${mine.y * tiles}.`;
+  const tileX = mine.x * tiles, tileY = mine.y * tiles;
+  const where = `Cell ${mine.x},${mine.y} — world tile ${tileX},${tileY}.`;
   const replaces = placeReplaces(mine);
   if (clash.length) {
-    placeNote(`${where} It would sit on top of ${clash.join(' and ')}, and the `
-      + 'game would read one map’s cells for the other.', true);
+    const maps = clash.join(', ');
+    placeNote(where, true, `Overlaps these maps: ${maps}.`);
   } else if (!placeWorld.lotsMatch) {
-    placeNote(`${where} The map has moved since it was compiled - compile it `
-      + 'again before installing.', true);
+    placeNote(where, true, 'The map has moved since it was compiled. Compile it again before installing.');
   } else if (placeWorld.standalone) {
-    placeNote(`${where} Standalone: the whole world is this map.`);
+    placeNote(where, false, 'Standalone: the whole world is this map.');
   } else if (replaces.length) {
-    placeNote(`${where} This replaces the ${replaces[0]} cells under it. Load the `
-      + 'map ahead of Muldraugh, KY: SERVER SETUP.txt has the lines.');
+    const count = replaces[0];
+    placeNote(where, false, `This replaces ${count} base-game cells. Load this map before Muldraugh, KY. See SERVER SETUP.txt.`);
   } else {
     placeNote(where);
   }

@@ -40,7 +40,7 @@ def entries(path: Path) -> dict[str, str]:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        english, _, theirs = line.partition("=")
+        english, _, theirs = line.partition(" = ")
         english, theirs = english.strip(), theirs.strip()
         if english:
             out[english] = theirs
@@ -56,7 +56,7 @@ class TheLanguageTemplate(unittest.TestCase):
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
-            key = line.partition("=")[0].strip()
+            key = line.partition(" = ")[0].strip()
             if key in seen:
                 duplicates.append(key)
             seen.add(key)

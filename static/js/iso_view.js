@@ -74,9 +74,9 @@
               <button type="button" class="btn btn-small is-on" data-iso-mode="town" aria-pressed="true"
                       title="Panoramic overview of the whole town with roofs"><span class="ws-clip">Town overview</span></button>
               <button type="button" class="btn btn-small" data-iso-mode="close" aria-pressed="false"
-                      title="Close-up view of the town center with roofs"><span class="ws-clip">Town center</span></button>
+                      title="Close-up of the centre of the map, with roofs"><span class="ws-clip">Map centre</span></button>
               <button type="button" class="btn btn-small" data-iso-mode="inside" aria-pressed="false"
-                      title="Full town view with all furnished building interiors and roofs removed"><span class="ws-clip">Interiors (All)</span></button>
+                      title="Show building interiors with roofs removed"><span class="ws-clip">Roofs hidden</span></button>
               <button type="button" class="btn btn-small" data-iso-mode="sector" aria-pressed="false"
                       title="Render a specific sector at 100% native in-game resolution"><span class="ws-clip">HD Sector 1:1</span></button>
             </div>
@@ -97,7 +97,7 @@
               <button type="button" class="btn btn-small btn-draw" id="isoDrawBoxBtn"
                       title="Draw an area rectangle to render in 1:1 HD with roofs or furnished interiors (Shift + Drag)"><span class="ws-clip">🔲 Draw area</span></button>
               <button type="button" class="btn btn-small btn-hd" id="isoLoadHdHere"
-                      title="Render this current view at 100% crystal-clear in-game resolution"><span class="ws-clip">🔍 Load HD here</span></button>
+                      title="Render this current view at 100% crystal-clear in-game resolution"><span class="ws-clip">Render this area in HD</span></button>
               <div class="iso-bar-group" id="isoSectorBar" hidden>
                 <details class="iso-disclosure" id="isoHdSettings">
                   <summary class="btn btn-small"><span class="ws-clip">HD settings</span></summary>
@@ -1044,8 +1044,8 @@
     let src = mapInfo.pictures[mode];
     const modeLabels = {
       town: 'Town overview',
-      close: 'Town center',
-      inside: 'Interiors (All)',
+      close: 'Map centre',
+      inside: 'Roofs hidden',
     };
     const title = `Loading ${modeLabels[mode] || mode}…`;
 

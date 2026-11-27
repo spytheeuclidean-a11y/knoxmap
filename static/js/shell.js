@@ -234,7 +234,7 @@
   // =========================== menus ===========================
   // Each item presses the control it stands for, and is greyed out when that
   // control is: the menu cannot drift from what the window can do.
-  const MENUS = ['File', 'Edit', 'View', 'Map', 'Build', 'Tools', 'Help'];
+  const MENUS = ['File', 'Edit', 'View', 'Map', 'Build workflow', 'Tools', 'Help'];
   for (const name of MENUS) {
     const m = make('div', 'ws-menu');
     m.innerHTML = `<button type="button" class="ws-clip">${name}</button><div class="ws-drop" data-menu="${name}"></div>`;
@@ -265,7 +265,7 @@
     const id = `a${actionN++}`;
     ACTIONS[id] = run;
     return `<button type="button" data-ws-act="${id}" ${o.off ? 'disabled' : ''} title="${esc(o.title || '')}">`
-      + `<span class="mark">${o.on ? (o.radio ? '•' : '✓') : ''}</span>${esc(label)}${o.key ? `<kbd>${o.key}</kbd>` : ''}</button>`;
+      + `<span class="mark">${o.on ? (o.radio ? '•' : '✓') : ''}</span>${o.literal ? `<span data-no-translate>${esc(label)}</span>` : esc(label)}${o.key ? `<kbd>${o.key}</kbd>` : ''}</button>`;
   }
   const label = t => `<div class="label">${t}</div>`;
   let myMaps = [];
@@ -280,7 +280,7 @@
       File: () => item('New map', newMap, { key: 'Ctrl+N' })
         + item('Home', goHome, { key: 'Ctrl+H' })
         + label('Open') + (myMaps.length ? myMaps.slice(0, 12).map(m =>
-            item(m.mapName, () => openTab(m.mapName), { on: m.mapName === currentMap, radio: true })).join('')
+            item(m.mapName, () => openTab(m.mapName), { on: m.mapName === currentMap, radio: true, literal: true })).join('')
           : '<div class="label" style="text-transform:none">No maps yet</div>')
         + item('Close this map', () => closeTab(currentMap), { key: 'Ctrl+W', off: !open })
         + item('Delete this map', () => (typeof deleteMap === 'function' ? deleteMap(currentMap) : null), { off: !open })
@@ -314,7 +314,7 @@
             item(b.textContent, () => b.click(), { on: b.classList.contains('is-on'), radio: true })).join('')
         + label('After building')
         + item('What was built…', () => openPop('build'), { off: !open })
-        + item('Draw a picture of it', () => click('makePictures'), { off: !open || off('makePictures') })
+        + item('Generate map images', () => click('makePictures'), { off: !open || off('makePictures') })
         + label('Panels')
         + item('Properties', () => togglePanel(props), { on: !props.hidden })
         + item('Layers', () => togglePanel(layers), { on: !layers.hidden })
@@ -331,7 +331,7 @@
             setPlacesVisible(true);
             click('landmarksBtn');
           }, { off: off('landmarksBtn') }) : ''),
-      Build: () => {
+      'Build workflow': () => {
         const n = nextAction();
         return item(n && n.run ? `Next: ${n.label}` : 'Next step', () => n && n.run && n.run(), { key: 'F5', off: !n || !n.run })
           + item('Stop', () => requestStop(), { off: !runningMap })
@@ -420,7 +420,7 @@
       panel: 'zonesPanel' },
     { id: 'change', key: 'E', icon: 'edit', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
       panel: 'editMap' },
-    { id: 'make', key: 'B', icon: 'hammer', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
+    { id: 'make', key: 'B', icon: 'hammer', label: 'Map and building tools', title: 'Build a building by hand, or draw a map from scratch' },
   ];
   const toolTabs = tools.querySelector('.ws-tool-tabs');
   const toolPanes = tools.querySelector('.ws-tool-panes');
@@ -556,7 +556,7 @@
       area: '<b>Extent</b><span>Draw it with the buttons under Tools on the left: rectangle, polygon, circle or freehand. Reshape to move its corners or turn it.</span>',
       draw: '<b>Features</b><span>Pick what to draw under Tools on the left, then draw it on the map.</span>',
       zone: '<b>Zones</b><span>Press Draw a zone under Tools on the left, draw it on the map, then give it its own settings.</span>',
-      make: '<b>Build</b><span>Build a building by hand, or draw a map from scratch on a blank sheet.</span>',
+      make: '<b>Map and building tools</b><span>Build a building by hand, or draw a map from scratch on a blank sheet.</span>',
       change: '<b>Change what is here</b><span>Load what the map was built from, then click a building to see whether it was built and why not - or anything at all to remove it or say what it really is.</span>',
     }[ws.tool];
     if (runningMap && runningMap === currentMap && ['area', 'draw', 'zone', 'change'].includes(ws.tool))
@@ -573,7 +573,7 @@
       if (ws.popped.includes(name)) continue;
       const on = !ws.home && !ws.draft && name === currentMap;
       h += `<div class="ws-tab ${on ? 'on' : ''}" data-tab="${esc(name)}" title="${esc(name)}. Drag it down to pop it out">
-        <span class="nm ws-clip">${esc(name)}</span>
+        <span class="nm ws-clip" data-no-translate>${esc(name)}</span>
         <button type="button" data-tab-pop="${esc(name)}" title="Pop out into its own window" aria-label="Pop out">⧉</button>
         <button type="button" data-tab-close="${esc(name)}" title="Close this map (Ctrl+W)" aria-label="Close">✕</button>
         ${busyMap === name ? '<span class="busy"></span>' : ''}</div>`;
@@ -837,10 +837,10 @@
     const w = make('section', 'ws-float ws-docwin');
     w.dataset.map = name;
     w.style.left = '40px'; w.style.top = '30px';
-    w.innerHTML = `<div class="ws-pnl-head"><span class="nm">${esc(name)}</span><span class="acts">
+    w.innerHTML = `<div class="ws-pnl-head"><span class="nm" data-no-translate>${esc(name)}</span><span class="acts">
       <button type="button" data-doc-open title="Open it in the tabs again"><svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM4 9h16"/></svg></button>
       <button type="button" data-doc-close title="Close this map"><svg viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg></button></span></div>
-      <img alt="${esc(name)}" src="/output/${encodeURIComponent(name)}/${encodeURIComponent(name)}_preview.png?t=${Date.now()}">`;
+      <img data-no-translate alt="${esc(name)}" src="/output/${encodeURIComponent(name)}/${encodeURIComponent(name)}_preview.png?t=${Date.now()}">`;
     pane.appendChild(w);
     w.querySelector('[data-doc-open]').addEventListener('click', () => dockDoc(name, true));
     w.querySelector('[data-doc-close]').addEventListener('click', () => closeTab(name));

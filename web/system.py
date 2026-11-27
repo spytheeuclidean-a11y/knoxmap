@@ -86,7 +86,7 @@ def _language_strings(path: Path) -> dict:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        english, _, theirs = line.partition("=")
+        english, _, theirs = line.partition(" = ") if " = " in line else line.partition("=")
         english, theirs = english.strip(), theirs.strip()
         # A line left as the English is simply not translated.
         if english and theirs and english != theirs:

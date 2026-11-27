@@ -313,7 +313,7 @@
         <label class="field">Other drives or folders (separated by ;)
           <input type="text" id="steamFolders" placeholder="E: or E:\Games\Steam"/>
         </label>
-        <button type="button" id="steamSave" class="btn">Save and look again</button>
+        <button type="button" id="steamSave" class="btn">Save and rescan</button>
         <div id="steamNote" class="hint"></div>
       </details>
 
@@ -393,12 +393,10 @@
         <div class="sketch-actions">
           <button type="button" id="builderOpen" class="btn">Build a building
             by hand</button>
-          <button type="button" id="builtImport" class="btn">Take one in</button>
+          <button type="button" id="builtImport" class="btn">Import building</button>
           <input type="file" id="builtFile" accept=".json,application/json" hidden>
         </div>
-        <p class="hint">Share sends a building out as one file. Take one in
-          reads one somebody sent you. Buildings sent to the KnoxMap Discord
-          can go into the library that ships with it, for everybody.</p>
+        <p class="hint">Export and import buildings as individual files. Buildings shared on the KnoxMap Discord may be added to the built-in library.</p>
         <p class="hint">Use hand-built buildings for:</p>
         <div id="builtKinds" class="sketch-palette"></div>
         <input type="search" id="builtFind" class="list-search" hidden
@@ -416,7 +414,7 @@
           really is; drag its corners to move it. Generate map again and the
           change is in.</p>
         <div class="sketch-actions">
-          <button type="button" id="editLoad" class="btn" disabled><span class="ws-clip">Load what is here</span></button>
+          <button type="button" id="editLoad" class="btn" disabled><span class="ws-clip">Load features for editing</span></button>
           <button type="button" id="editShape" class="btn" disabled><span class="ws-clip">Move and reshape</span></button>
           <button type="button" id="editSave" class="btn" disabled><span class="ws-clip">Save changes</span></button>
           <button type="button" id="editReset" class="btn" disabled><span class="ws-clip">Undo all</span></button>
@@ -459,7 +457,7 @@
       <div id="results-info"></div>
       <a id="downloadAll" class="btn" download>Download everything (.zip)</a>
       <div id="saveNote" class="hint"></div>
-      <button id="makePictures" class="btn" type="button" hidden>Draw a picture of it</button>
+      <button id="makePictures" class="btn" type="button" hidden>Generate map images</button>
       <div id="pictureNote" class="hint"></div>
       <div id="pictureShots" class="shots" hidden></div>
       <details id="downloads-details">
@@ -482,12 +480,12 @@
         <div class="bar bar-indet"><div class="bar-fill"></div></div>
         <div id="layoutPreview" class="layout-preview" hidden>
           <div class="census-head">What was built
-            <select id="layoutLayer" aria-label="Layout view">
+            <select id="layoutLayer" aria-label="Preview layer">
               <option value="kinds">buildings by use</option>
               <option value="zombies">zombie density</option>
             </select>
           </div>
-          <a id="layoutLink" target="_blank" rel="noopener"><img id="layoutImg" alt="Layout preview"/></a>
+          <a id="layoutLink" target="_blank" rel="noopener"><img id="layoutImg" alt="Generation preview"/></a>
           <div class="step-note">Check the mix and the zombies here before compiling.
             Change a setting and build again if it looks wrong.</div>
         </div>
@@ -565,7 +563,7 @@
             <button type="button" id="placeRoadUndo" class="btn btn-small"
                     disabled>Undo point</button>
             <button type="button" id="placeLink" class="btn btn-small" disabled>
-              Make the road map</button>
+              Create connecting road map</button>
           </div>
           <div id="placeNote" class="hint"></div>
         </div>
@@ -644,7 +642,7 @@
             title="Round the sheet to whole 300-tile cells, so its edges are the map's edges">Fit to cells</button>
     <button type="button" id="boardTrace" class="btn">Background image</button>
     <input id="boardTraceFile" type="file" accept="image/*" hidden>
-    <label class="board-size" id="boardTraceFade" hidden>Fade
+    <label class="board-size" id="boardTraceFade" hidden>Background opacity
       <input type="range" id="boardTraceOpacity" min="0.1" max="1" step="0.05"
              value="0.55"></label>
     <button type="button" id="boardTraceOff" class="btn" hidden>Remove image</button>
@@ -667,12 +665,12 @@
         <label class="board-side-row">Next to
           <select id="boardJoin"><option value="">nothing - a map of its own</option></select>
         </label>
-        <label class="board-side-row">This sheet is
+        <label class="board-side-row">Attach on this side
           <select id="boardJoinSide">
-            <option value="E">east of it</option>
-            <option value="W">west of it</option>
-            <option value="N">north of it</option>
-            <option value="S">south of it</option>
+            <option value="E">East</option>
+            <option value="W">West</option>
+            <option value="N">North</option>
+            <option value="S">South</option>
           </select>
         </label>
         <button type="button" id="boardMatchEdge" class="btn" disabled>Match
@@ -682,7 +680,7 @@
           the map is put beside it in the world when it is built.</p>
       </details>
       <label class="check board-snap"><input type="checkbox" id="boardSnap" checked>
-        Snap to the streets it joins, and to what is already drawn</label>
+        Snap to road connections and existing features</label>
       <input type="search" id="boardFind" class="list-search" hidden
              autocomplete="off" placeholder="Search what to draw">
       <div id="boardPalette" class="sketch-palette"></div>

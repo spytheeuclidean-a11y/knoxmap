@@ -822,7 +822,7 @@ function updateBboxFields() {
     </div>
     <div id="forecastNote" class="stat-note" hidden></div>
     ${selectionShape() !== null && shapeKm2 !== null ? `<div class="stat-note shape">
-      Only the drawn shape is built: <b>${shapeKm2.toFixed(2)} km²</b>
+      The selection limits where features are generated: <b>${shapeKm2.toFixed(2)} km²</b>
       (bounding box: ${area.toFixed(1)} km², ${cellsX}×${cellsY} cells). Outside it the land turns back to countryside, with the main roads and rivers running on.
     </div>` : ''}
   `;
@@ -976,6 +976,11 @@ function durationText([lo, hi]) {
   const say = s => s < 90 ? `${Math.max(1, Math.round(s / 60))} min`
     : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
   return say(lo) === say(hi) ? `about ${say(hi)}` : `${say(lo)} to ${say(hi)}`;
+}
+
+function largeMapSize(area, tilesX, tilesY) {
+  return i18n.t('Large map: {area} km², {cellsX} × {cellsY} cells ({tilesX} × {tilesY} tiles).',
+                { area: Math.round(area), cellsX: tilesX / 300, cellsY: tilesY / 300, tilesX, tilesY });
 }
 
 function bboxAreaKm2(s, w, n, e) {
@@ -1132,7 +1137,7 @@ document.getElementById('presetShare').addEventListener('click', async () => {
 });
 
 document.getElementById('presetOpenLink').addEventListener('click', async () => {
-  const link = window.prompt('Paste a KnoxMap preset link:');
+  const link = window.prompt(i18n.t('Paste a KnoxMap preset link:'));
   if (!link) return;
   try { await importPortablePreset(presetFromLink(link)); }
   catch (err) { presetNote(err.message, 'bad'); }
@@ -1706,6 +1711,7 @@ async function loadMaps() {
     const li = document.createElement('li');
     const name = document.createElement('span');
     name.className = 'name';
+    name.dataset.noTranslate = '';
     name.textContent = m.mapName;
     const size = document.createElement('span');
     size.className = 'size';
@@ -1744,7 +1750,7 @@ async function loadMaps() {
       const update = document.createElement('button');
       update.type = 'button';
       update.textContent = 'Update';
-      update.title = 'Install the latest compile over the installed copy';
+      update.title = 'Update the installed map with the latest compiled files';
       if (!m.installed.upToDate) update.className = 'btn-primary';
       update.addEventListener('click', () => updateMap(m.mapName, update));
       li.append(update, remove);
@@ -1824,8 +1830,7 @@ async function updateMap(mapName, btn) {
 async function uninstallMap(mapName) {
   // Only the copy in the game's mods folder goes; the map's own files stay, and
   // so do the player's saves.
-  if (!window.confirm(`Remove ${mapName} from the game's mods folder? Its files in `
-      + 'KnoxMap stay, and your saves are not touched.')) return;
+  if (!window.confirm(i18n.t("Remove {map} from the game's mods folder? Its files in KnoxMap stay, and your saves are not touched.", { map: mapName }))) return;
   try {
     const res = await fetch('/api/uninstall', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -1833,7 +1838,7 @@ async function uninstallMap(mapName) {
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
-    fx.toast('ok', 'Removed from the game', mapName, 6000);
+    fx.toast('ok', 'Removed from the game', mapName, 6000, { literal: true });
     loadMaps();
   } catch (err) {
     fx.toast('bad', 'Could not remove that map', err.message, 8000);
@@ -1842,15 +1847,14 @@ async function uninstallMap(mapName) {
 
 async function deleteMap(mapName) {
   if (!mapName) return;
-  const prompt = `Delete ${mapName} and all its files? This cannot be undone.`;
-  if (!window.confirm(prompt)) return;
+  if (!window.confirm(i18n.t('Delete {map} and all its files? This cannot be undone.', { map: mapName }))) return;
   try {
     const res = await fetch(`/api/maps/${encodeURIComponent(mapName)}`, {
       method: 'DELETE',
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
-    fx.toast('ok', 'Map deleted', mapName, 6000);
+    fx.toast('ok', 'Map deleted', mapName, 6000, { literal: true });
     if (typeof closeTab === 'function') {
       closeTab(mapName);
     } else {
@@ -2005,7 +2009,7 @@ function wirePictures(mapName) {
       note.textContent = err.message || String(err);
     } finally {
       button.disabled = false;
-      button.textContent = 'Draw it again';
+      button.textContent = 'Regenerate map images';
     }
   };
 }
@@ -2115,8 +2119,8 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
   // say so, rather than switching it off behind the user's back.
   if (document.getElementById('drawnOnly').checked
       && typeof sketchCount === 'function' && !sketchCount()
-      && !window.confirm('Only what I draw is on, but nothing is drawn under Features: '
-        + 'the map will be bare ground.\n\nGenerate it anyway?')) return false;
+      && !window.confirm(i18n.t('Only what I draw is on, but nothing is drawn under Features. The map will be bare ground.')
+        + '\n\n' + i18n.t('Generate it anyway?'))) return false;
 
   // A big map ties the app up for a long while, so say how big and how long
   // before starting rather than after.
@@ -2126,10 +2130,9 @@ async function runGenerate({ skipBigConfirm = false } = {}) {
     const side = Math.max(tilesX, tilesY);
     if (area > SLOW_ABOVE_KM2 || side > BIG_TILES_PER_SIDE) {
       const takes = durationText(generateSeconds(area, tilesX * tilesY));
-      if (!window.confirm(`This is a big map: ${Math.round(area)} km², `
-          + `${tilesX / 300} × ${tilesY / 300} cells (${tilesX} × ${tilesY} tiles).\n\n`
-          + `Generate map will take ${takes}. Adding buildings and compiling `
-          + 'take longer again.\n\nGenerate it?')) return false;
+      if (!window.confirm(largeMapSize(area, tilesX, tilesY) + '\n\n'
+          + i18n.t('Generating the map will take {time}. Adding buildings and compiling take longer.', { time: i18n.t(takes) })
+          + '\n\n' + i18n.t('Generate it?'))) return false;
     }
   }
 
@@ -2230,9 +2233,9 @@ async function runAuto() {
   const side = Math.max(tilesX, tilesY);
   if (area > SLOW_ABOVE_KM2 || side > BIG_TILES_PER_SIDE) {
     const takes = durationText(generateSeconds(area, tilesX * tilesY));
-    if (!window.confirm(`This is a big map: ${Math.round(area)} km², `
-        + `${tilesX / 300} × ${tilesY / 300} cells (${tilesX} × ${tilesY} tiles).\n\n`
-        + `Auto mode will run Generate (${takes}), Build, Compile, and Install in sequence.\n\nStart Auto mode?`)) return;
+    if (!window.confirm(largeMapSize(area, tilesX, tilesY) + '\n\n'
+        + i18n.t('Auto mode will generate the map ({time}), add buildings, compile, and install.', { time: i18n.t(takes) })
+        + '\n\n' + i18n.t('Start Auto mode?'))) return;
   }
   const status = document.getElementById('status');
   const standalone = !!document.getElementById('autoStandalone')?.checked;
@@ -2538,6 +2541,7 @@ function renderResults(data) {
   wirePictures(data.mapName);
 
   document.querySelectorAll('#results .ph').forEach(el => {
+    el.dataset.noTranslate = '';
     el.textContent = data.mapName;
   });
 
@@ -3040,8 +3044,7 @@ function showBuilt(text) {
   document.getElementById('worldedBtn').disabled = false;
   document.getElementById('compileBtn').disabled = false;
   note('compileNote', 'Ready — runs BMP to TMX and Generate Lots for you.');
-  note('worldedNote', 'Then File → BMP To TMX → All Cells… and '
-                      + 'File → Generate Lots 8x8 → All Cells…');
+  note('worldedNote', 'Then use File → BMP To TMX → All Cells…, followed by File → Generate Lots 8x8 → All Cells…');
 }
 
 async function runBuildings() {
@@ -3105,8 +3108,7 @@ document.getElementById('worldedBtn').addEventListener('click', async () => {
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
-    note('worldedNote', 'WorldEd opened. File > BMP To TMX > All Cells…, then '
-                        + 'File > Generate Lots 8x8 > All Cells… — waiting…');
+    note('worldedNote', 'WorldEd opened. Use File → BMP To TMX → All Cells…, then File → Generate Lots 8x8 → All Cells…');
     startLotsPoll();
   } catch (err) {
     note('worldedNote', err.message, 'bad');
@@ -3153,32 +3155,26 @@ async function runInstall() {
     });
     const data = await res.json();
     if (!res.ok) throw apiError(data, res);
-    let lifts = '';
+    const tips = [];
     try {
       const status = await (await fetch('/api/setup-status')).json();
       const elevators = (status.optional || []).find(c => c.id === 'elevators');
-      lifts = elevators && elevators.ok
-        ? ' Enable "Elevators" too, for working lifts in tall buildings.'
-        : ' Tall buildings have lifts: subscribe to the Elevators mod on the Steam Workshop to make them work.';
+      tips.push(elevators && elevators.ok
+        ? 'Enable "Elevators" too, for working lifts in tall buildings.'
+        : 'Tall buildings have lifts: subscribe to the Elevators mod on the Steam Workshop to make them work.');
       const selector = (status.optional || []).find(c => c.id === 'spawn_selector');
       if (selector && selector.ok) {
-        lifts += ' With "Spawn Selector" enabled you can start at any landmark of the map.';
+        tips.push('With "Spawn Selector" enabled you can start at any landmark of the map.');
       }
     } catch (_) { /* the install itself worked; the tip is optional */ }
     if (currentMap !== installing) return false;
-    // Build 42 draws the in-game map (M) from worldmap.xml.bin and cannot read
-    // the XML, so a map without it opens the map on nothing while everything
-    // else works - worth saying, and worth saying what to do about it.
-    const paper = data.paperMap === false
-      ? ' The in-game map (M) will be blank: this map has no paper map '
-        + '(worldmap.xml.bin). Install it again, and if it still has none, send '
-        + 'KnoxMap the log from that install.'
-      : '';
-    note('installNote',
-         `Installed ${data.cells} cells to ${data.modRoot}. Enable "${data.title}" `
-         + 'in the game\'s Mods menu, then start a NEW save. In a save you are '
-         + 'already playing, right-click the ground and pick "Reset loot" for '
-         + 'fresh loot in a building.' + lifts + paper, data.paperMap === false ? 'warn' : 'ok');
+    const installText = `Installed ${data.cells} cells to ${data.modRoot}. Enable "${data.title}" in the game's Mods menu, then start a NEW save. In a save you are already playing, right-click the ground and pick "Reset loot" for fresh loot in a building.`;
+    if (data.paperMap === false) {
+      tips.push('The in-game map (M) is missing. Install the map again. If it is still missing, send KnoxMap the install log.');
+    }
+    note('installNote', installText, data.paperMap === false ? 'warn' : 'ok');
+    const installNote = document.getElementById('installNote');
+    for (const tip of tips) installNote.append(' ', tip);
     document.getElementById('publishCard').hidden = false;
     showServerSetup();
     loadMaps();
@@ -3533,7 +3529,7 @@ document.addEventListener('click', async ev => {
     const copy = '<p>Every player needs the same mod folder in their own '
       + 'Zomboid/mods: this map is not on the Workshop, so nothing downloads '
       + 'it for them.</p>';
-    noteServer(`<p>Set up on <b>${escapeHtml(data.server)}</b>.</p>${did}${world}${copy}`
+    noteServer(`<p>Server configured: <b data-no-translate>${escapeHtml(data.server)}</b>.</p>${did}${world}${copy}`
                + (data.backup ? `<p class="hint">The old .ini was kept as `
                   + `<code>${escapeHtml(data.backupName)}</code>.</p>` : ''),
                data.save ? 'warn' : 'ok');

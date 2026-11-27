@@ -2393,7 +2393,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # its wheel stops go into the vegetation bitmap, which every other veg
     # writer (yards, pumps, props) has finished with by now. Mostly numpy and
     # shapely, which let go of the interpreter lock, so threads overlap them.
-    say("Fences, zombies, zones and the paper map", 0.82)
+    say("Fences, zombies, zones and the in-game map", 0.82)
     from concurrent.futures import ThreadPoolExecutor
     from .structures import build_structures
 

@@ -18,6 +18,14 @@ const i18n = (() => {
   let strings = {};            // English -> translated
   let templates = [];          // compiled once when a language is loaded
   let watching = null;
+  let pending = Promise.resolve();
+  const originals = new WeakMap();
+  const attributes = ['placeholder', 'title', 'aria-label', 'label', 'alt'];
+  const languages = { english: 'en', espanol: 'es', portugues_brasil: 'pt-BR',
+                      russian: 'ru', turkce: 'tr' };
+  const verbatim = new Set(['map', 'mapName', 'currentMap', 'name', 'title', 'modId',
+                            'path', 'folder', 'modRoot', 'fromMap', 'server', 'file',
+                            'filename', 'who', 'maps']);
 
   const clean = s => s.replace(/\s+/g, ' ').trim();
 
@@ -39,6 +47,11 @@ const i18n = (() => {
     templates.sort((a, b) => b.specificity - a.specificity);
   }
 
+  function fill(message, values) {
+    return message.replace(/\{([A-Za-z_]\w*)\}/g, (token, name) =>
+      Object.hasOwn(values, name) ? values[name] : token);
+  }
+
   function lookup(text, depth = 0) {
     const source = clean(text);
     if (Object.hasOwn(strings, source)) return strings[source];
@@ -49,12 +62,9 @@ const i18n = (() => {
       const values = Object.create(null);
       names.forEach((name, i) => {
         const value = match[i + 1];
-        values[name] = lookup(value, depth + 1) ?? value;
+        values[name] = verbatim.has(name) ? value : (lookup(value, depth + 1) ?? value);
       });
-      // Callback replacement keeps URLs, dollar signs and markup as literal
-      // text. The result still goes through text nodes or attributes only.
-      return translated.replace(/\{([A-Za-z_]\w*)\}/g,
-                                (token, name) => values[name] ?? token);
+      return fill(translated, values);
     }
     return null;
   }
@@ -68,18 +78,35 @@ const i18n = (() => {
     return before + hit + after;
   }
 
+  function translateValue(node, key, current) {
+    if (current == null) return current;
+    const values = originals.get(node) || {};
+    const previous = values[key];
+    // A fresh update from the app replaces the original. Our own translated
+    // value keeps its English source so it can be rendered in another language.
+    const source = previous?.rendered === current ? previous.source : current;
+    const rendered = say(source) ?? source;
+    if (rendered !== source) {
+      values[key] = { source, rendered };
+      originals.set(node, values);
+    } else {
+      delete values[key];
+    }
+    return rendered;
+  }
+
   function translateNode(node) {
     if (node.nodeType === Node.TEXT_NODE) {
-      const next = say(node.nodeValue);
-      if (next !== null && next !== node.nodeValue) node.nodeValue = next;
+      if (node.parentElement?.closest('[data-no-translate]')) return;
+      const next = translateValue(node, 'text', node.nodeValue);
+      if (next !== node.nodeValue) node.nodeValue = next;
       return;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    if (node.closest && node.closest('[data-no-translate]')) return;
-    for (const attr of ['placeholder', 'title', 'aria-label', 'label', 'alt']) {
+    if (node.nodeType !== Node.ELEMENT_NODE || node.closest?.('[data-no-translate]')) return;
+    for (const attr of attributes) {
       const value = node.getAttribute && node.getAttribute(attr);
-      const next = value && say(value);
-      if (next && next !== value) node.setAttribute(attr, next);
+      const next = translateValue(node, attr, value);
+      if (next !== value) node.setAttribute(attr, next);
     }
     for (const child of node.childNodes) translateNode(child);
   }
@@ -105,27 +132,33 @@ const i18n = (() => {
   function observe() {
     watching.observe(document.body, {
       subtree: true, childList: true, characterData: true,
-      attributeFilter: ['placeholder', 'title', 'aria-label', 'label', 'alt'],
+      attributeFilter: attributes,
     });
   }
 
-  async function use(file, remember) {
+  async function load(file, remember) {
     try {
       const res = await fetch(`/api/language/${encodeURIComponent(file)}`,
                               { method: remember ? 'POST' : 'GET' });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      if (!res.ok) return;
       strings = data.strings || {};
     } catch (_) {
-      strings = {};                   // no file, no harm: English it is
+      return;
     }
     compileTemplates();
-    if (Object.keys(strings).length) {
-      translateAll();
-      watch();
-    } else if (remember) {
-      window.location.reload();       // back to English: the simplest way back
-    }
+    if (document.documentElement) document.documentElement.lang = languages[file] || '';
+    watching?.disconnect();
+    translateAll();
+    if (watching) observe();
+    else watch();
+    document.dispatchEvent?.(new Event('knoxmap:language'));
+  }
+
+  function use(file, remember) {
+    // Apply and persist selections in the same order.
+    pending = pending.then(() => load(file, remember));
+    return pending;
   }
 
   async function start() {
@@ -152,9 +185,13 @@ const i18n = (() => {
       menu.append(option);
     }
     menu.addEventListener('change', () => use(menu.value, true));
-    if (data.current && data.current !== 'english') use(data.current, false);
+    use(data.current || 'english', false);
   }
 
   document.addEventListener('DOMContentLoaded', start);
-  return { use, translateAll, t: text => say(text) ?? text };
+  return { use, translateAll, t(text, values) {
+    // Explicit arguments carry literal data. Translate a nested label before
+    // passing it in if it also comes from the interface.
+    return values ? fill(strings[text] ?? text, values) : (say(text) ?? text);
+  } };
 })();

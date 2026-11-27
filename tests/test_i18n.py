@@ -22,7 +22,7 @@ class TranslationTemplates(unittest.TestCase):
             'Setup.bat', '1:1', 'Discord', 'USGS 3DEP', 'Geofabrik',
             'Ctrl+Shift+Z', 'Overpass API', 'HIFLD', 'Ctrl+Z', 'ESA WorldCover',
         }
-        english = {line.partition('=')[0].strip()
+        english = {line.partition(' = ')[0].strip()
                    for line in (ROOT / 'lang/english.txt').read_text(encoding='utf-8').splitlines()
                    if '=' in line and not line.startswith('#')}
         russian = _language_strings(ROOT / 'lang/russian.txt')
@@ -48,7 +48,7 @@ class TranslationTemplates(unittest.TestCase):
         self.assertEqual(translations['Cells'], 'Ячейки')
 
     def test_regenerating_english_keeps_the_new_messages(self):
-        english = {line.partition('=')[0].strip()
+        english = {line.partition(' = ')[0].strip()
                    for line in (ROOT / 'lang/english.txt').read_text(encoding='utf-8').splitlines()
                    if '=' in line and not line.startswith('#')}
         russian = _language_strings(ROOT / 'lang/russian.txt')
