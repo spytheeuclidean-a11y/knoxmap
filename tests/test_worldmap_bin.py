@@ -27,7 +27,7 @@ class CellBudget(unittest.TestCase):
         self.assertTrue(kept)
         self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
         self.assertLessEqual(sum(W._points(p) for p, _ in kept), W.CELL_POINT_BUDGET)
-        self.assertLessEqual(W.CELL_INDEX_BUDGET, 12000)  # highest value tested in-game
+        self.assertLessEqual(W.CELL_INDEX_BUDGET, 18000)  # highest value tested in-game
 
     def test_an_ordinary_cell_is_left_alone(self):
         features = [(square(x * 10, y * 10), [("building", "yes")])
