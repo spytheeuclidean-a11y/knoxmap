@@ -14,7 +14,7 @@ from knoxbuild import layout as L
 class BigHouses(unittest.TestCase):
     def test_most_big_floors_are_cut_by_kind(self):
         seen = {"floors": 0, "cut": 0}
-        orig = L._house_by_kind
+        orig = L.houses._house_by_kind
 
         def spy(plan, level, levels, rng):
             got = orig(plan, level, levels, rng)
@@ -22,14 +22,14 @@ class BigHouses(unittest.TestCase):
             seen["cut"] += got is not None
             return got
 
-        L._house_by_kind = spy
+        L.houses._house_by_kind = spy
         try:
             rng = random.Random(1)
             for i in range(24):
                 L.build_building(rng.randint(20, 30), rng.randint(20, 28),
                                  levels=rng.choice((1, 2)), seed=i, kind=None)
         finally:
-            L._house_by_kind = orig
+            L.houses._house_by_kind = orig
         self.assertGreater(seen["floors"], 20)
         # 36% before; 77% over 119 floors after.
         self.assertGreater(seen["cut"] / seen["floors"], 0.6)

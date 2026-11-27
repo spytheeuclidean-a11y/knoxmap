@@ -68,9 +68,10 @@ class ChunkedMatchesWholeRender(unittest.TestCase):
         self.assertEqual(int((whole != chunks).sum()), 0)
 
     def test_ground_matches(self):
-        # A handful of tiles may differ: 4 of 360,000 do today, on grass and
-        # field-edge tiles. The cause is not isolated yet; the whole farmland
-        # used to come out differently (about 20,000 tiles).
+        # 4 of 360,000 tiles differ today, on grass and field-edge tiles. They
+        # are not traced one by one; the likely source is polygon-edge rounding
+        # (see the module docstring). The whole farmland used to differ by
+        # about 20,000 tiles.
         whole = _layer(self._whole.name, ".bmp")
         chunks = _layer(self._chunks.name, ".bmp")
         self.assertEqual(whole.shape, chunks.shape)

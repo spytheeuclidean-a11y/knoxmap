@@ -25,12 +25,12 @@ class MansionHouses(unittest.TestCase):
 
     def test_a_mansion_is_furnished_past_the_ordinary_wishlist(self):
         grand = L.build_plan(16, 17, seed=7, kind='house', level=0, levels=1)
-        line = L.MANSION_FLOOR_TILES
-        L.MANSION_FLOOR_TILES = 10 ** 6          # the same house, not a mansion
+        line = L.houses.MANSION_FLOOR_TILES
+        L.houses.MANSION_FLOOR_TILES = 10 ** 6          # the same house, not a mansion
         try:
             plain = L.build_plan(16, 17, seed=7, kind='house', level=0, levels=1)
         finally:
-            L.MANSION_FLOOR_TILES = line
+            L.houses.MANSION_FLOOR_TILES = line
         self.assertFalse(plain.grand)
         self.assertGreater(len(grand.furniture), len(plain.furniture),
                            "the same house, dressed and not")

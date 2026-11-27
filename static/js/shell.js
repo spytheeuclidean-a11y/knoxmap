@@ -47,6 +47,19 @@
   const controls = $('controls');
   const results = $('results');
 
+  // Read the current (possibly translated) text only when someone hovers it.
+  // A title on the label leaves any help on its parent control intact.
+  body.addEventListener('pointerover', e => {
+    const label = e.target.closest('.ws-clip, #status, #gen-detail')
+      || e.target.closest('button, label')?.querySelector(':scope > .ws-clip');
+    if (!label) return;
+    if (label.scrollWidth > label.clientWidth || label.scrollHeight > label.clientHeight) {
+      label.title = label.textContent.trim();
+    } else {
+      label.removeAttribute('title');
+    }
+  }, true);
+
   // Anything moved out of sight is kept here, never thrown away: its handlers
   // stay wired, and it comes back when it is wanted.
   const holder = make('div', 'ws-holder');
@@ -57,20 +70,19 @@
   // Menu bar: the logo and name, the menus, the search, the credit, the rest.
   const menuSlot = make('nav', 'ws-menus');
   menuSlot.setAttribute('aria-label', 'Menus');
-  menuSlot.style.display = 'flex';
   top.querySelector('h1').after(menuSlot);
   menuSlot.after($('search-box'));
 
   // The window's language: a small menu by the version, in each language's own
   // name. The list is i18n.js's (#language), filled once the server answers.
   const langMenu = make('div', 'ws-menu ws-langmenu');
-  langMenu.innerHTML = `<button type="button" class="ws-lang" title="The window’s language">🌐 <span>English</span></button>
+  langMenu.innerHTML = `<button type="button" title="The window’s language"><span aria-hidden="true">🌐</span><span class="ws-clip">English</span></button>
     <div class="ws-drop" style="left:auto;right:0;min-width:200px"></div>`;
   top.querySelector('.version-wrap').before(langMenu);
   const langSelect = $('language');
   const langShown = () => {
     const o = langSelect && langSelect.selectedOptions[0];
-    langMenu.querySelector('span').textContent = o ? o.textContent : 'English';
+    langMenu.querySelector('.ws-clip').textContent = o ? o.textContent : 'English';
     langMenu.hidden = !langSelect || langSelect.options.length < 2;
   };
   if (langSelect) new MutationObserver(langShown).observe(langSelect, { childList: true, subtree: true, attributes: true });
@@ -107,7 +119,7 @@
   const tools = make('section', 'ws-tools-pnl');
   tools.id = 'wsTools';
   tools.setAttribute('aria-label', 'Tools');
-  tools.innerHTML = `<div class="ws-tools-head">Tools</div><div class="ws-tools-body">
+  tools.innerHTML = `<div class="ws-tools-head"><span class="ws-clip">Tools</span></div><div class="ws-tools-body">
     <div class="setting-tabs ws-tool-tabs" role="tablist" aria-label="Tools"></div>
     <div class="ws-tool-panes"></div></div>`;
   const center = make('div', 'ws-center');
@@ -149,7 +161,7 @@
   // Status bar.
   const status = make('footer', 'ws-status');
   status.setAttribute('aria-label', 'Status');
-  const statusRight = make('span', 'right');
+  const statusRight = make('span', 'right ws-clip');
   status.append($('status'), statusRight);
   body.insertBefore(status, $('board'));
 
@@ -163,7 +175,7 @@
     const p = make('section', 'ws-pnl');
     p.id = id;
     p.innerHTML = `<div class="ws-pnl-head"><button class="tw" aria-label="Fold" type="button">▾</button>
-      <span class="ttl">${title}</span><span class="acts"><button type="button" data-pop-panel title="Pop out, or dock again">
+      <span class="ttl ws-clip">${title}</span><span class="acts"><button type="button" data-pop-panel title="Pop out, or dock again">
       <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-8 8M18 14v5H5V6h5"/></svg></button></span></div>
       <div class="ws-pnl-body"></div><div class="ws-grip" title="Drag to make this panel taller or shorter. Double-click to reset"></div>`;
     return p;
@@ -180,6 +192,8 @@
   // and the list it finds, folded away when it is in the way.
   const places = make('section', 'ws-legend ws-places');
   places.id = 'wsPlaces';
+  places.hidden = true;
+  let showPlaces = true;
   places.setAttribute('aria-label', 'Named places');
   places.innerHTML = `<div class="ws-legend-head"><button class="tw" aria-label="Fold" type="button">▾</button>
     <span class="ttl">Named places</span><span class="count" id="landmarkCount"></span></div>
@@ -223,7 +237,7 @@
   const MENUS = ['File', 'Edit', 'View', 'Map', 'Build', 'Tools', 'Help'];
   for (const name of MENUS) {
     const m = make('div', 'ws-menu');
-    m.innerHTML = `<button type="button">${name}</button><div class="ws-drop" data-menu="${name}"></div>`;
+    m.innerHTML = `<button type="button" class="ws-clip">${name}</button><div class="ws-drop" data-menu="${name}"></div>`;
     menuSlot.appendChild(m);
   }
   const menus = [...menuSlot.querySelectorAll('.ws-menu')];
@@ -271,10 +285,10 @@
         + item('Close this map', () => closeTab(currentMap), { key: 'Ctrl+W', off: !open })
         + item('Delete this map', () => (typeof deleteMap === 'function' ? deleteMap(currentMap) : null), { off: !open })
         + '<hr>' + label('Saved areas')
-        + item('Save this area…', () => { goHome(); $('presetName').focus(); }, { off: !currentRect })
-        + item('Export to a file…', () => click('presetExport'), { off: !currentRect })
+        + (currentRect ? item('Save this area…', () => { goHome(); $('presetName').focus(); })
+            + item('Export to a file…', () => click('presetExport'))
+            + item('Copy a link to this area', () => click('presetShare')) : '')
         + item('Import a file…', () => click('presetImport'))
-        + item('Copy a link to this area', () => click('presetShare'), { off: !currentRect })
         + item('Open a link…', () => click('presetOpenLink'))
         + '<hr>' + item('Draw a map from scratch…', () => click('boardOpen'))
         + '<hr>' + item('Save everything as a zip', () => $('downloadAll').click(), { off: !open })
@@ -304,7 +318,7 @@
         + label('Panels')
         + item('Properties', () => togglePanel(props), { on: !props.hidden })
         + item('Layers', () => togglePanel(layers), { on: !layers.hidden })
-        + item('Named places', () => togglePanel(places), { on: !places.hidden })
+        + (canUsePlaces() ? item('Named places', () => setPlacesVisible(!showPlaces), { on: showPlaces }) : '')
         + item('Reset the layout', resetLayout),
       Map: () => label('Kind of place')
         + [...document.querySelectorAll('#presetCards .preset-card')].map(c =>
@@ -313,7 +327,10 @@
         + '<hr>' + item('Standalone: play it without Knox County', () => { setView('world'); $('placeStandalone').click(); },
             { on: $('placeStandalone').checked, off: !open || busy })
         + item('Place it in the world…', () => setView('world'), { off: !open })
-        + '<hr>' + item('List named places in the area', () => click('landmarksBtn'), { off: off('landmarksBtn') }),
+        + (canUsePlaces() ? '<hr>' + item('List named places in the area', () => {
+            setPlacesVisible(true);
+            click('landmarksBtn');
+          }, { off: off('landmarksBtn') }) : ''),
       Build: () => {
         const n = nextAction();
         return item(n && n.run ? `Next: ${n.label}` : 'Next step', () => n && n.run && n.run(), { key: 'F5', off: !n || !n.run })
@@ -325,10 +342,10 @@
           + item('Recount the zombies', () => click('recountBtn'), { off: !open || off('recountBtn'),
               title: 'After a zombie setting changed: seconds, no rebuild' })
           + item('Compile', () => click('compileBtn'), { off: !open || off('compileBtn') })
-          + item('Compile the cells that failed', () => click('retryCellsBtn'), { off: $('retryCellsBtn').hidden })
+          + item('Compile the cells that failed', () => click('retryCellsBtn'), { off: !open || $('retryCellsBtn').hidden })
           + item('Open in WorldEd', () => click('worldedBtn'), { off: !open || off('worldedBtn') })
           + item('Install', () => click('installBtn'), { off: !open || off('installBtn') })
-          + item('Check before publishing', () => click('publishCheckBtn'), { off: $('publishCard').hidden });
+          + item('Check before publishing', () => click('publishCheckBtn'), { off: !open || $('publishCard').hidden });
       },
       Tools: () => item('Check an OpenStreetMap extract…', () => dialog('Tools', [$('toolsBody')]))
         + item('Pick an extract file…', () => {
@@ -396,29 +413,29 @@
   // controls. The map's drawing buttons, and what a drawing in progress
   // shows (Finish, Cancel, Save), are pressed from the Area tab.
   const TOOLS = [
-    { id: 'area', key: 'X', label: 'Extent', title: 'The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners' },
-    { id: 'draw', key: 'F', label: 'Features', title: 'Features to add to the map: a street, a house, a park… built like a real one',
+    { id: 'area', key: 'X', icon: 'extent', label: 'Extent', title: 'The extent of the map: draw it as a rectangle, a polygon, a circle or freehand, or type its corners' },
+    { id: 'draw', key: 'F', icon: 'features', label: 'Features', title: 'Features to add to the map: a street, a house, a park… built like a real one',
       panel: 'sketch' },
-    { id: 'zone', key: 'Z', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
+    { id: 'zone', key: 'Z', icon: 'zones', label: 'Zones', title: 'Zones: a part of the map with settings of its own',
       panel: 'zonesPanel' },
-    { id: 'change', key: 'E', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
+    { id: 'change', key: 'E', icon: 'edit', label: 'Change', title: 'Change what is already here: remove or reshape what the map was built from',
       panel: 'editMap' },
-    { id: 'make', key: 'B', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
+    { id: 'make', key: 'B', icon: 'hammer', label: 'Build', title: 'Build a building by hand, or draw a map from scratch' },
   ];
   const toolTabs = tools.querySelector('.ws-tool-tabs');
   const toolPanes = tools.querySelector('.ws-tool-panes');
   const TOOL_PANE = {
     area: `<p class="hint">Draw the area to make. Reshape to move its corners or turn it by the handle above it.</p>
       <div class="ws-draw-btns">
-        <button type="button" class="btn" data-draw="rectangle" title="Drag out a box"><span aria-hidden="true">▭</span> Rectangle</button>
-        <button type="button" class="btn" data-draw="polygon" title="Click its corners one by one; click the first again to finish"><span aria-hidden="true">⬠</span> Polygon</button>
-        <button type="button" class="btn" data-draw="circle" title="Drag out from the middle"><span aria-hidden="true">◯</span> Circle</button>
-        <button type="button" class="btn" data-draw="lasso" title="Drag round the area you want"><span aria-hidden="true">✎</span> Freehand</button>
+        <button type="button" class="btn" data-draw="rectangle" title="Drag out a box"><span aria-hidden="true">▭</span><span class="ws-clip">Rectangle</span></button>
+        <button type="button" class="btn" data-draw="polygon" title="Click its corners one by one; click the first again to finish"><span aria-hidden="true">⬠</span><span class="ws-clip">Polygon</span></button>
+        <button type="button" class="btn" data-draw="circle" title="Drag out from the middle"><span aria-hidden="true">◯</span><span class="ws-clip">Circle</span></button>
+        <button type="button" class="btn" data-draw="lasso" title="Drag round the area you want"><span aria-hidden="true">✎</span><span class="ws-clip">Freehand</span></button>
       </div>
       <div class="ws-draw-acts" hidden></div>
       <div class="ws-draw-btns">
-        <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save">${KnoxDraw.icon('move')}<span>Reshape</span></button>
-        <button type="button" class="btn btn-small kd-danger" data-opt="clear">${KnoxDraw.icon('trash')}<span>Clear the area</span></button>
+        <button type="button" class="btn btn-small" data-draw="edit" title="Drag its corners, then Save">${KnoxDraw.icon('move')}<span class="ws-clip">Reshape</span></button>
+        <button type="button" class="btn btn-small kd-danger" data-opt="clear">${KnoxDraw.icon('trash')}<span class="ws-clip">Clear the area</span></button>
       </div>
       <div class="ws-sub-h">Corners</div>
       <p class="hint">Or type them, in degrees, and Use these corners.</p>`,
@@ -429,8 +446,7 @@
   };
   const PANE_NOTE = { draw: 'sketchNote', zone: 'zoneNote', change: 'editNote' };
   for (const t of TOOLS) {
-    const iconHtml = t.icon ? `<span class="setting-tab-icon" aria-hidden="true">${t.icon}</span>` : '';
-    const tab = make('button', 'setting-tab', `${iconHtml}<span>${esc(t.label)}</span>`);
+    const tab = make('button', 'setting-tab', `${KnoxDraw.icon(t.icon)}<span class="ws-clip">${esc(t.label)}</span>`);
     tab.type = 'button';
     tab.dataset.tool = t.id;
     tab.title = `${t.title} (${t.key})`;
@@ -546,31 +562,32 @@
     if (runningMap && runningMap === currentMap && ['area', 'draw', 'zone', 'change'].includes(ws.tool))
       h = `<span class="lock">This map is busy. Editing it now would not reach the step that is running.</span> ${h}`;
     options.innerHTML = h;
+    for (const label of options.children) label.classList.add('ws-clip');
   }
 
   // =========================== tabs and Home ===========================
   function renderTabs() {
     const busyMap = runningMap;
-    let h = `<div class="ws-tab home ${ws.home ? 'on' : ''}" data-tab-home title="Home: start a map, or open one you made">⌂ Home</div>`;
+    let h = `<div class="ws-tab home ${ws.home ? 'on' : ''}" data-tab-home title="Home: start a map, or open one you made"><span class="ws-clip">⌂ Home</span></div>`;
     for (const name of ws.tabs) {
       if (ws.popped.includes(name)) continue;
       const on = !ws.home && !ws.draft && name === currentMap;
       h += `<div class="ws-tab ${on ? 'on' : ''}" data-tab="${esc(name)}" title="${esc(name)}. Drag it down to pop it out">
-        <span class="nm">${esc(name)}</span>
+        <span class="nm ws-clip">${esc(name)}</span>
         <button type="button" data-tab-pop="${esc(name)}" title="Pop out into its own window" aria-label="Pop out">⧉</button>
         <button type="button" data-tab-close="${esc(name)}" title="Close this map (Ctrl+W)" aria-label="Close">✕</button>
         ${busyMap === name ? '<span class="busy"></span>' : ''}</div>`;
     }
     if (ws.draft) h += `<div class="ws-tab on" data-tab-draft title="A new map, not generated yet">
-      <span class="nm">New map</span><button type="button" data-tab-close-draft title="Close" aria-label="Close">✕</button></div>`;
+      <span class="nm ws-clip">New map</span><button type="button" data-tab-close-draft title="Close" aria-label="Close">✕</button></div>`;
     h += `<button type="button" class="newtab" data-tab-new title="New map (Ctrl+N)">＋</button>`;
     if (!ws.home && currentMap && !ws.draft) {
       h += `<span class="view"><button type="button" data-view="place" class="${ws.view === 'place' ? 'on' : ''}"
-          title="The real place, where you choose and edit the area">Real place</button>
+          title="The real place, where you choose and edit the area"><span class="ws-clip">Real place</span></button>
         <button type="button" data-view="world" class="${ws.view === 'world' ? 'on' : ''}"
-          title="Where the map sits in the game’s world">Game world</button>
+          title="Where the map sits in the game’s world"><span class="ws-clip">Game world</span></button>
         <button type="button" data-view="iso" class="${ws.view === 'iso' ? 'on' : ''}"
-          title="2.5D Isometric in-game view of your buildings and town">In-game 2.5D</button></span>`;
+          title="2.5D Isometric in-game view of your buildings and town"><span class="ws-clip">In-game 2.5D</span></button></span>`;
     }
     tabs.innerHTML = h;
   }
@@ -593,6 +610,7 @@
   function newMap() {
     if (busyElsewhere(null)) return;
     if (currentMap) leaveMap();
+    else ++mapOpenRequest;  // a saved map may still be opening over this draft
     ws.draft = true;
     showMap();
     setTool('area');
@@ -602,19 +620,13 @@
   // stays on disk; nothing is stopped or deleted.
   function leaveMap() {
     $('resultsClose').click();
-    currentMap = null;
+    clearOpenedMap();
+    ws.lastData = null;
     ws.view = 'place';
     world.hidden = true;
     isoView.hidden = true;
     if (window.closeIsoView) window.closeIsoView();
     closePop();
-  }
-  // One map at a time is worked on: a step reports back to the cards of the map
-  // that is open, so switching while one runs would put its result on another.
-  function busyElsewhere(name) {
-    if (!runningMap || runningMap === name) return false;
-    fx.toast('bad', 'Busy', `${runningMap} is busy. Switch maps once it has finished, or Stop it.`, 6000);
-    return true;
   }
   function openTab(name) {
     if (!name || busyElsewhere(name)) return;
@@ -848,11 +860,11 @@
 
   // =========================== the steps row ===========================
   const STEPS = [
-    { id: 'generate', short: 'Generate', btn: 'generateBtn', note: 'status' },
-    { id: 'build', short: 'Buildings', card: 'buildings', btn: 'buildingsBtn', note: 'buildingsNote' },
-    { id: 'compile', short: 'Compile', card: 'compile', btn: 'compileBtn', note: 'compileNote' },
-    { id: 'install', short: 'Install', card: 'install', btn: 'installBtn', note: 'installNote' },
-    { id: 'publish', short: 'Publish check', card: 'publish', btn: 'publishCheckBtn', note: null, optional: true },
+    { id: 'generate', title: 'Terrain', action: 'Generate map', btn: 'generateBtn', note: 'status' },
+    { id: 'build', title: 'Buildings', action: 'Build', card: 'buildings', btn: 'buildingsBtn', note: 'buildingsNote' },
+    { id: 'compile', title: 'Compilation', action: 'Compile', card: 'compile', btn: 'compileBtn', note: 'compileNote' },
+    { id: 'install', title: 'Installation', action: 'Install', card: 'install', btn: 'installBtn', note: 'installNote' },
+    { id: 'publish', title: 'Publication check', card: 'publish', btn: 'publishCheckBtn', note: null, optional: true },
   ];
   const STEP_WHAT = {
     generate: 'Downloads the place and draws its ground, roads, water and trees.',
@@ -883,12 +895,12 @@
       return { label: 'Stop', stop: true, run: () => requestStop() };
     if (!currentMap) {
       if (!currentRect) return { label: 'Find a place', find: true, run: () => $('searchInput').focus() };
-      return { label: 'Generate map', step: 'generate', run: () => click('generateBtn') };
+      return { label: STEPS[0].action, step: 'generate', run: () => click('generateBtn') };
     }
     for (const s of STEPS.slice(1)) {
       if (s.optional) continue;
       const st = stepState(s);
-      if (st === 'ready' || st === 'error') return { label: s.id === 'build' ? 'Build' : s.short, step: s.id, run: () => click(s.btn) };
+      if (st === 'ready' || st === 'error') return { label: s.action, step: s.id, run: () => click(s.btn) };
       if (st === 'locked') return null;
     }
     return { label: 'All done', done: true };
@@ -903,8 +915,8 @@
       const cls = st === 'ready' && n && n.step === s.id ? 'next' : st;
       const ic = { done: '✓', error: '!', running: '●' }[cls] || String(i + 1);
       return (i ? '<span class="arrow">›</span>' : '')
-        + `<button type="button" class="ws-chip ${cls}" data-chip="${s.id}" title="Click for this step’s details">`
-        + `<span class="ic">${ic}</span>${s.short}</button>`;
+        + `<button type="button" class="ws-chip ${cls}" data-chip="${s.id}" title="${s.title}">`
+        + `<span class="ic" aria-hidden="true">${ic}</span><span class="step-label ws-clip">${s.title}</span></button>`;
     }).join('');
     let msg = '', cls = '';
     const noteOf = id => { const e = id && $(id); return e ? e.textContent.trim() : ''; };
@@ -918,14 +930,14 @@
     const canAuto = !n?.stop && !n?.done && !!currentRect && !currentMap && !off('autoBtn');
     const autoChecked = !!$('autoStandalone')?.checked;
     const autoCtrl = canAuto
-      ? `<label class="ws-auto-standalone" title="Play without Knox County (cell 0,0)"><input type="checkbox" data-flow-standalone${autoChecked ? ' checked' : ''}> Standalone</label>`
+      ? `<span class="ws-flow-sep" aria-hidden="true">|</span><label class="ws-auto-standalone" title="Play without Knox County (cell 0,0)"><span class="ws-clip">Standalone</span><input type="checkbox" data-flow-standalone${autoChecked ? ' checked' : ''}></label>`
         + '<button type="button" class="btn go" data-flow-auto title="Run Generate, Build, Compile, and Install automatically">Auto ▶</button>'
       : '';
     const btn = !n ? '' : n.stop
-      ? `<button type="button" class="btn btn-stop go" data-flow-go>${runningMap === stoppingMap ? 'Stopping…' : 'Stop'}</button>`
-      : n.done ? '<button type="button" class="btn go" disabled>All done ✓</button>'
-      : `<button type="button" class="btn btn-primary go" data-flow-go>${esc(n.label)} ▶</button>`;
-    flowRow.innerHTML = chips + `<span class="msg ${cls}" title="${esc(msg)}">${esc(msg)}</span>` + autoCtrl + btn;
+      ? `<button type="button" class="btn btn-stop go ws-clip" data-flow-go>${runningMap === stoppingMap ? 'Stopping…' : 'Stop'}</button>`
+      : n.done ? '<button type="button" class="btn go ws-clip" disabled>All done ✓</button>'
+      : `<button type="button" class="btn btn-primary go ws-clip" data-flow-go>${esc(n.label)} ▶</button>`;
+    flowRow.innerHTML = chips + `<span class="msg ws-clip ${cls}">${esc(msg)}</span>` + autoCtrl + btn;
     if (ws.pop && !popBox.isConnected) flow.appendChild(popBox);
   }
   flow.addEventListener('change', e => {
@@ -945,11 +957,12 @@
   popBox.addEventListener('click', e => e.stopPropagation());
   let popNodes = [];
   function openPop(id) {
+    if (!currentMap && id !== 'generate') return;
     if (ws.home) showMap();
     closePop();
     ws.pop = id;
     const s = STEPS.find(x => x.id === id);
-    popBox.innerHTML = `<div class="pop-head"><b>${id === 'generate' ? 'The map' : s.short}</b>
+    popBox.innerHTML = `<div class="pop-head"><b>${id === 'generate' ? 'The map' : s.title}</b>
       <button type="button" class="btn btn-small x" data-pop-close>Close</button></div>`;
     if (id === 'generate') {
       if (currentMap) popNodes = [$('results-grid')];
@@ -958,7 +971,7 @@
     for (const n of popNodes) if (n) popBox.appendChild(n);
     renderFlow();
     const chip = flow.querySelector(`[data-chip="${id}"]`);
-    if (chip) popBox.style.left = Math.max(0, Math.min(chip.offsetLeft, flow.clientWidth - popBox.offsetWidth - 8)) + 'px';
+    if (chip) popBox.style.setProperty('--pop-left', `${chip.offsetLeft}px`);
   }
   function closePop() {
     for (const n of popNodes) {
@@ -1041,6 +1054,9 @@
 
   // =========================== panels: fold, float, dock, resize ===========================
   function togglePanel(p) { p.hidden = !p.hidden; }
+  function canUsePlaces() { return !ws.home && ws.view === 'place' && !!currentRect; }
+  function renderPlaces() { places.hidden = !showPlaces || !canUsePlaces(); }
+  function setPlacesVisible(visible) { showPlaces = visible; renderPlaces(); }
   function floatPanel(p, x, y) {
     p.classList.add('ws-float'); p.classList.remove('shut');
     p.style.left = x + 'px'; p.style.top = y + 'px';
@@ -1050,7 +1066,9 @@
   function resetLayout() {
     props.hidden = false; dockPanel(props);
     controls.append(props);
-    for (const w of [layers, places]) { w.hidden = false; w.classList.remove('shut'); }
+    layers.hidden = false;
+    setPlacesVisible(true);
+    for (const w of [layers, places]) w.classList.remove('shut');
     document.documentElement.style.removeProperty('--dock-w');
     props.querySelector('.ws-pnl-body').style.height = '';
     for (const n of [...ws.popped]) dockDoc(n, false);
@@ -1149,7 +1167,7 @@
     queued = true;
     requestAnimationFrame(() => {
       queued = false;
-      renderTools(); renderOptions(); renderTabs(); renderFlow(); renderLayers(); renderStatus();
+      renderTools(); renderOptions(); renderTabs(); renderFlow(); renderLayers(); renderPlaces(); renderStatus();
       home.hidden = !ws.home;
     });
   }

@@ -1301,7 +1301,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           should_stop=None, progress=None,
           _proj_override=None, _skip_chunked: bool = False,
           _stitch_out: dict | None = None,
-          _taken: list[tuple[int, int, np.ndarray]] | None = None) -> int:
+          _taken: list[tuple[int, int, np.ndarray]] | None = None,
+          _fence_core: tuple[int, int, int, int] | None = None) -> int:
     """Generate every building for a rendered map.
 
     The explicit seed/min_size/max_size arguments are kept so the command line
@@ -2416,7 +2417,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     with ThreadPoolExecutor(max_workers=5) as pool:
         job_fences = pool.submit(build_fences, out_dir, map_name, proj, occupied,
                                  areas, bdir, extra=yard_fences, keep_clear=fence_clear,
-                                 mapped_lines=mapped_fences)
+                                 mapped_lines=mapped_fences,
+                                 core=_fence_core, allow_mod_tiles=not settings.vanilla_tiles,
+                                 road_hierarchy=road_hierarchy)
         job_spawn = pool.submit(make_spawn_map) if _stitch_out is None else None
         job_paper = pool.submit(worldmap.write, out_dir, map_name, proj, info,
                                 outlines) if _stitch_out is None else None

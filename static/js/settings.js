@@ -397,8 +397,8 @@ function buildSettingsForm(values) {
     tab.dataset.tab = name;
     tab.setAttribute('role', 'tab');
     tab.setAttribute('aria-controls', `setting-panel-${name}`);
-    tab.innerHTML = (group.icon ? `<span class="setting-tab-icon" aria-hidden="true">${group.icon}</span>` : '')
-      + `<span class="setting-tab-name">${group.title}</span>`
+    tab.innerHTML = KnoxDraw.icon(name)
+      + `<span class="setting-tab-name ws-clip">${group.title}</span>`
       + '<span class="setting-tab-dot" title="Changed from the defaults for this kind of place" hidden></span>'
       + '<span class="setting-tab-count"></span>';
     tab.addEventListener('click', () => {
@@ -529,7 +529,7 @@ let openedMap = null;
 let importedSettings = null;
 
 function rememberMap(map) {
-  importedSettings = null;
+  if (map) importedSettings = null;
   openedMap = map;
   if (map && map.settings) {
     openedMap.settings = { ...map.settings };
@@ -540,13 +540,13 @@ function rememberMap(map) {
   // comes back as 0.20 and would be reported as a change nobody made. The
   // knobs are measured against what they were showing, and only the ones that
   // really move are sent, so the rest keep the value the map was made with.
-  openedMap.shown = readSettings();
+  if (map) map.shown = readSettings();
   showReapply();
   // Editing is about a map that exists, so it waits for one to be open. The
   // shapes of whichever map was open before are cleared rather than left to
   // be edited into a map they do not belong to.
   if (typeof editReady === 'function') {
-    editReady(map && openedMap ? openedMap.mapName : null);
+    editReady(map ? map.mapName : null);
     editLayer.clearLayers();
     pickEdit(null);
     mapEdits = { removed: [], moved: {}, tags: {} };

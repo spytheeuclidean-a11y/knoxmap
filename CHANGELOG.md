@@ -1,7 +1,83 @@
-## Unreleased
+## 1.8.7.2
+
+- **Melos and Erika tiles, larger garages, foyers and lived-in exteriors**
+  (#171, with #172 and #174 merged in; `knoxbuild/`, `generator/`).
+  - **Melos Tiles and Erika's Tiles** are read from their own `.tiles` files
+    and a 334-sheet catalogue. Buildings split roughly 18% Melos, 15% Erika and
+    the rest vanilla, with hipped or flat roofs on houses that use the mod walls.
+  - **Attached garages** are at least 5x5 so a full-size car fits; detached
+    garages are no longer shrunk below that. Houses without a garage can get a
+    roofed carport, a front porch or a back deck, and exterior wall lights and
+    AC units on the walls that face the camera.
+  - **Basements** put the stairwell against a wall where they can and keep a
+    one-tile ring round it clear of furniture. Wall art and posters are half as
+    dense.
+- **A chunked render matches the whole-map render** (#172). A map rendered in
+  chunks differed from the same map rendered whole (47% of vegetation tiles on
+  the 550x550 test map), so how a map looked depended on its size and the
+  chunk seams showed. Seeds, ids and density cuts no longer depend on a
+  chunk's own size or origin.
+- **Maps and workspace**
+  - **Switching maps, Auto placement and desktop downloads** (#179): a new
+    draft is detached from the map opened before it, Auto stops before Build if
+    Standalone placement is refused, a name with no supported characters gets a
+    usable identifier, and one click on the desktop download saves one ZIP.
+  - **Workspace polish** (#185): rows, progress and status bars stay stable when
+    labels grow, Tools and Properties have line icons, the 2.5D controls fit two
+    rows, and named places and saved-area actions appear when available.
+  - **Standalone label** (#189) stays visible in a narrow workspace, and the
+    progress card (#191) no longer reserves three lines for detail text that
+    is empty.
+  - **Launcher** (#190): `KnoxMap.bat` calls `Setup.bat` by its own folder, so
+    the repair step works when Windows does not search the current directory.
+  - **Fences** (#184): surveyed fence lines are kept alongside paved roads, open
+    at road crossings, clipped to the map outline and carried through quadrant
+    builds. Fence types and heights have drawing presets, and an optional
+    `fence_tiles.json` profile names external fence tiles. Existing projects
+    need a fresh Generate before Build.
+- **Speed and shared code**
+  - **Road preparation** (#182) is one implementation for both render paths,
+    with cancellation checks during routing; the output matched the old paths
+    byte for byte.
+  - **Road props, sparse TBX exports and cache scans** (#183): road props
+    508 ms to 192 ms, sparse structure TBX exports 116 ms to 36 ms, and a
+    2,000-file cache scan 463 ms to 180 ms.
+  - **Shop furniture** (#181) shares door clearance, placement and checkout
+    layout across the general, jewelry, electronics and gun shops; the output
+    is unchanged.
+  - **knoxroute strip worker** (#176) is shared; the footprint check and
+    release manifest were updated for it.
+  - **#188** merged #179 to #185 together and resolved their conflicts.
+- **Clean-up**
+  - Seven unused functions removed (#180), the shadowed `PRIVATE_ROOMS` in
+    `openings.py` (#177), the package-level setattr forwarder in the layout
+    package (#178), Erika's asset-family prefixes named once (#186) and a dead
+    `dryer` entry in `FRONT_CLEAR_ROLES` (#187). No behaviour change.
+- **Wall AC units stay off garage doors** (#192, `knoxbuild/yards.py`). A house's
+  door list leaves out its garage doors, so an AC unit could be placed on one.
+  Garage door tiles are avoided now, with the same one-tile margin as other doors.
+- **More house cellar types** (#193, `knoxbuild/basements.py`,
+  `knoxbuild/layout/`).
+  - Six new cellars: home gym (treadmills and weights when the room is big
+    enough), utility room, games room, guest suite, study and playroom.
+  - Floors follow the room: store rooms are always bare concrete, laundries
+    concrete or grey tile, bathrooms tiled, living areas carpet or wood.
+  - A house cellar's bare walls are drawn from grey block, painted block and
+    three plaster colours by its seed.
+  - A small gym falls back to a plain store-room set, and a bar needs a large room
+    to get its counter.
+- **The front door opens into a whole entry hall** (#194,
+  `knoxbuild/layout/openings.py`). A 2x2 foyer used to be cut out of the room the
+  door opens into, leaving a room inside a room. That room is now the hall. A
+  house's only kitchen, bathroom, bedroom or living room passes its kind to the
+  largest spare room instead of being lost.
+- **Carports have two posts at each corner** (#195, `knoxbuild/yards.py`). A
+  second post stands one tile in along the drive, so a carport has 8 posts, not
+  4. The open end stays clear for cars. No thicker post sprite exists in the
+  base game or the tile mods.
 
 - **Drainage, disused track and breakwaters: ground that was mapped and dropped**
-  (#173, `generator/osm.py`, `generator/rendering/landcover.py`, `generator/renderer.py`,
+  (#173, #174, `generator/osm.py`, `generator/rendering/landcover.py`, `generator/renderer.py`,
   `generator/rendering/roads.py`, `generator/chunked.py`,
   `generator/rendering/infill.py`, `generator/rendering/widths.py`,
   `tests/test_discarded_features.py`).

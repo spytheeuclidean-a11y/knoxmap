@@ -19,7 +19,6 @@ class LivedInHouseStructuresTests(unittest.TestCase):
             self.assertEqual(len(posts), 8)
             self.assertEqual(len(set(posts)), 8)
             # the two rows of posts along the drive's open end hold none between the corners
-            end_rows = {0, ch} if dy else {0, cw}
             for x, y in posts:
                 inner = (x if dy else y)
                 self.assertTrue(inner in ((0, cw) if dy else (0, ch)), (x, y))

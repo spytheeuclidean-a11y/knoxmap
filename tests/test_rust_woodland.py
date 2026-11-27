@@ -14,7 +14,7 @@ from PIL import Image
 import knoxstop
 from generator import pz_colors as C
 from generator.osm import OSMFeature
-from generator.rendering import vegetation, woodland
+from generator.rendering import vegetation, woodland, worker
 from generator.roadgraph import rustsearch
 
 
@@ -65,8 +65,8 @@ class Fallback(unittest.TestCase):
             mask = Image.new('L', veg.size, 255)
             with mock.patch.object(woodland, 'exe', return_value='worker'), \
                     mock.patch.object(woodland.subprocess, 'Popen', return_value=proc), \
-                    mock.patch.object(woodland, '_exchange', return_value=b'x'*36), \
-                    mock.patch.object(woodland, 'TIMEOUT_S', 0 if not stopped else 30):
+                    mock.patch.object(worker, '_exchange', return_value=b'x'*36), \
+                    mock.patch.object(worker, 'TIMEOUT_S', 0 if not stopped else 30):
                 if stopped:
                     with self.assertRaises(knoxstop.Stopped):
                         woodland.paint(veg, land, mask, mask, mask, C.TREES, C.TREES,
@@ -131,7 +131,7 @@ class Native(unittest.TestCase):
         with mock.patch.object(woodland, 'paint', return_value=False):
             vegetation._paint_woodland(*expected, features(), PROJ, .75)
         actual = inputs()
-        exchange = woodland._exchange
+        exchange = worker._exchange
         calls = []
 
         def interrupted(*args):
@@ -140,7 +140,7 @@ class Native(unittest.TestCase):
                 raise OSError('worker interrupted')
             return exchange(*args)
 
-        with mock.patch.object(woodland, '_exchange', side_effect=interrupted), \
+        with mock.patch.object(worker, '_exchange', side_effect=interrupted), \
                 self.assertLogs(woodland.__name__, level='WARNING'):
             vegetation._paint_woodland(*actual, features(), PROJ, .75)
         self.assertEqual(len(calls), 2)

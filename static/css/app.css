@@ -188,10 +188,13 @@ input[readonly] { background: var(--bg); color: var(--muted); }
   background: rgba(10,12,9,.6);
 }
 #gen-overlay[hidden] { display: none; }
-.gen-box { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px; width: 320px; }
+.gen-box { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px 18px;
+  width: min(320px, calc(100% - 16px)); }
 .gen-kicker { font-weight: 600; margin-bottom: 4px; }
 #gen-stage { color: var(--text); }
 #gen-detail, .gen-elapsed { color: var(--muted); font-size: 13px; }
+#gen-detail { max-height: 54px; line-height: 18px; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
 .gen-elapsed { margin-top: 6px; }
 
 .leaflet-container { font-family: var(--font); }
@@ -325,10 +328,10 @@ body.rotate-dragging * {
 .error { color: var(--bad); font-size: 13px; }
 
 /* ---- settings panel ------------------------------------------------------------------ */
-.preset-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 10px; }
+.preset-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-bottom: 10px; }
 .preset-card {
   font: inherit; font-size: 13px; background: var(--field); border: 1px solid var(--line-strong);
-  border-radius: 4px; padding: 5px 0; cursor: pointer; color: var(--text);
+  border-radius: 4px; height: 30px; padding: 0 4px; cursor: pointer; color: var(--text);
 }
 .preset-card.is-on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
 
@@ -415,16 +418,16 @@ body.rotate-dragging * {
    bar of their own, the open one filled with the accent. */
 .setting-tabs { display: flex; flex-wrap: wrap; gap: 3px; margin: 8px 0 0; padding: 3px;
   background: var(--panel); border: 1px solid var(--line-strong); border-radius: 8px; }
-.setting-tab { flex: 1 1 30%; display: inline-flex; align-items: center; justify-content: center;
-  gap: 5px; padding: 7px 8px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+.setting-tab { flex: 1 1 30%; min-width: 0; height: 29px; display: inline-flex; align-items: center; justify-content: center;
+  gap: 3px; padding: 0 2px; font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
   background: transparent; border: 0; border-radius: 6px; transition: background .12s, color .12s; }
+.setting-tab > :not(.ws-clip) { flex: none; }
 .setting-tab:hover { color: var(--text); background: var(--hover); }
 .setting-tab.is-on { color: var(--accent-ink); background: var(--accent);
   box-shadow: 0 1px 3px rgba(0, 0, 0, .35); }
 .setting-tab.is-on .setting-tab-count { color: var(--accent-ink); opacity: .8; }
 .setting-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-.setting-tab-icon { font-size: 14px; line-height: 1; }
-.setting-tab-icon:empty { display: none; }
+.setting-tab .kd-ico { width: 13px; height: 13px; }
 .setting-tab-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--changed); }
 .setting-tab.is-on .setting-tab-dot { box-shadow: 0 0 0 1.5px var(--accent-ink); }
 /* A setting moved off the kind of place's value (markChangedTabs). */
@@ -466,15 +469,15 @@ body.rotate-dragging * {
   color: var(--faint); }
 .setting-group-advanced[open] > summary { margin-bottom: 6px; }
 .setting-compact { position: relative; display: grid; align-items: center;
-  grid-template-columns: 12.6em minmax(0, 1fr) 2.4em; column-gap: 5px;
+  grid-template-columns: min(12.6em, 43%) minmax(0, 1fr) 2.4em; column-gap: 5px;
   margin-bottom: 2px; min-height: 24px; font-size: 12px; }
 .setting-compact .setting-name { line-height: 1.2; }
 .setting-compact .setting-info { margin-left: 4px; vertical-align: 1px; }
 .setting-compact input[type="range"] { width: 100%; margin: 0; }
-.setting-compact .setting-val { text-align: right; font-size: 12px; }
+.setting-compact .setting-val { text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; }
 .setting-compact.setting-wide > select,
 .setting-compact.setting-wide > .seed-row { grid-column: 2 / 4; margin: 0; }
-.setting-compact.setting-wide select { font-size: 12px; padding: 2px 4px; }
+.setting-compact.setting-wide > select { width: 100%; min-width: 0; font-size: 12px; padding: 2px 4px; }
 .setting-compact .seed-row input { min-width: 0; flex: 1; padding: 2px 6px; font-size: 12px; }
 .setting-compact.setting-switch .switch { grid-column: 2; justify-self: start; }
 .setting-info { flex: none; width: 15px; height: 15px; padding: 0; border-radius: 50%;
@@ -535,6 +538,7 @@ body.rotate-dragging * {
 .health-facts { margin: 8px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted, inherit); }
 .presets { margin-bottom: 8px; }
 .preset-row { display: flex; gap: 6px; margin: 6px 0; }
+.preset-row[hidden] { display: none; }
 .preset-row select, .preset-row input[type=text] { flex: 1; min-width: 0; }
 .preset-share { flex-wrap: wrap; }
 .hint.bad { color: var(--bad); }
@@ -1012,12 +1016,14 @@ summary .count { color: var(--muted); font-size: 12px; font-weight: 400; }
 .ws-tool-pane .kd-group-history { grid-area: 1 / 1; }
 .ws-tool-pane .kd-group-clear { grid-area: 1 / 3; margin-left: 0; }
 .ws-tool-pane .kd-group-shape { grid-column: 1 / -1; grid-row: 2; display: flex; }
-.ws-tool-pane .kd-group-shape .btn { flex: 1 1 0; min-width: 0; padding-inline: 6px; }
+.ws-tool-pane .kd-group-shape .btn { flex: 1 1 0; min-width: 0; gap: 4px; padding-inline: 5px; }
 /* The Change tab's buttons: Load and Move and reshape across, Save and Undo
    all side by side. */
-#editMap .sketch-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#editMap .sketch-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 #editMap .sketch-actions .btn { white-space: nowrap; margin: 0; }
 #editLoad, #editShape { grid-column: 1 / -1; }
+.ws-tool-pane .sketch-actions:not(.kd-bar) .btn { min-width: 0; height: 28px; }
+.ws-tool-pane .btn.ws-clip:not([hidden]) { display: block; }
 .ws-draw-btns .btn { white-space: nowrap; padding-inline: 6px; }
 .kd-ico { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8;
   stroke-linecap: round; stroke-linejoin: round; }
