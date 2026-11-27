@@ -903,6 +903,10 @@ def pick_style(kind: str | None, tile_x: int, tile_y: int, rng,
         from . import regional
         pool = regional.cn_house_styles()
         styles = [s for s in pool if style_fits(s["name"], density)] or pool
+    elif region == "gb":
+        # Dated ones too: a Victorian terrace is brick as well.
+        from . import regional
+        styles = regional.gb_house_styles()
     elif use_melos:
         styles = _melos_house_styles() or C.HOUSE_STYLES
     elif use_erika:

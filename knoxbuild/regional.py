@@ -205,6 +205,34 @@ def cn_house_styles() -> list[dict]:
     return _CN_STYLES
 
 
+# A British street: brick most of all, then render, pebble-dash-like stucco and
+# painted brick, under the catalog's own pitched roofs. No clapboard, sidings,
+# timber or logs (American wood), no panel, and no shutters, which British
+# houses don't have. Brick is listed three times so it is half the pool.
+GB_BASES = ("brick", "brick", "brick", "render", "stucco", "painted")
+
+_GB_STYLES: list | None = None
+
+
+def _british(base: dict) -> dict:
+    """One catalog house style without its shutters; every tile untouched."""
+    style = dict(base)
+    style["name"] = f"gb_{base['name']}"
+    style.pop("shutters", None)
+    return style
+
+
+def gb_house_styles() -> list[dict]:
+    """The house styles a British town is built from, composed once."""
+    global _GB_STYLES
+    if _GB_STYLES is None:
+        from . import catalog as C
+        by_name = {s["name"]: s for s in C.HOUSE_STYLES}
+        _GB_STYLES = [_british(by_name[name]) for name in GB_BASES
+                      if name in by_name]
+    return _GB_STYLES
+
+
 # ---------------------------------------------------------------------------
 # Storeys
 # ---------------------------------------------------------------------------

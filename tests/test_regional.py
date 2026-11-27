@@ -12,7 +12,8 @@ from knoxbuild.build import (DEFAULT_LEVELS, building_levels, is_notable,
                              pick_style)
 from knoxbuild.profile import BuildingProfile
 from knoxbuild.regional import (AREA_LEVEL_TABLE, CN_BASES, area_level_pool,
-                                cn_house_styles, detect_region, map_country,
+                                cn_house_styles, detect_region, gb_house_styles,
+                                map_country,
                                 profile)
 from knoxbuild.settings import Settings
 
@@ -192,6 +193,45 @@ class ChineseStyles(unittest.TestCase):
             style = pick_style(None, 10 + (i % 8) * 9, 10 + (i // 8) * 9,
                                rng, settings, density=0.3)
             self.assertFalse(style["name"].startswith("cn_"))
+
+
+class BritishStyles(unittest.TestCase):
+    def test_pool_is_the_catalogs_own_masonry_with_pitched_roofs(self):
+        by_name = {s["name"]: s for s in catalog.HOUSE_STYLES}
+        pool = gb_house_styles()
+        self.assertTrue(pool)
+        for style in pool:
+            with self.subTest(style=style["name"]):
+                donor = by_name[style["name"][len("gb_"):]]
+                for key in ("exterior", "interior", "window", "curtains",
+                            "trim", "grime", "roof"):
+                    self.assertEqual(style.get(key), donor.get(key),
+                                     f"{key} must be the catalog's own")
+                self.assertTrue(style["roof"]["peaked"])
+                self.assertNotIn("shutters", style)
+                self.assertFalse(any(base in style["name"] for base in
+                                     ("clapboard", "logs", "trailer", "siding",
+                                      "timber", "panel")))
+
+    def test_most_british_houses_are_brick(self):
+        names = [s["name"] for s in gb_house_styles()]
+        self.assertGreater(names.count("gb_brick") / len(names), 0.4)
+
+    def test_pick_style_uses_the_gb_pool_for_ordinary_houses(self):
+        rng = random.Random(7)
+        seen = {pick_style(None, 10 + (i % 12) * 9, 10 + (i // 12) * 9,
+                           rng, Settings(), density=0.3, region="gb")["name"]
+                for i in range(40)}
+        self.assertTrue(seen)
+        self.assertTrue(all(name.startswith("gb_") for name in seen), seen)
+
+    def test_dated_buildings_stay_british(self):
+        # A Victorian terrace is brick too: no prewar exemption as for cn's flat roofs.
+        profile = BuildingProfile.infer({"start_date": "1890"}, None,
+                                        0.3, 120, 2, 11)
+        style = pick_style(None, 40, 40, random.Random(1), Settings(),
+                           density=0.3, profile=profile, region="gb")
+        self.assertTrue(style["name"].startswith("gb_"))
 
 
 class RegionalStoreys(unittest.TestCase):
