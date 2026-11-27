@@ -472,6 +472,13 @@ def _paint_road_details(veg: Image.Image, landscape: Image.Image,
 
 
 DENSE_APRON_TILES = 6
+# Homes and what stands in their yards get no apron, dense block or not: a
+# house's yard is dressed on its lawn (knoxbuild/yards.py), and paved to the
+# fence line it was a back yard of bare concrete. Their footprints still count
+# towards how built-up the block is.
+UNPAVED_BUILDINGS = {"house", "detached", "semidetached_house", "terrace", "bungalow",
+                     "cabin", "residential", "farm", "static_caravan",
+                     "shed", "garage", "garages", "carport"}
 
 
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
@@ -506,12 +513,14 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
               polygonize(unary_union(streets + [frame.exterior]))]
     blocks = [b for b in blocks if not b.is_empty and b.area > 50]
 
-    footprints = []
+    footprints, paved_round = [], []
     for feat in building_feats:
+        home = (feat.tags.get("building") or "").lower() in UNPAVED_BUILDINGS
         for ring in _feature_coords_px(feat, proj):
             if len(ring) >= 3:
                 poly = Polygon(ring)
                 footprints.append(poly if poly.is_valid else poly.buffer(0))
+                paved_round.append(not home)
     if not footprints:
         return
     tree = STRtree(footprints)
@@ -520,11 +529,12 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
     pd = ImageDraw.Draw(paved)
     any_paved = False
     for block in blocks:
-        hits = [footprints[i].intersection(block) for i in tree.query(block)]
+        found = list(tree.query(block))
+        hits = [footprints[i].intersection(block) for i in found]
         covered = sum(g.area for g in hits)
         if block.area > MAX_PAVED_BLOCK or covered / block.area < DENSE_COVERAGE:
             continue
-        apron = unary_union([g for g in hits if not g.is_empty])
+        apron = unary_union([g for i, g in zip(found, hits) if paved_round[i] and not g.is_empty])
         if apron.is_empty:
             continue
         apron = apron.buffer(DENSE_APRON_TILES).intersection(block)
