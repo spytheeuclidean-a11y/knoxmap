@@ -13,7 +13,9 @@ def pieces_in(plan, idx, prefix):
 class LivingRooms(unittest.TestCase):
     def test_the_sofa_faces_the_television(self):
         faces = total = 0
-        for seed in range(25):
+        # 40 houses: about four in ten give a corner to a garage, and a living
+        # room cut smaller for it may have no room for a television.
+        for seed in range(40):
             plan = layout.build_building(18, 14, kind="house", street="S", seed=seed).storeys[0]
             for idx, room in enumerate(plan.rooms, 1):
                 if room.kind != "livingroom":

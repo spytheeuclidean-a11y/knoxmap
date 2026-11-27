@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from .access import door_sides, shared_paths, stair_tiles
 from .core import COMMERCIAL, COMMERCIAL_FILL, MAX_DEPTH, MIN_ROOM, Plan, RETAIL_ROOMS, Room, SPECIAL_MIXES, STAIR_RUN, _inside, _mapped_rooms, _split, mapped_room_tiles
 from .flat_planning import MIN_STUDIO_AREA, VariantCache, replan_flats
-from .openings import ApartmentAccessError, _attach_garage, _back_door, _doors, _exterior_door, _more_ways_in, _outside_runs, _room_at, _widen_vehicle_entry
+from .openings import ApartmentAccessError, _attach_garage, _back_door, _garage_bay, _rooms_joined_without, _doors, _exterior_door, _more_ways_in, _outside_runs, _room_at, _widen_vehicle_entry
 from .malls import _atrium_railings, _clear_concourse, _mall_doors, _mall_plan_fits, _mall_rooms, _merge_concourse, _merge_halls, _open_shopfronts, _place_kiosks, _renumber
 from .dwellings import FLAT_FRONTAGE, HOTEL_FRONTAGE, _apartment_rooms, _assign_flat_kinds, _flats_keep_bathrooms, _join_undersized_flats, _paint, _stagger_flats, _unit_touches_corridor, inlay_mapped_rooms
 from . import houses as _houses
@@ -588,7 +588,28 @@ def _room_cap(kind: str | None) -> int:
     return KIND_MAX_ROOM.get(kind or "", MAX_ROOM_AREA)
 
 
-def build_plan(width: int, height: int, commercial: bool = False,
+def build_plan(*args, **kw) -> Plan:
+    """_build_plan, laid out again without the garage bay when the floor cut
+    round it walls a room in behind the garage or leaves the front door no
+    street wall: the cut does not know the bay is there."""
+    plan = _build_plan(*args, **kw)
+    if any(r.kind == "garage" and r.fixed for r in plan.rooms) and not _garage_fits(plan, kw.get("street")):
+        plan = _build_plan(*args, garage_bay=False, **kw)
+    return plan
+
+
+def _garage_fits(plan: Plan, street: str | None) -> bool:
+    """The carved garage is no way through, and the house has its own street door."""
+    g = next(i for i, r in enumerate(plan.rooms, 1) if r.kind == "garage")
+    bay_door = set(getattr(plan, "garage_door_tiles", ()))
+    if len(bay_door) != 3 or not _rooms_joined_without(plan, g):
+        return False
+    return any(e in plan.doors and e not in bay_door
+               for i in range(1, len(plan.rooms) + 1) if i != g
+               for side, wall in _outside_runs(plan, i) if side == street for e in wall)
+
+
+def _build_plan(width: int, height: int, commercial: bool = False,
                seed: int = 0, kind: str | None = None,
                mask: list[list[bool]] | None = None,
                ground: bool = True,
@@ -615,7 +636,8 @@ def build_plan(width: int, height: int, commercial: bool = False,
                approach_edges: tuple | None = None,
                flat_variants: VariantCache | None = None,
                lobby: set[tuple[int, int]] | None = None,
-               flat_count: int | None = None, flat_balconies: bool = False) -> Plan:
+               flat_count: int | None = None, flat_balconies: bool = False,
+               garage_bay: bool = True) -> Plan:
     """Lay out and furnish one storey of the given tile size.
 
     `uses` are what OpenStreetMap says a commercial ground floor holds
@@ -668,6 +690,7 @@ def build_plan(width: int, height: int, commercial: bool = False,
 
     arms: list = []
     by_kind = None
+    bay = None
     # _shop_rooms numbers the sales rooms before _paint; _paint can drop,
     # split or renumber them. Remember the rooms themselves, not the numbers.
     section_ids: set[int] = set()
@@ -723,6 +746,16 @@ def build_plan(width: int, height: int, commercial: bool = False,
                            or (mix_kind and mix_kind in SPECIAL_MIXES))
         small_room = house_floor or shop_floor or bool(mix_kind in SPECIAL_MIXES and
                                          "bathroom" in SPECIAL_MIXES[mix_kind][0])
+        # An integral garage's bay comes off the floor before it is cut, and
+        # goes back as the garage once it is.
+        if (garage_bay and house_floor and ground and kind in (None, "house") and not garage_door
+                and not mapped and (bay := _garage_bay(width, height, mask, core, stairs,
+                                                       street, seed))):
+            whole = mask
+            mask = [[(whole is None or whole[y][x])
+                     and not (bay[0] <= x <= bay[2] and bay[1] <= y <= bay[3])
+                     for x in range(width)] for y in range(height)]
+            plan.mask = mask
         if mapped and (ground or level > 0):
             # The rooms OpenStreetMap has for this building, on the floor the
             # mapper drew them for. Only the remaining floor space is split.
@@ -738,6 +771,12 @@ def build_plan(width: int, height: int, commercial: bool = False,
                 _split(0, 0, width - 1, height - 1, rng, MAX_DEPTH, plan.rooms,
                        target_area=target, mask=mask, small=[small_room])
     merged_units = _paint(plan, shared_tiles, shells)
+    if bay:
+        mask = whole
+        plan.rooms.append(Room(*bay, kind="garage", fixed=True))
+        for y in range(bay[1], bay[3] + 1):
+            for x in range(bay[0], bay[2] + 1):
+                plan.grid[y][x] = len(plan.rooms)
     plan.mask = mask
 
     # Kinds are chosen after painting, from the plan as it really is: what a
