@@ -444,6 +444,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
            terrain_only: int = 0,
            landcover_for=None,
            climate=None,
+           country: str | None = None,
            winter_look: str = "auto",
            elevation=None,
            elevation_span=None,
@@ -461,6 +462,12 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
     road_progress is omitted.
     """
     proj = _proj_override or Projector.build(south, west, north, east, meters_per_tile, rotation)
+    if country == "GB" and _proj_override is None:
+        # Once for the whole map, before it is cut into chunks: added as
+        # ordinary service=alley ways, everything below draws them as mapped.
+        from .rendering.alleys import back_alleys
+        features = list(features)
+        features += back_alleys(features, proj)
     from .chunked import CHUNK_MIN_CELLS, render_chunked
     cx_cells, cy_cells = proj.cell_grid()
     if _proj_override is None and cx_cells * cy_cells > CHUNK_MIN_CELLS:
