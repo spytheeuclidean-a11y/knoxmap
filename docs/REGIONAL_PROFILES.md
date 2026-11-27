@@ -1,8 +1,9 @@
 # Regional profiles: building a country the way it is built
 
 Status: skeleton done (profile type, GB detection); GB steps 1 (materials and
-roofs), 2 (storeys), 5 (terraces and semis, first part) and 6 (back alleys,
-first part) done. First target: Great Britain (`gb`).
+roofs), 2 (storeys), 5 (terraces and semis, first part), 6 (back alleys,
+first part) and 7 (boundaries, first part) done. First target: Great
+Britain (`gb`).
 
 ## Why
 
@@ -150,9 +151,18 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    alleys as networks with cross-links, which this does not draw. Cambourne:
    12 lanes, 555 m, on its rows of joined houses.
    Left: gates in back fences (step 7); cross-links; ends that turn a corner.
-7. **Boundaries.** Low brick walls or hedges at the front, close-board
-   wooden fences between back gardens (`knoxbuild/fences.py`,
-   `knoxbuild/yards.py`).
+7. **Boundaries.** *First part done* (`knoxbuild/yards.py`).
+   - Back: `yard_plan(..., region="gb")` picks `tall_wooden` (75%) or
+     `short_wooden` (25%), fenced 95% (default: picket and chain-link too,
+     85%).
+   - Front: `_front_boundary()` runs a fence along the pavement edge across
+     the house's front, found straight out of the front door on the ground as
+     it was before paths and drives were painted; broken wherever the path,
+     the drive or anything else crosses. `black_metal` (railings, 55%) or
+     `short_wooden` (45%); 30% of front gardens are left open-plan.
+   The game has no low brick wall fence, so railings stand in for wall and
+   railings. Left: hedges at the front (props, not fences); gates in back
+   fences onto back alleys.
 8. **Garages and parking.** Lower `garage_share`; rows of lock-up garages
    where OSM maps `building=garages`; on-street parking in place of
    driveways.

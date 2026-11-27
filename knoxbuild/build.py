@@ -2325,7 +2325,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
         fence_clear = fronts | set(zip(rail_x.tolist(), rail_y.tolist()))
     paths, yard_fences = paint_paths(out_dir, map_name, rows, occupied, drives,
                                      porch_lights, fronts=fronts,
-                                     structures=yard_structures)
+                                     structures=yard_structures, region=region)
     # The lights stand outside the houses, past the edge of their own .tbx.
     from .structures import pack_loose, pack_roofed_structures
     light_placements = pack_loose(bdir, map_name, "lights", porch_lights,
