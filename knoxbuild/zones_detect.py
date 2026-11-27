@@ -44,10 +44,27 @@ def car_park_stalls(bounds: tuple[int, int, int, int], w: int, h: int):
                     yield x, y, sw, sh
 
 
+# How often a kerbside spot gets a car, by road_hierarchy code.
+KERBSIDE_RATES = {1: 0.0, 2: 0.18, 3: 0.55, 4: 0.38, 5: 0.28, 6: 0.16, 7: 0.08, 8: 0.02}
+KERBSIDE_UNKNOWN = 0.45
+
+
+def kerbside_rate(tier: int | None, region: str | None = None) -> float:
+    """The chance of a car at a kerbside spot on a road of this tier; British
+    residential streets (`region` "gb") are lined with them."""
+    if not tier:
+        return KERBSIDE_UNKNOWN
+    if region == "gb":
+        from .regional import GB_KERBSIDE_RATES
+        if tier in GB_KERBSIDE_RATES:
+            return GB_KERBSIDE_RATES[tier]
+    return KERBSIDE_RATES.get(int(tier), KERBSIDE_UNKNOWN)
+
+
 def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
                   settings: Settings | None = None, areas=None, drives=(),
                   keep_clear=(), road_hierarchy: np.ndarray | None = None,
-                  veg_path: str | None = None):
+                  veg_path: str | None = None, region: str | None = None):
     """Parking stalls along the roads, town zones over built-up ground.
 
     Without these the streets are bare: vehicles only ever spawn inside
@@ -213,13 +230,9 @@ def _detect_zones(landscape_path: str, placements, rng_seed: int = 7,
                 continue
             if car_park:
                 rate = 0.75
-            elif road_hierarchy is None or not road_hierarchy[y, x]:
-                rate = 0.45
             else:
-                rate = {
-                    1: 0.0, 2: 0.18, 3: 0.55, 4: 0.38,
-                    5: 0.28, 6: 0.16, 7: 0.08, 8: 0.02,
-                }.get(int(road_hierarchy[y, x]), 0.45)
+                rate = kerbside_rate(None if road_hierarchy is None
+                                     else int(road_hierarchy[y, x]), region)
             chance = rate * settings.parking_density
             if rng.random() > chance:
                 continue

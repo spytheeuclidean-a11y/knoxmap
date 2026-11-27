@@ -384,6 +384,11 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
     if special == "mall" and max_side is None and \
             fp.tiles * metres_per_tile * metres_per_tile <= MALL_MAX_M2:
         return [fp]
+    if region == "gb" and special == "garage" and btag == "garages":
+        # A British block of lock-up garages: one door each, side by side.
+        from .regional import GB_LOCKUP_FRONTAGE_M
+        unit = max(1, int(round(GB_LOCKUP_FRONTAGE_M / metres_per_tile)))
+        return _cut_big(split_row(fp, unit), metres_per_tile, max_side)
     if special not in ROW_KINDS and btag not in TERRACE_TAGS:
         return _cut_big([fp], metres_per_tile, max_side)
     long_side = max(fp.width, fp.height) * metres_per_tile
@@ -2444,7 +2449,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             _detect_zones, os.path.join(out_dir, f"{map_name}.bmp"), placements,
             settings=settings, areas=areas, drives=drives, keep_clear=forecourts,
             road_hierarchy=road_hierarchy,
-            veg_path=os.path.join(out_dir, f"{map_name}_veg.bmp"))
+            veg_path=os.path.join(out_dir, f"{map_name}_veg.bmp"), region=region)
         # Fences go into the project alongside the buildings, but not into the
         # town zones: a fence lot spans its whole cell and would mark it all town.
         job_structures = pool.submit(build_structures, out_dir, map_name, bdir)

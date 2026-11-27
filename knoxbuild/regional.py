@@ -330,6 +330,20 @@ def british_house(special: str | None, btag: str, real_m2: float,
             and real_m2 <= GB_HOUSE_MAX_M2 and (levels is None or levels < 3))
 
 
+# ---------------------------------------------------------------------------
+# Garages and parking
+# ---------------------------------------------------------------------------
+
+# A block of lock-up garages (building=garages) is cut into one garage per
+# car. A real lock-up is about 3 m wide, but a footprint is never cut narrower
+# than footprint.MIN_ROOM_SIDE (5) and the layout needs as much.
+GB_LOCKUP_FRONTAGE_M = 5.0
+# Terraced streets have no drives, so their cars stand at the kerb, along
+# both sides of nearly every residential street. By road_hierarchy code
+# (3 residential, 4 tertiary); the rest keep the default rates.
+GB_KERBSIDE_RATES = {3: 0.85, 4: 0.5}
+
+
 def area_level_pool(kind: str | None, area_m2: float,
                     region: str | None = None) -> tuple | None:
     """A weighted pool of storeys for this kind and footprint, or None.
