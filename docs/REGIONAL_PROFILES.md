@@ -1,10 +1,8 @@
 # Regional profiles: building a country the way it is built
 
-Status: skeleton done (profile type, GB detection); GB steps 1 (materials and
-roofs), 2 (storeys), 3 (front of the plot, first part), 5 (terraces and
-semis, first part), 6 (back alleys, first part), 7 (boundaries, first part)
-and 8 (garages and parking, first part) done. First target: Great Britain
-(`gb`).
+Status: skeleton done (profile type, GB detection); a first pass of every GB
+step (1-8) done, several with parts left (see each). First target: Great
+Britain (`gb`).
 
 ## Why
 
@@ -125,9 +123,16 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    house; drives are already one car wide (`yards.DRIVE_WIDTH` = 3) and
    terraced houses get none where there is no room.
    Left: front hedges (step 7).
-4. **Back of the plot.** Long narrow back gardens; sheds smaller and at the
-   far end of the garden (`infill.SHED_SETBACKS`, `SHED_SIZE_M`,
-   `SHED_SHARE`).
+4. **Back of the plot.** *Done.*
+   - Garden (`knoxbuild/yards.py`): `GB_YARD_DEPTH` 14 (default 9) and only
+     as wide as the house (default tries 2 tiles past each side first), so a
+     terrace's gardens are side-by-side strips.
+   - Sheds (`generator/rendering/infill._back_sheds(..., country="GB")`):
+     2-3 m square, 7-11 m behind the house, inside the house's own width,
+     for half the houses from 35 m2 (default: 3-6 x 3-5 m, 4-6 m back, 35%
+     of houses from 70 m2, which left every terraced house without one).
+   Limit, as before: the garden stops at the shed's row, so the shed stands
+   just past the garden fence.
 5. **Terraces and semis.** *First part done.* Rows were already cut into
    units wall to wall (`build.row_units`, `footprint.split_row`) and shared
    walls already lose their windows (`_party_walls`). For `gb`:

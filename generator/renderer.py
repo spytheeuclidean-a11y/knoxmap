@@ -630,7 +630,8 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                 buckets["building"] = buckets.get("building", []) + infilled
         # A shed or garage behind some of the houses, whether or not the gaps are
         # filled: a yard has one either way.
-        sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip)
+        sheds = _back_sheds(buckets, vegetation_feats, building_feats, proj, clip,
+                            country=country)
         if sheds:
             building_feats = building_feats + sheds
             buckets["building"] = buckets.get("building", []) + sheds

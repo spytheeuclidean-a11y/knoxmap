@@ -53,6 +53,7 @@ MERGE_DOOR_SHARE = 0.65
 DRIVE_WIDTH = 3
 DRIVE_EXTRA = 5          # how far the drive runs past the front of the house
 YARD_DEPTH = 9           # back yard, from the back wall to the back fence
+GB_YARD_DEPTH = 14       # a British back garden is a long strip
 YARD_MIN_DEPTH = 4
 YARD_SIDE = 2            # how far the fence stands out past the house's sides
 PAVED = (C.PALE_CONCRETE, C.MEDIUM_ASPHALT, C.DARK_ASPHALT, C.DARKEST_ASPHALT)
@@ -1716,12 +1717,17 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         # As wide as the house and a little over, narrower where the
         # neighbours are close; as deep as there is room for, up to a depth
         # this house's own yard takes. Every yard used to be nine deep.
+        # A British garden is a strip as wide as the house and long: next door's
+        # strip starts at the party wall, so it never reaches past the house.
+        british = region == "gb"
         want_depth = max(YARD_MIN_DEPTH,
-                         YARD_DEPTH - random.Random((bx0 * 31 + by0) ^ 0xA5A5)
+                         (GB_YARD_DEPTH if british else YARD_DEPTH)
+                         - random.Random((bx0 * 31 + by0) ^ 0xA5A5)
                          .choice((0, 0, 1, 1, 2, 3)))
         base_u0 = bx0 if dy else by0
         base_w = bw if dy else bh
-        candidates = [(base_u0 - side, base_w + 2 * side) for side in (YARD_SIDE, 1, 0)]
+        candidates = [(base_u0 - side, base_w + 2 * side)
+                      for side in ((0,) if british else (YARD_SIDE, 1, 0))]
         if base_w >= 5:
             candidates += [(base_u0 + 1, base_w - 1), (base_u0, base_w - 1),
                            (base_u0 + 1, base_w - 2)]
