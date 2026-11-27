@@ -44,6 +44,16 @@ class CellBudget(unittest.TestCase):
         self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
         self.assertLessEqual(sum(W._points(p) for p, _ in kept), W.CELL_POINT_BUDGET)
 
+    def test_roads_stay_whole_while_buildings_can_give_way(self):
+        # Simplifying a thin road outline at 3 tiles turns it into wedges and
+        # spikes on the paper map (Cambourne); buildings go coarse or go first.
+        road = (square(0, 100, side=250, corners=60), [("highway", "residential")])
+        features = [road] + [(square(x * 6, y * 6), [("building", "yes")])
+                             for x in range(40) for y in range(38)]
+        kept = W._within_budget(features)
+        self.assertIn(road, kept)
+        self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
+
     def test_connected_road_segments_merge_into_continuous_polygons(self):
         from shapely.geometry import LineString
         from shapely.ops import linemerge, unary_union
