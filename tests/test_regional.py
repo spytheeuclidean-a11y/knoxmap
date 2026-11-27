@@ -12,7 +12,8 @@ from knoxbuild.build import (DEFAULT_LEVELS, building_levels, is_notable,
                              pick_style)
 from knoxbuild.profile import BuildingProfile
 from knoxbuild.regional import (AREA_LEVEL_TABLE, CN_BASES, area_level_pool,
-                                cn_house_styles, detect_region)
+                                cn_house_styles, detect_region, map_country,
+                                profile)
 from knoxbuild.settings import Settings
 
 
@@ -65,14 +66,55 @@ class DetectRegion(unittest.TestCase):
         self.assertEqual(detect_region(geo(["", "", ""]),
                                        {"south": 35.6, "west": 139.7,
                                         "north": 35.7, "east": 139.8}), "jp")
-        self.assertIsNone(detect_region(geo(["", "", ""]),
-                                         {"south": 51.0, "west": -0.2,
-                                          "north": 51.1, "east": 0.2}))
+        self.assertEqual(detect_region(geo(["", "", ""]), LONDON), "gb")
 
     def test_seoul_is_not_read_as_china(self):
         self.assertEqual(detect_region(geo(["", "", ""]),
                                        {"south": 37.4, "west": 126.9,
                                         "north": 37.6, "east": 127.1}), "kr")
+
+
+LONDON = {"south": 51.0, "west": -0.2, "north": 51.1, "east": 0.2}
+DUBLIN = {"south": 53.3, "west": -6.35, "north": 53.4, "east": -6.2}
+ENGLISH = ["Town Hall", "The Red Lion", "St Mary's Church", "Co-op",
+           "Village Hall", "The Crown", "Primary School"]
+
+
+class DetectBritain(unittest.TestCase):
+    def test_the_country_on_record_makes_a_british_map_gb(self):
+        self.assertEqual(detect_region(geo(ENGLISH), BBOX, country="GB"), "gb")
+
+    def test_a_country_without_a_profile_builds_the_default_way(self):
+        self.assertIsNone(detect_region(geo(ENGLISH), LONDON, country="FR"))
+        self.assertIsNone(detect_region(geo(ENGLISH), DUBLIN, country="IE"))
+
+    def test_names_still_come_first(self):
+        names = ["新华书店", "王记小吃", "人民公园", "第一中学", "红旗照相馆", "东风商场"]
+        self.assertEqual(detect_region(geo(names), LONDON, country="GB"), "cn")
+
+    def test_without_a_country_the_box_decides(self):
+        # A map made before the country was recorded, or with no Natural Earth.
+        self.assertEqual(detect_region(geo(ENGLISH), LONDON), "gb")
+        self.assertIsNone(detect_region(geo(ENGLISH), DUBLIN))
+        self.assertIsNone(detect_region(geo(ENGLISH), BBOX))
+
+    def test_the_country_is_read_from_the_maps_data_layers(self):
+        import json
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            self.assertIsNone(map_country(d, "Town"))
+            with open(os.path.join(d, "Town_knoxdata.json"), "w") as f:
+                json.dump({"region": "GB"}, f)
+            self.assertEqual(map_country(d, "Town"), "GB")
+
+
+class Profiles(unittest.TestCase):
+    def test_every_map_has_a_profile_and_the_us_is_the_default(self):
+        self.assertEqual(profile(None).code, "us")
+        self.assertEqual(profile("jp").code, "us")
+        self.assertEqual(profile("gb").code, "gb")
+        self.assertEqual(profile("cn").code, "cn")
 
 
 class ChineseStyles(unittest.TestCase):
