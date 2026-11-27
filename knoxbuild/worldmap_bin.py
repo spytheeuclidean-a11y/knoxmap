@@ -156,7 +156,9 @@ CELL_POINT_BUDGET = 4500
 # A polygon of n points is ~3n indices and can be kept/triangulated up to 6
 # times across zoom levels (both highways and dense building/area layers in
 # WorldMap / Spawn Selector), so all polygons count 6x against the budget.
-CELL_INDEX_BUDGET = 24000
+# 24000 still crashed the paper map in Build 42 (Cambourne, cells at the cap);
+# 12000 was tested in-game and opens fine. Don't raise it without a new test.
+CELL_INDEX_BUDGET = 12000
 POLYGON_COPIES = 6
 HIGHWAY_COPIES = POLYGON_COPIES
 # What goes first when a cell is over it: the small things.

@@ -27,11 +27,11 @@ class CellBudget(unittest.TestCase):
         self.assertTrue(kept)
         self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
         self.assertLessEqual(sum(W._points(p) for p, _ in kept), W.CELL_POINT_BUDGET)
-        self.assertLess(W.CELL_INDEX_BUDGET, 32767)
+        self.assertLessEqual(W.CELL_INDEX_BUDGET, 12000)  # highest value tested in-game
 
     def test_an_ordinary_cell_is_left_alone(self):
         features = [(square(x * 10, y * 10), [("building", "yes")])
-                    for x in range(10) for y in range(10)]
+                    for x in range(8) for y in range(8)]
         self.assertEqual(W._within_budget(features), features)
 
     def test_building_heavy_cell_is_counted_with_full_zoom_copies(self):
