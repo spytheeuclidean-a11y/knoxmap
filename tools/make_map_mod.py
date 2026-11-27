@@ -681,7 +681,8 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
                        map_folder: str, needs_erika: bool = False,
                        standalone: bool = False,
                        needs_airport: bool = False,
-                       needs_melos: bool = False) -> str:
+                       needs_melos: bool = False,
+                       fence_mods: tuple[str, ...] = ()) -> str:
     """The files and lines a dedicated server needs, ready to copy.
 
     A map mod is enough for a player on their own; a server needs three more
@@ -691,6 +692,10 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
     this map's real names is the difference between five minutes and an
     evening on a wiki.
     """
+    tile_mods = (([knoxpaths_module().ERIKAS_TILES_MOD_ID] if needs_erika else [])
+                 + ([knoxpaths_module().MELOS_TILES_MOD_ID] if needs_melos else []))
+    airport_mods = [m for m, _w in knoxpaths_module().AIRPORT_REQUIRED_MODS] if needs_airport else []
+    mods_line = ";".join(dict.fromkeys([*tile_mods, *airport_mods, *fence_mods, mod_id]))
     server = os.path.join(mod_root, "server")
     os.makedirs(server, exist_ok=True)
     regions = f"{map_folder}_spawnregions.lua"
@@ -729,7 +734,7 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
         "",
         "2. In your server's .ini (Zomboid/Server/<name>.ini), set:",
         "",
-        f"      Mods={mod_id}",
+        f"      Mods={mods_line}",
         (f"      Map={map_folder}" if standalone
          else f"      Map={map_folder};Muldraugh, KY"),
         "",
@@ -751,10 +756,7 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
         "   This map uses custom tile packs, so the server and every player",
         "   need those mods as well:",
         "",
-        "      Mods=" + ";".join(
-            ([knoxpaths_module().ERIKAS_TILES_MOD_ID] if needs_erika else [])
-            + ([knoxpaths_module().MELOS_TILES_MOD_ID] if needs_melos else [])
-            + [mod_id]),
+        f"      Mods={mods_line}",
         "      WorkshopItems=" + ";".join(
             ([knoxpaths_module().ERIKAS_TILES_WORKSHOP_ID] if needs_erika else [])
             + ([knoxpaths_module().MELOS_TILES_WORKSHOP_ID] if needs_melos else [])),
@@ -765,16 +767,17 @@ def write_server_setup(mod_root: str, mod_id: str, name: str,
         "   This map has an airport, so the server and every player need the",
         "   Wingsmith aircraft mods as well:",
         "",
-        "      Mods=" + ";".join(
-            ([knoxpaths_module().ERIKAS_TILES_MOD_ID] if needs_erika else [])
-            + ([knoxpaths_module().MELOS_TILES_MOD_ID] if needs_melos else [])
-            + [m for m, _w in knoxpaths_module().AIRPORT_REQUIRED_MODS]
-            + [mod_id]),
+        f"      Mods={mods_line}",
         "      WorkshopItems=" + ";".join(
             ([knoxpaths_module().ERIKAS_TILES_WORKSHOP_ID] if needs_erika else [])
             + ([knoxpaths_module().MELOS_TILES_WORKSHOP_ID] if needs_melos else [])
             + [w for _m, w in knoxpaths_module().AIRPORT_REQUIRED_MODS]),
-        "",] if needs_airport else []) + [
+        "",] if needs_airport else []) + ([
+        "   Install the fence tileset mods listed in Mods= on the server and",
+        "   every client. Add their Workshop item IDs to WorkshopItems= if",
+        "   you install them through Steam Workshop.",
+        "",
+    ] if set(fence_mods) - set(tile_mods) else []) + [
         f"3. Copy server/{regions} into Zomboid/Server/ and rename it to",
         "   <your server name>_spawnregions.lua, matching the .ini's name.",
         "   Without it players spawn in Muldraugh, not here.",
@@ -924,6 +927,34 @@ def free_bytes(path: str) -> int:
     return shutil.disk_usage(path).free
 
 
+def _fence_mods(project_dir: str, cells: list[str]) -> list[str]:
+    import knoxfiles
+    from knoxbuild.fences import FENCE_TILE_DEPENDENCIES
+
+    path = os.path.join(project_dir, FENCE_TILE_DEPENDENCIES)
+    dependencies = knoxfiles.read(path, "the fence tile dependencies", default={})
+    if not dependencies:
+        return []
+
+    from knoxbuild.buildtiles import tile_name
+    from tools.render_lots import read_header
+
+    pending = {mod: {tile_name(tile) for tile in tiles} for mod, tiles in dependencies.items()}
+    used = []
+    for cell in cells:
+        if not cell.endswith(".lotheader"):
+            continue
+        names, _lo, _hi = read_header(cell)
+        present = {tile_name(name) for name in names}
+        for mod in list(pending):
+            if pending[mod] & present:
+                used.append(mod)
+                del pending[mod]
+        if not pending:
+            break
+    return used
+
+
 def package(project_dir: str, name: str, mod_id: str,
             lots_dir: str | None = None, mods_dir: str | None = None,
             description: str = "", on_progress=None) -> tuple[str, int, list[str]]:
@@ -939,6 +970,7 @@ def package(project_dir: str, name: str, mod_id: str,
         raise FileNotFoundError(
             f"No compiled cell data in {lots_dir}. Run WorldEd's Generate Lots "
             f"first.")
+    fence_mods = _fence_mods(project_dir, cells)
 
     mod_root = os.path.join(mods_dir, mod_id)
     map_dir = os.path.join(mod_root, "common", "media", "maps",
@@ -1058,8 +1090,9 @@ def package(project_dir: str, name: str, mod_id: str,
         requires.append(kp.MELOS_TILES_MOD_ID)
     if needs_airport:
         requires.extend(req_id for req_id, _wid in kp.AIRPORT_REQUIRED_MODS)
+    requires.extend(fence_mods)
     if requires:
-        info += f"require={','.join(requires)}\n"
+        info += f"require={','.join(dict.fromkeys(requires))}\n"
     os.makedirs(os.path.join(mod_root, "42"), exist_ok=True)
     for where in ("", "common", "42"):
         with open(os.path.join(mod_root, where, "mod.info"), "w",
@@ -1075,7 +1108,8 @@ def package(project_dir: str, name: str, mod_id: str,
                                  folder_name(name, mod_id),
                                  needs_erika=uses_erika, standalone=is_standalone,
                                  needs_airport=needs_airport,
-                                 needs_melos=uses_melos)
+                                 needs_melos=uses_melos,
+                                 fence_mods=tuple(fence_mods))
     n_pois = write_spawn_selector(project_dir, mod_root, mod_id, name)
     reset_loot = write_reset_loot(mod_root)
     gun_cache = write_gun_cache(project_dir, mod_root, mod_id)

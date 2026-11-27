@@ -40,6 +40,26 @@ def _attrs(pairs: list[tuple[str, object]]) -> str:
                    for k, v in pairs)
 
 
+def _roomless_tbx_header(width: int, height: int, extra_entries=(),
+                         roof_idx: tuple[int, int, int] | None = None) -> list[str]:
+    """Write the standard header and tile entries for a roomless TBX. A roofed
+    one adds `extra_entries` (its roof kit) and names their `roof_idx`."""
+    cap, slope, top = roof_idx or (C.ROOF_CAP, C.ROOF_SLOPE, C.ROOF_TOP)
+    attrs = [("version", VERSION), ("width", width), ("height", height),
+             ("ExteriorWall", C.EXTERIOR_WALL), ("ExteriorWallTrim", 0),
+             ("Door", C.DOOR), ("DoorFrame", C.DOOR_FRAME), ("Window", C.WINDOW),
+             ("Curtains", C.CURTAINS), ("Shutters", 0), ("Stairs", C.STAIRS),
+             ("RoofCap", cap), ("RoofSlope", slope),
+             ("RoofTop", top), ("GrimeWall", 0)]
+    out = ['<?xml version="1.0" encoding="UTF-8"?>', f"<building{_attrs(attrs)}>"]
+    for entry in list(C.TILE_ENTRIES) + list(extra_entries):
+        out.append(f' <tile_entry category={quoteattr(entry["category"])}>')
+        for enum_name, tile in entry["tiles"].items():
+            out.append(f'  <tile enum={quoteattr(enum_name)} tile={quoteattr(tile)}/>')
+        out.append(" </tile_entry>")
+    return out
+
+
 # A pitched roof needs room for two slopes; a narrower strip of a house (a
 # porch, one step of a turned footprint) keeps a flat roof.
 PEAK_MIN_TILES = 4

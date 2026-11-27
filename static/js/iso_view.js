@@ -5,6 +5,7 @@
 (() => {
   let activeMap = null;
   let mapInfo = null;
+  let mapInfoRequest = null;
   let currentMode = 'town'; // 'town' | 'close' | 'inside' | 'sector'
   let scale = 1.0;
   let panX = 0;
@@ -18,14 +19,15 @@
   let viewportObserver = null;
 
   let el = null;
+  let toolbar = null;
   let stage = null;
   let img = null;
   let badge = null;
   let emptyBox = null;
+  let retryBox = null;
   let titleEl = null;
   let sectorBar = null;
   let loadHdHereBtn = null;
-  let backOverviewBtn = null;
   let cellSelect = null;
   let drawBoxBtn = null;
 
@@ -54,6 +56,7 @@
   let cancelBtn = null;
 
   let progressTimer = null;
+  let progressHideTimer = null;
   let progressStartTime = 0;
   let activeImageLoader = null;
   let isCancelled = false;
@@ -65,55 +68,60 @@
 
     root.innerHTML = `
       <div class="iso-container">
-        <header class="iso-bar">
-          <div class="iso-bar-left">
-            <span class="iso-title" id="isoTitle"></span>
-            <div class="iso-modes" role="radiogroup" aria-label="View mode">
-              <button type="button" class="btn btn-small is-on" data-iso-mode="town"
-                      title="Panoramic overview of the whole town with roofs">Town overview</button>
-              <button type="button" class="btn btn-small" data-iso-mode="close"
-                      title="Close-up view of the town center with roofs">Town center</button>
-              <button type="button" class="btn btn-small" data-iso-mode="inside"
-                      title="Full town view with all furnished building interiors and roofs removed">Interiors (All)</button>
-              <button type="button" class="btn btn-small" data-iso-mode="sector"
-                      title="Render a specific sector at 100% native in-game resolution">HD Sector 1:1</button>
+        <header class="iso-bar" hidden>
+          <div class="iso-bar-row">
+            <div class="iso-modes" role="group" aria-label="View mode">
+              <button type="button" class="btn btn-small is-on" data-iso-mode="town" aria-pressed="true"
+                      title="Panoramic overview of the whole town with roofs"><span class="ws-clip">Town overview</span></button>
+              <button type="button" class="btn btn-small" data-iso-mode="close" aria-pressed="false"
+                      title="Close-up view of the town center with roofs"><span class="ws-clip">Town center</span></button>
+              <button type="button" class="btn btn-small" data-iso-mode="inside" aria-pressed="false"
+                      title="Full town view with all furnished building interiors and roofs removed"><span class="ws-clip">Interiors (All)</span></button>
+              <button type="button" class="btn btn-small" data-iso-mode="sector" aria-pressed="false"
+                      title="Render a specific sector at 100% native in-game resolution"><span class="ws-clip">HD Sector 1:1</span></button>
+            </div>
+            <div class="iso-bar-group">
+              <button type="button" class="btn btn-small" id="isoDownload" title="Save current image"><span class="ws-clip">Save picture</span></button>
+              <details class="iso-disclosure" id="isoImageOptions">
+                <summary class="btn btn-small iso-more" aria-label="Image options" title="Image options">⋯</summary>
+                <div class="iso-flyout iso-image-menu">
+                  <span class="iso-title" id="isoTitle"></span>
+                  <button type="button" class="btn btn-small" id="isoDelete" title="Delete cached image so it can be regenerated">Delete image</button>
+                </div>
+              </details>
             </div>
           </div>
 
-          <!-- Draw area selection tool -->
-          <button type="button" class="btn btn-small btn-draw" id="isoDrawBoxBtn"
-                  title="Draw an area rectangle to render in 1:1 HD with roofs or furnished interiors (Shift + Drag)">🔲 Draw area</button>
-
-          <!-- Quick Load HD of current view -->
-          <button type="button" class="btn btn-small btn-hd" id="isoLoadHdHere"
-                  title="Render this current view at 100% crystal-clear in-game resolution">🔍 Load HD here</button>
-
-          <!-- Sector HD toolbar controls -->
-          <div class="iso-bar-sector" id="isoSectorBar" hidden style="display: none;">
-            <button type="button" class="btn btn-small" id="isoBackOverview"
-                    title="Back to full town overview">◀ Full town</button>
-
-            <!-- Roofs / Interiors segmented toggle for current sector -->
-            <div class="iso-sector-toggle" role="group" aria-label="Sector display mode">
-              <button type="button" class="btn btn-small is-on" id="isoSectorRoofsBtn"
-                      title="Render this sector with roofs">🏠 Roofs</button>
-              <button type="button" class="btn btn-small" id="isoSectorInteriorsBtn"
-                      title="Render this sector with furnished building interiors">🪑 Interiors</button>
+          <div class="iso-bar-row">
+            <div class="iso-bar-group">
+              <button type="button" class="btn btn-small btn-draw" id="isoDrawBoxBtn"
+                      title="Draw an area rectangle to render in 1:1 HD with roofs or furnished interiors (Shift + Drag)"><span class="ws-clip">🔲 Draw area</span></button>
+              <button type="button" class="btn btn-small btn-hd" id="isoLoadHdHere"
+                      title="Render this current view at 100% crystal-clear in-game resolution"><span class="ws-clip">🔍 Load HD here</span></button>
+              <div class="iso-bar-group" id="isoSectorBar" hidden>
+                <details class="iso-disclosure" id="isoHdSettings">
+                  <summary class="btn btn-small"><span class="ws-clip">HD settings</span></summary>
+                  <div class="iso-flyout iso-sector-menu">
+                    <div class="iso-sector-toggle" role="group" aria-label="Sector display mode">
+                      <button type="button" class="btn btn-small is-on" id="isoSectorRoofsBtn"
+                              title="Render this sector with roofs">🏠 Roofs</button>
+                      <button type="button" class="btn btn-small" id="isoSectorInteriorsBtn"
+                              title="Render this sector with furnished building interiors">🪑 Interiors</button>
+                    </div>
+                    <label>Cell:
+                      <select id="isoCellSelect" title="Jump directly to any compiled cell">
+                        <option value="">(Select cell)</option>
+                      </select>
+                    </label>
+                    <label>X: <input type="number" id="isoSectorX" min="0" step="10" value="1200"></label>
+                    <label>Y: <input type="number" id="isoSectorY" min="0" step="10" value="1050"></label>
+                    <label>W: <input type="number" id="isoSectorW" min="10" max="1000" step="10" value="60"></label>
+                    <label>H: <input type="number" id="isoSectorH" min="10" max="1000" step="10" value="60"></label>
+                  </div>
+                </details>
+                <button type="button" class="btn btn-small btn-primary" id="isoRenderBtn"><span class="ws-clip">Render HD</span></button>
+              </div>
             </div>
-
-            <label>Cell:
-              <select id="isoCellSelect" class="iso-cell-select" title="Jump directly to any compiled cell">
-                <option value="">(Select cell)</option>
-              </select>
-            </label>
-            <label>X: <input type="number" id="isoSectorX" min="0" step="10" value="1200"></label>
-            <label>Y: <input type="number" id="isoSectorY" min="0" step="10" value="1050"></label>
-            <label>W: <input type="number" id="isoSectorW" min="10" max="1000" step="10" value="60"></label>
-            <label>H: <input type="number" id="isoSectorH" min="10" max="1000" step="10" value="60"></label>
-            <button type="button" class="btn btn-small btn-primary" id="isoRenderBtn">Render HD</button>
-          </div>
-
-          <div class="iso-bar-right">
             <div class="iso-zoom-controls">
               <button type="button" class="btn btn-small" id="isoZoomOut" title="Zoom out (Wheel down)">−</button>
               <span class="iso-zoom-badge" id="isoZoomBadge">100%</span>
@@ -121,13 +129,11 @@
               <button type="button" class="btn btn-small" id="isoZoomFit" title="Fit to screen">Fit</button>
               <button type="button" class="btn btn-small" id="isoZoom100" title="Real in-game 1:1 scale">1:1</button>
             </div>
-            <button type="button" class="btn btn-small" id="isoDownload" title="Save current image">Save picture</button>
-            <button type="button" class="btn btn-small" id="isoDelete" title="Delete cached image so it can be regenerated">Delete image</button>
           </div>
         </header>
 
         <div class="iso-viewport" id="isoViewport" tabindex="0">
-          <div class="iso-stage" id="isoStage">
+          <div class="iso-stage" id="isoStage" hidden>
             <img id="isoImg" class="iso-img" alt="Isometric game view" draggable="false" />
           </div>
 
@@ -171,15 +177,19 @@
             </div>
           </div>
 
-          <div class="iso-hud">
-            <span class="iso-tip">Drag to pan · Scroll to zoom · Shift+drag or [Draw area] to select HD sector · Double-click for HD</span>
-          </div>
+          <p class="iso-tip">Drag to pan · Scroll to zoom · Shift+drag or [Draw area] to select HD sector · Double-click for HD</p>
 
-          <div class="iso-empty" id="isoEmpty" hidden style="display: none;">
+          <div class="iso-empty" id="isoEmpty" hidden>
             <div class="iso-empty-card">
               <h3>Map has not been compiled yet</h3>
               <p>To view the 2.5D isometric in-game representation of your buildings and town, compile your map first in the top pipeline.</p>
               <button type="button" class="btn btn-primary" id="isoCompileNow">Compile now</button>
+            </div>
+          </div>
+          <div class="iso-empty" id="isoRetry" hidden>
+            <div class="iso-empty-card">
+              <p></p>
+              <button type="button" class="btn btn-primary" id="isoRetryBtn">Try again</button>
             </div>
           </div>
         </div>
@@ -187,14 +197,15 @@
     `;
 
     el = root.querySelector('.iso-container');
+    toolbar = el.querySelector('.iso-bar');
     stage = document.getElementById('isoStage');
     img = document.getElementById('isoImg');
     badge = document.getElementById('isoZoomBadge');
     emptyBox = document.getElementById('isoEmpty');
+    retryBox = document.getElementById('isoRetry');
     titleEl = document.getElementById('isoTitle');
     sectorBar = document.getElementById('isoSectorBar');
     loadHdHereBtn = document.getElementById('isoLoadHdHere');
-    backOverviewBtn = document.getElementById('isoBackOverview');
     cellSelect = document.getElementById('isoCellSelect');
     drawBoxBtn = document.getElementById('isoDrawBoxBtn');
 
@@ -221,6 +232,8 @@
   function startProgress(title, sub, estimatedSecs = 4) {
     ensureElements();
     isCancelled = false;
+    retryBox.hidden = true;
+    clearTimeout(progressHideTimer);
     if (progressTimer) clearInterval(progressTimer);
     if (progressPollTimer) clearInterval(progressPollTimer);
 
@@ -296,6 +309,7 @@
   }
 
   function finishProgress(isError = false) {
+    clearTimeout(progressHideTimer);
     if (progressTimer) {
       clearInterval(progressTimer);
       progressTimer = null;
@@ -317,7 +331,7 @@
     if (progressPercent) progressPercent.textContent = '100%';
     if (progressSub) progressSub.textContent = 'Done!';
 
-    setTimeout(() => {
+    progressHideTimer = setTimeout(() => {
       if (overlay) {
         overlay.hidden = true;
         overlay.style.display = 'none';
@@ -327,11 +341,13 @@
 
   function cancelProgress() {
     isCancelled = true;
+    mapInfoRequest = null;
     if (activeImageLoader) {
       activeImageLoader.src = '';
       activeImageLoader = null;
     }
     finishProgress(true);
+    showLoadRetry('Loading cancelled.');
     if (window.fx?.toast) {
       window.fx.toast('bad', 'Cancelled', 'Loading cancelled.', 3000);
     }
@@ -551,7 +567,7 @@
     const viewport = document.getElementById('isoViewport');
     if (drawBoxBtn) {
       drawBoxBtn.classList.toggle('is-on', isDrawModeActive);
-      drawBoxBtn.textContent = isDrawModeActive ? '✕ Cancel draw' : '🔲 Draw area';
+      drawBoxBtn.querySelector('.ws-clip').textContent = isDrawModeActive ? '✕ Cancel draw' : '🔲 Draw area';
     }
     if (viewport) {
       viewport.classList.toggle('is-drawing-tool', isDrawModeActive);
@@ -581,6 +597,12 @@
 
   function bindEvents() {
     const viewport = document.getElementById('isoViewport');
+    const disclosures = [...el.querySelectorAll('.iso-disclosure')];
+    document.addEventListener('click', e => {
+      for (const menu of disclosures) {
+        if (!menu.contains(e.target)) menu.open = false;
+      }
+    });
 
     // Pan with mouse or start drawing box if draw tool active / Shift held
     viewport.addEventListener('mousedown', e => {
@@ -735,8 +757,6 @@
     }
 
     // Back to full town overview button
-    backOverviewBtn?.addEventListener('click', () => setMode('town'));
-
     // Jump to cell selection
     cellSelect?.addEventListener('change', e => {
       const val = e.target.value;
@@ -759,6 +779,7 @@
 
     // Cancel loading button
     cancelBtn?.addEventListener('click', () => cancelProgress());
+    document.getElementById('isoRetryBtn').addEventListener('click', () => showIsoView(activeMap));
 
     // Save image
     document.getElementById('isoDownload')?.addEventListener('click', () => {
@@ -773,6 +794,9 @@
     const deleteBtn = document.getElementById('isoDelete');
     deleteBtn?.addEventListener('click', async () => {
       if (!activeMap) return;
+      const menu = deleteBtn.closest('details');
+      menu.open = false;
+      menu.querySelector('summary').focus();
       let box = null;
       if (currentMode === 'sector') {
         const sx = parseInt(document.getElementById('isoSectorX')?.value || '0', 10);
@@ -797,7 +821,7 @@
         if (mapInfo && mapInfo.pictures && currentMode !== 'sector') {
           delete mapInfo.pictures[currentMode];
         }
-        img.removeAttribute('src');
+        clearImage();
         if (currentMode === 'sector' && box) {
           renderSectorBox(box[0], box[1], box[2], box[3], currentSector ? currentSector.roofs : 1, true);
         } else {
@@ -850,6 +874,16 @@
 
     // Keyboard navigation & shortcuts
     window.addEventListener('keydown', e => {
+      if (toolbar.hidden || el.parentElement.hidden) return;
+      if (e.key === 'Escape') {
+        const menu = disclosures.find(item => item.open);
+        if (menu) {
+          menu.open = false;
+          menu.querySelector('summary').focus();
+          e.preventDefault();
+          return;
+        }
+      }
       if (e.target.closest('input, textarea, select')) return;
       if (e.key === 'Shift') {
         viewport.classList.add('is-drawing-tool');
@@ -931,24 +965,44 @@
     applyTransform();
   }
 
+  function clearImage() {
+    if (!toolbar) return;
+    activeImageLoader?.removeAttribute('src');
+    activeImageLoader = null;
+    img.removeAttribute('src');
+    stage.hidden = true;
+    toolbar.hidden = true;
+    retryBox.hidden = true;
+  }
+
+  function showLoadRetry(message) {
+    if (!toolbar.hidden) return;
+    retryBox.querySelector('p').textContent = message;
+    retryBox.hidden = false;
+  }
+
   function loadImage(src, title, sub, estimatedSecs = 3) {
     startProgress(title, sub, estimatedSecs);
 
     const loader = new Image();
     activeImageLoader = loader;
 
-    loader.onload = () => {
+    const showImage = () => {
       if (isCancelled || activeImageLoader !== loader) return;
       img.src = src;
       activeImageLoader = null;
+      stage.hidden = false;
+      toolbar.hidden = false;
       finishProgress();
       fitToScreen();
     };
+    loader.onload = showImage;
 
     loader.onerror = () => {
       if (isCancelled || activeImageLoader !== loader) return;
       activeImageLoader = null;
       finishProgress(true);
+      showLoadRetry('Could not load isometric view.');
       if (window.fx?.toast) {
         window.fx.toast('bad', 'Error', 'Could not load isometric view.', 5000);
       }
@@ -956,32 +1010,24 @@
 
     loader.src = src;
 
-    if (loader.complete && loader.naturalWidth > 0) {
-      img.src = src;
-      activeImageLoader = null;
-      finishProgress();
-      fitToScreen();
+    if (loader.complete && loader.naturalWidth > 0) showImage();
+  }
+
+  function selectMode(mode) {
+    currentMode = mode;
+    for (const button of el.querySelectorAll('[data-iso-mode]')) {
+      const active = button.dataset.isoMode === mode;
+      button.classList.toggle('is-on', active);
+      button.setAttribute('aria-pressed', String(active));
     }
+    const isSector = mode === 'sector';
+    sectorBar.hidden = !isSector;
+    if (!isSector) sectorBar.querySelector('details').open = false;
+    loadHdHereBtn.hidden = isSector;
   }
 
   function setMode(mode) {
-    currentMode = mode;
     clearBoxSelection();
-
-    el.querySelectorAll('[data-iso-mode]').forEach(b => {
-      b.classList.toggle('is-on', b.dataset.isoMode === mode);
-    });
-
-    const isSector = mode === 'sector';
-    if (sectorBar) {
-      sectorBar.hidden = !isSector;
-      sectorBar.style.display = isSector ? 'flex' : 'none';
-    }
-    if (loadHdHereBtn) {
-      loadHdHereBtn.hidden = isSector;
-      loadHdHereBtn.style.display = isSector ? 'none' : 'inline-flex';
-    }
-
     if (mode === 'sector') {
       const x = parseInt(document.getElementById('isoSectorX')?.value || '1200', 10);
       const y = parseInt(document.getElementById('isoSectorY')?.value || '1050', 10);
@@ -992,6 +1038,7 @@
       return;
     }
 
+    selectMode(mode);
     if (!mapInfo || !mapInfo.pictures) return;
 
     let src = mapInfo.pictures[mode];
@@ -1025,18 +1072,7 @@
     updateSectorInputs(x, y, w, h);
     updateSectorToggle(roofs ? 1 : 0);
 
-    currentMode = 'sector';
-    el.querySelectorAll('[data-iso-mode]').forEach(b => {
-      b.classList.toggle('is-on', b.dataset.isoMode === 'sector');
-    });
-    if (sectorBar) {
-      sectorBar.hidden = false;
-      sectorBar.style.display = 'flex';
-    }
-    if (loadHdHereBtn) {
-      loadHdHereBtn.hidden = true;
-      loadHdHereBtn.style.display = 'none';
-    }
+    selectMode('sector');
 
     // 1:1 is 128x256 px a tile, so the picture grows with the square of the
     // box. 412 tiles corner to corner is where 200x200 at 1:1 sits (~85 Mpx);
@@ -1062,47 +1098,42 @@
     // Re-ask when the last answer was "not compiled": compiling happens in the
     // pipeline behind this panel, and coming back to it must not keep saying
     // the map has no compiled cells.
-    if (activeMap === name && mapInfo && mapInfo.compiled) {
+    if (activeMap === name && !toolbar.hidden) {
       fitToScreen();
       return;
     }
 
     activeMap = name;
+    mapInfo = null;
+    currentSector = null;
+    clearImage();
+    emptyBox.hidden = true;
     startProgress('Loading map data…', 'Fetching compiled isometric details', 2);
 
+    const request = fetch(`/api/iso-info/${encodeURIComponent(name)}`);
+    mapInfoRequest = request;
     try {
-      const res = await fetch(`/api/iso-info/${encodeURIComponent(name)}`);
+      const res = await request;
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      mapInfo = await res.json();
+      const info = await res.json();
+      if (mapInfoRequest !== request) return;
+      mapInfo = info;
     } catch (err) {
+      if (mapInfoRequest !== request) return;
       finishProgress(true);
+      showLoadRetry('Could not load isometric view.');
       if (window.fx?.toast) {
         window.fx.toast('bad', 'Error', `Could not load isometric info: ${err.message}`, 5000);
       }
       return;
+    } finally {
+      if (mapInfoRequest === request) mapInfoRequest = null;
     }
 
     if (!mapInfo.compiled) {
       finishProgress(true);
-      if (emptyBox) {
-        emptyBox.hidden = false;
-        emptyBox.style.display = 'flex';
-      }
-      if (stage) {
-        stage.hidden = true;
-        stage.style.display = 'none';
-      }
-      if (titleEl) titleEl.textContent = `${name} · Uncompiled`;
+      emptyBox.hidden = false;
       return;
-    }
-
-    if (emptyBox) {
-      emptyBox.hidden = true;
-      emptyBox.style.display = 'none';
-    }
-    if (stage) {
-      stage.hidden = false;
-      stage.style.display = 'block';
     }
 
     // Set map title details
@@ -1139,7 +1170,9 @@
   function closeIsoView() {
     activeMap = null;
     mapInfo = null;
+    mapInfoRequest = null;
     currentSector = null;
+    clearImage();
     clearBoxSelection();
     if (isDrawModeActive) toggleDrawMode(false);
     finishProgress(true);

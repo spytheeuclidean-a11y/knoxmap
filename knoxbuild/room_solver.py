@@ -2269,53 +2269,6 @@ def plan_for_job(job: tuple, roof: dict | None = None):
                        apartment_furnishing=bool(job[7].apartment_furnishing))
 
 
-def dump_job(path: str, job: tuple, roof: dict | None = None) -> None:
-    """One line of JSON for a house Build is about to lay out (KNOXMAP_ROOMS_DUMP):
-    the room solver's input, for rooms_check. One file per process (path.<pid>)."""
-    try:
-        got = house_from_job(job, roof)
-    except Exception as exc:  # noqa: BLE001 - a record is not worth a Build run
-        with open(f"{path}.errors", "a", encoding="utf-8") as f:
-            f.write(f"{job[9]}: {exc!r}\n")
-        return
-    if got is None:
-        # why not (a diagnostic): <path>.skipped, one line a building
-        style, kind, uses = job[8] or {}, job[5], job[13]
-        info = style.get("uk_rooms") or {}
-        why = ("no record" if not info else f"kind={kind} uses={len(uses or [])} "
-               f"dwelling={info.get('dwelling')} look={info.get('look')} levels={job[2]}")
-        with open(f"{path}.skipped", "a", encoding="utf-8") as f:
-            f.write(f"{job[9]}\t{why}\n")
-        return
-    house, prog, bid = got
-    style = job[8] or {}
-    rec = {"id": bid, "label": job[9], "programme": prog, "style": style.get("name"),
-           "rooms": style.get("uk_rooms"), "width": house.width, "height": house.height,
-           "masks": ["/".join("".join("1" if v else "0" for v in row) for row in m) for m in house.masks],
-           "street": house.street, "party": sorted(house.party), "garage": house.garage,
-           "epc_rooms": house.epc_rooms, "homes": house.homes}
-    with open(f"{path}.{os.getpid()}", "a", encoding="utf-8") as f:
-        f.write(json.dumps(rec) + "\n")
-
-
-def load_dump(path: str) -> list:
-    """The houses a Build run wrote with KNOXMAP_ROOMS_DUMP: [(House, programme, record)]."""
-    import glob
-    out = []
-    for fn in sorted(glob.glob(path + ".*")):
-        if not fn.rsplit(".", 1)[-1].isdigit():
-            continue            # .skipped, .errors: not houses
-        with open(fn, encoding="utf-8") as f:
-            for line in f:
-                r = json.loads(line)
-                masks = [[[c == "1" for c in row] for row in m.split("/")] for m in r["masks"]]
-                house = House(r["width"], r["height"], masks, r["street"],
-                              {tuple(e) for e in r["party"]}, tuple(r["garage"]) if r["garage"] else None,
-                              r.get("epc_rooms"), r.get("homes"))
-                out.append((house, r["programme"], r))
-    return out
-
-
 def map_houses(map_dir: str, limit: int | None = None, seed: int = 1):
     """Real footprints from a built map's .tbx files, for timing: (house,
     programme, name). Approximate: the street is taken as S and there are no

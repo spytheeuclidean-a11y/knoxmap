@@ -32,9 +32,6 @@ class Ruleset:
     aliases: dict[str, list[str]] = field(default_factory=dict)
     rules: list[Rule] = field(default_factory=list)
 
-    def for_bitmap(self, bitmap: int) -> list[Rule]:
-        return [r for r in self.rules if r.bitmap == bitmap]
-
 
 def _blocks(text: str):
     """(kind, {key: str | list[str]}) for every `alias {}` / `rule {}` block."""

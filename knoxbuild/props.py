@@ -589,7 +589,7 @@ def _stop_the_road(ground: np.ndarray, width: int, height: int, x: int, y: int,
     return placed
 
 
-def _edge_exits(ground: np.ndarray, width: int, height: int) -> list:
+def _edge_exits(mask: np.ndarray) -> list:
     """A point on the carriageway that comes closest to each border.
 
     Where a road leaves the map is where a checkpoint belongs. A padded map -
@@ -597,9 +597,7 @@ def _edge_exits(ground: np.ndarray, width: int, height: int) -> list:
     the border at all, and then the single road that runs furthest out of the
     town is the way out: the same gate, seen from the street.
     """
-    mask = np.zeros((height, width), dtype=bool)
-    for colour in CARRIAGEWAY:
-        mask |= np.all(ground == np.array(colour, dtype=ground.dtype), axis=2)
+    height, width = mask.shape
     ys, xs = np.nonzero(mask)
     if not len(xs):
         return []
@@ -718,8 +716,12 @@ def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray
         tiles.append((x, y, 0, LAYER, tile))
         return 1
 
+    # The same carriageway pixels locate exits and rule out false road ends.
+    tarmac = np.zeros((height, width), dtype=bool)
+    for colour in CARRIAGEWAY:
+        tarmac |= same_colour(ground, colour)
     seen: list = []
-    for x, y in _edge_exits(ground, width, height):
+    for x, y in _edge_exits(tarmac):
         if counts["checkpoints"] >= MAX_CHECKPOINTS:
             break
         if any(abs(x - sx) < CHECKPOINT_APART and abs(y - sy) < CHECKPOINT_APART
@@ -734,9 +736,6 @@ def place_vignettes(out_dir: str, map_name: str, bdir: str, occupied: np.ndarray
 
     if road_hierarchy is not None:
         main = road_hierarchy[:height, :width] >= MAIN_ROAD
-        tarmac = np.zeros((height, width), dtype=bool)
-        for colour in CARRIAGEWAY:
-            tarmac |= np.all(ground == np.array(colour, dtype=ground.dtype), axis=2)
         # A block belongs where a road actually stops, not at intervals along
         # it: a cordon every few hundred metres reads as scenery, and the point
         # of the scene is that this road, here, is the end of the way.

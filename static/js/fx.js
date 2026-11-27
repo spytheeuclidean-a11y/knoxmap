@@ -163,8 +163,7 @@ const fx = (() => {
     fail(message) {
       $('#gen-bar').parentElement.classList.remove('is-indeterminate');
       $('.gen-kicker').textContent = 'Failed';
-      const shown = i18n.t(message);
-      $('#gen-stage').textContent = shown.length > 160 ? shown.slice(0, 157) + '…' : shown;
+      $('#gen-stage').textContent = i18n.t(message);
       $('#gen-detail').textContent = '';
       setEta(0);
       this.hide(2500);

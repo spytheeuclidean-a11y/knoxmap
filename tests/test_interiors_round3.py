@@ -90,19 +90,19 @@ class Shops(unittest.TestCase):
 class BigHouses(unittest.TestCase):
     def test_most_big_floors_are_cut_by_the_programme(self):
         used = []
-        orig = layout._house_by_kind
+        orig = layout.houses._house_by_kind
 
         def spy(plan, level, levels, rng):
             got = orig(plan, level, levels, rng)
             if plan.width >= 20 and plan.height >= 20:
                 used.append(got is not None)
             return got
-        layout._house_by_kind = spy
+        layout.houses._house_by_kind = spy
         try:
             for seed in range(12):
                 layout.build_building(24, 22, kind="house", street="S", seed=seed, levels=1)
         finally:
-            layout._house_by_kind = orig
+            layout.houses._house_by_kind = orig
         self.assertGreater(sum(used) / len(used), 0.4)
 
 
