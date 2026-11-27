@@ -27,12 +27,16 @@ class MenuBar(unittest.TestCase):
 
     def test_tools_sits_between_build_and_help(self):
         menus = self.menus()
-        self.assertEqual(menus[-3:], ["Build", "Tools", "Help"])
+        self.assertEqual(menus[-3:], ["Build workflow", "Tools", "Help"])
 
     def test_every_menu_has_items(self):
         for name in self.menus():
             with self.subTest(menu=name):
-                self.assertRegex(self.shell, rf"\n\s+{name}: \(\) =>",
+                key = re.escape(name)
+                spellings = [rf"'{key}'", rf'"{key}"']
+                if re.fullmatch(r"[A-Za-z_$][\w$]*", name):
+                    spellings.append(key)
+                self.assertRegex(self.shell, rf"\n\s+(?:{'|'.join(spellings)}): \(\) =>",
                                  f"no fillMenu case for {name}")
 
     def test_the_tools_menu_opens_the_extract_tool(self):
