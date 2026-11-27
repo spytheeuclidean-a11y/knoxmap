@@ -54,6 +54,14 @@ class CellBudget(unittest.TestCase):
         self.assertIn(road, kept)
         self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
 
+    def test_footways_and_driveways_stay_off_the_paper_map(self):
+        from knoxbuild.worldmap import _on_paper
+        self.assertFalse(_on_paper("paved_path", {"highway": "footway"}))
+        self.assertFalse(_on_paper("road_service", {"highway": "service", "service": "driveway"}))
+        self.assertTrue(_on_paper("road_service", {"highway": "service", "service": "alley"}))
+        self.assertTrue(_on_paper("road_minor", {"highway": "residential"}))
+        self.assertTrue(_on_paper("dirt_path", {"highway": "track"}))
+
     def test_connected_road_segments_merge_into_continuous_polygons(self):
         from shapely.geometry import LineString
         from shapely.ops import linemerge, unary_union
