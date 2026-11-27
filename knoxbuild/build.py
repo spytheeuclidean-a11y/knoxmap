@@ -2113,7 +2113,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # and the buildings get what is left.
     cellars = [r_[5] for r_ in results if r_ and not r_[3] and r_[5]]
     allowed = _rooms_that_fit(len(decided) + len(cellars), info, out_dir)
-    allowed -= sum(b["rooms"] for b in cellars)
+    cellar_rooms = sum(b["rooms"] for b in cellars)
+    allowed -= cellar_rooms
     before = sum(results[j][1] for j in laid)
     if before > max(0, allowed):
         from .layout.dwellings import THIN_MIN_ROOMS
@@ -2173,7 +2174,10 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
             _make_all([(jobs[j], thin[j]) for j in order], laid_out, should_stop,
                       remade, make_batch=_make_thin_batch, prepare_solver=False)
             after = before - lost
-            overflow = after - max(0, allowed)
+            # A thinned house's cellar is planned again under it, its stairs
+            # in a room that may have moved, and can come out a room larger.
+            grown = sum(results[j][5]["rooms"] for j in laid if results[j][5]) - cellar_rooms
+            overflow = after - max(0, allowed - grown)
             if overflow > 0:
                 extra = {}
                 for j in sorted(
