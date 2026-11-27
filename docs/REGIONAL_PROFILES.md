@@ -1,6 +1,7 @@
 # Regional profiles: building a country the way it is built
 
-Status: design, not started. First target: Great Britain (`gb`).
+Status: skeleton done (profile type, GB detection), no GB rules yet. First
+target: Great Britain (`gb`).
 
 ## Why
 
@@ -21,11 +22,14 @@ wide paving, sheds where the gardens should be, garages on terraced houses.
   boxes as a fallback when nothing is named. Only `cn` changes anything:
   `cn_house_styles()` (catalog styles with flat roofs and no shutters) and the
   storey tables (`CN_DEFAULT_LEVELS`, `area_level_pool`).
-- `knoxbuild/settings.py`: `arch_style` (`auto`, `cn`, `off`). It is a
-  setting, but the window does not show it.
+- `knoxbuild/settings.py`: `arch_style` (`auto`, `cn`, `off`), shown in the
+  window as Auto / Chinese / Default. `region_override` (auto or an ISO code)
+  is also a setting, but nothing reads it.
 - `knoxdata/natural_earth.py`: `country_at(lat, lon)` returns `{iso, name}`
   from the Natural Earth countries layer (downloaded and cached; `None` when
-  it cannot be had).
+  it cannot be had). `web/generation.py` runs the data layers before the map
+  is drawn and saves the country as `region` in `<map>_knoxdata.json`
+  (Cambourne: `"GB"`).
 - `region` is threaded through `knoxbuild/build.py` as a bare string and
   tested with `== "cn"` in 4 places.
 
@@ -68,21 +72,28 @@ byte-identical. `cn` moves its existing special cases into its profile; the
 
 A knob joins `Profile` only when a GB step needs it. No speculative fields.
 
-### 2. Detection: decided once, in the generator, saved with the map
+### 2. Detection (done in the skeleton)
 
-- Order in `detect_region`: script of the names first (`cn`, `jp`, `kr`, as
-  now); if the names are Latin or there are none, `country_at()` at the bbox
-  centre; then the existing boxes. Only codes with a profile are returned;
-  everything else is `None`, which is `us`.
-- Called once at the start of the generator stage and written to
-  `<map>_info.json` as `"region"`. `knoxbuild.build` reads it from there
-  instead of detecting again. A map folder from before this has no key and is
-  detected as today.
-- `arch_style` gains `gb` (and any later code) as forcing values. It is not
-  added to the window: the user never picks a region.
-- Offline: when Natural Earth cannot be downloaded or isn't cached, fall back
-  to a GB box in `_BOXES` (-8.7, 49.8, 1.8, 60.9). Northern Ireland is
-  included; Ireland (`IE`) is not, to start with.
+- `detect_region(geo, bbox, country)`: script of the names first (`cn`, `jp`,
+  `kr`, as before). If the names are Latin, the recorded country decides
+  through `COUNTRY_REGIONS` (`{"GB": "gb"}`). With no names, the old boxes
+  first (rural China), then the country.
+- `country` comes from `map_country(out_dir, map_name)`, which reads
+  `region` from `<map>_knoxdata.json`. No generator change was needed.
+- No country on record (older map, Natural Earth unreachable): a GB box,
+  (-6.0, 49.8, 1.8, 60.9). It stops east of Dublin, so Ireland stays
+  default; Northern Ireland and the Outer Hebrides fall outside too and build
+  the default way offline.
+- No new `arch_style` value: it is in the window, and the user should not
+  pick a region. Auto finds GB; Default turns it off.
+- `profile(region)` returns a `Profile`; anything without one (`jp`, `kr`,
+  `None`) is `us`. `Profile` has only `code` until a GB step adds a field.
+
+**Still open for generator-stage knobs (items 3, 4):** the generator draws
+aprons and sheds before the build runs and does not import `knoxbuild`. When
+the first of those lands, `Profile` and `detect_region` move where both can
+read them (or the generator reads the region from the knoxdata country
+itself), and `arch_style` has to reach the generator.
 
 ### 3. The GB profile, in delivery order
 
