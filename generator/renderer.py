@@ -481,7 +481,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
             shape=shape, straight_roads=straight_roads,
             include_proposed_roads=include_proposed_roads,
             fill_frontage=fill_frontage, terrain_only=terrain_only,
-            landcover_for=landcover_for, climate=climate,
+            landcover_for=landcover_for, climate=climate, country=country,
             winter_look=winter_look, elevation=elevation,
             elevation_span=elevation_span, should_stop=should_stop,
             progress=progress, render_progress=render_progress,
@@ -776,7 +776,7 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
                                  proj.meters_per_tile)
     except Exception as exc:            # noqa: BLE001 - never lose a map to it
         _log.warning("building yards skipped: %s: %s", type(exc).__name__, exc)
-    _pave_dense_ground(landscape, building_feats, buckets, proj)
+    _pave_dense_ground(landscape, building_feats, buckets, proj, country=country)
     for paved in lifted.paving:
         l_draw.polygon(list(paved.exterior.coords), fill=C.PAVING)
     if clip is not None:
