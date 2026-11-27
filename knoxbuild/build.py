@@ -360,8 +360,11 @@ def _cut_big(units: list, metres_per_tile: float,
 
 def row_units(fp, special: str | None, btag: str, n_uses: int,
               metres_per_tile: float, max_side: int | None = None,
-              split: bool = True):
+              split: bool = True, region: str | None = None):
     """One footprint per unit of a row, or the footprint as it stands.
+
+    On a British map (`region` "gb") houses are cut at a terraced house's
+    width, and a terrace- or semi-tagged outline only needs room for two.
 
     `max_side` (see _cut_big) is passed only for a footprint that was too
     wide for settings.max_size and placed anyway, to be cut into units that
@@ -385,13 +388,18 @@ def row_units(fp, special: str | None, btag: str, n_uses: int,
         return _cut_big([fp], metres_per_tile, max_side)
     long_side = max(fp.width, fp.height) * metres_per_tile
     short_side = min(fp.width, fp.height) * metres_per_tile
-    if short_side < ROW_MIN_DEPTH_M or long_side < ROW_MIN_LENGTH_M:
-        return _cut_big([fp], metres_per_tile, max_side)
     terrace = btag in TERRACE_TAGS
+    gb_house = region == "gb" and (special or "house") == "house"
+    from .regional import GB_TERRACE_FRONTAGE_M
+    min_length = (2 * GB_TERRACE_FRONTAGE_M if gb_house and terrace
+                  else ROW_MIN_LENGTH_M)
+    if short_side < ROW_MIN_DEPTH_M or long_side < min_length:
+        return _cut_big([fp], metres_per_tile, max_side)
     if not terrace:
         if short_side > ROW_MAX_DEPTH_M or long_side < short_side * ROW_RATIO:
             return _cut_big([fp], metres_per_tile, max_side)
-    frontage = UNIT_FRONTAGE_M.get(special or "house", SHOP_FRONTAGE_M)
+    frontage = (GB_TERRACE_FRONTAGE_M if gb_house
+                else UNIT_FRONTAGE_M.get(special or "house", SHOP_FRONTAGE_M))
     if n_uses > 1:
         # The shops mapped inside it say how many units there really are;
         # keep the frontage sane so two shops in a long parade do not become
@@ -1762,6 +1770,9 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           here = zoning.settings_at(cx, cy)
           real_m2 = fp.tiles * metres_per_tile * metres_per_tile
           special = classify_building(tags)
+          if region == "gb" and regional.british_house(
+                  special, btag, real_m2, levels_from_tags(tags, here)):
+              special = None            # a British house tagged residential or terrace
           # What is really in it: its own tags and the shops, restaurants and
           # offices mapped as points inside it.
           points_in_building = _points_inside(points, px, points_taken, with_positions=True)
@@ -1913,7 +1924,7 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
               # units stand wall to wall, with their own ways in from the street.
               units = row_units(fp, special, btag, len(uses), metres_per_tile,
                                 max_side=max_size if oversize else None,
-                                split=not settings.max_buildings)
+                                split=not settings.max_buildings, region=region)
           if oversize:
               split_large += 1
           if special == "apartment" or any(level > 0 for level in indoor_by_floor):
