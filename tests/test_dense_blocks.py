@@ -28,9 +28,9 @@ def street(ring):
                       geometry=[(y, x) for x, y in ring])
 
 
-def building(x, y, w, h):
+def building(x, y, w, h, kind="yes"):
     ring = [(x, y), (x + w, y), (x + w, y + h), (x, y + h), (x, y)]
-    return OSMFeature(osm_id=2, kind="way", tags={"building": "yes"},
+    return OSMFeature(osm_id=2, kind="way", tags={"building": kind},
                       geometry=[(yy, xx) for xx, yy in ring])
 
 
@@ -85,6 +85,23 @@ class DenseBlocks(unittest.TestCase):
                  [building(105, 105, 190, 50), building(105, 245, 190, 50)])
         self.assertEqual(paved_fraction(im, (170, 170, 230, 230)), 0.0)
         self.assertGreater(paved_fraction(im, (110, 155, 290, 162)), 0.8)
+
+    def test_a_dense_block_of_houses_keeps_its_yards(self):
+        # Rows of houses past the coverage line: their back yards are dressed
+        # on grass (knoxbuild/yards.py), and paved they were bare concrete.
+        houses = [building(110 + 30 * i, y, 26, 60, "house")
+                  for i in range(6) for y in (110, 225)]
+        houses += [building(118 + 30 * i, 190, 6, 6, "shed") for i in range(6)]
+        im = run([square(100, 100, 300, 100), square(300, 100, 300, 300),
+                  square(300, 300, 100, 300), square(100, 300, 100, 100)], houses)
+        self.assertEqual(paved_fraction(im, (101, 101, 299, 299)), 0.0)
+
+    def test_in_a_mixed_dense_block_only_the_others_get_an_apron(self):
+        im = run([square(100, 100, 300, 100), square(300, 100, 300, 300),
+                  square(300, 300, 100, 300), square(100, 300, 100, 100)],
+                 [building(105, 105, 190, 80), building(105, 200, 40, 90, "house")])
+        self.assertGreater(paved_fraction(im, (110, 186, 290, 190)), 0.8)   # by the block
+        self.assertEqual(paved_fraction(im, (146, 230, 151, 280)), 0.0)    # beside the house
 
     def test_commercial_and_schoolyard_landcover_fill_default_to_grass(self):
         self.assertEqual(landcover.LANDSCAPE_FILL["commercial"], MEDIUM_GRASS)
