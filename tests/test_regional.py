@@ -239,6 +239,28 @@ class RegionalStoreys(unittest.TestCase):
         self.settings = Settings()
         self.rng = random.Random(42)
 
+    def gb_house(self, m2, n=400):
+        return [building_levels({}, None, m2, random.Random(i), self.settings,
+                                region="gb")[0] for i in range(n)]
+
+    def test_british_houses_are_mostly_two_storeys(self):
+        # A terrace or semi's footprint is 40-60 m2 and it is two storeys,
+        # where the default reads a footprint that small as a bungalow.
+        for m2 in (45, 90):
+            got = self.gb_house(m2)
+            self.assertGreater(got.count(2) / len(got), 0.6, m2)
+        default = [building_levels({}, None, 45, random.Random(i),
+                                   self.settings)[0] for i in range(400)]
+        self.assertGreater(default.count(1) / len(default), 0.6)
+
+    def test_a_small_british_house_is_never_a_bungalow_but_some_are(self):
+        self.assertNotIn(1, self.gb_house(45))
+        self.assertIn(1, self.gb_house(90))     # the bungalow's footprint
+        self.assertIn(3, self.gb_house(45))     # the odd town house
+
+    def test_british_houses_keep_the_games_house_shape(self):
+        self.assertLessEqual(max(self.gb_house(250)), 3)
+
     def test_cn_houses_run_taller_than_default_ones(self):
         default = [building_levels({}, None, 30, random.Random(i),
                                    self.settings, metres_per_tile=2.0)[0]

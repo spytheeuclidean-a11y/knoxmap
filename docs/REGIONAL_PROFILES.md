@@ -1,7 +1,7 @@
 # Regional profiles: building a country the way it is built
 
-Status: skeleton done (profile type, GB detection); GB step 1 (materials and
-roofs) done. First target: Great Britain (`gb`).
+Status: skeleton done (profile type, GB detection); GB steps 1 (materials and
+roofs) and 2 (storeys) done. First target: Great Britain (`gb`).
 
 ## Why
 
@@ -106,8 +106,13 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    logs or panel. `pick_style` uses it for every GB house, dated ones too,
    and before the Melos/Erika mod styles, as `cn` does. The catalog has one
    brick wall tile; more brick colours would need new verified entries.
-2. **Storeys.** Default 2; small footprints (bungalows) 1; narrow tall
-   terraced footprints in town centres 3. Via `area_level_pool`.
+2. **Storeys.** *Done.* `GB_AREA_OVERRIDES` for untagged houses: up to
+   60 m2 mostly 2 storeys, the odd 3 (terraces, semis, town houses); 60-120 m2
+   mostly 2 with about one bungalow in six; larger 2-3. Default US reads a
+   45 m2 footprint as a bungalow three times in four.
+   **Found for step 5:** `building=residential` and `building=terrace` map to
+   the `apartment` kind (`build.py` kind table), so British houses tagged that
+   way (1,246 `residential` in Cambourne) get the 3-5 storey flats tables.
 3. **Front of the plot.** Shallow front gardens (2-4 m), no 6-tile apron on
    houses (`roads.DENSE_APRON_TILES` -> profile; #202 already stops it for
    tagged houses), a short path or a single-car drive instead of a wide
