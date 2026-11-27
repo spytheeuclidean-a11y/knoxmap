@@ -305,6 +305,13 @@ AREA_CATEGORIES = {"residential", "commercial", "industrial", "military",
                    "schoolyard", "hospital_grounds", "worship_grounds",
                    "cemetery", "parking", "sports", "park", "playground",
                    "airfield", "apron"}
+# A building site already built on is drawn as a neighbourhood, not bare
+# dirt: OSM keeps landuse=construction on a new estate long after its houses
+# are up and mapped, and Cambourne's finished streets stood in fields of
+# earth. A site counts as built on with this many mapped buildings in it, or
+# this share of it under them.
+BUILT_SITE_BUILDINGS = 5
+BUILT_SITE_COVERAGE = 0.05
 # Drawn onto the vegetation bitmap rather than the ground.
 VEG_CATEGORIES = {"forest", "scrub", "tree_single", "hedge", "orchard",
                   "cemetery", "wetland"}
@@ -326,3 +333,43 @@ MAX_PAVED_BLOCK = 200 * 200
 # Mapped green space keeps its grass however built-up the area around it is.
 GREEN_CATEGORIES = {"park", "grass", "sports", "cemetery", "orchard", "farmland",
                     "wetland", "hospital_grounds", "airfield"}
+
+
+def built_sites(dirt_feats, building_feats, proj) -> list:
+    """The landuse=construction areas in `dirt_feats` that are already built
+    on (BUILT_SITE_BUILDINGS, BUILT_SITE_COVERAGE), from the mapped buildings."""
+    from shapely import STRtree
+    from shapely.geometry import Polygon
+
+    from .geometry import _feature_coords_px, _is_polygon
+
+    sites = [f for f in dirt_feats
+             if f.tags.get("landuse") == "construction" and _is_polygon(f)]
+    if not sites or not building_feats:
+        return []
+    shapes = []
+    for feat in building_feats:
+        for ring in _feature_coords_px(feat, proj):
+            if len(ring) >= 3:
+                poly = Polygon(ring)
+                shapes.append(poly if poly.is_valid else poly.buffer(0))
+    if not shapes:
+        return []
+    tree = STRtree(shapes)
+    built = []
+    for site in sites:
+        for ring in _feature_coords_px(site, proj):
+            if len(ring) < 3:
+                continue
+            area = Polygon(ring)
+            area = area if area.is_valid else area.buffer(0)
+            if area.is_empty or area.area <= 0:
+                continue
+            inside = [shapes[i] for i in tree.query(area)
+                      if area.contains(shapes[i].representative_point())]
+            covered = sum(s.area for s in inside)
+            if (len(inside) >= BUILT_SITE_BUILDINGS
+                    or covered >= BUILT_SITE_COVERAGE * area.area):
+                built.append(site)
+                break
+    return built
