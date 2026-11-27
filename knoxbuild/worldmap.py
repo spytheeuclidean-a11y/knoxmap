@@ -379,6 +379,36 @@ def _parts(geom) -> list[Polygon]:
     return [g for g in getattr(geom, "geoms", []) if isinstance(g, Polygon)]
 
 
+def _cell_ring(part: Polygon, x0: int, y0: int) -> list[tuple[int, int]] | None:
+    """`part`'s outline in whole tiles of its cell, as the game reads it, or None.
+
+    Rounding is what breaks a ring: a road strip a tile or two wide came out
+    with points repeated, no area, or crossing itself, and the game cut such a
+    ring into triangles that pointed past its own points - an
+    IndexOutOfBoundsException in WorldMapRenderer.fillPolygon, every frame the
+    paper map was open. So the ring is checked as written, mended once if it
+    must be, and left out if it still is not a polygon."""
+    for _ in range(2):
+        ring = []
+        for x, y in list(part.exterior.coords)[:-1]:
+            p = (round(x - x0), round(y - y0))
+            if not ring or ring[-1] != p:
+                ring.append(p)
+        while len(ring) > 1 and ring[0] == ring[-1]:
+            ring.pop()
+        if len(ring) < 3:
+            return None
+        written = Polygon(ring)
+        if written.is_valid and written.area >= 1:
+            return ring
+        mended = _parts(written.buffer(0))
+        if not mended:
+            return None
+        part = max(mended, key=lambda g: g.area)
+        x0 = y0 = 0                       # already in the cell's own tiles
+    return None
+
+
 def _write_worldmap(path: str, features: list[tuple[Polygon, str, str]],
                     width: int, height: int) -> int:
     """Clip every feature to the cells it crosses, in cell coordinates."""
@@ -396,10 +426,10 @@ def _write_worldmap(path: str, features: list[tuple[Polygon, str, str]],
                 for part in _parts(clipped):
                     if part.area < 1:
                         continue
-                    ring = list(part.exterior.coords)[:-1]
-                    pts = "\n".join(
-                        f'     <point x="{round(x - x0)}" y="{round(y - y0)}"/>'
-                        for x, y in ring)
+                    ring = _cell_ring(part, x0, y0)
+                    if ring is None:
+                        continue
+                    pts = "\n".join(f'     <point x="{x}" y="{y}"/>' for x, y in ring)
                     by_cell.setdefault((cx, cy), []).append(
                         '  <feature>\n   <geometry type="Polygon">\n'
                         f'    <coordinates>\n{pts}\n    </coordinates>\n'
