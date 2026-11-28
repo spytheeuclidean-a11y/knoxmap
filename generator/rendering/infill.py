@@ -851,16 +851,30 @@ SHED_SIZE_M = ((3.0, 6.0), (3.0, 5.0))    # across, deep
 SHED_SETBACKS = (6, 5, 4)       # preferred to minimum clearance, in tiles at 1 m/tile
 SHED_CLEAR_M = 3.0              # kept clear of any outbuilding already there
 MAX_SHEDS = 20000
+# A British back garden is a long narrow strip with a small shed at the far
+# end of it (docs/REGIONAL_PROFILES.md, GB step 4). Terraced houses stand on
+# 40-60 m2, so the smallest house that gets one comes down from 70 m2, and the
+# shed stays inside the house's own width: the strip is the garden.
+GB_SHED_HOUSE_M2 = (35.0, 300.0)
+GB_SHED_SHARE = 50
+GB_SHED_SIZE_M = ((2.0, 3.0), (2.0, 3.0))
+GB_SHED_SETBACKS = (11, 9, 7)
 
 
 def _back_sheds(buckets: dict, vegetation_feats: list, building_feats: list,
-                proj: Projector, clip=None) -> list[OSMFeature]:
+                proj: Projector, clip=None, country: str | None = None) -> list[OSMFeature]:
     """A shed or garage behind some of the houses on each street.
 
     Only where there is room: nothing on it, nothing within SHED_CLEAR_M of it
     that is a building already, no road, water, park or wood. Which houses get
     one is a function of where they stand, so the same map comes out the same.
+    In Great Britain (`country` "GB") a small shed at the end of the garden.
     """
+    british = country == "GB"
+    house_m2 = GB_SHED_HOUSE_M2 if british else SHED_HOUSE_M2
+    share = GB_SHED_SHARE if british else SHED_SHARE
+    size_m = GB_SHED_SIZE_M if british else SHED_SIZE_M
+    setbacks = GB_SHED_SETBACKS if british else SHED_SETBACKS
     import numpy as np
     from shapely.geometry import Polygon
     from shapely.strtree import STRtree
@@ -883,7 +897,7 @@ def _back_sheds(buckets: dict, vegetation_feats: list, building_feats: list,
             break
         if (tags.get("building") or "yes").lower() not in SHED_HOUSE_KINDS:
             continue
-        if not SHED_HOUSE_M2[0] <= poly.area <= SHED_HOUSE_M2[1]:
+        if not house_m2[0] <= poly.area <= house_m2[1]:
             continue
         c = poly.centroid
         # which way is the street, and which way is back
@@ -898,16 +912,21 @@ def _back_sheds(buckets: dict, vegetation_feats: list, building_feats: list,
         tx, ty = -ny, nx
         # a function of the house's place: 35% of them, and the shape
         h = (int(c.x * 10) * 73856093) ^ (int(c.y * 10) * 19349663)
-        if h % 100 >= SHED_SHARE:
+        if h % 100 >= share:
             continue
         r1, r2, r3 = (h >> 7) % 100 / 100, (h >> 14) % 100 / 100, (h >> 21) % 100 / 100
-        w = SHED_SIZE_M[0][0] + r1 * (SHED_SIZE_M[0][1] - SHED_SIZE_M[0][0])
-        d = SHED_SIZE_M[1][0] + r2 * (SHED_SIZE_M[1][1] - SHED_SIZE_M[1][0])
+        w = size_m[0][0] + r1 * (size_m[0][1] - size_m[0][0])
+        d = size_m[1][0] + r2 * (size_m[1][1] - size_m[1][0])
         back = max((x - c.x) * nx + (y - c.y) * ny for x, y in poly.exterior.coords)
-        side = (r3 - 0.5) * min(poly.length / 4, 8.0)
+        if british:
+            # Inside the house's own width, which is its garden's.
+            along = [(x - c.x) * tx + (y - c.y) * ty for x, y in poly.exterior.coords]
+            side = (r3 - 0.5) * max(0.0, min(-min(along), max(along)) * 2 - w)
+        else:
+            side = (r3 - 0.5) * min(poly.length / 4, 8.0)
         # Allow for the house and shed footprints snapping to the tile grid.
         # On coarse maps keep the clearance in tiles, so it cannot shrink to a single tile.
-        for setback in SHED_SETBACKS:
+        for setback in setbacks:
             depth = back + setback * max(1.0, k)
             x = c.x + nx * depth + tx * side
             y = c.y + ny * depth + ty * side
