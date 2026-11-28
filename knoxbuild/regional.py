@@ -298,6 +298,15 @@ CN_AREA_OVERRIDES = {
     "apartment": ((600, (4, 5, 6, 6)), (2000, (5, 6, 7, 8)), (None, (6, 8, 10, 12))),
     "church": ((None, (1, 2)),),
 }
+# British housing: a terrace or semi stands on 40-60 m2 and is two storeys,
+# where the default reads a footprint that small as a bungalow. Up to 60 m2
+# it is a terraced or semi-detached house (the odd three-storey town house);
+# bungalows stand on the larger footprints, about one house in six there.
+GB_AREA_OVERRIDES = {
+    None: ((60, (2, 2, 2, 2, 2, 2, 2, 3)), (120, (1, 2, 2, 2, 2, 2)),
+           (300, (2, 2, 2, 3)), (None, (2, 2, 3))),
+}
+_AREA_OVERRIDES = {"cn": CN_AREA_OVERRIDES, "gb": GB_AREA_OVERRIDES}
 
 
 def area_level_pool(kind: str | None, area_m2: float,
@@ -308,10 +317,9 @@ def area_level_pool(kind: str | None, area_m2: float,
     `area_m2` the real footprint - the mapper's metres, not tiles, so the
     answer holds at whatever scale the map was drawn.
     """
-    if region == "cn":
-        for limit, pool in CN_AREA_OVERRIDES.get(kind, ()):
-            if limit is None or area_m2 <= limit:
-                return pool
+    for limit, pool in _AREA_OVERRIDES.get(region, {}).get(kind, ()):
+        if limit is None or area_m2 <= limit:
+            return pool
     for limit, pool in AREA_LEVEL_TABLE.get(kind, ()):
         if limit is None or area_m2 <= limit:
             return pool
