@@ -537,9 +537,14 @@ def _assign_house_kinds(plan: Plan, level: int, levels: int,
         kinds[i] = kind
         free.remove(i)
 
+    # A terraced house on a narrow shaft (furnishing.NARROW_CORE_WIDE) can have
+    # one room a floor beside its stairs: downstairs it lives and cooks in it,
+    # upstairs it sleeps in it, rather than a living room with no kitchen
+    # under a bathroom with no bedroom.
+    one_room = len(free) == 1 and getattr(plan.profile, "narrow_stairs", False)
     if level == 0:
         living = max(free, key=lambda i: area[i])
-        take(living, "livingroom")
+        take(living, "openplan" if one_room else "livingroom")
         if free:
             near = [n for n in adj[living] if n in free] or free
             kitchen = max(near, key=lambda i: area[i])
@@ -587,7 +592,7 @@ def _assign_house_kinds(plan: Plan, level: int, levels: int,
         _more_halls(plan, adj, free, kinds,
                     [i for i, k in kinds.items() if k == "hall"],
                     len(free) // ROOMS_PER_HALL)
-        if free and level in bathroom_floors:
+        if free and level in bathroom_floors and not one_room:
             take(min(free, key=lambda i: area[i]), "bathroom")
         rest = sorted(free, key=lambda i: -area[i])
         bedroom_count = min(bedroom_quota, len(rest))

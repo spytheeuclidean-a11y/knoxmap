@@ -19,7 +19,7 @@ from .dwellings import FLAT_FRONTAGE, HOTEL_FRONTAGE, _apartment_rooms, _assign_
 from . import houses as _houses
 from .houses import _assign_house_kinds, _footprint
 from .shops import CORRIDOR_WORTH_IT, MERGE_CIRCULATION, NEEDS_CORRIDOR, _arrange_business_rooms, _assign_kinds, _assign_shop_floor, _circulation, _dining_sections, _fit_out_sections, _shop_rooms, _split_to_size
-from .furnishing import Building, CORE_WIDE, CORRIDOR_WIDTHS, ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, HOUSE_LIKE_KINDS, MALL_LIFT_FROM_LEVELS, NARROW_CORRIDOR_WIDTHS, SWITCH, _carve_shaft, _cells_for, _clear_for_stairs, _clear_the_way, _cut_off_by_the_shaft, _facing, _furnish, _is_wall_piece, _pick_core, _pick_corridor, _pick_shaft, _place_windows, _stairs_in_core, _wall_edge
+from .furnishing import Building, CORE_WIDE, NARROW_CORE_WIDE, CORRIDOR_WIDTHS, ELEVATOR_FROM_LEVELS, ELEVATOR_MIN_SIDE, HOUSE_LIKE_KINDS, MALL_LIFT_FROM_LEVELS, NARROW_CORRIDOR_WIDTHS, SWITCH, _carve_shaft, _cells_for, _clear_for_stairs, _clear_the_way, _cut_off_by_the_shaft, _facing, _furnish, _is_wall_piece, _pick_core, _pick_corridor, _pick_shaft, _place_windows, _stairs_in_core, _wall_edge
 from .furnishing import _facade_runs
 
 if TYPE_CHECKING:
@@ -150,6 +150,10 @@ def build_building(width: int, height: int, levels: int = 1,
         small = min(width, height) < CORE_WIDE + 2 * MIN_ROOM
         core = _pick_core(width, height, mask, rng, street,
                           min_gap=MIN_ROOM if kind in HOUSE_LIKE_KINDS and small else 1)
+        if (core is None and kind in (None, "house") and getattr(profile, "narrow_stairs", False)
+                and min(width, height) >= NARROW_CORE_WIDE + 2):   # a tile of hall beside
+            core = _pick_core(width, height, mask, rng, street, min_gap=1,
+                              core_wide=NARROW_CORE_WIDE)
     if levels > 1 and core is None:
         levels = 1          # nowhere to put a staircase, so one floor it is
 

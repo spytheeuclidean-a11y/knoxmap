@@ -589,6 +589,13 @@ def _make_foyer(plan: Plan) -> None:
     if (idx is None or plan.kind not in (None, "house") or len(plan.rooms) < 2
             or plan.private_flats or plan.drawn):   # a drawn room keeps its kind
         return
+    from .furnishing import CORE_WIDE
+    core = getattr(plan, "core", None)
+    if core is not None and min(core[2] - core[0], core[3] - core[1]) + 1 < CORE_WIDE:
+        # A terraced house on a narrow shaft (furnishing.NARROW_CORE_WIDE): the
+        # front door opens straight into the front room, and making that room
+        # the hall left the house without its living room or kitchen.
+        return
     room = plan.rooms[idx - 1]
     if room.kind in ("hall", "garage") or room.is_core or room.is_shaft:
         return
