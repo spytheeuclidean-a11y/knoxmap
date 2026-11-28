@@ -286,4 +286,65 @@ def _run_on(x, y, dx, dy, streets, obstacles, Point) -> list:
         reached, end = _straight(sx, sy, dx, dy, streets, obstacles, Point)
         if reached:
             return [(sx, sy), end] if shift else [end]
-    return []
+    return _turn(x, y, dx, dy, streets, obstacles, Point)
+
+
+# An end that cannot run straight on to a street often turns a corner: the lane
+# meets the back of the houses round the end of the block and runs behind them,
+# square to itself, out to the street. The turn is taken where the straight run
+# stops, either way, and kept only when it reaches a street within REACH_M and
+# stays TURN_BESIDE_M clear of every street until its last TURN_ARRIVE_M: a lane
+# laid beside a street (Cambourne's first try at this) is not a back alley.
+TURN_BESIDE_M = 6.0
+TURN_ARRIVE_M = 6.0
+TURN_MIN_M = 2.0               # the straight part before the turn, at least
+# ...and only down a passage: the turned leg's corridor, measured square to it
+# halfway down (clear of CLEAR_M each side), at most this wide. On Anfield every turn down
+# 3.5 m or less was a mapped alley and every one from 4 m was not: a turn into
+# open gardens or across a car park.
+TURN_GAP_MAX_M = 3.5
+TURN_GAP_STEP_M = 0.5
+
+
+def _beside_street(points, streets, Point) -> bool:
+    """Whether a run, short of its last TURN_ARRIVE_M, comes within
+    TURN_BESIDE_M of a street."""
+    from shapely.geometry import LineString
+    line = LineString(points)
+    keep = line.length - TURN_ARRIVE_M
+    for i in range(int(max(0.0, keep)) + 1):
+        if streets.distance(line.interpolate(min(i, keep))) < TURN_BESIDE_M:
+            return True
+    return False
+
+
+def _turn(x, y, dx, dy, streets, obstacles, Point) -> list:
+    """The points past (x, y) of a lane end that runs on as far as it is clear
+    and turns square to a street, or []."""
+    _reached, (cx, cy) = _straight(x, y, dx, dy, streets, obstacles, Point)
+    if math.hypot(cx - x, cy - y) < TURN_MIN_M:
+        cx, cy = x, y
+    best = None
+    for nx, ny in ((-dy, dx), (dy, -dx)):
+        reached, end = _straight(cx, cy, nx, ny, streets, obstacles, Point)
+        if not reached:
+            continue
+        points = [(x, y), (cx, cy), end] if (cx, cy) != (x, y) else [(x, y), end]
+        if _beside_street(points, streets, Point):
+            continue
+        # Across the leg halfway down it: at the turn itself the building
+        # that stopped the lane narrows any corridor, passage or not.
+        mx, my = (cx + end[0]) / 2, (cy + end[1]) / 2
+        reach = int(TURN_GAP_MAX_M / TURN_GAP_STEP_M) + 2
+        wide = sum(_straight(mx + dx * d * TURN_GAP_STEP_M, my + dy * d * TURN_GAP_STEP_M,
+                             nx, ny, streets, obstacles, Point)[0]
+                   for d in range(-reach, reach + 1)
+                   if obstacles is None or not obstacles.contains(
+                       Point(mx + dx * d * TURN_GAP_STEP_M, my + dy * d * TURN_GAP_STEP_M))
+                   ) * TURN_GAP_STEP_M
+        if wide > TURN_GAP_MAX_M:
+            continue                    # open ground, not a passage
+        length = math.hypot(cx - x, cy - y) + math.hypot(end[0] - cx, end[1] - cy)
+        if best is None or length < best[0]:
+            best = (length, points[1:])
+    return best[1] if best else []

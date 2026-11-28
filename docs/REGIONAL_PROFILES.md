@@ -160,7 +160,13 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    length lies on a real alley; it finds 38% of the mapped length - OSM maps
    alleys as networks with cross-links, which this does not draw. Cambourne:
    12 lanes, 555 m, on its rows of joined houses.
-   Left: gates in back fences (step 7); ends that turn a corner.
+   Left: gates in back fences (step 7).
+   Turned ends (`_turn`): a lane end that cannot run straight on to a street
+   runs on until a building stops it and turns square, either way, to a street
+   within 40 m, kept only down a passage at most 3.5 m wide (measured halfway
+   along the turn) and 6 m clear of streets until its last 6 m. Anfield: 6
+   turns, 161 m, all on mapped alleys; without the width limit 30 turns at
+   54%, into open gardens and car parks.
    Cross-links (`_cross_links`): a passage square off the lane through a gap
    in the row (1-4 m clear of buildings) to the street in front, one per gap,
    40 m apart per side. Anfield: 26 links, 574 m, 54% on a mapped alley;
