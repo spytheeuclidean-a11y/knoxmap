@@ -156,11 +156,15 @@ CELL_POINT_BUDGET = 4500
 # A polygon of n points is ~3n indices and can be kept/triangulated up to 6
 # times across zoom levels (both highways and dense building/area layers in
 # WorldMap / Spawn Selector), so all polygons count 6x against the budget.
-CELL_INDEX_BUDGET = 24000
+# 24000 still crashed the paper map in Build 42 (Cambourne, cells at the cap);
+# 12000 and 18000 were tested in-game and open fine; the 6x copies are a guess,
+# so the real limit is unknown. Don't raise it without a new test.
+CELL_INDEX_BUDGET = 18000
 POLYGON_COPIES = 6
 HIGHWAY_COPIES = POLYGON_COPIES
 # What goes first when a cell is over it: the small things.
 KEEP_ORDER = ("water", "highway", "railway", "building", "natural")
+KEEP_WHOLE = {"water", "highway", "railway"}
 
 
 def _points(piece) -> int:
@@ -177,25 +181,42 @@ def _fits(features: list) -> bool:
             and sum(_indices(p, props) for p, props in features) <= CELL_INDEX_BUDGET)
 
 
+def _simplified(features: list, tolerance: float) -> list:
+    simpler = []
+    for piece, props in features:
+        try:
+            shape = Polygon(piece[0], piece[1:]).simplify(tolerance, preserve_topology=True)
+        except Exception:  # noqa: BLE001
+            simpler.append((piece, props))
+            continue
+        if shape.is_empty or shape.geom_type != "Polygon" or len(shape.exterior.coords) < 4:
+            continue
+        for cleaned in _clean([r.coords for r in [shape.exterior, *shape.interiors]]):
+            simpler.append((cleaned, props))
+    return simpler
+
+
 def _within_budget(features: list) -> list:
-    """A cell's features, simplified and then thinned until they fit."""
+    """A cell's features, simplified and then thinned until they fit.
+
+    Roads, rails and water are left whole while buildings and areas can give
+    way: a thin road simplified at 3 tiles draws as wedges and spikes.
+    """
     if _fits(features):
         return features
-    for tolerance in (0.75, 1.5, 3.0):
-        simpler = []
-        for piece, props in features:
-            try:
-                shape = Polygon(piece[0], piece[1:]).simplify(tolerance, preserve_topology=True)
-            except Exception:  # noqa: BLE001
-                simpler.append((piece, props))
-                continue
-            if shape.is_empty or shape.geom_type != "Polygon" or len(shape.exterior.coords) < 4:
-                continue
-            for cleaned in _clean([r.coords for r in [shape.exterior, *shape.interiors]]):
-                simpler.append((cleaned, props))
-        features = simpler
-        if _fits(features):
-            return features
+    lines = [f for f in features if any(k in KEEP_WHOLE for k, _ in f[1])]
+    if _fits(lines):
+        rest = [f for f in features if not any(k in KEEP_WHOLE for k, _ in f[1])]
+        for tolerance in (0.75, 1.5, 3.0):
+            rest = _simplified(rest, tolerance)
+            if _fits(lines + rest):
+                return lines + rest
+        features = lines + rest
+    else:
+        for tolerance in (0.75, 1.5, 3.0):
+            features = _simplified(features, tolerance)
+            if _fits(features):
+                return features
 
     def rank(item):
         piece, props = item

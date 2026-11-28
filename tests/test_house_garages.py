@@ -26,7 +26,9 @@ class Garages(unittest.TestCase):
         for _seed, _w, _h, st in houses():
             total += 1
             with_garage += any(r.kind == "garage" for r in st.rooms)
-        self.assertGreater(with_garage / total, 0.15)
+        # The bay is kept before the floor is cut (openings._garage_bay):
+        # waiting for a room big enough gave about one house in seven.
+        self.assertGreater(with_garage / total, 0.3)
         self.assertLess(with_garage / total, 0.5)
 
     def test_the_garage_door_is_three_tiles_on_the_street_and_not_the_front_door(self):

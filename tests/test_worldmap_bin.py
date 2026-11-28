@@ -27,11 +27,11 @@ class CellBudget(unittest.TestCase):
         self.assertTrue(kept)
         self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
         self.assertLessEqual(sum(W._points(p) for p, _ in kept), W.CELL_POINT_BUDGET)
-        self.assertLess(W.CELL_INDEX_BUDGET, 32767)
+        self.assertLessEqual(W.CELL_INDEX_BUDGET, 18000)  # highest value tested in-game
 
     def test_an_ordinary_cell_is_left_alone(self):
         features = [(square(x * 10, y * 10), [("building", "yes")])
-                    for x in range(10) for y in range(10)]
+                    for x in range(8) for y in range(8)]
         self.assertEqual(W._within_budget(features), features)
 
     def test_building_heavy_cell_is_counted_with_full_zoom_copies(self):
@@ -43,6 +43,24 @@ class CellBudget(unittest.TestCase):
         self.assertLess(len(kept), len(features))
         self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
         self.assertLessEqual(sum(W._points(p) for p, _ in kept), W.CELL_POINT_BUDGET)
+
+    def test_roads_stay_whole_while_buildings_can_give_way(self):
+        # Simplifying a thin road outline at 3 tiles turns it into wedges and
+        # spikes on the paper map (Cambourne); buildings go coarse or go first.
+        road = (square(0, 100, side=250, corners=60), [("highway", "residential")])
+        features = [road] + [(square(x * 6, y * 6), [("building", "yes")])
+                             for x in range(40) for y in range(38)]
+        kept = W._within_budget(features)
+        self.assertIn(road, kept)
+        self.assertLessEqual(sum(W._indices(p, props) for p, props in kept), W.CELL_INDEX_BUDGET)
+
+    def test_footways_and_driveways_stay_off_the_paper_map(self):
+        from knoxbuild.worldmap import _on_paper
+        self.assertFalse(_on_paper("paved_path", {"highway": "footway"}))
+        self.assertFalse(_on_paper("road_service", {"highway": "service", "service": "driveway"}))
+        self.assertTrue(_on_paper("road_service", {"highway": "service", "service": "alley"}))
+        self.assertTrue(_on_paper("road_minor", {"highway": "residential"}))
+        self.assertTrue(_on_paper("dirt_path", {"highway": "track"}))
 
     def test_connected_road_segments_merge_into_continuous_polygons(self):
         from shapely.geometry import LineString
