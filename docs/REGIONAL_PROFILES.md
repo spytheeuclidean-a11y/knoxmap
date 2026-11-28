@@ -161,7 +161,7 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    length lies on a real alley; it finds 38% of the mapped length - OSM maps
    alleys as networks with cross-links, which this does not draw. Cambourne:
    12 lanes, 555 m, on its rows of joined houses.
-   Left: gates in back fences (step 7); cross-links; ends that turn a corner.
+   Gates in back fences: done in step 7. Left: cross-links; ends that turn a corner.
 7. **Boundaries.** *First part done* (`knoxbuild/yards.py`).
    - Back: `yard_plan(..., region="gb")` picks `tall_wooden` (75%) or
      `short_wooden` (25%), fenced 95% (default: picket and chain-link too,
@@ -173,7 +173,10 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
      `short_wooden` (25%) or a hedge (40%, bushes on the lawn row at the
      pavement); 30% of front gardens are left open-plan.
    The game has no low brick wall fence, so railings stand in for wall and
-   railings. Left: gates in back fences onto back alleys.
+   railings.
+   - Alley gates: a back garden whose far fence has at least
+     `GB_ALLEY_SHARE` (half) paving or road beyond it - a mapped or added
+     back alley - gets a gate in the middle of that fence.
 8. **Garages and parking.** *First part done.*
    - Lock-ups: `row_units(..., region="gb")` cuts `building=garages` into
      one garage per `GB_LOCKUP_FRONTAGE_M` (5 m; a real lock-up is about 3 m,

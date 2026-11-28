@@ -22,8 +22,9 @@ def _building(folder, name):
                 f'<object type="door" x="3" y="6" dir="N"/></floor></building>')
 
 
-def street(region, n_houses=8):
-    """Detached houses at y 14-19 fronting a pavement at y 28; return
+def street(region, n_houses=8, alley=False):
+    """Detached houses at y 14-19 fronting a pavement at y 28, with a back
+    alley paved along y 4-5 behind their gardens when `alley`; return
     (fences, ground after painting, vegetation after painting)."""
     with tempfile.TemporaryDirectory() as out:
         os.mkdir(os.path.join(out, "buildings"))
@@ -32,6 +33,8 @@ def street(region, n_houses=8):
         ground = np.full((40, width, 3), C.MEDIUM_GRASS, dtype=np.uint8)
         ground[28:32, :] = C.PALE_CONCRETE
         ground[32:36, :] = C.MEDIUM_ASPHALT
+        if alley:
+            ground[4:6, :] = C.DARK_ASPHALT
         veg = np.full((40, width, 3), C.VEG_NOTHING, dtype=np.uint8)
         Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
         Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
@@ -73,6 +76,48 @@ class BackFences(unittest.TestCase):
 
     def test_default_back_gardens_are_unchanged(self):
         self.assertEqual(yard_plan(42, 17), yard_plan(42, 17, region=None))
+
+
+def back_gates(fences):
+    """Gates in back fences, past the back wall at y 13: (x, y) tiles."""
+    return [g for f in fences for g in (f[2] if len(f) > 2 else ()) if g[1] < 13]
+
+
+def gate_tiles_built(fences, width=110):
+    """Tiles where build_fences put a gate, for these yard fences."""
+    from types import SimpleNamespace
+    from xml.etree import ElementTree
+
+    from knoxbuild.fences import GATES, build_fences
+    gate_names = {t for pair in GATES.values() for t in pair}
+    with tempfile.TemporaryDirectory() as d:
+        os.mkdir(os.path.join(d, "buildings"))
+        proj = SimpleNamespace(width=width, height=40, to_px=lambda lat, lon: (lon, lat))
+        placements, _ = build_fences(d, "m", proj, np.zeros((40, width), dtype=bool),
+                                     None, os.path.join(d, "buildings"), extra=fences)
+        found = set()
+        for p in placements:
+            root = ElementTree.parse(os.path.join(d, p.tbx_path))
+            names = [f.find("entry/tile").get("name") for f in root.findall(".//furniture")]
+            for obj in root.findall(".//floor/object"):
+                if names[int(obj.get("FurnitureTiles"))] in gate_names:
+                    found.add((p.tile_x + int(obj.get("x")), p.tile_y + int(obj.get("y"))))
+    return found
+
+
+class AlleyGates(unittest.TestCase):
+    def test_a_garden_on_a_back_alley_has_a_gate_onto_it(self):
+        fences = street("gb", alley=True)[0]
+        gates = back_gates(fences)
+        self.assertTrue(gates)
+        # In the fence along the alley's edge, the far side of row y = 6.
+        self.assertEqual({y for _x, y in gates}, {6})
+        # ...and the fence builder hangs a gate there, not a fence panel.
+        self.assertEqual(gate_tiles_built(fences), set(gates))
+
+    def test_no_gate_without_an_alley_or_outside_britain(self):
+        self.assertEqual(back_gates(street("gb")[0]), [])
+        self.assertEqual(back_gates(street(None, alley=True)[0]), [])
 
 
 class FrontBoundaries(unittest.TestCase):
