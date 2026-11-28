@@ -80,5 +80,36 @@ class BackAlleys(unittest.TestCase):
                 LineString([(12, 13), (18, 13), (18, 19), (12, 19), (12, 13)]).convex_hull))
 
 
+class CrossLinks(unittest.TestCase):
+    def gapped_block(self, gap):
+        """block(), but row A has a `gap` m gap after its third house, and the
+        east side street moves out to make room."""
+        feats = [f for f in block() if not 100 <= f.osm_id < 200 and f.osm_id != 9004]
+        feats.append(street([(38, -10), (38, 42)], 9004))
+        for i, x in enumerate((0, 5, 10, 15 + gap, 20 + gap, 25 + gap)):
+            feats.append(house(x, 2, ident=100 + i))
+        return feats
+
+    def links(self, feats):
+        return [local(a) for a in back_alleys(feats, PROJ)
+                if a.tags.get("knoxmap") == "alley_link"]
+
+    def test_a_passage_runs_through_a_gap_in_the_row_to_the_street(self):
+        links = self.links(self.gapped_block(4))
+        self.assertEqual(len(links), 1)
+        (x1, y1), (x2, y2) = links[0].coords
+        # From the lane (y 16) square through the gap (x 15-19) to the street at y 0.
+        self.assertAlmostEqual(x1, 17, delta=1.5)
+        self.assertAlmostEqual(x2, 17, delta=1.5)
+        self.assertAlmostEqual(y1, 16, delta=1.5)
+        self.assertLessEqual(y2, 1.0)
+
+    def test_no_passage_through_a_gap_too_narrow_to_walk(self):
+        self.assertEqual(self.links(self.gapped_block(1)), [])
+
+    def test_no_passage_in_an_unbroken_row(self):
+        self.assertEqual(self.links(block()), [])
+
+
 if __name__ == "__main__":
     unittest.main()
