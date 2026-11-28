@@ -122,7 +122,7 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    (`render_chunked`). Front-garden depth is the mapped position of the
    house; drives are already one car wide (`yards.DRIVE_WIDTH` = 3) and
    terraced houses get none where there is no room.
-   Left: front hedges (step 7).
+   Front hedges: done in step 7.
 4. **Back of the plot.** *Done.*
    - Garden (`knoxbuild/yards.py`): `GB_YARD_DEPTH` 14 (default 9) and only
      as wide as the house (default tries 2 tiles past each side first), so a
@@ -169,11 +169,11 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    - Front: `_front_boundary()` runs a fence along the pavement edge across
      the house's front, found straight out of the front door on the ground as
      it was before paths and drives were painted; broken wherever the path,
-     the drive or anything else crosses. `black_metal` (railings, 55%) or
-     `short_wooden` (45%); 30% of front gardens are left open-plan.
+     the drive or anything else crosses. `black_metal` (railings, 35%),
+     `short_wooden` (25%) or a hedge (40%, bushes on the lawn row at the
+     pavement); 30% of front gardens are left open-plan.
    The game has no low brick wall fence, so railings stand in for wall and
-   railings. Left: hedges at the front (props, not fences); gates in back
-   fences onto back alleys.
+   railings. Left: gates in back fences onto back alleys.
 8. **Garages and parking.** *First part done.*
    - Lock-ups: `row_units(..., region="gb")` cuts `building=garages` into
      one garage per `GB_LOCKUP_FRONTAGE_M` (5 m; a real lock-up is about 3 m,
