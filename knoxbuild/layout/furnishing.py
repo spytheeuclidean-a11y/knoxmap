@@ -769,6 +769,28 @@ def _place_windows(building: "Building", kind: str | None,
                     taken[idx] = 1
                     break
 
+        # A British terraced house four tiles wide (profile.narrow_stairs) has
+        # room on its front for the door and one window, and the shutter gap
+        # kept either side of the door took that too: the street saw a door and
+        # bare brick on every storey. British styles have no shutters, so the
+        # storey that still has no front window gets one beside the door, on
+        # the free tile farthest from it.
+        if house_like and getattr(building.profile, "narrow_stairs", False):
+            runs = [[(x, y, d) for x, y, d, _ix, _iy in wall]
+                    for side, wall in _facade_runs(storey.grid) if side in front]
+            front_edges = [e for run in runs for e in run]
+            if front_edges and not set(front_edges) & set(storey.windows):
+                doors = set(storey.doors)
+                ends = {e for run in runs for e in (run[0], run[-1])}
+                spots = [e for e in front_edges
+                         if e not in doors and e not in storey.party
+                         and e not in wall_edges and (e[0], e[1]) not in on_corner]
+                if spots:
+                    # Off the wall's ends first (against next door's party
+                    # wall), then as far from the door as that allows.
+                    add(max(spots, key=lambda e: (e not in ends, min(
+                        (abs(e[0] - x) + abs(e[1] - y) for x, y, _d in doors), default=0))))
+
 
 # A piece against a wall should have its back to that wall. Most pieces define
 # all four facings; the few that only define N and W fall back to the nearest.

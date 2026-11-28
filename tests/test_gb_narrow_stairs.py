@@ -41,6 +41,17 @@ class NarrowStairs(unittest.TestCase):
                                 kinds(b))
                 self.assertTrue(kinds(b) & {"bedroom", "kidsbedroom"}, kinds(b))
 
+    def test_every_storey_of_a_narrow_house_has_a_front_window(self):
+        # The street wall (south, y = height) of a 4- or 5-wide terrace: the
+        # door and a window beside it, not the door and bare brick.
+        for width in (4, 5):
+            for height in (11, 12):
+                for b in houses(width, height, GB):
+                    for st in b.storeys:
+                        front = [w for w in st.windows if w[2] == "N" and w[1] == height]
+                        self.assertTrue(front, (width, height, st.windows))
+                        self.assertFalse(set(front) & set(st.doors))
+
     def test_elsewhere_nothing_changes(self):
         for width in (4, 5):
             for b in houses(width, 10, BASE) + houses(width, 10, None):
