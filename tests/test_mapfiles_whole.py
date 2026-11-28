@@ -49,6 +49,36 @@ class WrittenWholeOrNotAtAll(unittest.TestCase):
             knoxfiles.write(self.path, Unserialisable())
         self.assertFalse(os.path.exists(self.path))
 
+    def test_a_file_held_open_for_a_moment_is_still_replaced(self):
+        # Windows: antivirus or the window reading settings.json makes the
+        # move fail with "Access is denied" until it lets go.
+        from unittest import mock
+        real, failures = os.replace, [PermissionError(13, "Access is denied")] * 3
+
+        def held(src, dst):
+            if failures:
+                raise failures.pop()
+            real(src, dst)
+
+        with mock.patch.object(knoxfiles.os, "replace", held), \
+                mock.patch.object(knoxfiles, "REPLACE_WAIT_S", 0):
+            knoxfiles.write(self.path, {"a": 1})
+        with open(self.path, encoding="utf-8") as f:
+            self.assertEqual(json.load(f), {"a": 1})
+        self.assertEqual(os.listdir(self.dir), ["thing.json"])
+
+    def test_a_file_that_stays_locked_still_says_so(self):
+        from unittest import mock
+
+        def locked(src, dst):
+            raise PermissionError(13, "Access is denied")
+
+        with mock.patch.object(knoxfiles.os, "replace", locked), \
+                mock.patch.object(knoxfiles, "REPLACE_WAIT_S", 0):
+            with self.assertRaises(PermissionError):
+                knoxfiles.write(self.path, {"a": 1})
+        self.assertEqual(os.listdir(self.dir), [])
+
     def test_the_half_written_file_is_not_left_lying_in_its_place(self):
         knoxfiles.write(self.path, {"a": 1})
         self.assertEqual(os.listdir(self.dir), ["thing.json"])

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 
 
 class Damaged(ValueError):
@@ -31,13 +32,33 @@ def _forget(part: str) -> None:
         pass
 
 
+# On Windows a file another program has open for a moment - antivirus or the
+# search indexer scanning it, or the window reading it - cannot be replaced, and
+# the move fails with "Access is denied" (WinError 5). It is free again in a
+# fraction of a second, so the move is tried again for a little while first.
+REPLACE_TRIES = 20
+REPLACE_WAIT_S = 0.1
+
+
+def _move(part: str, path: str) -> None:
+    """os.replace, waiting out a program that holds `path` open briefly."""
+    for attempt in range(REPLACE_TRIES):
+        try:
+            os.replace(part, path)
+            return
+        except PermissionError:
+            if attempt == REPLACE_TRIES - 1:
+                raise
+            time.sleep(REPLACE_WAIT_S)
+
+
 def write(path: str, payload, **dump) -> None:
     """Write `payload` to `path` as JSON: all of it, or none of it."""
     part = f"{path}.part"
     try:
         with open(part, "w", encoding="utf-8") as f:
             json.dump(payload, f, **dump)
-        os.replace(part, path)
+        _move(part, path)
     except BaseException:
         _forget(part)
         raise
@@ -48,7 +69,7 @@ def save(image, path: str, **options) -> None:
     part = f"{path}.part"
     try:
         image.save(part, **options)
-        os.replace(part, path)
+        _move(part, path)
     except BaseException:
         _forget(part)
         raise
@@ -65,7 +86,7 @@ def write_text(path: str, text: str) -> None:
     try:
         with open(part, "w", encoding="utf-8", newline="") as f:
             f.write(text)
-        os.replace(part, path)
+        _move(part, path)
     except BaseException:
         _forget(part)
         raise
