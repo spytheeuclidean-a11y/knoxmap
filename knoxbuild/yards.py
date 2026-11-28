@@ -73,9 +73,10 @@ GB_YARD_FENCE_WEIGHTS = (75, 25)
 GB_FENCED_SHARE = 0.95
 # ...and its front garden has a low boundary at the pavement: railings on a
 # low wall (the game has the railing, not the wall) or a short fence, with
-# the path and the drive left open. Some are open-plan.
-GB_FRONT_STYLES = ("black_metal", "short_wooden")
-GB_FRONT_WEIGHTS = (55, 45)
+# the path and the drive left open. Some are open-plan, and many are a privet
+# or box hedge, which is bushes along the pavement rather than a fence.
+GB_FRONT_STYLES = ("black_metal", "short_wooden", "hedge")
+GB_FRONT_WEIGHTS = (35, 25, 40)
 GB_FRONT_OPEN = 0.3
 GB_FRONT_MIN_TILES = 2
 # The dog's house and the kids' swing: not every yard, but enough of them that
@@ -1334,8 +1335,9 @@ def _add_exterior_house_props(bx0: int, by0: int, bw: int, bh: int,
 
 def _front_boundary(sx, sy, dx, dy, bx0, by0, bw, bh, free, ground, kerb) -> list:
     """A British front garden's boundary: fence runs along the pavement edge
-    across the house's front, as (corner points, style, []) for the fence
-    builder, broken wherever the path, the drive or anything else crosses.
+    across the house's front, as (corner points, style, [], lawn tiles) - the
+    first three for the fence builder, the tiles for a hedge - broken wherever
+    the path, the drive or anything else crosses.
 
     The pavement edge is found straight out of the front door at (sx, sy),
     towards the street (dx, dy), on `kerb`: the ground that was paved before
@@ -1375,10 +1377,10 @@ def _front_boundary(sx, sy, dx, dy, bx0, by0, bw, bh, free, ground, kerb) -> lis
             (ax, ay), (bx, by) = run[0], run[-1]
             if dy:
                 edge = ay + (1 if dy > 0 else 0)
-                runs.append(([(ax, edge), (bx + 1, edge)], style, []))
+                runs.append(([(ax, edge), (bx + 1, edge)], style, [], run))
             else:
                 edge = ax + (1 if dx > 0 else 0)
-                runs.append(([(edge, ay), (edge, by + 1)], style, []))
+                runs.append(([(edge, ay), (edge, by + 1)], style, [], run))
         run = []
     return runs
 
@@ -1669,8 +1671,13 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
         if not any_connected:
             continue
         if region == "gb" and home:
-            fences.extend(_front_boundary(sx, sy, dx, dy, bx0, by0, bw, bh,
-                                          free, ground, kerb))
+            for pts, style, gates, cells in _front_boundary(
+                    sx, sy, dx, dy, bx0, by0, bw, bh, free, ground, kerb):
+                if style == "hedge":
+                    for cx, cy in cells:
+                        put(cx, cy, C.BUSHES)
+                else:
+                    fences.append((pts, style, gates))
         # Front-yard flower/shrub beds flanking the stoop and an occasional kerbside
         # bin opposite the mailbox so street fronts read as lived-in homes.
         if home and veg is not None and frng.random() < 0.80:

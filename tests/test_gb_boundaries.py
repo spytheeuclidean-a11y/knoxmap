@@ -22,20 +22,21 @@ def _building(folder, name):
                 f'<object type="door" x="3" y="6" dir="N"/></floor></building>')
 
 
-def street(region):
-    """Eight detached houses at y 14-19 fronting a pavement at y 28; return
-    (fences, ground after painting)."""
+def street(region, n_houses=8):
+    """Detached houses at y 14-19 fronting a pavement at y 28; return
+    (fences, ground after painting, vegetation after painting)."""
     with tempfile.TemporaryDirectory() as out:
         os.mkdir(os.path.join(out, "buildings"))
-        occupied = np.zeros((40, 110), dtype=bool)
-        ground = np.full((40, 110, 3), C.MEDIUM_GRASS, dtype=np.uint8)
+        width = 13 * n_houses + 6
+        occupied = np.zeros((40, width), dtype=bool)
+        ground = np.full((40, width, 3), C.MEDIUM_GRASS, dtype=np.uint8)
         ground[28:32, :] = C.PALE_CONCRETE
         ground[32:36, :] = C.MEDIUM_ASPHALT
-        veg = np.full((40, 110, 3), C.VEG_NOTHING, dtype=np.uint8)
+        veg = np.full((40, width, 3), C.VEG_NOTHING, dtype=np.uint8)
         Image.fromarray(ground, "RGB").save(os.path.join(out, "m.bmp"))
         Image.fromarray(veg, "RGB").save(os.path.join(out, "m_veg.bmp"))
         rows = []
-        for n in range(8):
+        for n in range(n_houses):
             bx = 4 + 13 * n
             _building(os.path.join(out, "buildings"), f"h{n}.tbx")
             occupied[14:20, bx:bx + SIZE] = True
@@ -43,7 +44,18 @@ def street(region):
                          "tile_y": 14, "width": SIZE, "height": SIZE})
         _paths, fences = paint_paths(out, "m", rows, occupied, region=region)
         painted = np.asarray(Image.open(os.path.join(out, "m.bmp")))[:, :, :3].copy()
-    return fences, painted
+        planted = np.asarray(Image.open(os.path.join(out, "m_veg.bmp")))[:, :, :3].copy()
+    return fences, painted, planted
+
+
+def longest_hedge(planted, row=27):
+    """The longest unbroken stretch of bushes along the pavement edge: a
+    shrub bed by the door is a tile or two, a hedge runs the garden's width."""
+    best = cur = 0
+    for bush in (planted[row] == C.BUSHES).all(axis=1):
+        cur = cur + 1 if bush else 0
+        best = max(best, cur)
+    return best
 
 
 def front_runs(fences):
@@ -70,7 +82,7 @@ class FrontBoundaries(unittest.TestCase):
         self.assertTrue({r[1] for r in runs} <= set(GB_FRONT_STYLES))
 
     def test_the_path_and_the_drive_are_left_open(self):
-        fences, painted = street("gb")
+        fences, painted, _planted = street("gb")
         open_row = painted[27]
         for pts, _style, *_ in front_runs(fences):
             xs = sorted(x for x, _ in pts)
@@ -78,8 +90,17 @@ class FrontBoundaries(unittest.TestCase):
                 self.assertTrue((open_row[x] == C.MEDIUM_GRASS).all(),
                                 f"front fence across paving at x={x}")
 
+    def test_some_front_gardens_are_hedged(self):
+        _fences, painted, planted = street("gb", 20)
+        self.assertGreaterEqual(longest_hedge(planted), 5)
+        # Along the pavement edge on lawn, never across the path or the drive.
+        hedge = (planted[27] == C.BUSHES).all(axis=1)
+        self.assertTrue((painted[27][hedge] == C.MEDIUM_GRASS).all())
+
     def test_no_front_boundary_elsewhere(self):
-        self.assertEqual(front_runs(street(None)[0]), [])
+        fences, _painted, planted = street(None)
+        self.assertEqual(front_runs(fences), [])
+        self.assertLess(longest_hedge(planted), 5)
 
 
 if __name__ == "__main__":

@@ -37,7 +37,7 @@ class BritishSheds(unittest.TestCase):
 
 class BritishGardens(unittest.TestCase):
     def back_fences(self, region):
-        fences, _ = gb_street(region)
+        fences, *_ = gb_street(region)
         return [f for f in fences if not all(y == 28 for _x, y in f[0])]
 
     def test_a_british_back_garden_is_as_wide_as_the_house_and_deeper(self):
