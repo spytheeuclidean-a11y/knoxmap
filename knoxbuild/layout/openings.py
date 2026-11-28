@@ -791,15 +791,21 @@ GARAGE_KEEP = 80                 # tiles of floor the house keeps beside the bay
 GARAGE_BESIDE = 4                # street-front tiles left for the front door
 
 
+def garage_share(profile) -> float:
+    """How often a house with room for one gets an integral garage."""
+    share = getattr(profile, "garage_share", None)
+    return GARAGE_SHARE if share is None else share
+
+
 def _garage_bay(width: int, height: int, mask, core, stairs,
-                street: str | None, seed) -> tuple[int, int, int, int] | None:
+                street: str | None, seed, profile=None) -> tuple[int, int, int, int] | None:
     """A street-front corner (x0, y0, x1, y1) kept for an integral garage, or None.
 
     The same roll as _attach_garage, so a house that would have had one has
     one. Not where it would take the stairs or the core, leave too little
     house, or step outside the footprint."""
     if (street not in ("N", "S", "E", "W")
-            or random.Random(f"{seed}:garage").random() >= GARAGE_SHARE):
+            or random.Random(f"{seed}:garage").random() >= garage_share(profile)):
         return None
     along, deep = GARAGE_BAY
     floor = sum(map(sum, mask)) if mask is not None else width * height
@@ -857,7 +863,8 @@ def _rooms_joined_without(plan: Plan, gone: int) -> bool:
     return len(seen) == len(rest)
 
 
-def _attach_garage(plan: Plan, seed, street: str | None, stair_tiles: set) -> bool:
+def _attach_garage(plan: Plan, seed, street: str | None, stair_tiles: set,
+                   profile=None) -> bool:
     """Turn one room on a house's street front into a garage with a street door.
 
     A room qualifies when it is not a room a home is lived in, is the size of a
@@ -872,7 +879,7 @@ def _attach_garage(plan: Plan, seed, street: str | None, stair_tiles: set) -> bo
         return bool(getattr(plan, "garage_door_tiles", ()))
     if (not street or len(plan.rooms) < GARAGE_MIN_ROOMS
             or plan.width * plan.height < GARAGE_MIN_FOOTPRINT
-            or random.Random(f"{seed}:garage").random() >= GARAGE_SHARE):
+            or random.Random(f"{seed}:garage").random() >= garage_share(profile)):
         return False
     best = None
     for idx, room in enumerate(plan.rooms, 1):

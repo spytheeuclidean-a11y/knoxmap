@@ -88,6 +88,23 @@ class Garages(unittest.TestCase):
                                           street="S", commercial=kind == "shop")
                 self.assertFalse(any(r.kind == "garage" for r in b.storeys[0].rooms))
 
+    def test_a_regional_share_is_used(self):
+        # British houses (knoxbuild/regional.py): fewer garages, none at all
+        # on a terraced or semi-detached house.
+        from dataclasses import replace
+
+        from knoxbuild.profile import BuildingProfile
+        from knoxbuild.regional import GB_GARAGE_SHARE
+        base = BuildingProfile.infer({}, None, 0.15, 150.0, 2, 1)
+
+        def share(value):
+            sts = [st for *_rest, st in houses(profile=replace(base, garage_share=value))]
+            return sum(any(r.kind == "garage" for r in st.rooms) for st in sts) / len(sts)
+
+        self.assertEqual(share(0.0), 0.0)
+        self.assertGreater(share(GB_GARAGE_SHARE), 0.05)
+        self.assertLess(share(GB_GARAGE_SHARE), 0.22)
+
     def test_it_is_the_same_every_time(self):
         a = [(r.kind, r.x0, r.y0) for _s, _w, _h, st in houses() for r in st.rooms]
         b = [(r.kind, r.x0, r.y0) for _s, _w, _h, st in houses() for r in st.rooms]

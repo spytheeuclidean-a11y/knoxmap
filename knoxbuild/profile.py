@@ -68,6 +68,9 @@ class BuildingProfile:
     apartment_access: ApartmentAccessRules = DEFAULT_APARTMENT_ACCESS
     source_year: int | None = None
     apartment_balconies: bool | None = None
+    # How often this house gets an integral garage; None is the layout's own
+    # GARAGE_SHARE (a regional profile sets it, knoxbuild/regional.py).
+    garage_share: float | None = None
 
     @classmethod
     def infer(cls, tags: dict, kind: str | None, density: float,
