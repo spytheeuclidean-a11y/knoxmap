@@ -1,7 +1,7 @@
 # Regional profiles: building a country the way it is built
 
-Status: skeleton done (profile type, GB detection), no GB rules yet. First
-target: Great Britain (`gb`).
+Status: skeleton done (profile type, GB detection); GB step 1 (materials and
+roofs) done. First target: Great Britain (`gb`).
 
 ## Why
 
@@ -100,11 +100,12 @@ itself), and `arch_style` has to reach the generator.
 Each item is its own PR, checked on Cambourne in-game, like the fixes of
 27 Nov 2026. Cheapest and most visible first.
 
-1. **Materials and roofs.** A `gb_house_styles()` pool built like
-   `cn_house_styles()`: only catalog entries that are already shipped and
-   verified. Brick (red/brown), render, pebble-dash; pitched roofs; no
-   clapboard, logs, sidings or shutters. Lives in `build.py` house-style
-   choice (today line ~901).
+1. **Materials and roofs.** *Done.* `gb_house_styles()` (`GB_BASES`): the
+   catalog's brick (half the pool), render, stucco and painted styles with
+   their own pitched roofs, shutters removed. No clapboard, sidings, timber,
+   logs or panel. `pick_style` uses it for every GB house, dated ones too,
+   and before the Melos/Erika mod styles, as `cn` does. The catalog has one
+   brick wall tile; more brick colours would need new verified entries.
 2. **Storeys.** Default 2; small footprints (bungalows) 1; narrow tall
    terraced footprints in town centres 3. Via `area_level_pool`.
 3. **Front of the plot.** Shallow front gardens (2-4 m), no 6-tile apron on
