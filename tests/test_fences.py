@@ -218,7 +218,9 @@ class WaysThroughAFence(unittest.TestCase):
     def test_a_roadside_fence_stays_where_the_road_raster_overlaps_it(self):
         road_tags = {"highway": "service", "width": "2"}
         roads = [
-            OSMFeature(1, "way", road_tags, [(5, 1), (5, 15)]),   # parallel
+            # Parallel, beyond the three tiles a service road is drawn: on a
+            # tarmac raster that overlaps the fence, the fence still stands.
+            OSMFeature(1, "way", road_tags, [(3, 1), (3, 15)]),   # parallel
             OSMFeature(2, "way", road_tags, [(2, 9), (11, 9)]),   # crosses
         ]
         openings = _openings_geojson([], {"road_service": roads})
@@ -226,6 +228,22 @@ class WaysThroughAFence(unittest.TestCase):
         self.assertIn((4, 6), built)
         self.assertNotIn((9, 6), built)
         self.assertIn((12, 6), built)
+
+    def test_a_fence_on_the_drawn_road_is_not_built(self):
+        # Alcester: a fence mapped beside a 3.5 m service road stood 42 tiles
+        # down its outer lane, because the road is drawn 4 tiles wide. (The
+        # fence runs along y = 6; OSMFeature points are lat, lon.)
+        def built_beside(centre_y):
+            road = OSMFeature(1, "way", {"highway": "service", "width": "3.5"},
+                              [(centre_y, 0), (centre_y, 15)])
+            openings = _openings_geojson([], {"road_service": [road]})
+            return self.fence(openings, road_hierarchy=np.full((16, 16), 2))
+
+        self.assertFalse(built_beside(6))              # on the centre line
+        self.assertFalse(built_beside(8))              # on the outer lane
+        beside = built_beside(10)                      # past the road's side
+        self.assertIn((4, 6), beside)
+        self.assertIn((12, 6), beside)
 
 
 class WhoseFenceItIs(unittest.TestCase):

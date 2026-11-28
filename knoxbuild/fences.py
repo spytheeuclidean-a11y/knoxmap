@@ -318,6 +318,12 @@ def _tarmac_mask(bmp_path: str, width: int, height: int):
 # tile once both are on the grid.
 OPENING_REACH = 1
 FENCE_JOIN_REACH = 4
+# A fence edge on tarmac both sides within a road's drawn half-width (plus
+# this, for the rounding of a diagonal road onto tiles) of its centre line is
+# on the carriageway and left out (build_fences). Roads are looked up this far
+# round, in tiles.
+CARRIAGEWAY_SLACK = 0.5
+MAX_HALF_WIDTH_TILES = 20
 
 
 def mapped_fence_lines(out_dir, map_name, proj, fitted=()):
@@ -385,7 +391,7 @@ def _openings(out_dir: str, map_name: str, proj):
         elif geom.get("type") == "LineString" and len(coords) >= 2:
             points = [proj.to_px(lat, lon) for lon, lat in coords]
             if props.get("opening") == "road":
-                roads.append((points, props["width_m"]))
+                roads.append((points, props["width_m"], props.get("category")))
             elif not restricted:
                 paths.append(points)
     return gates, paths, closed, roads if data.get("road_geometry") else None
@@ -508,9 +514,31 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
     if path_lines:
         paths = unary_union([LineString(line) for line in path_lines
                              if len(line) >= 2])
-    roads = [LineString(points) for points, _width in road_lines or ()]
+    roads = [LineString(points) for points, *_ in road_lines or ()]
     road_tree = STRtree(roads) if roads else None
     scale = getattr(proj, "meters_per_tile", 1)
+
+    from generator.rendering.geometry import _pixel_width
+    from generator.rendering.widths import MIN_ROAD_TILES
+
+    def in_carriageway(x1, y1, x2, y2) -> bool:
+        """Whether this fence edge lies on a surveyed road as it is drawn.
+
+        A road is drawn wider than its mapped width (MIN_ROAD_TILES), so a
+        fence mapped beside it can end up on the tarmac: Alcester had one 42
+        tiles down the outer lane of a street. Measured against the drawn
+        width, not the mapped one; a fence beyond it stays."""
+        if road_tree is None:
+            return False
+        from shapely.geometry import Point
+        mid = Point((x1 + x2) / 2, (y1 + y2) / 2)
+        for index in road_tree.query(mid.buffer(MAX_HALF_WIDTH_TILES)):
+            _points, width_m, category = road_lines[index]
+            drawn = max(_pixel_width(width_m, scale), MIN_ROAD_TILES.get(category, 0))
+            if roads[index].distance(mid) <= drawn / 2 + CARRIAGEWAY_SLACK:
+                return True
+        return False
+
     for run, (pts, style, real) in enumerate(todo):
         if len(pts) < 2:
             continue
@@ -533,7 +561,8 @@ def build_fences(out_dir: str, map_name: str, proj, occupied, areas,
             if at not in closed_gates:
                 if at in clear or other in clear or at in openings:
                     continue
-                if (road_lines is None or at in road_gaps) and crossing(*at, *other):
+                if ((road_lines is None or at in road_gaps or in_carriageway(x1, y1, x2, y2))
+                        and crossing(*at, *other)):
                     continue
             sides = edges.setdefault(at, {})
             if real or side not in sides:
