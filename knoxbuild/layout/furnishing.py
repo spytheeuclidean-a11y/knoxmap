@@ -362,6 +362,9 @@ def _doors_off_corners(storey, edges: set, corners: set) -> int:
             role = homes(want)
             spots = [s for pair, places in boundary.items()
                      if joinable(pair) and mine & set(pair) and homes(pair) == role
+                     # not through the garage: it is no way through
+                     and not any(r and storey.rooms[r - 1].kind == "garage"
+                                 for r in set(pair) - mine)
                      for s in places if s not in taken]
         # The nearest first, so a front door stays on the front of the house.
         spots.sort(key=lambda s: (abs(s[0] - x) + abs(s[1] - y), s))
@@ -3455,7 +3458,10 @@ def _doors_off_stairs(building: "Building") -> int:
                         if (e in taken or e in keep_off or (e[0], e[1]) in corners
                                 or on_steps(e) or 0 in pair or pair[0] == pair[1]
                                 or not set(pair) & set(want) or set(pair) == set(want)
-                                or any(storey.rooms[r - 1].is_shaft for r in pair)):
+                                or any(storey.rooms[r - 1].is_shaft for r in pair)
+                                # nor through the garage: it is no way through
+                                or any(storey.rooms[r - 1].kind == "garage"
+                                       for r in set(pair) - set(want))):
                             continue
                         ua, ub = (storey.rooms[r - 1].unit for r in pair)
                         if ua and ub and ua != ub:

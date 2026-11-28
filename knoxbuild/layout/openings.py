@@ -338,7 +338,8 @@ def _doors(plan: Plan, rng: random.Random,
                 # the way round was dearer - 4.8% of rooms were still reached
                 # through one. Only the last relax pass may break it, and that
                 # runs when the alternative is a room with no door at all.
-                if any(rooms[i - 1].kind == "bathroom" and doors_of.get(i)
+                # A garage the same: nobody reaches the kitchen past the car.
+                if any(rooms[i - 1].kind in ("bathroom", "garage") and doors_of.get(i)
                        for i in (a, b)):
                     if relax < 2:
                         continue
@@ -774,7 +775,7 @@ def _widen_vehicle_entry(plan: Plan, street: str | None) -> None:
 # suburb is built. Not every house: most have a drive and no garage, or a
 # detached one, and a map where every house had a garage door on the street
 # would look stamped.
-GARAGE_SHARE = 0.75
+GARAGE_SHARE = 0.4
 GARAGE_MIN_FOOTPRINT = 96        # tiles of ground floor
 GARAGE_MIN_ROOMS = 4
 GARAGE_AREA = (25, 56)           # tiles; >= 5x5 so a full car + shelves actually fit
@@ -782,6 +783,56 @@ GARAGE_MIN_WIDTH = 5             # along the street
 GARAGE_MIN_DEPTH = 5             # perpendicular to the garage door
 GARAGE_NEVER = {"hall", "kitchen", "livingroom", "openplan", "bathroom", "dining",
                 "closet", "garage"}
+# The bay kept for one at a corner of the street front before the floor is cut
+# into rooms: tiles along the street, tiles deep. Waiting for the cut to leave
+# a room this big gave 2-11% of two-storey houses a garage, not the share.
+GARAGE_BAY = (5, 6)
+GARAGE_KEEP = 80                 # tiles of floor the house keeps beside the bay
+GARAGE_BESIDE = 4                # street-front tiles left for the front door
+
+
+def _garage_bay(width: int, height: int, mask, core, stairs,
+                street: str | None, seed) -> tuple[int, int, int, int] | None:
+    """A street-front corner (x0, y0, x1, y1) kept for an integral garage, or None.
+
+    The same roll as _attach_garage, so a house that would have had one has
+    one. Not where it would take the stairs or the core, leave too little
+    house, or step outside the footprint."""
+    if (street not in ("N", "S", "E", "W")
+            or random.Random(f"{seed}:garage").random() >= GARAGE_SHARE):
+        return None
+    along, deep = GARAGE_BAY
+    floor = sum(map(sum, mask)) if mask is not None else width * height
+    if floor < GARAGE_MIN_FOOTPRINT or floor - along * deep < GARAGE_KEEP:
+        return None
+    blocked = set()
+    if core is not None:
+        blocked |= {(x, y) for x in range(core[0], core[2] + 1)
+                    for y in range(core[1], core[3] + 1)}
+    if stairs is not None:
+        from .core import STAIR_RUN
+        sx, sy, sd = stairs
+        dx, dy = (0, 1) if sd == "N" else (1, 0)
+        blocked |= {(sx + dx * i, sy + dy * i) for i in range(STAIR_RUN)}
+    if street in ("N", "S"):
+        if width < along + GARAGE_BESIDE or height < deep + 3:
+            return None
+        y0 = 0 if street == "N" else height - deep
+        rects = [(0, y0, along - 1, y0 + deep - 1),
+                 (width - along, y0, width - 1, y0 + deep - 1)]
+    else:
+        if height < along + GARAGE_BESIDE or width < deep + 3:
+            return None
+        x0 = 0 if street == "W" else width - deep
+        rects = [(x0, 0, x0 + deep - 1, along - 1),
+                 (x0, height - along, x0 + deep - 1, height - 1)]
+    random.Random(f"{seed}:garage-corner").shuffle(rects)
+    for r in rects:
+        tiles = {(x, y) for x in range(r[0], r[2] + 1) for y in range(r[1], r[3] + 1)}
+        if tiles & blocked or (mask is not None and not all(mask[y][x] for x, y in tiles)):
+            continue
+        return r
+    return None
 
 
 def _rooms_joined_without(plan: Plan, gone: int) -> bool:
@@ -815,6 +866,10 @@ def _attach_garage(plan: Plan, seed, street: str | None, stair_tiles: set) -> bo
     through. The room that is nearest a corner and 24 tiles wins: a garage
     stands at the end of a house, not in the middle of its front. Returns
     whether one was made."""
+    if street and any(r.kind == "garage" for r in plan.rooms):
+        # The bay build_plan kept for it (_garage_bay): only its door to make.
+        _widen_vehicle_entry(plan, street)
+        return bool(getattr(plan, "garage_door_tiles", ()))
     if (not street or len(plan.rooms) < GARAGE_MIN_ROOMS
             or plan.width * plan.height < GARAGE_MIN_FOOTPRINT
             or random.Random(f"{seed}:garage").random() >= GARAGE_SHARE):
