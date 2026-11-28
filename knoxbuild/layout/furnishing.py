@@ -2697,6 +2697,12 @@ MANY = 1 << 30     # further than any search goes
 # How many places a door stuck on a corner may be offered before it stays put.
 DOOR_SPOTS_TRIED = 40
 CORE_WIDE = 3      # the shaft is the flight plus a landing beside it
+# A British terraced house four or five tiles wide has its stairs against the
+# party wall with a hall one tile wide beside them: a shaft of CORE_WIDE left
+# no room a side, and the house lost its upper floor (Anfield: 2,396 of 3,892
+# houses). Only where the profile asks (narrow_stairs) and the usual shaft does
+# not fit; the rooms go in front of and behind it (houses._assign_house_kinds).
+NARROW_CORE_WIDE = 2
 
 
 CORRIDOR_WIDE = 3   # a landing wide enough to be circulation, not a cupboard
@@ -2772,7 +2778,7 @@ def _pick_corridor(width: int, height: int, mask: list[list[bool]] | None,
 
 def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
                rng: random.Random, street: str | None = None, min_gap: int = 1,
-               hug_wall: bool = False
+               hug_wall: bool = False, core_wide: int = CORE_WIDE
                ) -> tuple[int, int, int, int] | None:
     """Reserve a stair shaft: the same rectangle on every storey.
 
@@ -2788,7 +2794,7 @@ def _pick_core(width: int, height: int, mask: list[list[bool]] | None,
     tiles: a house five tiles wide had its stairs down the middle and every
     room a one-tile strip round them, with nowhere to put a single piece.
     """
-    shapes = [(CORE_WIDE, STAIR_RUN + 1), (STAIR_RUN + 1, CORE_WIDE)]
+    shapes = [(core_wide, STAIR_RUN + 1), (STAIR_RUN + 1, core_wide)]
     best: list[tuple[int, int, int, int]] = []
     best_score = None
     for cw, ch in shapes:

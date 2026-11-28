@@ -71,6 +71,10 @@ class BuildingProfile:
     # How often this house gets an integral garage; None is the layout's own
     # GARAGE_SHARE (a regional profile sets it, knoxbuild/regional.py).
     garage_share: float | None = None
+    # A narrow house may take a shaft one tile narrower than CORE_WIDE, the
+    # flight and a tile of hall beside it, as a British terraced house has
+    # (knoxbuild/regional.py).
+    narrow_stairs: bool = False
 
     @classmethod
     def infer(cls, tags: dict, kind: str | None, density: float,

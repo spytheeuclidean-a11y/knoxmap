@@ -1874,7 +1874,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           profile = BuildingProfile.infer(tags, special, local_density, real_m2,
                                           levels, seed + i * 31)
           if region == "gb" and (special or "house") == "house":
-              profile = replace(profile, garage_share=regional.GB_GARAGE_SHARE)
+              profile = replace(profile, garage_share=regional.GB_GARAGE_SHARE,
+                                narrow_stairs=True)
           # Hotels are dressed as the city's big buildings, army bases as works,
           # and the public buildings that have no walls of their own as civic.
           style = pick_style(STYLE_AS.get("civic" if hotel else special, special),

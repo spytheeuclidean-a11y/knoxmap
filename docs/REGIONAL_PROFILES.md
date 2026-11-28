@@ -114,6 +114,14 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    **Found for step 5:** `building=residential` and `building=terrace` map to
    the `apartment` kind (`build.py` kind table), so British houses tagged that
    way (1,246 `residential` in Cambourne) get the 3-5 storey flats tables.
+   **Narrow houses keep their upper floor.** A house 4-5 tiles wide had no room
+   for the 3-tile stair shaft and was built as a bungalow (Anfield: 2,396 of
+   3,892 houses). GB houses (`BuildingProfile.narrow_stairs`) fall back to a
+   2-tile shaft (`NARROW_CORE_WIDE`, the flight and a tile of hall); the front
+   door opens straight into the front room, a lone ground-floor room is open
+   plan and a lone upstairs room a bedroom. 4-5 wide: two storeys, a living
+   room with a kitchen and a bedroom every time; a bathroom from 5 wide or 12
+   deep, about half of the 4 x 11s.
 3. **Front of the plot.** *First part done* (on top of #202, which stops the
    dense-block apron for tagged houses). `roads._pave_dense_ground(...,
    country="GB")` also leaves `building=yes` outlines up to
