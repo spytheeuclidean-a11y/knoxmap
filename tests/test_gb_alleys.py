@@ -111,5 +111,33 @@ class CrossLinks(unittest.TestCase):
         self.assertEqual(self.links(block()), [])
 
 
+class TurnedEnds(unittest.TestCase):
+    def closed_east(self, y0, y1):
+        """block() with no street at its east end: a building at x 34-40,
+        y0-y1, stands across where the lane would run on."""
+        feats = [f for f in block() if f.osm_id != 9004]
+        return feats + [way([(34, y0), (40, y0), (40, y1), (34, y1), (34, y0)],
+                            {"building": "yes"}, 400)]
+
+    def lane(self, feats):
+        return [local(a) for a in back_alleys(feats, PROJ)
+                if a.tags.get("knoxmap") == "back_alley"][0]
+
+    def test_an_end_turns_down_the_passage_to_the_street(self):
+        # The building runs the depth of both rows: a passage 4 m wide (x 30-34)
+        # leads from the end of the lane to the streets at y 0 and y 32.
+        coords = list(self.lane(self.closed_east(2, 30)).coords)
+        x, y = max(coords, key=lambda p: p[0])
+        self.assertAlmostEqual(x, 32, delta=1.5)          # in the passage
+        end = coords[0] if coords[0][0] > coords[-1][0] else coords[-1]
+        self.assertTrue(end[1] <= 1.0 or end[1] >= 31.0, end)   # at a street
+
+    def test_no_turn_into_open_ground(self):
+        # Only the end of the lane is blocked: either way is open garden, not a
+        # passage, and the lane stops short.
+        coords = list(self.lane(self.closed_east(12, 20)).coords)
+        self.assertTrue(all(6 < y < 26 for _x, y in coords), coords)
+
+
 if __name__ == "__main__":
     unittest.main()
