@@ -79,6 +79,10 @@ GB_FRONT_STYLES = ("black_metal", "short_wooden", "hedge")
 GB_FRONT_WEIGHTS = (35, 25, 40)
 GB_FRONT_OPEN = 0.3
 GB_FRONT_MIN_TILES = 2
+# A British back garden that ends on a back alley has a gate onto it, in the
+# middle of its back fence, when at least this share of the ground beyond the
+# fence is the lane (paved or road), rather than the next garden.
+GB_ALLEY_SHARE = 0.5
 # The dog's house and the kids' swing: not every yard, but enough of them that
 # a street reads as lived in rather than laid out.
 DOG_HOUSE_SHARE = 0.45
@@ -1761,6 +1765,12 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             style, fenced, archetype = yard_plan(bx0, by0, region)
             yrng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0x5DEECE66D)
 
+            # The ground beyond the far fence: a back alley's paving when the
+            # garden ends on one, and the gate onto it goes in the middle.
+            beyond = [at(u, depth) for u in range(width)]
+            onto_alley = british and sum(
+                0 <= x < w and 0 <= y < h and (paved_at[y * w + x] or road_at[y * w + x])
+                for x, y in beyond) >= GB_ALLEY_SHARE * width
             # Fence corners as tile-corner coordinates, far side of row depth-1.
             if dy:
                 # Edges between rows: the house's back wall, and past the last
@@ -1771,7 +1781,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 house_a, house_b = bx0, bx0 + bw
                 fence = ([(house_a, wall_y), (a, wall_y), (a, far_y), (b, far_y),
                           (b, wall_y), (house_b, wall_y)], style,
-                         [(house_b, wall_y)])
+                         [(house_b, wall_y)]
+                         + ([(a + width // 2, far_y)] if onto_alley else []))
                 if fenced:
                     fences.append(fence)
             else:
@@ -1781,7 +1792,8 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 house_a, house_b = by0, by0 + bh
                 fence = ([(wall_x, house_a), (wall_x, a), (far_x, a), (far_x, b),
                           (wall_x, b), (wall_x, house_b)], style,
-                         [(wall_x, house_b)])
+                         [(wall_x, house_b)]
+                         + ([(far_x, a + width // 2)] if onto_alley else []))
                 if fenced:
                     fences.append(fence)
             # The gate is beside the house, at the end of the last stretch.
