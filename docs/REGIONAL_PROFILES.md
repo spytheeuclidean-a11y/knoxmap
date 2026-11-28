@@ -2,8 +2,8 @@
 
 Status: skeleton done (profile type, GB detection); GB steps 1 (materials and
 roofs), 2 (storeys), 5 (terraces and semis, first part), 6 (back alleys,
-first part) and 7 (boundaries, first part) done. First target: Great
-Britain (`gb`).
+first part), 7 (boundaries, first part) and 8 (garages and parking, first
+part) done. First target: Great Britain (`gb`).
 
 ## Why
 
@@ -163,9 +163,17 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    The game has no low brick wall fence, so railings stand in for wall and
    railings. Left: hedges at the front (props, not fences); gates in back
    fences onto back alleys.
-8. **Garages and parking.** Lower `garage_share`; rows of lock-up garages
-   where OSM maps `building=garages`; on-street parking in place of
-   driveways.
+8. **Garages and parking.** *First part done.*
+   - Lock-ups: `row_units(..., region="gb")` cuts `building=garages` into
+     one garage per `GB_LOCKUP_FRONTAGE_M` (5 m; a real lock-up is about 3 m,
+     but nothing is cut narrower than `footprint.MIN_ROOM_SIDE`).
+   - Kerbside parking: `zones_detect.kerbside_rate(tier, "gb")` takes
+     `GB_KERBSIDE_RATES` (residential 0.85, default 0.55; tertiary 0.5,
+     default 0.38). Main roads unchanged.
+   Left: a lower attached-garage share for GB houses and none on terraced
+   houses. `knoxbuild/layout/openings.py` `_attach_garage` is what #200 (the
+   garage bay) rewrites, so this waits for #200 to merge; it also needs the
+   region passed into the layout.
 
 ## Not in scope
 
