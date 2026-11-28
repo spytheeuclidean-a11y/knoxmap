@@ -769,6 +769,38 @@ def _place_windows(building: "Building", kind: str | None,
                     taken[idx] = 1
                     break
 
+        # A British terraced house four or five tiles wide
+        # (profile.narrow_stairs) is built like Liverpool's: on the street, the
+        # door and a window downstairs and two windows above, one over each.
+        # The shutter gap kept either side of the door left the street a door
+        # and bare brick, and British styles have no shutters.
+        if house_like and getattr(building.profile, "narrow_stairs", False):
+            street_side = {building.street} if building.street else front
+            runs = [[(x, y, d) for x, y, d, _ix, _iy in wall]
+                    for side, wall in _facade_runs(storey.grid) if side in street_side]
+            front_edges = [e for run in runs for e in run]
+            ends = {e for run in runs for e in (run[0], run[-1])}
+            ground = building.storeys[0]
+            # Upstairs, the columns of the ground floor's door and window.
+            below = (set(ground.doors) | set(ground.windows)) if level else set()
+            want = NARROW_FRONT_WINDOWS[min(level, 1)]
+            doors = set(storey.doors)
+            have = [e for e in front_edges if e in set(storey.windows)]
+            spots = [e for e in front_edges
+                     if e not in doors and e not in storey.party and e not in have
+                     and e not in wall_edges and (e[0], e[1]) not in on_corner]
+            while len(have) < want and spots:
+                # Over a ground-floor opening, off the wall's ends (next
+                # door's party wall), not beside another window, and then as
+                # far from the door as that allows.
+                spot = max(spots, key=lambda e: (
+                    e in below, e not in ends,
+                    all(abs(e[0] - w[0]) + abs(e[1] - w[1]) > 1 for w in have),
+                    min((abs(e[0] - x) + abs(e[1] - y) for x, y, _d in doors), default=0)))
+                add(spot)
+                have.append(spot)
+                spots.remove(spot)
+
 
 # A piece against a wall should have its back to that wall. Most pieces define
 # all four facings; the few that only define N and W fall back to the nearest.
@@ -2678,6 +2710,7 @@ class Building:
     whole_ground: bool = False
     unplaced_businesses: tuple[str, ...] = ()
     unplaced_lift_cores: int = 0
+    street: str | None = None       # the side the street is on, when known
     entrance_report: tuple[dict, ...] = ()
 
     def stairs_at(self, level: int) -> list[tuple[int, int, str]]:
@@ -2703,6 +2736,8 @@ CORE_WIDE = 3      # the shaft is the flight plus a landing beside it
 # houses). Only where the profile asks (narrow_stairs) and the usual shaft does
 # not fit; the rooms go in front of and behind it (houses._assign_house_kinds).
 NARROW_CORE_WIDE = 2
+# Street windows on such a house: the ground floor's, then each one above.
+NARROW_FRONT_WINDOWS = (1, 2)
 
 
 CORRIDOR_WIDE = 3   # a landing wide enough to be circulation, not a cupboard
