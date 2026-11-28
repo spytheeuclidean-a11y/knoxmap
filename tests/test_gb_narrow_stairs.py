@@ -41,16 +41,22 @@ class NarrowStairs(unittest.TestCase):
                                 kinds(b))
                 self.assertTrue(kinds(b) & {"bedroom", "kidsbedroom"}, kinds(b))
 
-    def test_every_storey_of_a_narrow_house_has_a_front_window(self):
-        # The street wall (south, y = height) of a 4- or 5-wide terrace: the
-        # door and a window beside it, not the door and bare brick.
-        for width in (4, 5):
-            for height in (11, 12):
-                for b in houses(width, height, GB):
-                    for st in b.storeys:
-                        front = [w for w in st.windows if w[2] == "N" and w[1] == height]
-                        self.assertTrue(front, (width, height, st.windows))
-                        self.assertFalse(set(front) & set(st.doors))
+    def test_the_street_sees_a_door_and_a_window_under_two_windows(self):
+        # As Liverpool's terraces are (Hornsey Road): downstairs the door and
+        # one window, upstairs two, whichever side the street is on.
+        def on_street(edge, street, w, h):
+            x, y, d = edge
+            return {"S": d == "N" and y == h, "N": d == "N" and y == 0,
+                    "E": d == "W" and x == w, "W": d == "W" and x == 0}[street]
+
+        for street, (w, h) in (("S", (4, 11)), ("N", (5, 12)), ("E", (11, 4)), ("W", (12, 5))):
+            for seed in range(12):
+                b = build_building(w, h, levels=2, seed=seed, street=street, profile=GB)
+                ground, upstairs = b.storeys
+                self.assertEqual(sum(on_street(e, street, w, h) for e in ground.doors), 1)
+                self.assertEqual(sum(on_street(e, street, w, h) for e in ground.windows), 1)
+                self.assertEqual(sum(on_street(e, street, w, h) for e in upstairs.windows), 2)
+                self.assertFalse(set(ground.windows) & set(ground.doors))
 
     def test_elsewhere_nothing_changes(self):
         for width in (4, 5):

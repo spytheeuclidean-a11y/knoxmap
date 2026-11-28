@@ -262,6 +262,7 @@ def build_building(width: int, height: int, levels: int = 1,
                 if attempt == 2:
                     raise
     building = Building(width=width, height=height, storeys=storeys, profile=profile,
+                        street=street,
                         grand=bool(storeys) and storeys[0].grand,
                         tower=tcore is not None,
                         unplaced_lift_cores=int(private_flats and not shaft and
