@@ -58,6 +58,7 @@
     "generator/renderer.py",
     "generator/rendering/__init__.py",
     "generator/rendering/airfield.py",
+    "generator/rendering/alleys.py",
     "generator/rendering/buildings.py",
     "generator/rendering/crossings.py",
     "generator/rendering/fields.py",

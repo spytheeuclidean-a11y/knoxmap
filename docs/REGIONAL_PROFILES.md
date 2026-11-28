@@ -1,8 +1,8 @@
 # Regional profiles: building a country the way it is built
 
 Status: skeleton done (profile type, GB detection); GB steps 1 (materials and
-roofs), 2 (storeys) and 5 (terraces and semis, first part) done. First target:
-Great Britain (`gb`).
+roofs), 2 (storeys), 5 (terraces and semis, first part) and 6 (back alleys,
+first part) done. First target: Great Britain (`gb`).
 
 ## Why
 
@@ -133,10 +133,23 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    Left: garages off for terraced houses (the garage bay is #200, not in this
    stack); untagged semis (`building=yes`, ratio under 2.2) stay one house;
    address points as cut positions.
-6. **Back alleys.** Keep `highway=service, service=alley` and alley footways
-   as narrow paved lanes on the ground. Where two back-to-back rows of
-   terraces leave a strip with no mapped way, add a 2-3 m alley with a gate
-   in each back fence.
+6. **Back alleys.** *First part done.* Mapped `service=alley` already draws
+   as a 3.5 m lane (`road_service`, at least 3 tiles) and footways as 2.5 m
+   paths. `generator/rendering/alleys.py` `back_alleys()` adds the unmapped
+   ones: pairs of terraced houses (joined to a neighbour) whose backs face
+   across a 3-30 m strip give midpoints; at least 4 pairs in line and 30 m
+   make a lane, run on to a street where the gap between the end houses
+   allows, cut where it would cross a building, skipped where a mapped way
+   already runs. Added as `service=alley` ways once, at the top of
+   `renderer.render`, for `country == "GB"`; `web/generation.py` passes the
+   Natural Earth country (none when `arch_style` is Default).
+   **The region now reaches the generator** (`render(country=...)`), which
+   steps 3 and 4 need too.
+   Measured (Anfield, Liverpool, mapped alleys removed): 79% of the drawn
+   length lies on a real alley; it finds 38% of the mapped length - OSM maps
+   alleys as networks with cross-links, which this does not draw. Cambourne:
+   12 lanes, 555 m, on its rows of joined houses.
+   Left: gates in back fences (step 7); cross-links; ends that turn a corner.
 7. **Boundaries.** Low brick walls or hedges at the front, close-board
    wooden fences between back gardens (`knoxbuild/fences.py`,
    `knoxbuild/yards.py`).

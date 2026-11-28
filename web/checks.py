@@ -197,7 +197,9 @@ RENDER_SETTINGS = ["align_streets", "rotate_degrees", "straight_roads", "include
                    # tag buildings, so changing one redraws the map.
                    "landcover", "elevation", "max_relief", "ne_context",
                    "region_override", "hospitals", "hospitals_place_missing",
-                   "climate_flavor", "winter_look"]
+                   "climate_flavor", "winter_look",
+                   # Default turns off the country's own ground (GB back alleys).
+                   "arch_style"]
 
 
 def _effective_pixels(tiles_w: float, tiles_h: float) -> float:

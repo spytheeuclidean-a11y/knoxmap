@@ -466,6 +466,9 @@ def _generate(data):
             terrain_only=int(settings.terrain_only),
             landcover_for=landcover_for,
             climate=(layers.climate if layers else None),
+            # The country builds the ground its own way (back alleys in GB);
+            # "Default" architecture builds every country the game's way.
+            country=(layers.region if layers and settings.arch_style != "off" else None),
             winter_look=settings.winter_look,
             elevation=(layers.elevation if layers else None),
             elevation_span=((layers.report.get("elevation_3dep") or {}).get("span_m")
