@@ -1,9 +1,10 @@
 # Regional profiles: building a country the way it is built
 
 Status: skeleton done (profile type, GB detection); GB steps 1 (materials and
-roofs), 2 (storeys), 5 (terraces and semis, first part), 6 (back alleys,
-first part), 7 (boundaries, first part) and 8 (garages and parking, first
-part) done. First target: Great Britain (`gb`).
+roofs), 2 (storeys), 3 (front of the plot, first part), 5 (terraces and
+semis, first part), 6 (back alleys, first part), 7 (boundaries, first part)
+and 8 (garages and parking, first part) done. First target: Great Britain
+(`gb`).
 
 ## Why
 
@@ -115,10 +116,15 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    **Found for step 5:** `building=residential` and `building=terrace` map to
    the `apartment` kind (`build.py` kind table), so British houses tagged that
    way (1,246 `residential` in Cambourne) get the 3-5 storey flats tables.
-3. **Front of the plot.** Shallow front gardens (2-4 m), no 6-tile apron on
-   houses (`roads.DENSE_APRON_TILES` -> profile; #202 already stops it for
-   tagged houses), a short path or a single-car drive instead of a wide
-   apron.
+3. **Front of the plot.** *First part done* (on top of #202, which stops the
+   dense-block apron for tagged houses). `roads._pave_dense_ground(...,
+   country="GB")` also leaves `building=yes` outlines up to
+   `GB_HOUSE_MAX_M2` (250 m2) unpaved: 4,226 of Cambourne's 4,332 OSM
+   `building=yes`. `country` now reaches every chunk of a large map
+   (`render_chunked`). Front-garden depth is the mapped position of the
+   house; drives are already one car wide (`yards.DRIVE_WIDTH` = 3) and
+   terraced houses get none where there is no room.
+   Left: front hedges (step 7).
 4. **Back of the plot.** Long narrow back gardens; sheds smaller and at the
    far end of the garden (`infill.SHED_SETBACKS`, `SHED_SIZE_M`,
    `SHED_SHARE`).

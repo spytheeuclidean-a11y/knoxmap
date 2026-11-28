@@ -479,10 +479,15 @@ DENSE_APRON_TILES = 6
 UNPAVED_BUILDINGS = {"house", "detached", "semidetached_house", "terrace", "bungalow",
                      "cabin", "residential", "farm", "static_caravan",
                      "shed", "garage", "garages", "carport"}
+# In Great Britain most houses are mapped as plain building=yes (5,376 of
+# Cambourne's outlines): up to this size one is a house there, and gets no
+# apron either (docs/REGIONAL_PROFILES.md, GB step 3).
+GB_HOUSE_MAX_M2 = 250.0
 
 
 def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
-                       buckets: dict[str, list[OSMFeature]], proj: Projector) -> None:
+                       buckets: dict[str, list[OSMFeature]], proj: Projector,
+                       country: str | None = None) -> None:
     """Pave tight courtyards and aprons around built-up urban blocks.
 
     Land OSM says nothing about is painted as wild grass, which is right in the
@@ -513,14 +518,19 @@ def _pave_dense_ground(landscape: Image.Image, building_feats: list[OSMFeature],
               polygonize(unary_union(streets + [frame.exterior]))]
     blocks = [b for b in blocks if not b.is_empty and b.area > 50]
 
+    m2 = proj.meters_per_tile ** 2
     footprints, paved_round = [], []
     for feat in building_feats:
-        home = (feat.tags.get("building") or "").lower() in UNPAVED_BUILDINGS
+        tag = (feat.tags.get("building") or "").lower()
+        home = tag in UNPAVED_BUILDINGS
         for ring in _feature_coords_px(feat, proj):
             if len(ring) >= 3:
                 poly = Polygon(ring)
-                footprints.append(poly if poly.is_valid else poly.buffer(0))
-                paved_round.append(not home)
+                poly = poly if poly.is_valid else poly.buffer(0)
+                footprints.append(poly)
+                british_house = (country == "GB" and tag in ("yes", "")
+                                 and poly.area * m2 <= GB_HOUSE_MAX_M2)
+                paved_round.append(not (home or british_house))
     if not footprints:
         return
     tree = STRtree(footprints)
