@@ -214,11 +214,26 @@ GB_BASES = ("brick", "brick", "brick", "render", "stucco", "painted")
 _GB_STYLES: list | None = None
 
 
+# White curtains drawn across, as British net curtains are. The catalog's
+# brick houses hang brown ones, drawn shut, which from the street read as
+# wooden shutters (Anfield: 12,930 windows); its stucco ones pull blinds down.
+GB_CURTAINS = {"category": "curtains",
+               "tiles": {"West": "fixtures_windows_curtains_01_008",
+                         "East": "fixtures_windows_curtains_01_009",
+                         "North": "fixtures_windows_curtains_01_010",
+                         "South": "fixtures_windows_curtains_01_011"}}
+
+
 def _british(base: dict) -> dict:
-    """One catalog house style without its shutters; every tile untouched."""
+    """One catalog house style without its shutters and with white curtains;
+    every other tile untouched."""
     style = dict(base)
     style["name"] = f"gb_{base['name']}"
     style.pop("shutters", None)
+    style["curtains"] = GB_CURTAINS
+    if style.get("windows_by_levels"):
+        style["windows_by_levels"] = [(levels, entry, GB_CURTAINS if curtains else curtains)
+                                      for levels, entry, curtains in style["windows_by_levels"]]
     return style
 
 
