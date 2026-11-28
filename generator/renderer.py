@@ -58,7 +58,8 @@ from .rendering.gridangle import (ALIGN_MIN_STRENGTH, DISTRICT_CELL_M,
 from .rendering.landcover import (AREA_CATEGORIES, DENSE_COVERAGE,
                                   DISUSED_RAIL_FILL, GREEN_CATEGORIES,
                                   LANDSCAPE_FILL, LANDSCAPE_ORDER,
-                                  VEG_CATEGORIES, WATERWAY_WIDTH_M, paint_markers,
+                                  VEG_CATEGORIES, WATERWAY_WIDTH_M, built_sites,
+                                  paint_markers,
                                   grid_for_map, refine_owned, resized_grid,
                                   settle_markers)  # noqa: F401
 from .rendering.fields import paint_fields, paint_pools, paint_rocks
@@ -593,6 +594,15 @@ def render(features: Iterable[OSMFeature], south: float, west: float,
         building_feats = [f for f in building_feats if id(f) not in lifted.not_buildings]
         buckets["building"] = [f for f in buckets.get("building", [])
                                if id(f) not in lifted.not_buildings]
+
+    # A building site whose houses are already up and mapped is a
+    # neighbourhood, not bare dirt. From the mapped buildings only: a gap the
+    # infill below fills is no sign anything was built there.
+    built = {id(f) for f in built_sites(buckets.get("dirt", []), building_feats, proj)}
+    if built:
+        buckets["residential"] = buckets.get("residential", []) + [
+            f for f in buckets["dirt"] if id(f) in built]
+        buckets["dirt"] = [f for f in buckets["dirt"] if id(f) not in built]
 
     # Streets where every home is an address point and not a drawn building.
     addressed: list[OSMFeature] = []

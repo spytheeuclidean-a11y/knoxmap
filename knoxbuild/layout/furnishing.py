@@ -57,7 +57,7 @@ HOUSE_WINDOW_EVERY = 3
 WINDOW_CLEARANCE_SHUTTERED = 2
 # Most windows one room may take, whatever the facade offers it.
 ROOM_WINDOW_CAP = {
-    "bathroom": 1, "storage": 1, "hall": 1, "garage": 0, "shed": 1, "elevator": 0,
+    "bathroom": 1, "storage": 1, "hall": 2, "garage": 0, "shed": 1, "elevator": 0,
     "kitchen": 2, "bedroom": 3, "dining": 3, "office": 2, "livingroom": 5,
     "kidsbedroom": 2, "closet": 0, "laundry": 1,
     "generalstore": 6, "conveniencestore": 6, "clothingstore": 6, "cafe": 6,
@@ -706,7 +706,11 @@ def _place_windows(building: "Building", kind: str | None,
                 cap = ROOM_WINDOW_CAP.get(room.kind, DEFAULT_ROOM_WINDOW_CAP)
                 if room.is_core:
                     cap = 0
-                runs = sorted(_outside_runs(storey, idx), key=lambda r: -len(r[1]))
+                # The street front first, then the longest wall: taking the
+                # longest first spent a front room's few windows on its side
+                # wall and left the house blank to the street.
+                runs = sorted(_outside_runs(storey, idx),
+                              key=lambda r: (r[0] not in front, -len(r[1])))
                 for _side, wall in runs:
                     if taken.get(idx, 0) >= cap or len(wall) < MIN_WALL_FOR_WINDOW:
                         continue

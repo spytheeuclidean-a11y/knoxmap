@@ -60,6 +60,12 @@ FIRST_ID = -1_000_000_000
 # all. In Urgup 71 of the 761 new ones were under 20 m2.
 MIN_AREA_M2 = 10.0
 
+# A footprint with this share of it under mapped buildings is those buildings
+# traced as one (a terrace as one block). Its centre can fall between the mapped
+# houses; added, only a leftover scrap gets built, as a shed against the front
+# or in the gap between two houses (Cambourne).
+OVERLAP_SHARE = 0.25
+
 # How long to let one query run before giving up on it.
 TIMEOUT_S = 15 * 60
 
@@ -260,11 +266,18 @@ def only_missing(candidates: list[OSMFeature],
     A centre inside an existing outline is the test, not an overlap: Overture
     and OSM trace the same building slightly differently, and anything that
     asks how much two outlines share has to be told how much counts. A roof
-    whose middle is inside a mapped building is that building.
+    whose middle is inside a mapped building is that building. So is one
+    mostly under mapped buildings already (OVERLAP_SHARE).
     """
     from shapely.geometry import Polygon
+    from shapely.ops import unary_union
     from shapely.strtree import STRtree
 
+    if not candidates:
+        return []
+    # Longitude scaled by cos(latitude), so areas compare the same both ways.
+    first = candidates[0].geometry
+    cos_lat = math.cos(math.radians(sum(p[0] for p in first) / len(first)))
     existing = []
     for f in features:
         if not (f.tags.get("building") or "").strip():
@@ -275,7 +288,7 @@ def only_missing(candidates: list[OSMFeature],
             if not ring or len(ring) < 3:
                 continue
             try:
-                poly = Polygon([(lon, lat) for lat, lon in ring])
+                poly = Polygon([(lon * cos_lat, lat) for lat, lon in ring])
                 if not poly.is_valid:
                     poly = poly.buffer(0)
             except Exception:  # noqa: BLE001 - a ring shapely rejects is no test
@@ -289,7 +302,7 @@ def only_missing(candidates: list[OSMFeature],
     kept = []
     for cand in candidates:
         try:
-            here = Polygon([(lon, lat) for lat, lon in cand.geometry])
+            here = Polygon([(lon * cos_lat, lat) for lat, lon in cand.geometry])
             middle = here.centroid
             if middle.is_empty:
                 here = here.buffer(0)
@@ -299,6 +312,11 @@ def only_missing(candidates: list[OSMFeature],
         if middle.is_empty:
             continue
         if len(tree.query(middle, predicate="within")) > 0:
+            continue
+        hits = tree.query(here, predicate="intersects")
+        if len(hits) and here.area > 0 and (
+                here.intersection(unary_union([existing[i] for i in hits])).area
+                >= OVERLAP_SHARE * here.area):
             continue
         kept.append(cand)
     return kept

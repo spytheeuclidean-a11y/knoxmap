@@ -61,7 +61,19 @@ HIGHWAY_VALUE = {
     "dirt_path": "trail", "paved_path": "tertiary",
     "runway": "primary", "taxiway": "secondary",
 }
+# Footways, pavements and driveways stay off the paper map. On a dense estate
+# they were most of a cell's road points, so the cell budget dropped every
+# building and simplified the streets into wedges (Cambourne).
+MINOR_SERVICE = {"driveway", "parking_aisle", "drive-through"}
 RAIL_WIDTH_M = 4.0
+
+
+def _on_paper(cat: str, tags: dict) -> bool:
+    """Whether a way of road class `cat` is drawn on the paper map."""
+    if cat == "paved_path":
+        return False
+    return not (cat == "road_service"
+                and (tags.get("service") or "").lower() in MINOR_SERVICE)
 AREA_VALUE = {"water": ("water", "river"), "pool": ("water", "river"),
               "forest": ("natural", "forest"),
               "runway": ("highway", "primary"),
@@ -159,6 +171,8 @@ def write(out_dir: str, map_name: str, proj, info: dict,
             continue
         cat = osm.classify(feat.tags, _is_polygon(feat))
         if cat in HIGHWAY_VALUE and not _is_polygon(feat):
+            if not _on_paper(cat, feat.tags):
+                continue
             line = _line(feat, proj)
             if line is None:
                 continue
