@@ -1367,15 +1367,17 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     road_hierarchy = _load_road_hierarchy(out_dir, map_name, proj)
 
     # What part of the world the survey is of, read from the names on its own
-    # buildings (knoxbuild/regional.py). Only Chinese housing is built its own
-    # way for now; anywhere else keeps the game's shapes, and `arch_style`
-    # forces the question either way.
+    # buildings and the country recorded when it was generated
+    # (knoxbuild/regional.py). Only Chinese housing is built its own way for
+    # now; Great Britain is detected but has no rules yet
+    # (docs/REGIONAL_PROFILES.md). `arch_style` forces the question either way.
     from . import regional
     region = None
     if settings.arch_style == "cn":
         region = "cn"
     elif settings.arch_style != "off":
-        region = regional.detect_region(geo, bbox)
+        region = regional.detect_region(geo, bbox,
+                                        regional.map_country(out_dir, map_name))
 
     # Where this map stands in the world, beside any other KnoxMap map on
     # this PC rather than on top of it (knoxbuild/world.py). Everything

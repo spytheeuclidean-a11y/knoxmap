@@ -25,7 +25,10 @@ either way.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
+from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
 # Where in the world this map is
@@ -58,9 +61,73 @@ _BOXES = (
     ("cn", (73.5, 17.5, 135.5, 53.8)),
 )
 
+# Countries built their own way that the names cannot tell apart from the
+# default (Latin script), by the ISO code Natural Earth gives the map's centre
+# (`region` in <map>_knoxdata.json, written when the map is generated).
+COUNTRY_REGIONS = {"GB": "gb"}
+# The same, for a map with no country on record (made before it was recorded,
+# or with Natural Earth unreachable). Great Britain east of Dublin: Northern
+# Ireland and the Outer Hebrides fall outside and build the default way.
+_COUNTRY_BOXES = (
+    ("gb", (-6.0, 49.8, 1.8, 60.9)),
+)
 
-def detect_region(geo: dict, bbox: dict | None = None) -> str | None:
-    """"cn", "jp" or "kr" when the map's own names say so, else None.
+
+@dataclass(frozen=True)
+class Profile:
+    """How a region builds. Today's values are the "us" defaults; a field is
+    added only when a region's step needs it (docs/REGIONAL_PROFILES.md)."""
+    code: str = "us"
+
+
+PROFILES = {"us": Profile(), "cn": Profile(code="cn"), "gb": Profile(code="gb")}
+
+
+def profile(region: str | None) -> Profile:
+    """The profile for detect_region's answer; anything without one is "us"."""
+    return PROFILES.get(region or "us", PROFILES["us"])
+
+
+def map_country(out_dir: str, map_name: str) -> str | None:
+    """The ISO country recorded for the map when it was generated, or None."""
+    try:
+        with open(os.path.join(out_dir, f"{map_name}_knoxdata.json"),
+                  encoding="utf-8") as f:
+            iso = json.load(f).get("region")
+    except (OSError, ValueError, AttributeError):
+        return None
+    return str(iso).upper() if iso else None
+
+
+def _centre(bbox: dict | None) -> tuple[float, float] | None:
+    try:
+        return ((float(bbox["west"]) + float(bbox["east"])) / 2,
+                (float(bbox["south"]) + float(bbox["north"])) / 2)
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _in_box(boxes, bbox: dict | None) -> str | None:
+    centre = _centre(bbox)
+    if centre is None:
+        return None
+    lon, lat = centre
+    for name, (w, s, e, n) in boxes:
+        if w <= lon <= e and s <= lat <= n:
+            return name
+    return None
+
+
+def _by_country(country: str | None, bbox: dict | None) -> str | None:
+    if country:
+        return COUNTRY_REGIONS.get(country.upper())
+    return _in_box(_COUNTRY_BOXES, bbox)
+
+
+def detect_region(geo: dict, bbox: dict | None = None,
+                  country: str | None = None) -> str | None:
+    """"cn", "jp" or "kr" when the map's own names say so, "gb" when its
+    `country` (ISO, see map_country) or else its box is Great Britain, else None.
 
     The names come first because they are the place speaking for itself: a
     Chinatown inside an English city stays English-built at SHARE, and a
@@ -92,17 +159,9 @@ def detect_region(geo: dict, bbox: dict | None = None) -> str | None:
             return "kr"
         if scripts["han"] / sampled > SHARE:
             return "cn"
-        return None
+        return _by_country(country, bbox)
     # Nothing named: fall back to where the rectangle sits.
-    try:
-        lon = (float(bbox["west"]) + float(bbox["east"])) / 2
-        lat = (float(bbox["south"]) + float(bbox["north"])) / 2
-    except (KeyError, TypeError, ValueError):
-        return None
-    for name, (w, s, e, n) in _BOXES:
-        if w <= lon <= e and s <= lat <= n:
-            return name
-    return None
+    return _in_box(_BOXES, bbox) or _by_country(country, bbox)
 
 
 # ---------------------------------------------------------------------------
