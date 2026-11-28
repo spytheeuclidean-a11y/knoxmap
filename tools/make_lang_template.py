@@ -90,6 +90,7 @@ PRESET_ERRORS = (
 
 # Runtime messages use named placeholders; the translator keeps their names.
 EXTRA_MESSAGES = (
+    "Set percentages by building type, for example house=40 and shop=15. Leave blank to use the OpenStreetMap mix, or enter “preset” for a typical town. Unavailable shares go to other types. Types: house, apartment, shop, industrial, garage, farm, school, medical, police, church, civic, other.",
     '{count} tiles',
     '{rooms} rooms, {doors} doorways, {windows} windows, {furniture} things in them - as it will be built.',
     'tiles',
@@ -578,7 +579,7 @@ def read_keys(path: Path | None = None) -> list[str]:
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
-        english = line.partition("=")[0].strip()
+        english = line.partition(" = ")[0].strip()
         if english:
             keys.append(english)
     return keys

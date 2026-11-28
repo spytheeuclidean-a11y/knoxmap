@@ -28,7 +28,7 @@ function load(strings) {
     translate: async () => {
       await vm.runInContext("i18n.use('test', false)", context);
     },
-    t: text => vm.runInContext(`i18n.t(${JSON.stringify(text)})`, context),
+    t: (...args) => vm.runInContext(`i18n.t(...${JSON.stringify(args)})`, context),
   };
 }
 
@@ -41,7 +41,7 @@ test('a placeholder is filled from the sentence it matched', async () => {
 test('a value that is itself translated is translated too', async () => {
   const language = load({
     'Map area': 'Kartenfläche',
-    'Shape area: {name}': 'Fläche: {name}',
+    'Shape area: {label}': 'Fläche: {label}',
   });
   await language.translate();
   assert.equal(language.t('Shape area: Map area'), 'Fläche: Kartenfläche');
@@ -59,4 +59,15 @@ test('text with no translation comes back untouched', async () => {
   await language.translate();
   assert.equal(language.t('Nothing matches this'), 'Nothing matches this');
   assert.equal(language.t('<img src=x onerror=alert(1)>'), '<img src=x onerror=alert(1)>');
+});
+
+test('opaque names survive interpolated text and explicit dialogue arguments', async () => {
+  const language = load({
+    Home: 'Startseite',
+    'Map: {map}': 'Karte: {map}',
+    'Delete {map}?': '{map} löschen?',
+  });
+  await language.translate();
+  assert.equal(language.t('Map: Home'), 'Karte: Home');
+  assert.equal(language.t('Delete {map}?', { map: 'Home' }), 'Home löschen?');
 });

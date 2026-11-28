@@ -801,7 +801,7 @@ async function boardFillJoins(mine) {
       .filter(n => n && n !== mine);
     box.innerHTML = ['<option value="">nothing - a map of its own</option>']
       .concat(names.map(n =>
-        `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)).join('');
+        `<option data-no-translate value="${escapeHtml(n)}">${escapeHtml(n)}</option>`)).join('');
     if (names.includes(was)) box.value = was;
   } catch {
     /* no maps to join: the sheet is simply a map of its own */
@@ -927,7 +927,7 @@ document.getElementById('boardBuild').addEventListener('click', async () => {
     return;
   }
   btn.disabled = true;
-  boardNote('Building…');
+  boardNote('Generating the map…');
   startProgress(name);
   try {
     const res = await fetch('/api/generate', {

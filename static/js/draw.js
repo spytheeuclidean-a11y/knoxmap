@@ -404,7 +404,7 @@
         ev.preventDefault();
         redo();
       } else if (ev.key === 'Escape') {
-        if (kind) { stop(); o.note('Stopped drawing.'); }
+        if (kind) { stop(); o.note('Drawing cancelled.'); }
         else if (picked) pick(null);
       } else if ((ev.key === 'Delete' || ev.key === 'Backspace') && picked) {
         ev.preventDefault();
