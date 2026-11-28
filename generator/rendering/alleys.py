@@ -188,7 +188,71 @@ def back_alleys(features, proj) -> list[OSMFeature]:
                 tags={"highway": "service", "service": "alley", "width": WIDTH_M,
                       "knoxmap": "back_alley"},
                 geometry=[proj.to_latlon(x / k, y / k) for x, y in piece.coords]))
+            for link in _cross_links(piece, tx, ty, street_union, obstacles, ways,
+                                     way_tree, Point, LineString, unary_union):
+                out.append(OSMFeature(
+                    osm_id=FIRST_ID - len(out), kind="way",
+                    tags={"highway": "service", "service": "alley", "width": WIDTH_M,
+                          "knoxmap": "alley_link"},
+                    geometry=[proj.to_latlon(x / k, y / k) for x, y in link.coords]))
     return out
+
+
+# Cross-links: OpenStreetMap maps back alleys as networks, the lane behind the
+# houses joined to the street in front by short passages through the gaps
+# between terraces (Anfield). A passage is laid where a line square off the lane
+# gets through the row to a street within REACH_M, clear of every building by
+# CLEAR_M, at most one per gap and LINK_SPACING_M apart on each side. Not from
+# the lane's own run-on to a street at its ends (LINK_END_CLEAR_M).
+# Only through a gap LINK_GAP_M wide (clear of CLEAR_M each side), measured
+# along the lane: on Anfield every mapped passage had 1.25-3.5 m, and every gap
+# over 4 m was a missing house or open ground with no passage mapped.
+LINK_STEP_M = 0.5
+LINK_GAP_M = (1.0, 4.0)
+LINK_SPACING_M = 40.0
+LINK_END_CLEAR_M = 8.0
+
+
+def _cross_links(piece, tx, ty, streets, obstacles, ways, way_tree,
+                 Point, LineString, unary_union) -> list:
+    """Short lanes from `piece` (a back alley, direction tx, ty) out through
+    gaps in the rows either side of it to the street they front."""
+    links = []
+    steps = int(piece.length // LINK_STEP_M)
+    for nx, ny in ((-ty, tx), (ty, -tx)):
+        runs, run = [], []
+        for i in range(steps + 1):
+            p = piece.interpolate(i * LINK_STEP_M)
+            hit = None
+            if streets.distance(p) > LINK_END_CLEAR_M:
+                reached, end = _straight(p.x, p.y, nx, ny, streets, obstacles, Point)
+                if reached:
+                    hit = ((p.x, p.y), end)
+            if hit:
+                run.append((i, hit))
+            elif run:
+                runs.append(run)
+                run = []
+        if run:
+            runs.append(run)
+        last = None
+        for run in runs:
+            if not LINK_GAP_M[0] <= len(run) * LINK_STEP_M <= LINK_GAP_M[1]:
+                continue
+            i, (start, end) = run[len(run) // 2]         # the middle of the gap
+            if last is not None and (i - last) * LINK_STEP_M < LINK_SPACING_M:
+                continue
+            line = LineString([start, end])
+            if way_tree is not None:
+                close = [ways[j] for j in way_tree.query(line.buffer(MAPPED_NEAR_M),
+                                                          predicate="intersects")]
+                if close and line.intersection(
+                        unary_union(close).buffer(MAPPED_NEAR_M)).length \
+                        >= MAPPED_SHARE * line.length:
+                    continue                             # mapped there already
+            links.append(line)
+            last = i
+    return links
 
 
 def _straight(x, y, dx, dy, streets, obstacles, Point):

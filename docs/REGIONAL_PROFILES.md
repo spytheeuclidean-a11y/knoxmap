@@ -160,7 +160,12 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    length lies on a real alley; it finds 38% of the mapped length - OSM maps
    alleys as networks with cross-links, which this does not draw. Cambourne:
    12 lanes, 555 m, on its rows of joined houses.
-   Left: gates in back fences (step 7); cross-links; ends that turn a corner.
+   Left: gates in back fences (step 7); ends that turn a corner.
+   Cross-links (`_cross_links`): a passage square off the lane through a gap
+   in the row (1-4 m clear of buildings) to the street in front, one per gap,
+   40 m apart per side. Anfield: 26 links, 574 m, 54% on a mapped alley;
+   without the gap-width limit 45 links at 38% (every wider gap was a missing
+   house or open ground).
 7. **Boundaries.** *First part done* (`knoxbuild/yards.py`).
    - Back: `yard_plan(..., region="gb")` picks `tall_wooden` (75%) or
      `short_wooden` (25%), fenced 95% (default: picket and chain-link too,
