@@ -981,6 +981,7 @@ from .street_context import (  # noqa: F401
 
 # A job's fields up to its party walls; a BasementSpec (or None) follows.
 JOB_FIELDS = 21
+PROFILE_FIELD = 16               # a job's BuildingProfile
 
 
 def _layout_problems(plan, kind, below) -> dict | None:
@@ -1872,6 +1873,8 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
           local_density = context.density(cx, cy)
           profile = BuildingProfile.infer(tags, special, local_density, real_m2,
                                           levels, seed + i * 31)
+          if region == "gb" and (special or "house") == "house":
+              profile = replace(profile, garage_share=regional.GB_GARAGE_SHARE)
           # Hotels are dressed as the city's big buildings, army bases as works,
           # and the public buildings that have no walls of their own as civic.
           style = pick_style(STYLE_AS.get("civic" if hotel else special, special),
@@ -2027,7 +2030,14 @@ def build(out_dir: str, seed: int | None = None, min_size: int | None = None,
     # 45 minutes on a 232,000-building map.
     storeys = [job[2] for job in jobs]
     for j, d in enumerate(decided):
-        jobs[j] = jobs[j] + (_party_walls(owner, j, d[2], d[3], d[6].mask, storeys),)
+        party = _party_walls(owner, j, d[2], d[3], d[6].mask, storeys)
+        job_profile = jobs[j][PROFILE_FIELD]
+        if party and region == "gb" and getattr(job_profile, "garage_share", None):
+            # A British house joined to the next is a terrace or a semi: no
+            # integral garage (docs/REGIONAL_PROFILES.md, GB step 8).
+            jobs[j] = (jobs[j][:PROFILE_FIELD] + (replace(job_profile, garage_share=0.0),)
+                       + jobs[j][PROFILE_FIELD + 1:])
+        jobs[j] = jobs[j] + (party,)
 
     mapped_fences = None
     if apartment_sites:

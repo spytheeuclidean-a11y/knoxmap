@@ -750,7 +750,7 @@ def _build_plan(width: int, height: int, commercial: bool = False,
         # goes back as the garage once it is.
         if (garage_bay and house_floor and ground and kind in (None, "house") and not garage_door
                 and not mapped and (bay := _garage_bay(width, height, mask, core, stairs,
-                                                       street, seed))):
+                                                       street, seed, profile))):
             whole = mask
             mask = [[(whole is None or whole[y][x])
                      and not (bay[0] <= x <= bay[2] and bay[1] <= y <= bay[3])
@@ -950,7 +950,7 @@ def _build_plan(width: int, height: int, commercial: bool = False,
             sx, sy, sd = stairs
             sdx, sdy = (0, 1) if sd == "N" else (1, 0)
             flight = {(sx + sdx * i, sy + sdy * i) for i in range(STAIR_RUN)}
-        _attach_garage(plan, seed, street, flight)
+        _attach_garage(plan, seed, street, flight, profile)
     _make_foyer(plan)
     if private_flats:
         if ground and apartment_access:

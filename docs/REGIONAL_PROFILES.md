@@ -142,8 +142,7 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    - `row_units(..., region="gb")`: houses cut at `GB_TERRACE_FRONTAGE_M`
      (5.5 m, default 9 m); a terrace- or semi-tagged outline splits from 11 m
      (default 22 m), so a semi mapped as one outline is two houses.
-   Left: garages off for terraced houses (the garage bay is #200, not in this
-   stack); untagged semis (`building=yes`, ratio under 2.2) stay one house;
+   Garages off for terraced houses: done in step 8. Left: untagged semis (`building=yes`, ratio under 2.2) stay one house;
    address points as cut positions.
 6. **Back alleys.** *First part done.* Mapped `service=alley` already draws
    as a 3.5 m lane (`road_service`, at least 3 tiles) and footways as 2.5 m
@@ -181,10 +180,11 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
    - Kerbside parking: `zones_detect.kerbside_rate(tier, "gb")` takes
      `GB_KERBSIDE_RATES` (residential 0.85, default 0.55; tertiary 0.5,
      default 0.38). Main roads unchanged.
-   Left: a lower attached-garage share for GB houses and none on terraced
-   houses. `knoxbuild/layout/openings.py` `_attach_garage` is what #200 (the
-   garage bay) rewrites, so this waits for #200 to merge; it also needs the
-   region passed into the layout.
+   - Attached garages: a British house's `BuildingProfile.garage_share` is
+     `GB_GARAGE_SHARE` (0.15; default `openings.GARAGE_SHARE` 0.4), and 0 for
+     any house with a party wall (terraced or semi-detached). The layout's
+     `_garage_bay` and `_attach_garage` read it through
+     `openings.garage_share(profile)`.
 
 ## Not in scope
 

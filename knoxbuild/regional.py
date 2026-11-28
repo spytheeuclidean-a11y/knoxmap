@@ -342,6 +342,10 @@ GB_LOCKUP_FRONTAGE_M = 5.0
 # both sides of nearly every residential street. By road_hierarchy code
 # (3 residential, 4 tertiary); the rest keep the default rates.
 GB_KERBSIDE_RATES = {3: 0.85, 4: 0.5}
+# An integral garage on a British house is a newer estate's detached house,
+# not the street: the default puts one on 40% of houses that have room. A
+# terraced or semi-detached house - any house with a party wall - has none.
+GB_GARAGE_SHARE = 0.15
 
 
 def area_level_pool(kind: str | None, area_m2: float,
