@@ -65,6 +65,18 @@ YARD_ARCHETYPES = ("family", "grill", "laundry", "garden", "bare")
 YARD_ARCHETYPE_WEIGHTS = (30, 22, 18, 18, 12)
 YARD_FENCE_WEIGHTS = (40, 30, 18, 12)
 FENCED_SHARE = 0.85
+# A British back garden is walled in by close-board wooden fence, nearly
+# always: no picket, no chain-link (docs/REGIONAL_PROFILES.md, GB step 7).
+GB_YARD_FENCE_STYLES = ("tall_wooden", "short_wooden")
+GB_YARD_FENCE_WEIGHTS = (75, 25)
+GB_FENCED_SHARE = 0.95
+# ...and its front garden has a low boundary at the pavement: railings on a
+# low wall (the game has the railing, not the wall) or a short fence, with
+# the path and the drive left open. Some are open-plan.
+GB_FRONT_STYLES = ("black_metal", "short_wooden")
+GB_FRONT_WEIGHTS = (55, 45)
+GB_FRONT_OPEN = 0.3
+GB_FRONT_MIN_TILES = 2
 # The dog's house and the kids' swing: not every yard, but enough of them that
 # a street reads as lived in rather than laid out.
 DOG_HOUSE_SHARE = 0.45
@@ -84,15 +96,20 @@ def _rule_ready(label: str) -> bool:
         return False
 
 
-def yard_plan(bx0: int, by0: int) -> tuple[str, bool, str]:
+def yard_plan(bx0: int, by0: int, region: str | None = None) -> tuple[str, bool, str]:
     """(fence style, fenced, archetype) for the house at bx0,by0.
 
     Stable per house so a rebuild is the same map, and independent of the
-    order houses are visited in.
+    order houses are visited in. A British house (`region` "gb") gets a
+    British back fence.
     """
     rng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0x9E3779B9)
-    style = rng.choices(YARD_FENCE_STYLES, weights=YARD_FENCE_WEIGHTS)[0]
-    fenced = rng.random() < FENCED_SHARE
+    if region == "gb":
+        style = rng.choices(GB_YARD_FENCE_STYLES, weights=GB_YARD_FENCE_WEIGHTS)[0]
+        fenced = rng.random() < GB_FENCED_SHARE
+    else:
+        style = rng.choices(YARD_FENCE_STYLES, weights=YARD_FENCE_WEIGHTS)[0]
+        fenced = rng.random() < FENCED_SHARE
     archetype = rng.choices(YARD_ARCHETYPES, weights=YARD_ARCHETYPE_WEIGHTS)[0]
     return style, fenced, archetype
 
@@ -1314,11 +1331,63 @@ def _add_exterior_house_props(bx0: int, by0: int, bw: int, bh: int,
     lights.extend(added)
 
 
+def _front_boundary(sx, sy, dx, dy, bx0, by0, bw, bh, free, ground, kerb) -> list:
+    """A British front garden's boundary: fence runs along the pavement edge
+    across the house's front, as (corner points, style, []) for the fence
+    builder, broken wherever the path, the drive or anything else crosses.
+
+    The pavement edge is found straight out of the front door at (sx, sy),
+    towards the street (dx, dy), on `kerb`: the ground that was paved before
+    any path or drive was painted, so a path into the drive is not the street.
+    """
+    h, w = kerb.shape
+    for t in range(WALK_MAX_TILES):
+        x, y = sx + dx * t, sy + dy * t
+        if not (0 <= x + dx < w and 0 <= y + dy < h):
+            return []
+        if kerb[y + dy, x + dx]:
+            gx, gy = x, y
+            break
+    else:
+        return []
+    rng = random.Random((bx0 * 2654435761) ^ (by0 * 40503) ^ 0xF07E)
+    if rng.random() < GB_FRONT_OPEN:
+        return []
+    style = rng.choices(GB_FRONT_STYLES, weights=GB_FRONT_WEIGHTS)[0]
+    if dy:
+        cells = [(x, gy) for x in range(bx0 - YARD_SIDE, bx0 + bw + YARD_SIDE)]
+    else:
+        cells = [(gx, y) for y in range(by0 - YARD_SIDE, by0 + bh + YARD_SIDE)]
+
+    def lawn_at_kerb(x, y):
+        ax, ay = x + dx, y + dy                      # the tile beyond it
+        return (0 <= x < w and 0 <= y < h and free(x, y)
+                and tuple(ground[y, x]) not in LAWNLESS
+                and 0 <= ax < w and 0 <= ay < h and kerb[ay, ax])
+
+    runs, run = [], []
+    for cell in cells + [None]:
+        if cell is not None and lawn_at_kerb(*cell):
+            run.append(cell)
+            continue
+        if len(run) >= GB_FRONT_MIN_TILES:
+            (ax, ay), (bx, by) = run[0], run[-1]
+            if dy:
+                edge = ay + (1 if dy > 0 else 0)
+                runs.append(([(ax, edge), (bx + 1, edge)], style, []))
+            else:
+                edge = ax + (1 if dx > 0 else 0)
+                runs.append(([(edge, ay), (edge, by + 1)], style, []))
+        run = []
+    return runs
+
+
 def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
                 drives: list | None = None,
                 lights: list | None = None,
                 fronts: set | None = None,
-                structures: list | None = None) -> tuple[int, list]:
+                structures: list | None = None,
+                region: str | None = None) -> tuple[int, list]:
     """Dress houses and connect mapped garages. Return houses dressed and fences.
 
     Each drive's parking space, (x, y, width, height) at its house end, is
@@ -1384,6 +1453,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
     occupied_at = bytearray(np.asarray(occ, dtype=np.uint8).tobytes())
     road_at = bytearray(road.astype(np.uint8, copy=False).tobytes())
     walkable_at = bytearray(((crossable | paved | road) & ~occ).astype(np.uint8, copy=False).tobytes())
+    kerb = paved if region == "gb" else None     # the pavement, for front boundaries
     del paved, road
     crossable = np.frombuffer(crossable_at, dtype=bool).reshape(h, w)
     # Drives the terrain laid already, read before any are painted here.
@@ -1597,6 +1667,9 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
 
         if not any_connected:
             continue
+        if region == "gb" and home:
+            fences.extend(_front_boundary(sx, sy, dx, dy, bx0, by0, bw, bh,
+                                          free, ground, kerb))
         # Front-yard flower/shrub beds flanking the stoop and an occasional kerbside
         # bin opposite the mailbox so street fronts read as lived-in homes.
         if home and veg is not None and frng.random() < 0.80:
@@ -1672,7 +1745,7 @@ def paint_paths(out_dir: str, map_name: str, rows: list[dict], occupied,
             # house, so a rebuild is the same map, but a street is not all the
             # same back yard. The fence style used to be a function of the
             # coordinates alone, which is why whole rows matched.
-            style, fenced, archetype = yard_plan(bx0, by0)
+            style, fenced, archetype = yard_plan(bx0, by0, region)
             yrng = random.Random((bx0 * 73856093) ^ (by0 * 19349663) ^ 0x5DEECE66D)
 
             # Fence corners as tile-corner coordinates, far side of row depth-1.
