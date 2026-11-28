@@ -1,7 +1,8 @@
 # Regional profiles: building a country the way it is built
 
 Status: skeleton done (profile type, GB detection); GB steps 1 (materials and
-roofs) and 2 (storeys) done. First target: Great Britain (`gb`).
+roofs), 2 (storeys) and 5 (terraces and semis, first part) done. First target:
+Great Britain (`gb`).
 
 ## Why
 
@@ -120,11 +121,18 @@ Each item is its own PR, checked on Cambourne in-game, like the fixes of
 4. **Back of the plot.** Long narrow back gardens; sheds smaller and at the
    far end of the garden (`infill.SHED_SETBACKS`, `SHED_SIZE_M`,
    `SHED_SHARE`).
-5. **Terraces and semis.** Long residential footprints split into narrow
-   houses side by side, using address points where OSM has them
-   (`houses_from_addresses`); party walls with no windows. Garages off for
-   terraced houses. Needs a look at how Cambourne's 51/53/55 split was done
-   before designing.
+5. **Terraces and semis.** *First part done.* Rows were already cut into
+   units wall to wall (`build.row_units`, `footprint.split_row`) and shared
+   walls already lose their windows (`_party_walls`). For `gb`:
+   - `british_house()`: `building=residential/terrace/terraced` up to 250 m2
+     with no tagged third storey is a house, not flats (1,230 of Cambourne's
+     1,247).
+   - `row_units(..., region="gb")`: houses cut at `GB_TERRACE_FRONTAGE_M`
+     (5.5 m, default 9 m); a terrace- or semi-tagged outline splits from 11 m
+     (default 22 m), so a semi mapped as one outline is two houses.
+   Left: garages off for terraced houses (the garage bay is #200, not in this
+   stack); untagged semis (`building=yes`, ratio under 2.2) stay one house;
+   address points as cut positions.
 6. **Back alleys.** Keep `highway=service, service=alley` and alley footways
    as narrow paved lanes on the ground. Where two back-to-back rows of
    terraces leave a strip with no mapped way, add a 2-3 m alley with a gate

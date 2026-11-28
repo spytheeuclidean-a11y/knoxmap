@@ -309,6 +309,27 @@ GB_AREA_OVERRIDES = {
 _AREA_OVERRIDES = {"cn": CN_AREA_OVERRIDES, "gb": GB_AREA_OVERRIDES}
 
 
+# ---------------------------------------------------------------------------
+# Terraces and semis
+# ---------------------------------------------------------------------------
+
+# A British terraced house is 5-6 m wide; the default cuts rows at 9 m.
+GB_TERRACE_FRONTAGE_M = 5.5
+# British mappers tag houses building=residential or =terrace, which the kind
+# table reads as flats: in Cambourne the 1,246 residential outlines had a
+# median of 57 m2 (houses: 54 m2) and only 7 were over 250 m2. Up to this, and
+# with no tagged third storey, they are houses.
+GB_HOUSE_TAGS = {"residential", "terrace", "terraced"}
+GB_HOUSE_MAX_M2 = 250.0
+
+
+def british_house(special: str | None, btag: str, real_m2: float,
+                  levels: int | None) -> bool:
+    """Whether a building the kind table made flats is a British house."""
+    return (special == "apartment" and btag in GB_HOUSE_TAGS
+            and real_m2 <= GB_HOUSE_MAX_M2 and (levels is None or levels < 3))
+
+
 def area_level_pool(kind: str | None, area_m2: float,
                     region: str | None = None) -> tuple | None:
     """A weighted pool of storeys for this kind and footprint, or None.
