@@ -12,7 +12,7 @@ from knoxbuild.build import (DEFAULT_LEVELS, building_levels, is_notable,
                              pick_style)
 from knoxbuild.profile import BuildingProfile
 from knoxbuild.regional import (AREA_LEVEL_TABLE, CN_BASES, area_level_pool,
-                                cn_house_styles, detect_region, gb_house_styles,
+                                GB_CURTAINS, cn_house_styles, detect_region, gb_house_styles,
                                 map_country,
                                 profile)
 from knoxbuild.settings import Settings
@@ -203,12 +203,14 @@ class BritishStyles(unittest.TestCase):
         for style in pool:
             with self.subTest(style=style["name"]):
                 donor = by_name[style["name"][len("gb_"):]]
-                for key in ("exterior", "interior", "window", "curtains",
-                            "trim", "grime", "roof"):
+                for key in ("exterior", "interior", "window", "trim", "grime", "roof"):
                     self.assertEqual(style.get(key), donor.get(key),
                                      f"{key} must be the catalog's own")
                 self.assertTrue(style["roof"]["peaked"])
                 self.assertNotIn("shutters", style)
+                # White net curtains, not the brick style's brown ones drawn
+                # shut, which read as shutters from the street.
+                self.assertEqual(style["curtains"], GB_CURTAINS)
                 self.assertFalse(any(base in style["name"] for base in
                                      ("clapboard", "logs", "trailer", "siding",
                                       "timber", "panel")))
